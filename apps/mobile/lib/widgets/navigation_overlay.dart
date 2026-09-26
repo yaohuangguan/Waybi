@@ -270,7 +270,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
               ),
             ),
           Positioned(
-            top: 132,
+            top: 188,
             right: 15,
             child: PointerInterceptor(
               child: Column(
@@ -295,6 +295,13 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     icon: Icons.layers_rounded,
                     tooltip: 'Map layers',
                     onTap: widget.onLayers,
+                  ),
+                  const SizedBox(height: 9),
+                  _MapControl(
+                    icon: Icons.add_alert_rounded,
+                    tooltip: 'Report road issue',
+                    onTap: widget.onReport,
+                    iconColor: TasmanColors.danger,
                   ),
                 ],
               ),
@@ -702,11 +709,13 @@ class _MapControl extends StatelessWidget {
     required this.icon,
     required this.tooltip,
     required this.onTap,
+    this.iconColor,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
+  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -717,7 +726,7 @@ class _MapControl extends StatelessWidget {
       child: IconButton(
         onPressed: onTap,
         tooltip: tooltip,
-        icon: Icon(icon, color: _ink),
+        icon: Icon(icon, color: iconColor ?? _ink),
       ),
     );
   }

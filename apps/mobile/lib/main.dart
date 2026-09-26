@@ -22,6 +22,7 @@ import 'domain/route_option.dart';
 import 'domain/road_event.dart';
 import 'drive/device_heading.dart';
 import 'drive/drive_engine.dart';
+import 'drive/route_camera_matcher.dart';
 import 'providers/google_map_renderer.dart';
 import 'providers/mapbox_map_renderer.dart';
 import 'providers/mapbox_navigation_engine.dart';
@@ -335,6 +336,7 @@ class _MapHomePageState extends State<MapHomePage> {
   bool _notifySavedRouteDisruptions = false;
   String _destinationTitle = 'Destination';
   RoutePlan? _routePlan;
+  Map<String, RouteCameraSummary> _routeCameraSummaries = const {};
   KiwiTravelMode _selectedMode = KiwiTravelMode.drive;
   String? _selectedRouteId;
   bool _routePreviewLoading = false;
@@ -1054,6 +1056,7 @@ class _MapHomePageState extends State<MapHomePage> {
     final selected = await showModalBottomSheet<(String, String)>(
       context: context,
       useSafeArea: true,
+      showDragHandle: false,
       builder: (sheetContext) => Padding(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
         child: Column(
@@ -1267,6 +1270,7 @@ class _MapHomePageState extends State<MapHomePage> {
     setState(() {
       _routePreviewLoading = true;
       _routePlan = null;
+      _routeCameraSummaries = const {};
       _selectedMode = preferredMode;
       _selectedRouteId = null;
       _following = false;
@@ -1277,6 +1281,7 @@ class _MapHomePageState extends State<MapHomePage> {
         _selectedPlace != null) {
       unawaited(_loadParking(_selectedPlace!.place));
     }
+    final camerasReady = _driveEngine.loadCameras();
     try {
       final plan = _mapProvider == MapProvider.mapbox
           ? await _mapboxRoutes.route(
@@ -1299,10 +1304,13 @@ class _MapHomePageState extends State<MapHomePage> {
                   .map((stop) => stop.location)
                   .toList(growable: false),
             );
+      await camerasReady;
       final firstRoute = plan.forMode(preferredMode).firstOrNull;
+      final cameraSummaries = _summarizeRouteCameras(plan);
       if (!mounted || request != _routeRequest) return;
       setState(() {
         _routePlan = plan;
+        _routeCameraSummaries = cameraSummaries;
         _selectedRouteId = firstRoute?.id;
         _journeyPhase = JourneyPhase.routePreview;
       });
@@ -1319,6 +1327,27 @@ class _MapHomePageState extends State<MapHomePage> {
         setState(() => _routePreviewLoading = false);
       }
     }
+  }
+
+  Map<String, RouteCameraSummary> _summarizeRouteCameras(RoutePlan plan) {
+    final matcher = const RouteCameraMatcher();
+    final summaries = <String, RouteCameraSummary>{};
+    for (final route in plan.options) {
+      if (route.mode != KiwiTravelMode.drive) {
+        summaries[route.id] = const RouteCameraSummary();
+        continue;
+      }
+      final matches = matcher.match(route, _driveEngine.cameras);
+      final types = <String>{};
+      for (final match in matches) {
+        types.add(CameraKindLabel.fromCamera(match.camera).label);
+      }
+      summaries[route.id] = RouteCameraSummary(
+        count: matches.length,
+        types: types.toList(growable: false),
+      );
+    }
+    return summaries;
   }
 
   RouteOption? get _selectedRoute {
@@ -1991,7 +2020,13 @@ class _MapHomePageState extends State<MapHomePage> {
       _driveEngine.setRoute(selectedRoute);
       await GoogleMapsNavigator.startGuidance();
       await _navigationController?.setNavigationUIEnabled(true);
-      await _navigationController?.followMyLocation(CameraPerspective.tilted);
+      final navigationController = _navigationController;
+      if (navigationController != null) {
+        await _applyTasmanNavigationChrome(navigationController);
+        await navigationController.followMyLocation(CameraPerspective.tilted);
+        await navigationController.setRecenterButtonEnabled(false);
+        await navigationController.setReportIncidentButtonEnabled(false);
+      }
       if (_useCarMarker && _navigationController != null) {
         final controller = _navigationController!;
         if (_carMarker != null) {
@@ -3686,6 +3721,19 @@ class _MapHomePageState extends State<MapHomePage> {
     _queueMapRefresh();
   }
 
+  Future<void> _applyTasmanNavigationChrome(
+    GoogleNavigationViewController controller,
+  ) async {
+    await controller.setNavigationHeaderEnabled(false);
+    await controller.setNavigationFooterEnabled(false);
+    await controller.setRecenterButtonEnabled(false);
+    await controller.setReportIncidentButtonEnabled(false);
+    // ignore: experimental_member_use
+    await controller.setNavigationTripProgressBarEnabled(false);
+    await controller.setSpeedometerEnabled(false);
+    await controller.setSpeedLimitIconEnabled(false);
+  }
+
   Future<void> _onNavigationViewCreated(
     GoogleNavigationViewController controller,
   ) async {
@@ -3703,19 +3751,14 @@ class _MapHomePageState extends State<MapHomePage> {
     _accuracyCircle = null;
     _markerSignature = '';
     _radarPolygon = null;
-    await controller.setNavigationHeaderEnabled(false);
-    await controller.setNavigationFooterEnabled(false);
-    await controller.setRecenterButtonEnabled(false);
-    await controller.setReportIncidentButtonEnabled(false);
-    // ignore: experimental_member_use
-    await controller.setNavigationTripProgressBarEnabled(false);
-    await controller.setSpeedometerEnabled(false);
-    await controller.setSpeedLimitIconEnabled(false);
     await controller.setNavigationUIEnabled(_guidanceRunning);
+    await _applyTasmanNavigationChrome(controller);
     if (_driveEngine.snappedLocation != null) {
       await controller.followMyLocation(
         _northUp ? CameraPerspective.topDownNorthUp : CameraPerspective.tilted,
       );
+      await controller.setRecenterButtonEnabled(false);
+      await controller.setReportIncidentButtonEnabled(false);
     }
     await controller.setTrafficIncidentCardsEnabled(true);
     await controller.setTrafficPromptsEnabled(true);
@@ -4209,6 +4252,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 busy: _busy,
                 stopCount: _routeStops.length,
                 cameraCount: _driveEngine.routeCameraCount,
+                routeCameraSummaries: _routeCameraSummaries,
                 customOrigin: _manualOrigin != null,
                 parkingPlaces: _parkingPlaces,
                 selectedParkingId: _selectedParking?.id,

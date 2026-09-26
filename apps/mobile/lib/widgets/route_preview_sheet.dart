@@ -55,6 +55,13 @@ IconData _icon(KiwiTravelMode mode) => switch (mode) {
   KiwiTravelMode.bicycle => Icons.pedal_bike_rounded,
 };
 
+class RouteCameraSummary {
+  const RouteCameraSummary({this.count = 0, this.types = const []});
+
+  final int count;
+  final List<String> types;
+}
+
 class RoutePreviewSheet extends StatelessWidget {
   const RoutePreviewSheet({
     super.key,
@@ -66,6 +73,7 @@ class RoutePreviewSheet extends StatelessWidget {
     required this.busy,
     required this.stopCount,
     required this.cameraCount,
+    this.routeCameraSummaries = const {},
     required this.customOrigin,
     required this.onModeChanged,
     required this.onRouteSelected,
@@ -93,6 +101,7 @@ class RoutePreviewSheet extends StatelessWidget {
   final bool busy;
   final int stopCount;
   final int cameraCount;
+  final Map<String, RouteCameraSummary> routeCameraSummaries;
   final bool customOrigin;
   final ValueChanged<KiwiTravelMode> onModeChanged;
   final ValueChanged<RouteOption> onRouteSelected;
@@ -340,6 +349,9 @@ class RoutePreviewSheet extends StatelessWidget {
                         route: routes[index],
                         active: routes[index].id == selected?.id,
                         fastestDuration: fastestDuration,
+                        cameraSummary:
+                            routeCameraSummaries[routes[index].id] ??
+                            const RouteCameraSummary(),
                         onTap: () => onRouteSelected(routes[index]),
                       ),
                       if (index != routes.length - 1) const SizedBox(height: 6),
@@ -488,12 +500,14 @@ class _RouteOptionTile extends StatelessWidget {
     required this.route,
     required this.active,
     required this.fastestDuration,
+    required this.cameraSummary,
     required this.onTap,
   });
 
   final RouteOption route;
   final bool active;
   final int fastestDuration;
+  final RouteCameraSummary cameraSummary;
   final VoidCallback onTap;
 
   String get _trafficLabel {
@@ -603,6 +617,56 @@ class _RouteOptionTile extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  if (route.mode == KiwiTravelMode.drive) ...[
+                    const SizedBox(height: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cameraSummary.count > 0
+                            ? scheme.primaryContainer
+                            : scheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(
+                          color: cameraSummary.count > 0
+                              ? scheme.primary.withValues(alpha: .38)
+                              : theme.dividerColor,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.photo_camera_rounded,
+                            size: 13,
+                            color: cameraSummary.count > 0
+                                ? scheme.primary
+                                : scheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              cameraSummary.count > 0
+                                  ? '${cameraSummary.count} camera${cameraSummary.count == 1 ? '' : 's'}'
+                                        '${cameraSummary.types.isEmpty ? '' : ' · ${cameraSummary.types.take(2).join(' + ')}'}'
+                                  : 'No cameras matched',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: cameraSummary.count > 0
+                                    ? scheme.primary
+                                    : scheme.onSurfaceVariant,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -181,7 +181,13 @@ void main() {
             selectedRouteId: 'drive-1',
             busy: false,
             stopCount: 0,
-            cameraCount: 0,
+            cameraCount: 2,
+            routeCameraSummaries: const {
+              'drive-1': RouteCameraSummary(
+                count: 2,
+                types: ['Spot speed', 'Red light'],
+              ),
+            },
             customOrigin: false,
             onModeChanged: (_) {},
             onRouteSelected: (_) {},
@@ -198,6 +204,8 @@ void main() {
         ),
       ),
     );
+    expect(find.textContaining('2 cameras'), findsOneWidget);
+    expect(find.textContaining('Spot speed + Red light'), findsOneWidget);
     await tester.ensureVisible(find.text('Near car park'));
     await tester.tap(find.text('Near car park'));
     expect(selected?.id, 'at-3');

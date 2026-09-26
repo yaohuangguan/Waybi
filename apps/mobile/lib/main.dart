@@ -506,6 +506,9 @@ class _MapHomePageState extends State<MapHomePage> {
       }
     }
     unawaited(_notifyRoadIntelligence());
+    if (_useCarMarker && _driveEngine.active && _navigationController != null) {
+      _queueMapRefresh();
+    }
     final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
     final signature =
         '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}';
@@ -765,7 +768,7 @@ class _MapHomePageState extends State<MapHomePage> {
         : _browseController;
     if (controller != null) {
       await _applyMapLayers(controller);
-      await controller.setMyLocationEnabled(!_useCarMarker || _guidanceRunning);
+      await controller.setMyLocationEnabled(!_useCarMarker);
       _markerSignature = '';
       unawaited(_syncCameraMarkers());
       _queueMapRefresh();
@@ -960,8 +963,11 @@ class _MapHomePageState extends State<MapHomePage> {
         await controller.removePolygons([_radarPolygon!]);
         _radarPolygon = null;
       }
-      if (_useCarMarker && !_guidanceRunning) {
-        await _syncCarMarker(controller, location);
+      if (_useCarMarker) {
+        final markerLocation =
+            (_driveEngine.active ? _driveEngine.snappedLocation : null) ??
+            location;
+        await _syncCarMarker(controller, markerLocation);
       }
       // During Drive/Navigation the native SDK owns the camera. Manually
       // moving it on every GPS/heading update causes visible tug-of-war.
@@ -2029,15 +2035,8 @@ class _MapHomePageState extends State<MapHomePage> {
         await navigationController.setReportIncidentButtonEnabled(false);
       }
       if (_useCarMarker && _navigationController != null) {
-        final controller = _navigationController!;
-        if (_carMarker != null) {
-          try {
-            await controller.removeMarkers([_carMarker!]);
-          } catch (_) {}
-          _carMarker = null;
-        }
-        await controller.setMyLocationEnabled(true);
-        await controller.settings.setMyLocationButtonEnabled(false);
+        await _navigationController!.setMyLocationEnabled(false);
+        await _navigationController!.settings.setMyLocationButtonEnabled(false);
       }
       if (!mounted) return;
       setState(() {
@@ -2051,6 +2050,13 @@ class _MapHomePageState extends State<MapHomePage> {
         _routeStops.clear();
         _following = true;
       });
+      final markerLocation = _driveEngine.snappedLocation ?? _gpsLocation;
+      if (_useCarMarker &&
+          markerLocation != null &&
+          _navigationController != null) {
+        await _syncCarMarker(_navigationController!, markerLocation);
+      }
+      _queueMapRefresh();
     } catch (error) {
       if (!mounted) return;
       setState(() => _message = 'Could not start navigation: $error');
@@ -2489,7 +2495,6 @@ class _MapHomePageState extends State<MapHomePage> {
   ) async {
     try {
       await MapSymbols.ensureRegistered();
-      if (_guidanceRunning) return;
       final heading = _travelHeading ?? _deviceHeading ?? 0;
       final previous = _smoothedLocationHeading;
       final delta = previous == null
@@ -2517,7 +2522,7 @@ class _MapHomePageState extends State<MapHomePage> {
         ])).first;
       }
       final accuracy = _gpsAccuracy;
-      if (accuracy != null && accuracy > 0) {
+      if (!_guidanceRunning && accuracy != null && accuracy > 0) {
         final halo = CircleOptions(
           position: location,
           radius: accuracy.clamp(5, 150).toDouble(),
@@ -2533,6 +2538,11 @@ class _MapHomePageState extends State<MapHomePage> {
             _accuracyCircle!.copyWith(options: halo),
           ])).first;
         }
+      } else if (_accuracyCircle != null) {
+        try {
+          await controller.removeCircles([_accuracyCircle!]);
+        } catch (_) {}
+        _accuracyCircle = null;
       }
     } catch (_) {
       /* The native location indicator remains the fallback. */
@@ -2545,15 +2555,17 @@ class _MapHomePageState extends State<MapHomePage> {
         ? _navigationController
         : _browseController;
     if (controller != null) {
-      // Navigation's built-in chevron is retained during active guidance.
-      await controller.setMyLocationEnabled(!value || _guidanceRunning);
-      if ((!value || _guidanceRunning) && _carMarker != null) {
+      await controller.setMyLocationEnabled(!value);
+      if (!value && _carMarker != null) {
         try {
           await controller.removeMarkers([_carMarker!]);
         } catch (_) {}
         _carMarker = null;
       } else if (value && _gpsLocation != null) {
-        await _syncCarMarker(controller, _gpsLocation!);
+        final markerLocation =
+            (_driveEngine.active ? _driveEngine.snappedLocation : null) ??
+            _gpsLocation!;
+        await _syncCarMarker(controller, markerLocation);
       }
       if ((!value || _guidanceRunning) && _accuracyCircle != null) {
         try {

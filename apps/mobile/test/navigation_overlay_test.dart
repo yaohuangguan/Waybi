@@ -18,6 +18,7 @@ void main() {
       tester.view.resetDevicePixelRatio();
     });
     final engine = DriveEngine();
+    var recenterCount = 0;
     addTearDown(engine.dispose);
 
     await tester.pumpWidget(
@@ -34,7 +35,7 @@ void main() {
                   voiceEnabled: true,
                   lanesEnabled: true,
                   onEnd: () {},
-                  onRecenter: () {},
+                  onRecenter: () => recenterCount += 1,
                   onOverview: () {},
                   northUp: false,
                   onCompassToggle: () {},
@@ -54,9 +55,18 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
-    expect(find.text('End navigation'), findsOneWidget);
+    expect(find.text('End'), findsOneWidget);
     expect(find.text('GPS ±18 m'), findsOneWidget);
+    expect(find.byTooltip('Recenter'), findsOneWidget);
     expect(find.text('Add a report'), findsNothing);
+
+    await tester.tap(find.text('GPS ±18 m'));
+    await tester.pump();
+    expect(recenterCount, 0);
+
+    await tester.tap(find.byTooltip('Recenter'));
+    await tester.pump();
+    expect(recenterCount, 1);
 
     await tester.tap(find.byKey(const Key('navigationSheetHandle')));
     await tester.pump();

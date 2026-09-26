@@ -270,46 +270,21 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
               ),
             ),
           Positioned(
-            top: 188,
-            right: 15,
+            top: 198,
+            right: 14,
             child: PointerInterceptor(
-              child: Column(
-                children: [
-                  _MapControl(
-                    icon: widget.northUp
-                        ? Icons.explore_rounded
-                        : Icons.navigation_rounded,
-                    tooltip: widget.northUp
-                        ? 'North up · tap for follow view'
-                        : 'Follow view · tap for north up',
-                    onTap: widget.onCompassToggle,
-                  ),
-                  const SizedBox(height: 9),
-                  _MapControl(
-                    icon: Icons.my_location_rounded,
-                    tooltip: 'Recenter',
-                    onTap: widget.onRecenter,
-                  ),
-                  const SizedBox(height: 9),
-                  _MapControl(
-                    icon: Icons.layers_rounded,
-                    tooltip: 'Map layers',
-                    onTap: widget.onLayers,
-                  ),
-                  const SizedBox(height: 9),
-                  _MapControl(
-                    icon: Icons.add_alert_rounded,
-                    tooltip: 'Report road issue',
-                    onTap: widget.onReport,
-                    iconColor: TasmanColors.danger,
-                  ),
-                ],
+              child: _NavigationControlRail(
+                northUp: widget.northUp,
+                onCompassToggle: widget.onCompassToggle,
+                onRecenter: widget.onRecenter,
+                onLayers: widget.onLayers,
+                onReport: widget.onReport,
               ),
             ),
           ),
           Positioned(
-            top: 232,
-            left: 15,
+            top: 218,
+            left: 14,
             child: PointerInterceptor(
               child: Container(
                 width: 84,
@@ -367,7 +342,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
           if (camera != null && cameraDistance != null)
             Positioned(
               left: 14,
-              bottom: bottomInset + (expanded ? 370 : 231),
+              bottom: bottomInset + (expanded ? 344 : 212),
               child: PointerInterceptor(
                 child: Container(
                   constraints: const BoxConstraints(maxWidth: 235),
@@ -451,7 +426,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(16, 5, 16, bottomInset + 15),
+                      padding: EdgeInsets.fromLTRB(14, 3, 14, bottomInset + 12),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -459,10 +434,10 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             key: const Key('navigationSheetHandle'),
                             onTap: () => setState(() => expanded = !expanded),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 15),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
                               child: Container(
-                                width: 51,
-                                height: 5,
+                                width: 44,
+                                height: 4,
                                 decoration: BoxDecoration(
                                   color: theme.dividerColor,
                                   borderRadius: BorderRadius.circular(5),
@@ -478,7 +453,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                    fontSize: 17,
+                                    fontSize: 16,
                                     fontWeight: FontWeight.w900,
                                   ),
                                 ),
@@ -490,19 +465,19 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                   backgroundColor: TasmanColors.danger,
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 12,
+                                    horizontal: 10,
+                                    vertical: 9,
                                   ),
                                 ),
                                 icon: const Icon(Icons.stop_rounded, size: 18),
-                                label: const Text('End navigation'),
+                                label: const Text('End'),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 8),
                           const Divider(height: 1),
                           Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 9),
                             child: Row(
                               children: [
                                 _TripStat(
@@ -527,7 +502,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               dark: dark,
                             ),
                           ],
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 8),
                           Row(
                             children: [
                               _Chip(
@@ -553,7 +528,6 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                 label: widget.gpsAccuracy == null
                                     ? 'GPS —'
                                     : 'GPS ±${widget.gpsAccuracy!.round()} m',
-                                onTap: widget.onRecenter,
                               ),
                             ],
                           ),
@@ -658,14 +632,42 @@ class _TripStat extends StatelessWidget {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip({required this.icon, required this.label, required this.onTap});
+  const _Chip({required this.icon, required this.label, this.onTap});
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 15,
+            color: onTap == null ? scheme.onSurfaceVariant : scheme.primary,
+          ),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: onTap == null
+                    ? scheme.onSurfaceVariant
+                    : scheme.onSurface,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
     return Expanded(
       child: Material(
         color: scheme.surfaceContainerLow,
@@ -673,60 +675,113 @@ class _Chip extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(color: theme.dividerColor),
         ),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 15, color: scheme.primary),
-                const SizedBox(width: 3),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: scheme.onSurface,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        child: onTap == null
+            ? content
+            : InkWell(
+                onTap: onTap,
+                borderRadius: BorderRadius.circular(12),
+                child: content,
+              ),
       ),
     );
   }
 }
 
-class _MapControl extends StatelessWidget {
-  const _MapControl({
+class _NavigationControlRail extends StatelessWidget {
+  const _NavigationControlRail({
+    required this.northUp,
+    required this.onCompassToggle,
+    required this.onRecenter,
+    required this.onLayers,
+    required this.onReport,
+  });
+
+  final bool northUp;
+  final VoidCallback onCompassToggle;
+  final VoidCallback onRecenter;
+  final VoidCallback onLayers;
+  final VoidCallback onReport;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: .97),
+      elevation: 6,
+      borderRadius: BorderRadius.circular(19),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _RailButton(
+            icon: northUp ? Icons.explore_rounded : Icons.navigation_rounded,
+            tooltip: northUp
+                ? 'North up · tap for follow view'
+                : 'Follow view · tap for north up',
+            onTap: onCompassToggle,
+          ),
+          const _RailDivider(),
+          _RailButton(
+            icon: Icons.my_location_rounded,
+            tooltip: 'Recenter',
+            onTap: onRecenter,
+          ),
+          const _RailDivider(),
+          _RailButton(
+            icon: Icons.layers_rounded,
+            tooltip: 'Map layers',
+            onTap: onLayers,
+          ),
+          const _RailDivider(),
+          _RailButton(
+            icon: Icons.add_alert_rounded,
+            tooltip: 'Report road issue',
+            onTap: onReport,
+            iconColor: TasmanColors.danger,
+            backgroundColor: Color(0xFFFFF3F1),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RailDivider extends StatelessWidget {
+  const _RailDivider();
+
+  @override
+  Widget build(BuildContext context) =>
+      Container(width: 28, height: 1, color: TasmanColors.lightBorder);
+}
+
+class _RailButton extends StatelessWidget {
+  const _RailButton({
     required this.icon,
     required this.tooltip,
     required this.onTap,
     this.iconColor,
+    this.backgroundColor,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
   final Color? iconColor;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      elevation: 5,
-      borderRadius: BorderRadius.circular(18),
-      child: IconButton(
-        onPressed: onTap,
-        tooltip: tooltip,
-        icon: Icon(icon, color: iconColor ?? _ink),
+    return ColoredBox(
+      color: backgroundColor ?? Colors.transparent,
+      child: SizedBox(
+        width: 46,
+        height: 46,
+        child: IconButton(
+          padding: EdgeInsets.zero,
+          onPressed: onTap,
+          tooltip: tooltip,
+          iconSize: 21,
+          icon: Icon(icon, color: iconColor ?? TasmanColors.darkOcean),
+        ),
       ),
     );
   }

@@ -2024,6 +2024,7 @@ class _MapHomePageState extends State<MapHomePage> {
       if (navigationController != null) {
         await _applyTasmanNavigationChrome(navigationController);
         await navigationController.followMyLocation(CameraPerspective.tilted);
+        await navigationController.settings.setMyLocationButtonEnabled(false);
         await navigationController.setRecenterButtonEnabled(false);
         await navigationController.setReportIncidentButtonEnabled(false);
       }
@@ -2036,6 +2037,7 @@ class _MapHomePageState extends State<MapHomePage> {
           _carMarker = null;
         }
         await controller.setMyLocationEnabled(true);
+        await controller.settings.setMyLocationButtonEnabled(false);
       }
       if (!mounted) return;
       setState(() {
@@ -3715,6 +3717,7 @@ class _MapHomePageState extends State<MapHomePage> {
     if (await Permission.locationWhenInUse.isGranted) {
       await controller.setMyLocationEnabled(!_useCarMarker);
     }
+    await controller.settings.setMyLocationButtonEnabled(false);
     await controller.setRecenterButtonEnabled(false);
     await _syncCameraMarkers();
     await _syncExploreMarkers();
@@ -3726,6 +3729,7 @@ class _MapHomePageState extends State<MapHomePage> {
   ) async {
     await controller.setNavigationHeaderEnabled(false);
     await controller.setNavigationFooterEnabled(false);
+    await controller.settings.setMyLocationButtonEnabled(false);
     await controller.setRecenterButtonEnabled(false);
     await controller.setReportIncidentButtonEnabled(false);
     // ignore: experimental_member_use
@@ -3757,6 +3761,7 @@ class _MapHomePageState extends State<MapHomePage> {
       await controller.followMyLocation(
         _northUp ? CameraPerspective.topDownNorthUp : CameraPerspective.tilted,
       );
+      await controller.settings.setMyLocationButtonEnabled(false);
       await controller.setRecenterButtonEnabled(false);
       await controller.setReportIncidentButtonEnabled(false);
     }

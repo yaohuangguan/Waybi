@@ -1,6 +1,7 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "kiwi-lens",
+	"account_id": "cdc04de9bc4c6a41b5003758e505a0d1",
 	"main": "apps/server/src/worker.mjs",
 	"compatibility_date": "2026-08-04",
 	"assets": {

@@ -312,6 +312,11 @@ class _MapHomePageState extends State<MapHomePage> {
   List<Marker> _roadEventMarkers = [];
   Marker? _carMarker;
   Circle? _accuracyCircle;
+  bool _navigationMarkerSyncing = false;
+  LatLng? _pendingNavigationMarkerLocation;
+  double? _pendingNavigationMarkerHeading;
+  LatLng? _lastNavigationMarkerLocation;
+  double? _lastNavigationMarkerHeading;
   String _markerSignature = '';
   bool _markerSyncing = false;
   bool _useCarMarker = false;
@@ -496,10 +501,8 @@ class _MapHomePageState extends State<MapHomePage> {
       final controller = _navigationController;
       if (controller != null && _following) {
         unawaited(
-          controller.followMyLocation(
-            _northUp
-                ? CameraPerspective.topDownNorthUp
-                : CameraPerspective.tilted,
+          _followNavigationCamera(
+            controller,
             zoomLevel: shouldZoom ? 18.5 : 16.0,
           ),
         );
@@ -507,7 +510,7 @@ class _MapHomePageState extends State<MapHomePage> {
     }
     unawaited(_notifyRoadIntelligence());
     if (_useCarMarker && _driveEngine.active && _navigationController != null) {
-      _queueMapRefresh();
+      _queueNavigationMarkerSync();
     }
     final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
     final signature =
@@ -963,11 +966,8 @@ class _MapHomePageState extends State<MapHomePage> {
         await controller.removePolygons([_radarPolygon!]);
         _radarPolygon = null;
       }
-      if (_useCarMarker) {
-        final markerLocation =
-            (_driveEngine.active ? _driveEngine.snappedLocation : null) ??
-            location;
-        await _syncCarMarker(controller, markerLocation);
+      if (_useCarMarker && !_driveEngine.active) {
+        await _syncCarMarker(controller, location);
       }
       // During Drive/Navigation the native SDK owns the camera. Manually
       // moving it on every GPS/heading update causes visible tug-of-war.
@@ -996,6 +996,28 @@ class _MapHomePageState extends State<MapHomePage> {
     }
   }
 
+  CameraPerspective get _navigationFollowPerspective => _northUp
+      ? CameraPerspective.topDownNorthUp
+      : CameraPerspective.topDownHeadingUp;
+
+  Future<void> _followNavigationCamera(
+    GoogleNavigationViewController controller, {
+    double? zoomLevel,
+  }) async {
+    await controller.followMyLocation(
+      _navigationFollowPerspective,
+      zoomLevel: zoomLevel,
+    );
+    if (_useCarMarker) {
+      // followMyLocation can recreate native location chrome on iOS. Tasman
+      // owns the visible vehicle marker, so suppress Google's indicator after
+      // every follow/recenter/automatic junction zoom.
+      await controller.setMyLocationEnabled(false);
+      await controller.settings.setMyLocationButtonEnabled(false);
+    }
+    await controller.setRecenterButtonEnabled(false);
+  }
+
   void _recenter() {
     _following = true;
     if (_mapProvider == MapProvider.mapbox) {
@@ -1004,13 +1026,7 @@ class _MapHomePageState extends State<MapHomePage> {
     }
     final navigationController = _navigationController;
     if (_driveEngine.active && navigationController != null) {
-      unawaited(
-        navigationController.followMyLocation(
-          _northUp
-              ? CameraPerspective.topDownNorthUp
-              : CameraPerspective.tilted,
-        ),
-      );
+      unawaited(_followNavigationCamera(navigationController));
       return;
     }
     _queueMapRefresh();
@@ -2029,9 +2045,7 @@ class _MapHomePageState extends State<MapHomePage> {
       final navigationController = _navigationController;
       if (navigationController != null) {
         await _applyTasmanNavigationChrome(navigationController);
-        await navigationController.followMyLocation(CameraPerspective.tilted);
-        await navigationController.settings.setMyLocationButtonEnabled(false);
-        await navigationController.setRecenterButtonEnabled(false);
+        await _followNavigationCamera(navigationController);
         await navigationController.setReportIncidentButtonEnabled(false);
       }
       if (_useCarMarker && _navigationController != null) {
@@ -2050,12 +2064,7 @@ class _MapHomePageState extends State<MapHomePage> {
         _routeStops.clear();
         _following = true;
       });
-      final markerLocation = _driveEngine.snappedLocation ?? _gpsLocation;
-      if (_useCarMarker &&
-          markerLocation != null &&
-          _navigationController != null) {
-        await _syncCarMarker(_navigationController!, markerLocation);
-      }
+      _queueNavigationMarkerSync();
       _queueMapRefresh();
     } catch (error) {
       if (!mounted) return;
@@ -2107,7 +2116,10 @@ class _MapHomePageState extends State<MapHomePage> {
       await _driveEngine.stop();
     }
     await _navigationController?.setNavigationUIEnabled(false);
-    await _navigationController?.followMyLocation(CameraPerspective.tilted);
+    final navigationController = _navigationController;
+    if (navigationController != null) {
+      await _followNavigationCamera(navigationController);
+    }
     if (!mounted) return;
     setState(() {
       _guidanceRunning = false;
@@ -2489,20 +2501,82 @@ class _MapHomePageState extends State<MapHomePage> {
     }
   }
 
+  void _queueNavigationMarkerSync() {
+    if (!_useCarMarker || !_driveEngine.active) return;
+    final controller = _navigationController;
+    final location = _driveEngine.snappedLocation ?? _gpsLocation;
+    if (controller == null || location == null) return;
+
+    final heading =
+        _driveEngine.snappedHeadingDegrees ?? _travelHeading ?? _deviceHeading;
+    final previousLocation = _lastNavigationMarkerLocation;
+    final previousHeading = _lastNavigationMarkerHeading;
+    final moved =
+        previousLocation == null ||
+        distanceMeters(
+              previousLocation.latitude,
+              previousLocation.longitude,
+              location.latitude,
+              location.longitude,
+            ) >
+            0.25;
+    final headingChanged =
+        heading != null &&
+        (previousHeading == null ||
+            ((heading - previousHeading + 540) % 360 - 180).abs() > 1.0);
+    if (_carMarker != null && !moved && !headingChanged) return;
+
+    _pendingNavigationMarkerLocation = location;
+    _pendingNavigationMarkerHeading = heading;
+
+    if (_navigationMarkerSyncing) return;
+    unawaited(_drainNavigationMarkerSync());
+  }
+
+  Future<void> _drainNavigationMarkerSync() async {
+    if (_navigationMarkerSyncing) return;
+    _navigationMarkerSyncing = true;
+    try {
+      while (mounted && _useCarMarker && _driveEngine.active) {
+        final location = _pendingNavigationMarkerLocation;
+        final heading = _pendingNavigationMarkerHeading;
+        _pendingNavigationMarkerLocation = null;
+        _pendingNavigationMarkerHeading = null;
+        if (location == null) break;
+
+        final controller = _navigationController;
+        if (controller == null) break;
+        await _syncCarMarker(controller, location, headingOverride: heading);
+        _lastNavigationMarkerLocation = location;
+        _lastNavigationMarkerHeading = heading;
+      }
+    } finally {
+      _navigationMarkerSyncing = false;
+      if (_pendingNavigationMarkerLocation != null &&
+          mounted &&
+          _useCarMarker &&
+          _driveEngine.active) {
+        unawaited(_drainNavigationMarkerSync());
+      }
+    }
+  }
+
   Future<void> _syncCarMarker(
     GoogleMapViewController controller,
-    LatLng location,
-  ) async {
+    LatLng location, {
+    double? headingOverride,
+  }) async {
     try {
       await MapSymbols.ensureRegistered();
-      final heading = _travelHeading ?? _deviceHeading ?? 0;
+      final heading = headingOverride ?? _travelHeading ?? _deviceHeading ?? 0;
       final previous = _smoothedLocationHeading;
       final delta = previous == null
           ? 0.0
           : (heading - previous + 540) % 360 - 180;
+      final headingSmoothing = _driveEngine.active ? 0.62 : 0.35;
       _smoothedLocationHeading = previous == null
           ? heading
-          : (previous + delta * 0.35 + 360) % 360;
+          : (previous + delta * headingSmoothing + 360) % 360;
       final options = MarkerOptions(
         position: location,
         icon:
@@ -2565,7 +2639,14 @@ class _MapHomePageState extends State<MapHomePage> {
         final markerLocation =
             (_driveEngine.active ? _driveEngine.snappedLocation : null) ??
             _gpsLocation!;
-        await _syncCarMarker(controller, markerLocation);
+        await _syncCarMarker(
+          controller,
+          markerLocation,
+          headingOverride: _driveEngine.active
+              ? _driveEngine.snappedHeadingDegrees
+              : null,
+        );
+        if (_driveEngine.active) _queueNavigationMarkerSync();
       }
       if ((!value || _guidanceRunning) && _accuracyCircle != null) {
         try {
@@ -3770,11 +3851,7 @@ class _MapHomePageState extends State<MapHomePage> {
     await controller.setNavigationUIEnabled(_guidanceRunning);
     await _applyTasmanNavigationChrome(controller);
     if (_driveEngine.snappedLocation != null) {
-      await controller.followMyLocation(
-        _northUp ? CameraPerspective.topDownNorthUp : CameraPerspective.tilted,
-      );
-      await controller.settings.setMyLocationButtonEnabled(false);
-      await controller.setRecenterButtonEnabled(false);
+      await _followNavigationCamera(controller);
       await controller.setReportIncidentButtonEnabled(false);
     }
     await controller.setTrafficIncidentCardsEnabled(true);

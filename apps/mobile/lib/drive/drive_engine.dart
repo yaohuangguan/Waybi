@@ -68,6 +68,7 @@ class DriveEngine extends ChangeNotifier {
   bool get roadIntelligenceStale => roadIntelligenceStatus == 'stale';
   int get routeCameraCount => routeCameras.length;
   LatLng? get snappedLocation => _lastSnappedLocation;
+  double? get snappedHeadingDegrees => _headingDegrees;
   LatLng? _lastSnappedLocation;
   LatLng? _lastSpeedLimitLocation;
   DateTime? _lastSpeedLimitLookup;

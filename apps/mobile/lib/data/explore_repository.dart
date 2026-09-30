@@ -18,6 +18,7 @@ class ExplorePlace {
     required this.longitude,
     required this.photoName,
     required this.photoAttribution,
+    this.provider = 'google',
   });
 
   final String placeId;
@@ -32,6 +33,7 @@ class ExplorePlace {
   final double longitude;
   final String photoName;
   final String photoAttribution;
+  final String provider;
 
   String? get photoUrl => photoName.isEmpty
       ? null
@@ -41,6 +43,7 @@ class ExplorePlace {
 
   factory ExplorePlace.fromJson(Map<String, dynamic> json) => ExplorePlace(
     placeId: json['placeId']?.toString() ?? '',
+    provider: json['provider']?.toString() ?? 'google',
     name: json['name']?.toString() ?? 'Nearby place',
     address: json['address']?.toString() ?? '',
     primaryType: json['primaryType']?.toString() ?? '',
@@ -66,12 +69,14 @@ class ExploreRepository {
     required String category,
     required String language,
     String query = '',
+    bool mapCompatible = false,
   }) async {
     final uri = Uri.parse('$workerBaseUrl/api/explore').replace(
       queryParameters: {
         'at': '$longitude,$latitude',
         'category': category,
         'lang': language,
+        if (mapCompatible) 'provider': 'geoapify',
         if (query.trim().isNotEmpty) 'q': query.trim(),
       },
     );
@@ -88,6 +93,7 @@ class ExploreRepository {
         .map(ExplorePlace.fromJson)
         .where(
           (place) =>
+              (!mapCompatible || place.provider == 'geoapify') &&
               place.placeId.isNotEmpty &&
               place.latitude != 0 &&
               place.longitude != 0,

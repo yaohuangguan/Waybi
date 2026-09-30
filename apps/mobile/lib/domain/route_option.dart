@@ -64,11 +64,23 @@ class RouteStepInfo {
     required this.instruction,
     required this.distanceMeters,
     required this.location,
+    this.durationSeconds = 0,
+    this.alongRouteMeters,
+    this.maneuverType = '',
+    this.maneuverModifier = '',
+    this.roadName = '',
+    this.lanes = const [],
   });
 
   final String instruction;
   final int distanceMeters;
   final GeoPoint location;
+  final double durationSeconds;
+  final double? alongRouteMeters;
+  final String maneuverType;
+  final String maneuverModifier;
+  final String roadName;
+  final List<RouteLane> lanes;
 
   factory RouteStepInfo.fromJson(Map<String, dynamic> json) {
     final pair = json['location'] as List<dynamic>? ?? const [];
@@ -81,6 +93,12 @@ class RouteStepInfo {
       ),
     );
   }
+}
+
+class RouteLane {
+  const RouteLane({required this.indications, required this.recommended});
+  final List<String> indications;
+  final bool recommended;
 }
 
 class TrafficInterval {
@@ -142,6 +160,7 @@ class RouteOption {
     this.warnings = const [],
     this.transit = const [],
     this.steps = const [],
+    this.waypoints = const [],
   });
 
   final String id;
@@ -157,6 +176,7 @@ class RouteOption {
   final List<String> warnings;
   final List<TransitLeg> transit;
   final List<RouteStepInfo> steps;
+  final List<GeoPoint> waypoints;
   final TrafficSummary traffic;
   final List<TrafficInterval> trafficIntervals;
   final String provider;

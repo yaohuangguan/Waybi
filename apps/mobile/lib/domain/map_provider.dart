@@ -181,7 +181,9 @@ class ProviderPolicy {
   bool canDisplay(ProviderReference? reference) =>
       reference == null ||
       reference.provider == placeProvider ||
-      (map == MapProvider.google && reference.provider == 'geoapify');
+      reference.provider == 'geoapify' ||
+      reference.provider == 'osm' ||
+      reference.provider == 'at';
 }
 
 class ProviderCapabilities {

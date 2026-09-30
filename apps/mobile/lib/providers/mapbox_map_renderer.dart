@@ -64,7 +64,7 @@ class MapboxMapRenderer extends StatefulWidget {
 }
 
 class _MapboxMapRendererState extends State<MapboxMapRenderer>
-    implements MapRenderer {
+    implements RouteMapRenderer {
   mb.MapboxMap? _map;
   mb.CircleAnnotationManager? _cameraManager;
   mb.CircleAnnotationManager? _selectedManager;
@@ -75,7 +75,13 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
   mb.PolylineAnnotationManager? _routeManager;
   int _syncVersion = 0;
   Future<void> _overlayQueue = Future<void>.value();
-  bool _userPanning = false;
+  List<SafetyCamera>? _renderedCameras;
+  List<RoadEvent>? _renderedEvents;
+  List<PlaceSummary>? _renderedExplore;
+  List<GeoPoint>? _renderedRoute;
+  PlaceSummary? _renderedPlace;
+  String? _renderedCameraLayers;
+  int _tapVersion = 0;
   late MapViewportState _viewport = widget.initialViewport;
 
   @override
@@ -133,6 +139,24 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
       ),
       mb.MapAnimationOptions(duration: 400),
     );
+  }
+
+  @override
+  Future<void> fitRoute(
+    List<GeoPoint> points, {
+    required double bottomInset,
+  }) async {
+    final map = _map;
+    if (map == null || points.length < 2) return;
+    final camera = await map.cameraForCoordinatesPadding(
+      points.map(_point).toList(growable: false),
+      mb.CameraOptions(bearing: 0, pitch: 0),
+      mb.MbxEdgeInsets(top: 150, left: 36, bottom: bottomInset, right: 36),
+      17,
+      null,
+    );
+    if (!mounted || !identical(_map, map)) return;
+    await map.easeTo(camera, mb.MapAnimationOptions(duration: 420));
   }
 
   Future<void> _onCreated(mb.MapboxMap map) async {
@@ -216,94 +240,115 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
         roadEvents == null) {
       return;
     }
-    await cameras.deleteAll();
-    await routes.deleteAll();
-    await selected.deleteAll();
-    await explore.deleteAll();
-    await roadEvents.deleteAll();
-    _exploreAnnotations.clear();
-    _roadEventAnnotations.clear();
+    final cameraItems = widget.cameras;
+    final eventItems = widget.roadEvents;
+    final exploreItems = widget.explorePlaces;
+    final routeItems = widget.route;
+    final selectedPlace = widget.selectedPlace;
+    final layers = widget.layers;
+    if (!listEquals(_renderedCameras, cameraItems) ||
+        _renderedCameraLayers != layers.markerSignature) {
+      await cameras.deleteAll();
+      final visibleCameras = cameraItems
+          .where(layers.shows)
+          .map(
+            (camera) => mb.CircleAnnotationOptions(
+              geometry: _point(GeoPoint(camera.latitude, camera.longitude)),
+              circleRadius: 7,
+              circleColor: switch (CameraKindLabel.fromCamera(camera)) {
+                CameraKind.spotSpeed => const Color(0xFF1670B9).toARGB32(),
+                CameraKind.averageSpeed => const Color(0xFF0891B2).toARGB32(),
+                CameraKind.redLight => const Color(0xFFD95640).toARGB32(),
+                CameraKind.dualRedLightSpeed => const Color(
+                  0xFFD97706,
+                ).toARGB32(),
+                CameraKind.busLane => const Color(0xFF0E7490).toARGB32(),
+                CameraKind.other => const Color(0xFF325A77).toARGB32(),
+              },
+              circleStrokeColor: Colors.white.toARGB32(),
+              circleStrokeWidth: 2,
+            ),
+          )
+          .toList(growable: false);
+      if (visibleCameras.isNotEmpty) await cameras.createMulti(visibleCameras);
+      _renderedCameras = List.of(cameraItems);
+      _renderedCameraLayers = layers.markerSignature;
+    }
     if (!mounted || version != _syncVersion) return;
-
-    final visibleCameras = widget.cameras
-        .where(widget.layers.shows)
-        .map(
-          (camera) => mb.CircleAnnotationOptions(
-            geometry: _point(GeoPoint(camera.latitude, camera.longitude)),
-            circleRadius: 7,
-            circleColor: switch (CameraKindLabel.fromCamera(camera)) {
-              CameraKind.spotSpeed => const Color(0xFF1670B9).toARGB32(),
-              CameraKind.averageSpeed => const Color(0xFF0891B2).toARGB32(),
-              CameraKind.redLight => const Color(0xFFD95640).toARGB32(),
-              CameraKind.dualRedLightSpeed => const Color(
-                0xFFD97706,
-              ).toARGB32(),
-              CameraKind.busLane => const Color(0xFF0E7490).toARGB32(),
-              CameraKind.other => const Color(0xFF325A77).toARGB32(),
-            },
+    if (!listEquals(_renderedEvents, eventItems)) {
+      await roadEvents.deleteAll();
+      _roadEventAnnotations.clear();
+      for (final event in eventItems) {
+        final annotation = await roadEvents.create(
+          mb.CircleAnnotationOptions(
+            geometry: _point(event.location),
+            circleRadius: 9,
+            circleColor: const Color(0xFF0284C7).toARGB32(),
             circleStrokeColor: Colors.white.toARGB32(),
-            circleStrokeWidth: 2,
+            circleStrokeWidth: 3,
           ),
-        )
-        .toList(growable: false);
-    if (visibleCameras.isNotEmpty) await cameras.createMulti(visibleCameras);
-    if (!mounted || version != _syncVersion) return;
-    for (final event in widget.roadEvents) {
-      final annotation = await roadEvents.create(
-        mb.CircleAnnotationOptions(
-          geometry: _point(event.location),
-          circleRadius: 9,
-          circleColor: const Color(0xFF0284C7).toARGB32(),
-          circleStrokeColor: Colors.white.toARGB32(),
-          circleStrokeWidth: 3,
-        ),
-      );
-      _roadEventAnnotations[annotation.id] = event;
+        );
+        _roadEventAnnotations[annotation.id] = event;
+      }
+      _renderedEvents = List.of(eventItems);
     }
     if (!mounted || version != _syncVersion) return;
-    for (final place in widget.explorePlaces) {
-      if (version != _syncVersion) {
-        return;
+    if (!listEquals(_renderedExplore, exploreItems)) {
+      await explore.deleteAll();
+      _exploreAnnotations.clear();
+      for (final place in exploreItems) {
+        if (version != _syncVersion) {
+          return;
+        }
+        final annotation = await explore.create(
+          mb.CircleAnnotationOptions(
+            geometry: _point(place.location),
+            circleRadius: 9,
+            circleColor: const Color(0xFFFFFFFF).toARGB32(),
+            circleStrokeColor: const Color(0xFF1479FF).toARGB32(),
+            circleStrokeWidth: 3,
+          ),
+        );
+        _exploreAnnotations[annotation.id] = place;
       }
-      final annotation = await explore.create(
-        mb.CircleAnnotationOptions(
-          geometry: _point(place.location),
-          circleRadius: 9,
-          circleColor: const Color(0xFFFFFFFF).toARGB32(),
-          circleStrokeColor: const Color(0xFF1479FF).toARGB32(),
-          circleStrokeWidth: 3,
-        ),
-      );
-      _exploreAnnotations[annotation.id] = place;
+      _renderedExplore = List.of(exploreItems);
     }
     if (!mounted || version != _syncVersion) return;
 
-    if (widget.route.length >= 2) {
-      await routes.create(
-        mb.PolylineAnnotationOptions(
-          geometry: mb.LineString(
-            coordinates: widget.route
-                .map((point) => mb.Position(point.longitude, point.latitude))
-                .toList(growable: false),
+    if (!listEquals(_renderedRoute, routeItems)) {
+      await routes.deleteAll();
+      if (routeItems.length >= 2) {
+        await routes.create(
+          mb.PolylineAnnotationOptions(
+            geometry: mb.LineString(
+              coordinates: routeItems
+                  .map((point) => mb.Position(point.longitude, point.latitude))
+                  .toList(growable: false),
+            ),
+            lineColor: const Color(0xFF1479FF).toARGB32(),
+            lineWidth: 7,
+            lineOpacity: 0.9,
           ),
-          lineColor: const Color(0xFF1479FF).toARGB32(),
-          lineWidth: 7,
-          lineOpacity: 0.9,
-        ),
-      );
+        );
+      }
+      if (!mounted || version != _syncVersion) return;
+      _renderedRoute = List.of(routeItems);
     }
-    if (!mounted || version != _syncVersion) return;
-    final place = widget.selectedPlace;
-    if (place != null) {
-      await selected.create(
-        mb.CircleAnnotationOptions(
-          geometry: _point(place.location),
-          circleRadius: 12,
-          circleColor: const Color(0xFF1479FF).toARGB32(),
-          circleStrokeColor: Colors.white.toARGB32(),
-          circleStrokeWidth: 4,
-        ),
-      );
+    if (_renderedPlace != selectedPlace) {
+      await selected.deleteAll();
+      final place = selectedPlace;
+      if (place != null) {
+        await selected.create(
+          mb.CircleAnnotationOptions(
+            geometry: _point(place.location),
+            circleRadius: 12,
+            circleColor: const Color(0xFF1479FF).toARGB32(),
+            circleStrokeColor: Colors.white.toARGB32(),
+            circleStrokeWidth: 4,
+          ),
+        );
+      }
+      _renderedPlace = selectedPlace;
     }
   }
 
@@ -320,13 +365,27 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
 
   Future<void> _onTap(mb.MapContentGestureContext gesture) async {
     final map = _map;
+    final tapVersion = ++_tapVersion;
     if (map == null) return;
     try {
       final features = await map.queryRenderedFeatures(
         mb.RenderedQueryGeometry.fromScreenCoordinate(gesture.touchPosition),
         mb.RenderedQueryOptions(),
       );
+      if (!mounted || tapVersion != _tapVersion || !identical(_map, map)) {
+        return;
+      }
       for (final result in features) {
+        final feature = result?.queriedFeature.feature;
+        final geometry = feature?['geometry'];
+        if (geometry is! Map || geometry['type'] != 'Point') continue;
+        final coordinates = geometry['coordinates'];
+        if (coordinates is! List ||
+            coordinates.length < 2 ||
+            coordinates[0] is! num ||
+            coordinates[1] is! num) {
+          continue;
+        }
         final properties = result?.queriedFeature.feature['properties'];
         if (properties is! Map) continue;
         final name =
@@ -340,7 +399,10 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
         widget.onMapPlace(
           PlaceSummary(
             name: name,
-            location: _geo(gesture.point),
+            location: GeoPoint(
+              (coordinates[1] as num).toDouble(),
+              (coordinates[0] as num).toDouble(),
+            ),
             category: category,
           ),
         );
@@ -348,11 +410,12 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
       }
       widget.onBlankTap();
     } catch (_) {
-      widget.onBlankTap();
+      if (mounted && tapVersion == _tapVersion) widget.onBlankTap();
     }
   }
 
   void _onLongTap(mb.MapContentGestureContext gesture) {
+    ++_tapVersion;
     widget.onMapPlace(
       PlaceSummary(
         name:
@@ -367,6 +430,7 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
   @override
   void dispose() {
     ++_syncVersion;
+    ++_tapVersion;
     _map = null;
     super.dispose();
   }
@@ -382,14 +446,16 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
       pitch: widget.initialViewport.pitch,
     ),
     onMapCreated: _onCreated,
-    onStyleLoadedListener: (_) => unawaited(_syncOverlays()),
-    onCameraChangeListener: _cameraChanged,
-    onScrollListener: (_) => _userPanning = true,
-    onMapIdleListener: (_) {
-      if (_userPanning) {
-        _userPanning = false;
-        widget.onUserPan();
-      }
+    onStyleLoadedListener: (_) {
+      _renderedCameras = null;
+      _renderedEvents = null;
+      _renderedExplore = null;
+      _renderedRoute = null;
+      _renderedPlace = null;
+      unawaited(_setLocationPuck());
+      unawaited(_syncOverlays());
     },
+    onCameraChangeListener: _cameraChanged,
+    onScrollListener: (_) => widget.onUserPan(),
   );
 }

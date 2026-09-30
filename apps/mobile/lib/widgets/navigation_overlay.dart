@@ -26,10 +26,35 @@ IconData _maneuverIcon(Maneuver? maneuver) {
   return Icons.straight_rounded;
 }
 
+class NavigationLane {
+  const NavigationLane(this.symbol, this.recommended);
+  final String symbol;
+  final bool recommended;
+}
+
+/// Both providers feed the same Tasman HUD without manufacturing Google events.
+class NavigationGuidance {
+  const NavigationGuidance({
+    required this.instruction,
+    required this.maneuverIcon,
+    this.stepMeters,
+    this.remainingMeters,
+    this.remainingSeconds,
+    this.lanes = const [],
+  });
+  final String instruction;
+  final IconData maneuverIcon;
+  final num? stepMeters;
+  final num? remainingMeters;
+  final int? remainingSeconds;
+  final List<NavigationLane> lanes;
+}
+
 class NavigationOverlay extends StatefulWidget {
   const NavigationOverlay({
     super.key,
     required this.engine,
+    this.guidance,
     required this.destinationTitle,
     required this.gpsAccuracy,
     required this.voiceEnabled,
@@ -50,6 +75,7 @@ class NavigationOverlay extends StatefulWidget {
   });
 
   final DriveEngine engine;
+  final NavigationGuidance? guidance;
   final String destinationTitle;
   final double? gpsAccuracy;
   final bool voiceEnabled;
@@ -90,9 +116,38 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
     final dark = theme.brightness == Brightness.dark;
     final nav = widget.engine.navInfo;
     final step = nav?.currentStep;
+    final guidance =
+        widget.guidance ??
+        NavigationGuidance(
+          instruction:
+              step?.fullInstructions ??
+              step?.fullRoadName ??
+              'Continue on route',
+          maneuverIcon: _maneuverIcon(step?.maneuver),
+          stepMeters: nav?.distanceToCurrentStepMeters,
+          remainingMeters: nav?.distanceToFinalDestinationMeters,
+          remainingSeconds: nav?.timeToFinalDestinationSeconds,
+          lanes: [
+            for (final lane in step?.lanes ?? <Lane>[])
+              NavigationLane(
+                lane.laneDirections
+                    .map((direction) {
+                      final name = direction.laneShape.name.toLowerCase();
+                      return name.contains('left')
+                          ? '←'
+                          : name.contains('right')
+                          ? '→'
+                          : '↑';
+                    })
+                    .toSet()
+                    .join(),
+                lane.laneDirections.any((direction) => direction.isRecommended),
+              ),
+          ],
+        );
     final camera = widget.engine.upcomingCamera;
     final cameraDistance = widget.engine.upcomingCameraDistanceMeters;
-    final remainingSeconds = nav?.timeToFinalDestinationSeconds;
+    final remainingSeconds = guidance.remainingSeconds;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final arrival = remainingSeconds == null
         ? '—'
@@ -129,11 +184,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      _maneuverIcon(step?.maneuver),
-                      color: _accent,
-                      size: 40,
-                    ),
+                    Icon(guidance.maneuverIcon, color: _accent, size: 40),
                     const SizedBox(width: 13),
                     Expanded(
                       child: Column(
@@ -141,9 +192,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            navigationDistanceLabel(
-                              nav?.distanceToCurrentStepMeters,
-                            ),
+                            navigationDistanceLabel(guidance.stepMeters),
                             style: const TextStyle(
                               color: _accent,
                               fontSize: 25,
@@ -151,9 +200,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             ),
                           ),
                           Text(
-                            step?.fullInstructions ??
-                                step?.fullRoadName ??
-                                'Continue on route',
+                            guidance.instruction,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -180,9 +227,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                           ),
                         ),
                         Text(
-                          navigationDistanceLabel(
-                            nav?.distanceToFinalDestinationMeters,
-                          ),
+                          navigationDistanceLabel(guidance.remainingMeters),
                           style: const TextStyle(
                             color: Colors.white70,
                             fontSize: 11,
@@ -195,7 +240,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
               ),
             ),
           ),
-          if (widget.lanesEnabled && (step?.lanes?.isNotEmpty ?? false))
+          if (widget.lanesEnabled && guidance.lanes.isNotEmpty)
             Positioned(
               top: 113,
               left: 14,
@@ -221,7 +266,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        for (final lane in step!.lanes!)
+                        for (final lane in guidance.lanes)
                           Container(
                             constraints: const BoxConstraints(minWidth: 38),
                             alignment: Alignment.center,
@@ -230,34 +275,15 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               vertical: 5,
                             ),
                             decoration: BoxDecoration(
-                              color:
-                                  lane.laneDirections.any(
-                                    (direction) => direction.isRecommended,
-                                  )
+                              color: lane.recommended
                                   ? _accent
                                   : TasmanColors.darkSurface,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              lane.laneDirections
-                                  .map((direction) {
-                                    final name = direction.laneShape.name
-                                        .toLowerCase();
-                                    return name.contains('left')
-                                        ? '←'
-                                        : name.contains('right')
-                                        ? '→'
-                                        : '↑';
-                                  })
-                                  .toSet()
-                                  .join(),
+                              lane.symbol,
                               style: TextStyle(
-                                color:
-                                    lane.laneDirections.any(
-                                      (direction) => direction.isRecommended,
-                                    )
-                                    ? _ink
-                                    : Colors.white,
+                                color: lane.recommended ? _ink : Colors.white,
                                 fontSize: 24,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -306,12 +332,19 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          '${widget.engine.speedKph.round()}',
-                          style: TextStyle(
-                            color: speeding ? const Color(0xFFFF6767) : _accent,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 27,
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '${widget.engine.speedKph.round()}',
+                              style: TextStyle(
+                                color: speeding
+                                    ? const Color(0xFFFF6767)
+                                    : _accent,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 27,
+                              ),
+                            ),
                           ),
                         ),
                         const Padding(
@@ -487,7 +520,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                 _TripStat(
                                   label: 'Distance',
                                   value: navigationDistanceLabel(
-                                    nav?.distanceToFinalDestinationMeters,
+                                    guidance.remainingMeters,
                                   ),
                                 ),
                                 _TripStat(label: 'Arrival', value: arrival),

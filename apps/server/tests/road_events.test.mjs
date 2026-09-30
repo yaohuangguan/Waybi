@@ -83,6 +83,12 @@ test('keeps last road-event snapshot when NZTA refresh fails', async () => {
 });
 
 test('Worker exposes normalized live NZTA road events at /api/road-events', async () => {
+  // The endpoint uses the real clock; keep this fixture active on any test day.
+  const now = Date.now();
+  const activeWindow = {
+    startDate: new Date(now - 86400000).toISOString(),
+    endDate: new Date(now + 86400000).toISOString(),
+  };
   const { default: worker } = await import('../src/worker.mjs');
   const store = new Map();
   const env = {
@@ -94,7 +100,7 @@ test('Worker exposes normalized live NZTA road events at /api/road-events', asyn
   };
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({
-    response: { roadevent: [event(), event({ id: 44, impact: 'Road Closed' })] }
+    response: { roadevent: [event(activeWindow), event({ ...activeWindow, id: 44, impact: 'Road Closed' })] }
   }), { status: 200, headers: { 'content-type': 'application/json' } });
   try {
     const response = await worker.fetch(

@@ -8,8 +8,10 @@ import '../domain/map_provider.dart';
 import 'provider_contracts.dart';
 
 class WorkerSearchProvider implements SearchProvider, ExploreProvider {
-  WorkerSearchProvider({http.Client? client})
+  WorkerSearchProvider({http.Client? client, this.mapCompatible = false})
     : _client = client ?? http.Client();
+
+  final bool mapCompatible;
 
   final http.Client _client;
 
@@ -23,16 +25,19 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
       queryParameters: {
         'q': query,
         'lang': language,
+        if (mapCompatible) 'provider': 'geoapify',
         if (proximity != null)
           'near': '${proximity.longitude},${proximity.latitude}',
       },
     );
-    var response = await _client.get(uri);
-    if (response.statusCode == 503) {
-      response = await _client.get(
-        Uri.parse('$workerBaseUrl/api/search')
-            .replace(queryParameters: {'q': query, 'lang': language}),
-      );
+    var response = await _client.get(uri).timeout(const Duration(seconds: 12));
+    if (response.statusCode == 503 && !mapCompatible) {
+      response = await _client
+          .get(
+            Uri.parse('$workerBaseUrl/api/search')
+                .replace(queryParameters: {'q': query, 'lang': language}),
+          )
+          .timeout(const Duration(seconds: 12));
     }
     if (response.statusCode != 200) {
       throw StateError('Search unavailable: ${response.statusCode}');
@@ -41,6 +46,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
     final results = data
         .whereType<Map<String, dynamic>>()
         .map((item) {
+          if (mapCompatible && item['provider'] != 'geoapify') return null;
           final latitude = item['latitude'];
           final longitude = item['longitude'];
           if (latitude is! num || longitude is! num) return null;
@@ -55,7 +61,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
             kind: isAddress ? PlaceKind.address : PlaceKind.poi,
             location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
             reference: ProviderReference(
-              'geoapify',
+              item['provider']?.toString() ?? 'geoapify',
               item['id']?.toString() ?? label,
             ),
           );
@@ -238,13 +244,13 @@ class MapboxSearchProvider
     required String preferredName,
   }) async {
     if (accessToken.isEmpty) return null;
-    final uri = Uri.https('api.mapbox.com', '/search/searchbox/v1/reverse', {
+    final uri = Uri.https('api.mapbox.com', '/search/geocode/v6/reverse', {
       'longitude': point.longitude.toString(),
       'latitude': point.latitude.toString(),
       'access_token': accessToken,
       'language': language == 'zh' ? 'zh' : 'en',
-      'limit': '5',
-      'types': 'poi,address',
+      'limit': '1',
+      'types': 'address',
     });
     final response = await _client.get(uri);
     if (response.statusCode != 200) return null;

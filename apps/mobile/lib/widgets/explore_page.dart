@@ -12,10 +12,12 @@ class ExplorePage extends StatefulWidget {
     super.key,
     required this.currentLocation,
     required this.language,
+    this.mapCompatible = false,
   });
 
   final LatLng? currentLocation;
   final String language;
+  final bool mapCompatible;
 
   @override
   State<ExplorePage> createState() => _ExplorePageState();
@@ -99,6 +101,7 @@ class _ExplorePageState extends State<ExplorePage> {
         category: _category,
         language: widget.language,
         query: query ?? _search.text,
+        mapCompatible: widget.mapCompatible,
       );
       if (!mounted || request != _request) return;
       setState(() {
@@ -285,6 +288,16 @@ class _ExplorePageState extends State<ExplorePage> {
                     child: Text(
                       _text('No nearby places found.', '附近暂时没有找到合适地点。'),
                     ),
+                  ),
+                ),
+              ),
+            if (widget.mapCompatible)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    'Places: Geoapify · © OpenStreetMap contributors',
+                    style: TextStyle(fontSize: 11),
                   ),
                 ),
               ),

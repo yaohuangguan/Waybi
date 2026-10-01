@@ -22,6 +22,7 @@ import 'domain/navigation_camera_mode.dart';
 import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
 import 'domain/road_event.dart';
+import 'domain/safety_camera.dart';
 import 'drive/device_heading.dart';
 import 'drive/journey_tracker.dart';
 import 'drive/navigation_language.dart';
@@ -957,6 +958,131 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
       );
     }
+  }
+
+  Future<void> _showCameraDetails(SafetyCamera camera) async {
+    final kind = CameraKindLabel.fromCamera(camera);
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final scheme = Theme.of(sheetContext).colorScheme;
+        Widget row(IconData icon, String label, String value) => Padding(
+          padding: const EdgeInsets.only(bottom: 11),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 19, color: scheme.primary),
+              const SizedBox(width: 11),
+              SizedBox(
+                width: 72,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    color: scheme.onSurface,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 26),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Icon(
+                      Icons.photo_camera_rounded,
+                      color: scheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          kind.localizedLabel(_appLanguage),
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          camera.location,
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              row(Icons.map_outlined, _text('Region', '区域'), camera.region),
+              row(
+                Icons.location_city_rounded,
+                _text('Suburb', '地区'),
+                camera.suburb,
+              ),
+              row(
+                Icons.pin_drop_outlined,
+                _text('Location', '位置'),
+                camera.location,
+              ),
+              row(
+                Icons.speed_rounded,
+                _text('Camera type', '摄像头类型'),
+                camera.type,
+              ),
+              row(
+                Icons.gps_fixed_rounded,
+                'GPS',
+                '${camera.latitude.toStringAsFixed(6)}, '
+                    '${camera.longitude.toStringAsFixed(6)}',
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _text(
+                  'Published by NZ Transport Agency · fixed safety camera location',
+                  'NZ Transport Agency 公开 · 固定安全摄像头位置',
+                ),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 10.5,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showRoadEventDetails(RoadEvent event) async {
@@ -2101,6 +2227,15 @@ class _MapHomePageState extends State<MapHomePage> {
               value,
             ),
           ),
+          cameraSnapshot: _driveEngine.cameraSnapshot,
+          onSyncCameraData: () async {
+            final snapshot = await _driveEngine.syncCameraData();
+            if (mounted) {
+              setState(() {});
+              unawaited(_syncCameraMarkers());
+            }
+            return snapshot;
+          },
           onMapProviderChanged: (value) async {
             await _setMapProvider(value);
             return _mapProvider;
@@ -3216,7 +3351,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 title:
                     '${CameraKindLabel.fromCamera(camera).localizedLabel(_appLanguage)} · ${camera.location}',
                 snippet:
-                    '${camera.suburb} · GPS ${camera.latitude.toStringAsFixed(5)}, ${camera.longitude.toStringAsFixed(5)}',
+                    '${camera.region} · ${camera.suburb} · GPS ${camera.latitude.toStringAsFixed(5)}, ${camera.longitude.toStringAsFixed(5)}',
               ),
             ),
       ];
@@ -5053,6 +5188,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     moving: _travelHeading != null,
                     language: _appLanguage,
                     cameras: _driveEngine.cameras,
+                    onCamera: (camera) => unawaited(_showCameraDetails(camera)),
                     roadEvents: _communityRoadEvents,
                     onRoadEvent: (event) =>
                         unawaited(_showRoadEventDetails(event)),

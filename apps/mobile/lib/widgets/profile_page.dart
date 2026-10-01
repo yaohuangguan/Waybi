@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../data/account_repository.dart';
+import '../data/camera_repository.dart';
 import '../domain/map_provider.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -37,6 +38,8 @@ class ProfilePage extends StatefulWidget {
     required this.onNotifyRoadIncidentsChanged,
     required this.onNotifyCommunityReportsChanged,
     required this.onNotifySavedRouteDisruptionsChanged,
+    this.cameraSnapshot,
+    required this.onSyncCameraData,
   });
 
   final AccountRepository account;
@@ -67,6 +70,8 @@ class ProfilePage extends StatefulWidget {
   final ValueChanged<bool> onNotifyRoadIncidentsChanged;
   final ValueChanged<bool> onNotifyCommunityReportsChanged;
   final ValueChanged<bool> onNotifySavedRouteDisruptionsChanged;
+  final CameraSnapshot? cameraSnapshot;
+  final Future<CameraSnapshot?> Function() onSyncCameraData;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -89,9 +94,47 @@ class _ProfilePageState extends State<ProfilePage> {
   late bool _notifyRoadIncidents = widget.notifyRoadIncidents;
   late bool _notifyCommunityReports = widget.notifyCommunityReports;
   late bool _notifySavedRouteDisruptions = widget.notifySavedRouteDisruptions;
+  late CameraSnapshot? _cameraSnapshot = widget.cameraSnapshot;
+  bool _cameraSyncing = false;
 
   String _text(String english, String chinese) =>
       _appLanguage == 'zh' ? chinese : english;
+
+  @override
+  void didUpdateWidget(covariant ProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.cameraSnapshot != widget.cameraSnapshot && !_cameraSyncing) {
+      _cameraSnapshot = widget.cameraSnapshot;
+    }
+  }
+
+  Future<void> _syncCameraData() async {
+    if (_cameraSyncing) return;
+    setState(() => _cameraSyncing = true);
+    try {
+      final snapshot = await widget.onSyncCameraData();
+      if (!mounted) return;
+      setState(() => _cameraSnapshot = snapshot ?? _cameraSnapshot);
+    } finally {
+      if (mounted) setState(() => _cameraSyncing = false);
+    }
+  }
+
+  String _cameraDate(DateTime? value) {
+    if (value == null) return _text('Unknown', '未知');
+    final local = value.toLocal();
+    final date =
+        '${local.day.toString().padLeft(2, '0')}/'
+        '${local.month.toString().padLeft(2, '0')}/${local.year}';
+    return date;
+  }
+
+  String _cameraFetchMode(String? value) => switch (value) {
+    'direct' => _text('NZTA direct', 'NZTA 直连'),
+    'reader-fallback' => _text('Verified NZTA page fallback', 'NZTA 页面校验回退'),
+    'bundled-seed' => _text('Bundled verified snapshot', '内置已验证快照'),
+    _ => _text('NZTA published data', 'NZTA 公开数据'),
+  };
 
   @override
   void dispose() {
@@ -188,6 +231,180 @@ class _ProfilePageState extends State<ProfilePage> {
     widget.account
         .updatePreferences(language: value, voiceEnabled: _voice)
         .catchError((_) {});
+  }
+
+  Widget _cameraDataCard(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final snapshot = _cameraSnapshot;
+    final status = snapshot?.syncStatus ?? 'unknown';
+    final statusColor = switch (status) {
+      'live' => KiwiLensColors.success,
+      'stale' => KiwiLensColors.warning,
+      'seed' => scheme.primary,
+      _ => scheme.onSurfaceVariant,
+    };
+    final statusLabel = switch (status) {
+      'live' => _text('Live', '已同步'),
+      'stale' => _text('Stale', '数据较旧'),
+      'seed' => _text('Bundled', '内置数据'),
+      _ => _text('Not loaded', '未加载'),
+    };
+    int countType(String needle) =>
+        snapshot?.cameras
+            .where((camera) => camera.type.toLowerCase().contains(needle))
+            .length ??
+        0;
+    final total = snapshot?.cameras.length ?? 0;
+    final spot = countType('spot');
+    final red = countType('red light');
+    final average = countType('average');
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(Icons.photo_camera_rounded, color: scheme.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _text('NZTA camera data', 'NZTA 摄像头数据'),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      total == 0
+                          ? _text('Published fixed safety cameras', '公开固定安全摄像头')
+                          : _text(
+                              '$total published fixed cameras',
+                              '$total 个公开固定摄像头',
+                            ),
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 11.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (snapshot != null) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                _CameraDataPill(label: _text('Spot', '定点'), value: '$spot'),
+                _CameraDataPill(label: _text('Red light', '红灯'), value: '$red'),
+                _CameraDataPill(
+                  label: _text('Average', '区间'),
+                  value: '$average',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _text(
+                'NZTA source updated ${_cameraDate(snapshot.sourceUpdatedAt)} · checked ${_cameraDate(snapshot.checkedAt)}',
+                'NZTA 源更新于 ${_cameraDate(snapshot.sourceUpdatedAt)} · 检查于 ${_cameraDate(snapshot.checkedAt)}',
+              ),
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              _cameraFetchMode(snapshot.fetchMode),
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10.5),
+            ),
+            if (snapshot.changeAdded > 0 || snapshot.changeRemoved > 0) ...[
+              const SizedBox(height: 3),
+              Text(
+                _text(
+                  'Last change: +${snapshot.changeAdded} / -${snapshot.changeRemoved}',
+                  '最近变化：+${snapshot.changeAdded} / -${snapshot.changeRemoved}',
+                ),
+                style: TextStyle(
+                  color: scheme.primary,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ],
+          const SizedBox(height: 12),
+          Text(
+            _text(
+              'Uses every field NZTA publishes for fixed safety cameras: region, suburb, location, camera type and GPS. Mobile camera locations are not fixed or fabricated.',
+              '完整使用 NZTA 对固定安全摄像头公开的区域、郊区、位置、类型和 GPS。移动测速点没有固定公开位置，Kiwi Lens 不会虚构。',
+            ),
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 10.5,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: _cameraSyncing ? null : _syncCameraData,
+              icon: _cameraSyncing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync_rounded),
+              label: Text(
+                _cameraSyncing
+                    ? _text('Checking NZTA…', '正在检查 NZTA…')
+                    : _text('Check for camera updates', '检查摄像头更新'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -693,6 +910,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: widget.onMapLayers,
               ),
+              const SizedBox(height: 10),
+              _SectionTitle(_text('NZTA camera data', 'NZTA 摄像头数据')),
+              _cameraDataCard(context),
               if (profile != null) ...[
                 const SizedBox(height: 12),
                 _SectionTitle(_text('Notifications', '通知')),
@@ -826,6 +1046,33 @@ class _ProfilePageState extends State<ProfilePage> {
       );
     },
   );
+}
+
+class _CameraDataPill extends StatelessWidget {
+  const _CameraDataPill({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: .6),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$label $value',
+        style: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
 }
 
 class _SectionTitle extends StatelessWidget {

@@ -12,12 +12,20 @@ class CameraSnapshot {
     required this.syncStatus,
     this.sourceUpdatedAt,
     this.checkedAt,
+    this.fetchMode,
+    this.syncError,
+    this.changeAdded = 0,
+    this.changeRemoved = 0,
   });
 
   final List<SafetyCamera> cameras;
   final String syncStatus;
   final DateTime? sourceUpdatedAt;
   final DateTime? checkedAt;
+  final String? fetchMode;
+  final String? syncError;
+  final int changeAdded;
+  final int changeRemoved;
 }
 
 class CameraRepository {
@@ -61,6 +69,10 @@ class CameraRepository {
           syncStatus: 'stale',
           sourceUpdatedAt: snapshot.sourceUpdatedAt,
           checkedAt: snapshot.checkedAt,
+          fetchMode: snapshot.fetchMode,
+          syncError: networkError.toString(),
+          changeAdded: snapshot.changeAdded,
+          changeRemoved: snapshot.changeRemoved,
         );
       }
     } catch (_) {
@@ -68,6 +80,21 @@ class CameraRepository {
       // binding. In that case surface the original network error.
     }
     throw networkError;
+  }
+
+  Future<CameraSnapshot> syncNow() async {
+    final response = await _client
+        .post(Uri.parse('$baseUrl/api/cameras/sync'))
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw StateError('Camera sync failed: ${response.statusCode}');
+    }
+    final snapshot = _decodeSnapshot(response.body);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_cacheKey, response.body);
+    } catch (_) {}
+    return snapshot;
   }
 
   CameraSnapshot _decodeSnapshot(String raw) {
@@ -83,6 +110,12 @@ class CameraRepository {
         body['sourceUpdatedAt']?.toString() ?? '',
       ),
       checkedAt: DateTime.tryParse(body['checkedAt']?.toString() ?? ''),
+      fetchMode: body['fetchMode']?.toString(),
+      syncError: body['syncError']?.toString(),
+      changeAdded:
+          (body['change'] as Map<String, dynamic>?)?['added'] as int? ?? 0,
+      changeRemoved:
+          (body['change'] as Map<String, dynamic>?)?['removed'] as int? ?? 0,
     );
   }
 

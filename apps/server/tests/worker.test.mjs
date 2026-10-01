@@ -268,3 +268,47 @@ test('Google place search falls back globally when NZ-biased search has no resul
     globalThis.fetch = originalFetch;
   }
 });
+
+test('Cost Guard telemetry accepts only known mobile usage events', async () => {
+  const accepted = await worker.fetch(
+    new Request('https://example.test/api/telemetry/usage', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-kiwi-client': 'mobile'
+      },
+      body: JSON.stringify({ event: 'google_navigation_destination', units: 2 })
+    }),
+    fakeEnv(),
+    { waitUntil() {} }
+  );
+  assert.equal(accepted.status, 202);
+
+  const unknown = await worker.fetch(
+    new Request('https://example.test/api/telemetry/usage', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-kiwi-client': 'mobile'
+      },
+      body: JSON.stringify({ event: 'made_up_billable_event' })
+    }),
+    fakeEnv(),
+    { waitUntil() {} }
+  );
+  assert.equal(unknown.status, 400);
+
+  const spoofedClient = await worker.fetch(
+    new Request('https://example.test/api/telemetry/usage', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-kiwi-client': 'web'
+      },
+      body: JSON.stringify({ event: 'google_navigation_destination' })
+    }),
+    fakeEnv(),
+    { waitUntil() {} }
+  );
+  assert.equal(spoofedClient.status, 403);
+});

@@ -16,6 +16,7 @@ class AccountProfile {
     required this.places,
     required this.reviews,
     required this.recentDestinations,
+    required this.plan,
   });
 
   final String email;
@@ -25,6 +26,9 @@ class AccountProfile {
   final List<Map<String, dynamic>> places;
   final List<Map<String, dynamic>> reviews;
   final List<Map<String, dynamic>> recentDestinations;
+  final String plan;
+
+  bool get isPlus => plan == 'plus';
 
   factory AccountProfile.fromJson(Map<String, dynamic> json) {
     List<Map<String, dynamic>> list(String key) =>
@@ -46,6 +50,9 @@ class AccountProfile {
       places: list('savedPlaces'),
       reviews: list('reviews'),
       recentDestinations: list('recentDestinations'),
+      plan:
+          (json['subscription'] as Map<String, dynamic>?)?['plan'] as String? ??
+          'free',
     );
   }
 }
@@ -77,6 +84,8 @@ class AccountRepository extends ChangeNotifier {
   String? _session;
   AccountProfile? profile;
   bool loading = false;
+
+  bool get signedIn => _session != null;
 
   Future<http.Response> _request(
     String path, {
@@ -370,6 +379,50 @@ class AccountRepository extends ChangeNotifier {
       ),
     );
     notifyListeners();
+  }
+
+  Future<List<Map<String, dynamic>>> routeWatches() async {
+    if (_session == null) return const [];
+    final body = _body(await _request('/api/route-watches'));
+    return (body['watches'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+  }
+
+  Future<void> saveRouteWatch({
+    required String label,
+    required String destinationName,
+    required double latitude,
+    required double longitude,
+    required List<Map<String, double>> routePoints,
+    required int durationSeconds,
+    required int distanceMeters,
+  }) async {
+    if (_session == null) throw StateError('Sign in to use Route Watch');
+    _body(
+      await _request(
+        '/api/route-watches',
+        method: 'POST',
+        body: {
+          'label': label,
+          'destinationName': destinationName,
+          'destination': {'latitude': latitude, 'longitude': longitude},
+          'routePoints': routePoints,
+          'baselineDurationSeconds': durationSeconds,
+          'baselineDistanceMeters': distanceMeters,
+        },
+      ),
+    );
+  }
+
+  Future<void> deleteRouteWatch(String id) async {
+    if (_session == null) return;
+    _body(
+      await _request(
+        '/api/route-watches/${Uri.encodeComponent(id)}',
+        method: 'DELETE',
+      ),
+    );
   }
 
   @override

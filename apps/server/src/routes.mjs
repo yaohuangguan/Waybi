@@ -206,12 +206,13 @@ async function fallbackDrivingRoutes(from, to, stops = []) {
   }));
 }
 
-export async function routeOptions(from, to, env, stops = [], requestedModes = null) {
+export async function routeOptions(from, to, env, stops = [], requestedModes = null, trackUsage = () => {}) {
   if (env.GOOGLE_ROUTES_API_KEY) {
     const defaultModes = stops.length
       ? ['DRIVE', 'WALK', 'BICYCLE']
       : ['DRIVE', 'TRANSIT', 'WALK', 'BICYCLE'];
     const modes = requestedModes?.length ? requestedModes : defaultModes;
+    trackUsage('google', 'routes_compute', modes.length);
     const settled = await Promise.allSettled(
       modes.map((mode) => googleModeRoutes(from, to, mode, env.GOOGLE_ROUTES_API_KEY, stops))
     );

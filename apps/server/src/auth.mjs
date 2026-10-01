@@ -80,7 +80,7 @@ function sessionToken(request) {
   return match?.[1] || null;
 }
 
-async function userFromRequest(db, request) {
+export async function userFromRequest(db, request) {
   const token = sessionToken(request);
   if (!token) return null;
   return db.prepare(`SELECT users.id, users.email FROM sessions
@@ -126,6 +126,7 @@ async function userProfile(db, user) {
     ] },
     language: profile?.language === 'zh' ? 'zh' : 'en',
     voiceEnabled: profile?.voice_enabled !== 0,
+    subscription: { plan: 'free', source: null, expiresAt: null },
     recentDestinations: recent.results || [],
     savedPlaces: (saved.results || []).map((place) => ({
       ...place,

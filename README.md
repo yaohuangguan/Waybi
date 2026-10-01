@@ -142,3 +142,34 @@ Flutter 路线预览同样支持选择终点附近停车场、驾车到停车点
 ## 隐私
 
 GPS 在设备浏览器中用于导航与匹配提醒。路线起终点会发给本项目 Worker 和路线服务；搜索文字会发给地址服务。Worker 不记录用户位置历史。浏览器仅缓存摄像头数据和语言/语音偏好。
+
+## Cost Guard and Kiwi Lens Plus
+
+Kiwi Lens deliberately keeps the core map, place search and turn-by-turn navigation outside the paid tier. The planned **Kiwi Lens Plus** tier is for proactive New Zealand road intelligence such as Route Watch, disruption alerts, weather-risk context and richer camera intelligence. The initial product target shown in the mobile UI is **NZ$39.99/year or NZ$4.99/month**; it is currently presented as coming soon and does not lock any existing feature.
+
+`migrations/0005_cost_guard.sql` adds daily API-usage aggregation so growth can be evaluated against real provider consumption before paid entitlements are enforced. Cost Guard currently records:
+
+- Google Routes compute requests
+- Google Places text / nearby search, place details and place photos
+- Google Navigation destination units reported by the mobile app after a route is accepted
+- Mapbox navigation trips reported by the mobile app
+- Geoapify autocomplete calls
+
+Usage telemetry is best-effort: a failed write must never block search, route planning or active navigation. The server keeps counts and billable-style units rather than hard-coding provider prices, because provider pricing and free tiers change independently of the app release.
+
+After applying D1 migrations, an authenticated admin can query `GET /api/admin/costs?days=31`. Access is restricted to emails listed in the Worker `ADMIN_EMAILS` binding (comma-separated); do not commit personal admin addresses to the repository. The response exposes daily provider/SKU rows plus aggregate calls and units, which can be combined with the current Google/Mapbox/Geoapify price sheet when reviewing unit economics.
+
+### Route Watch
+
+Route Watch is the first Plus-preview road-intelligence feature. Signed-in users can enable it for configured Home/Work routes from the Trips hub. Enabling a watch stores a sampled route geometry and baseline ETA/distance in D1; it does **not** continuously buy fresh Google routes. A Worker cron evaluates enabled routes every 15 minutes against official NZTA Traffic and Travel road events and records `healthy`, `advisory`, `warning`, or `disrupted` status plus matched event details. Opening Trips refreshes the status immediately. `migrations/0006_route_watch.sql` creates the persisted watch state.
+
+This release intentionally does not claim background push delivery: the server-side monitoring loop is real, but APNs/FCM device-token registration and remote notification delivery remain a separate layer. Core navigation stays free and Route Watch remains a Plus preview until StoreKit entitlement handling is introduced.
+
+
+Route Watch stores up to 220 sampled mobile route points (validated to at most 250 server-side) and evaluates official events against a 180 m route corridor. It does not continuously upload the driver's live GPS position; background checks operate on the saved route rather than the user's current location.
+
+Route Watch API:
+
+- `GET /api/route-watches`: evaluate and return the signed-in user's watches
+- `POST /api/route-watches`: create or refresh a watch from current route geometry
+- `DELETE /api/route-watches/:id`: stop watching a route

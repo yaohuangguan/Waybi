@@ -44,7 +44,7 @@ function isGeoapifyPoi(place) {
   return categoryPoi || (namedPlace && !addressTypes.has(place.result_type));
 }
 
-export async function handlePlaces(request, env) {
+export async function handlePlaces(request, env, trackUsage = () => {}) {
   const url = new URL(request.url);
   if (url.pathname === '/api/suggest') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
@@ -71,6 +71,7 @@ export async function handlePlaces(request, env) {
           }
         };
       }
+      trackUsage('google', 'places_text_search', 1);
       const google = await fetch('https://places.googleapis.com/v1/places:searchText', {
         method: 'POST',
         headers: {
@@ -97,6 +98,7 @@ export async function handlePlaces(request, env) {
         if (local.length) return json(local);
       }
 
+      trackUsage('google', 'places_text_search', 1);
       const globalGoogle = await fetch('https://places.googleapis.com/v1/places:searchText', {
         method: 'POST',
         headers: {
@@ -155,6 +157,7 @@ export async function handlePlaces(request, env) {
       return provider;
     };
 
+    trackUsage('geoapify', 'autocomplete', 1);
     const localUpstream = await fetch(buildGeoapifyUrl({ localFirst: true }), {
       signal: AbortSignal.timeout(10000)
     });
@@ -163,6 +166,7 @@ export async function handlePlaces(request, env) {
       if (local.length) return json(local);
     }
 
+    trackUsage('geoapify', 'autocomplete', 1);
     const globalUpstream = await fetch(buildGeoapifyUrl({ localFirst: false }), {
       signal: AbortSignal.timeout(10000)
     });
@@ -227,6 +231,7 @@ export async function handlePlaces(request, env) {
         }
       };
     }
+    trackUsage('google', query.length >= 2 ? 'places_text_search' : 'places_nearby_search', 1);
     const upstream = await fetch(provider, {
       method: 'POST',
       headers: {
@@ -281,6 +286,7 @@ export async function handlePlaces(request, env) {
       'websiteUri', 'googleMapsUri', 'editorialSummary', 'regularOpeningHours',
       'photos', 'reviews'
     ].join(',');
+    trackUsage('google', 'place_details', 1);
     const upstream = await fetch(provider, {
       headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': fieldMask },
       signal: AbortSignal.timeout(12000)
@@ -324,6 +330,7 @@ export async function handlePlaces(request, env) {
     const provider = new URL(`https://places.googleapis.com/v1/${name}/media`);
     provider.searchParams.set('maxWidthPx', '1200');
     provider.searchParams.set('key', apiKey);
+    trackUsage('google', 'place_photo', 1);
     const upstream = await fetch(provider, { redirect: 'follow', signal: AbortSignal.timeout(12000) });
     if (!upstream.ok) return json({ error: `Google Place Photo HTTP ${upstream.status}` }, 502);
     return new Response(upstream.body, {

@@ -19,6 +19,18 @@ extension CameraKindLabel on CameraKind {
     CameraKind.other => 'Other',
   };
 
+  String localizedLabel(String language) {
+    if (language != 'zh') return label;
+    return switch (this) {
+      CameraKind.spotSpeed => '定点测速',
+      CameraKind.averageSpeed => '区间测速',
+      CameraKind.redLight => '闯红灯',
+      CameraKind.dualRedLightSpeed => '闯红灯 + 测速',
+      CameraKind.busLane => '公交 / 专用车道',
+      CameraKind.other => '其他',
+    };
+  }
+
   static CameraKind fromCamera(SafetyCamera camera) {
     final type = camera.type.toLowerCase();
     if (type.contains('average') ||

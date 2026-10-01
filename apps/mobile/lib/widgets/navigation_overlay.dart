@@ -68,6 +68,8 @@ class NavigationOverlay extends StatefulWidget {
     required this.onEnd,
     required this.onRecenter,
     required this.onOverview,
+    this.following = true,
+    this.overviewMode = false,
     required this.northUp,
     required this.onCompassToggle,
     required this.onReport,
@@ -78,6 +80,9 @@ class NavigationOverlay extends StatefulWidget {
     required this.onLayers,
     required this.onVoiceToggle,
     required this.onLanesToggle,
+    this.arrivalPanel,
+    this.offlineReady = false,
+    this.usingOfflineGuidance = false,
   });
 
   final DriveEngine engine;
@@ -91,6 +96,8 @@ class NavigationOverlay extends StatefulWidget {
   final VoidCallback onEnd;
   final VoidCallback onRecenter;
   final VoidCallback onOverview;
+  final bool following;
+  final bool overviewMode;
   final bool northUp;
   final VoidCallback onCompassToggle;
   final VoidCallback onReport;
@@ -101,6 +108,9 @@ class NavigationOverlay extends StatefulWidget {
   final VoidCallback onLayers;
   final VoidCallback onVoiceToggle;
   final VoidCallback onLanesToggle;
+  final Widget? arrivalPanel;
+  final bool offlineReady;
+  final bool usingOfflineGuidance;
 
   @override
   State<NavigationOverlay> createState() => _NavigationOverlayState();
@@ -543,6 +553,8 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                         PointerInterceptor(
                           child: _NavigationControlRail(
                             language: widget.language,
+                            following: widget.following,
+                            overviewMode: widget.overviewMode,
                             northUp: widget.northUp,
                             onCompassToggle: widget.onCompassToggle,
                             onRecenter: widget.onRecenter,
@@ -647,6 +659,10 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                     ),
                                   ],
                                 ),
+                                if (widget.arrivalPanel != null) ...[
+                                  const SizedBox(height: 10),
+                                  widget.arrivalPanel!,
+                                ],
                                 const SizedBox(height: 8),
                                 const Divider(height: 1),
                                 Padding(
@@ -684,7 +700,62 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                   const SizedBox(height: KiwiLensSpacing.x2),
                                   RoadEventTimeline(
                                     events: widget.engine.upcomingRoadEvents,
+                                    language: widget.language,
                                     dark: dark,
+                                  ),
+                                ],
+                                if (widget.offlineReady) ...[
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 7,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: widget.usingOfflineGuidance
+                                          ? KiwiLensColors.warning.withValues(
+                                              alpha: .12,
+                                            )
+                                          : scheme.surfaceContainerLow,
+                                      borderRadius: BorderRadius.circular(11),
+                                      border: Border.all(
+                                        color: theme.dividerColor,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          widget.usingOfflineGuidance
+                                              ? Icons
+                                                    .signal_wifi_connected_no_internet_4_rounded
+                                              : Icons.offline_pin_rounded,
+                                          size: 16,
+                                          color: widget.usingOfflineGuidance
+                                              ? KiwiLensColors.warning
+                                              : scheme.primary,
+                                        ),
+                                        const SizedBox(width: 7),
+                                        Expanded(
+                                          child: Text(
+                                            widget.usingOfflineGuidance
+                                                ? _text(
+                                                    'Weak signal · using cached route guidance',
+                                                    '信号较弱 · 正在使用已缓存路线继续导航',
+                                                  )
+                                                : _text(
+                                                    'Next 6 km route + safety data cached',
+                                                    '前方约 6 公里路线与安全数据已缓存',
+                                                  ),
+                                            style: TextStyle(
+                                              color: scheme.onSurfaceVariant,
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                                 const SizedBox(height: 8),
@@ -884,6 +955,8 @@ class _Chip extends StatelessWidget {
 class _NavigationControlRail extends StatelessWidget {
   const _NavigationControlRail({
     required this.language,
+    required this.following,
+    required this.overviewMode,
     required this.northUp,
     required this.onCompassToggle,
     required this.onRecenter,
@@ -891,6 +964,8 @@ class _NavigationControlRail extends StatelessWidget {
     required this.onReport,
   });
 
+  final bool following;
+  final bool overviewMode;
   final bool northUp;
   final String language;
   String _text(String en, String zh) => language == 'zh' ? zh : en;
@@ -918,8 +993,14 @@ class _NavigationControlRail extends StatelessWidget {
           ),
           const _RailDivider(),
           _RailButton(
-            icon: Icons.my_location_rounded,
-            tooltip: _text('Recenter', '回到当前位置'),
+            icon: overviewMode
+                ? Icons.navigation_rounded
+                : Icons.alt_route_rounded,
+            tooltip: overviewMode
+                ? _text('Follow my location', '进入跟车视角')
+                : following
+                ? _text('Route overview', '路线全览')
+                : _text('Show route overview', '先回到路线全览'),
             onTap: onRecenter,
           ),
           const _RailDivider(),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/country_profile.dart';
 import '../domain/map_provider.dart';
@@ -22,16 +23,44 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
   @override
   bool supports(CountryProfile country) => country.code == 'NZ';
 
+  static const _cacheKey = 'kiwi.cache.road_events.v1';
+
   @override
   Future<List<RoadEvent>> load() async {
-    final response = await _client
-        .get(Uri.parse('$baseUrl/api/road-events'))
-        .timeout(const Duration(seconds: 15));
-    if (response.statusCode != 200) {
-      throw StateError('Road events API failed: ${response.statusCode}');
+    Object? networkError;
+    try {
+      final response = await _client
+          .get(Uri.parse('$baseUrl/api/road-events'))
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) {
+        throw StateError('Road events API failed: ${response.statusCode}');
+      }
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_cacheKey, response.body);
+      } catch (_) {
+        // A missing preferences binding must not hide a successful live feed.
+      }
+      return _decode(response.body, stale: false);
+    } catch (error) {
+      networkError = error;
     }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    lastSyncStatus = body['syncStatus']?.toString() ?? 'unknown';
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString(_cacheKey);
+      if (cached != null) return _decode(cached, stale: true);
+    } catch (_) {
+      // Fall through to the original network failure.
+    }
+    throw networkError;
+  }
+
+  List<RoadEvent> _decode(String raw, {required bool stale}) {
+    final body = jsonDecode(raw) as Map<String, dynamic>;
+    lastSyncStatus = stale
+        ? 'stale'
+        : body['syncStatus']?.toString() ?? 'unknown';
     lastCheckedAt = DateTime.tryParse(body['checkedAt']?.toString() ?? '');
     return (body['events'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
@@ -83,24 +112,24 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
   }
 
   RoadEventType _eventType(String? value) => switch (value) {
-        'roadClosure' => RoadEventType.roadClosure,
-        'roadworks' => RoadEventType.roadworks,
-        'flooding' => RoadEventType.flooding,
-        'slip' => RoadEventType.slip,
-        _ => RoadEventType.incident,
-      };
+    'roadClosure' => RoadEventType.roadClosure,
+    'roadworks' => RoadEventType.roadworks,
+    'flooding' => RoadEventType.flooding,
+    'slip' => RoadEventType.slip,
+    _ => RoadEventType.incident,
+  };
 
   RoadEventObservation _observation(String? value) => switch (value) {
-        'observed' => RoadEventObservation.observed,
-        'forecast' => RoadEventObservation.forecast,
-        'inferred' => RoadEventObservation.inferred,
-        _ => RoadEventObservation.official,
-      };
+    'observed' => RoadEventObservation.observed,
+    'forecast' => RoadEventObservation.forecast,
+    'inferred' => RoadEventObservation.inferred,
+    _ => RoadEventObservation.official,
+  };
 
   RoadEventSeverity _severity(String? value) => switch (value) {
-        'critical' => RoadEventSeverity.critical,
-        'warning' => RoadEventSeverity.warning,
-        'advisory' => RoadEventSeverity.advisory,
-        _ => RoadEventSeverity.information,
-      };
+    'critical' => RoadEventSeverity.critical,
+    'warning' => RoadEventSeverity.warning,
+    'advisory' => RoadEventSeverity.advisory,
+    _ => RoadEventSeverity.information,
+  };
 }

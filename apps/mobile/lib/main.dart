@@ -22,6 +22,8 @@ import 'domain/route_option.dart';
 import 'domain/road_event.dart';
 import 'drive/device_heading.dart';
 import 'drive/journey_tracker.dart';
+import 'drive/navigation_language.dart';
+import 'drive/route_progress_tracker.dart';
 import 'services/native_map_language.dart';
 import 'widgets/journey_summary_sheet.dart';
 
@@ -37,6 +39,7 @@ import 'providers/place_search_providers.dart';
 import 'providers/provider_contracts.dart';
 import 'services/notification_service.dart';
 import 'theme/kiwi_lens_theme.dart';
+import 'widgets/arrival_experience_panel.dart';
 import 'widgets/map_symbols.dart';
 import 'widgets/mapbox_navigation_overlay.dart';
 import 'widgets/drive_hud.dart';
@@ -363,6 +366,7 @@ class _MapHomePageState extends State<MapHomePage> {
   bool _mapRefreshing = false;
   bool _refreshAgain = false;
   bool _following = true;
+  bool _routeOverviewActive = false;
   bool _voiceEnabled = true;
   bool _keepScreenAwake = true;
   bool _settingsLoaded = false;
@@ -390,6 +394,15 @@ class _MapHomePageState extends State<MapHomePage> {
   bool _parkingLoading = false;
   bool _parkingLegFinished = false;
   int _parkingRequest = 0;
+  PlaceSummary? _activeDestinationPlace;
+  PlaceDetails? _arrivalPlaceDetails;
+  List<ParkingPlace> _arrivalParkingPlaces = const [];
+  bool _arrivalMode = false;
+  bool _arrivalPrefetching = false;
+  bool _arrivalPrefetched = false;
+  int _arrivalRequest = 0;
+  DateTime? _lastCorridorCacheAt;
+  bool _offlineCorridorReady = false;
 
   SelectedPlace? _selectedPlace;
   JourneyPhase _journeyPhase = JourneyPhase.idle;
@@ -559,6 +572,8 @@ class _MapHomePageState extends State<MapHomePage> {
       _activeNavigationRoute = _mapboxNavigation.route;
     }
     setState(() {});
+    _updateArrivalExperience();
+    unawaited(_cacheNavigationCorridor());
     if (_following) _queueMapRefresh();
   }
 
@@ -594,6 +609,257 @@ class _MapHomePageState extends State<MapHomePage> {
           if (mounted) setState(() {});
         });
       }
+    }
+    _updateArrivalExperience();
+    unawaited(_cacheNavigationCorridor());
+  }
+
+  double? get _navigationRemainingMeters {
+    if (_mapboxNavigation.active) {
+      return _mapboxNavigation.remainingDistanceMeters;
+    }
+    final native = _driveEngine.navInfo?.distanceToFinalDestinationMeters;
+    if (native != null && native.isFinite) return native.toDouble();
+    final route = _activeNavigationRoute;
+    final progress = _driveEngine.routeProgress;
+    if (route == null || progress == null || route.points.length < 2) {
+      return null;
+    }
+    final geometry = RouteProgressTracker.geometryLength(route.points);
+    if (geometry <= 0) return route.distanceMeters.toDouble();
+    final fraction = (progress.alongMeters / geometry).clamp(0.0, 1.0);
+    return route.distanceMeters * (1 - fraction);
+  }
+
+  NavigationGuidance? _offlineGoogleGuidance() {
+    if (!_guidanceRunning ||
+        _mapboxNavigation.active ||
+        !_driveEngine.nativeGuidanceStale) {
+      return null;
+    }
+    final route = _activeNavigationRoute;
+    final progress = _driveEngine.routeProgress;
+    if (route == null || progress == null || route.points.length < 2) {
+      return null;
+    }
+    final matcher = const RouteCameraMatcher();
+    final geometry = RouteProgressTracker.geometryLength(route.points);
+    if (geometry <= 0) return null;
+    RouteStepInfo? next;
+    var distanceToStep = double.infinity;
+    for (final step in route.steps) {
+      final along = matcher.project(step.location, route.points)?.alongMeters;
+      if (along == null) continue;
+      final ahead = along - progress.alongMeters;
+      if (ahead >= 5 && ahead < distanceToStep) {
+        distanceToStep = ahead;
+        next = step;
+      }
+    }
+    final fraction = (progress.alongMeters / geometry).clamp(0.0, 1.0);
+    final remainingMeters = route.distanceMeters * (1 - fraction);
+    final remainingSeconds = (route.durationSeconds * (1 - fraction)).round();
+    return NavigationGuidance(
+      instruction: routeStepInstruction(next, _appLanguage),
+      maneuverIcon: mapboxManeuverIcon(next),
+      stepMeters: distanceToStep.isFinite ? distanceToStep : remainingMeters,
+      remainingMeters: remainingMeters,
+      remainingSeconds: remainingSeconds,
+      lanes: [
+        for (final lane in next?.lanes ?? const <RouteLane>[])
+          NavigationLane(
+            lane.indications
+                .map(
+                  (name) => name.contains('left')
+                      ? '←'
+                      : name.contains('right')
+                      ? '→'
+                      : name == 'uturn'
+                      ? '↶'
+                      : '↑',
+                )
+                .toSet()
+                .join(),
+            lane.recommended,
+          ),
+      ],
+    );
+  }
+
+  void _updateArrivalExperience() {
+    final remaining = _navigationRemainingMeters;
+    final eligible =
+        _guidanceRunning &&
+        _selectedMode == KiwiTravelMode.drive &&
+        remaining != null;
+    if (!eligible) {
+      if (_arrivalMode && mounted) setState(() => _arrivalMode = false);
+      return;
+    }
+    if (remaining <= 800 && !_arrivalPrefetching && !_arrivalPrefetched) {
+      unawaited(_prefetchArrivalExperience());
+    }
+    final active = remaining <= 300;
+    if (active != _arrivalMode && mounted) {
+      setState(() => _arrivalMode = active);
+    }
+  }
+
+  Future<void> _prefetchArrivalExperience() async {
+    final destination = _activeDestinationPlace;
+    if (destination == null || _arrivalPrefetching) return;
+    final request = ++_arrivalRequest;
+    _arrivalPrefetching = true;
+    if (mounted) setState(() {});
+    var parking = _arrivalParkingPlaces;
+    var details = _arrivalPlaceDetails;
+    if (_selectedParking == null) {
+      try {
+        parking = await _parkingRepository.nearby(
+          destination: destination.location,
+          allowGoogleFallback: _mapProvider == MapProvider.google,
+          language: _appLanguage,
+        );
+      } catch (_) {}
+    }
+    final reference = destination.reference;
+    if (reference?.provider == 'google' && reference!.id.isNotEmpty) {
+      try {
+        details = await _placeDetailsRepository.fetch(
+          reference.id,
+          language: _appLanguage,
+        );
+      } catch (_) {}
+    }
+    if (!mounted || request != _arrivalRequest) return;
+    setState(() {
+      _arrivalParkingPlaces = parking;
+      _arrivalPlaceDetails = details;
+      _arrivalPrefetching = false;
+      _arrivalPrefetched = true;
+    });
+  }
+
+  Future<void> _routeToArrivalParking(ParkingPlace parking) async {
+    final destination = _activeDestinationPlace;
+    if (destination == null || _endingNavigation) return;
+    await _stopNavigation(showSummary: false);
+    if (!mounted) return;
+    setState(() {
+      _parkingOriginalPlace = destination;
+      _selectedParking = parking;
+      _parkingLegFinished = false;
+      _selectedPlace = SelectedPlace(
+        parking.toPlaceSummary(),
+        SelectionSource.map,
+        originMap: _mapProvider,
+      );
+      _routeStops.clear();
+    });
+    final poi = _selectedPoi;
+    if (poi == null) return;
+    await _loadRoutePreview(poi);
+    if (mounted && _selectedRoute != null) {
+      await _navigateToSelectedPoi();
+    }
+  }
+
+  Future<void> _cacheNavigationCorridor({bool force = false}) async {
+    final route = _activeNavigationRoute;
+    if (!_guidanceRunning || route == null || route.points.length < 2) return;
+    final now = DateTime.now();
+    if (!force &&
+        _lastCorridorCacheAt != null &&
+        now.difference(_lastCorridorCacheAt!) < const Duration(seconds: 30)) {
+      return;
+    }
+    final start = _driveEngine.routeProgress?.alongMeters ?? 0.0;
+    final end = start + 6000;
+    final corridor = <GeoPoint>[];
+    var travelled = 0.0;
+    for (var index = 0; index < route.points.length - 1; index++) {
+      final a = route.points[index];
+      final b = route.points[index + 1];
+      final segment = distanceMeters(
+        a.latitude,
+        a.longitude,
+        b.latitude,
+        b.longitude,
+      );
+      final segmentEnd = travelled + segment;
+      if (segmentEnd >= start - 100 && travelled <= end + 100) {
+        if (corridor.isEmpty) corridor.add(a);
+        corridor.add(b);
+      }
+      travelled = segmentEnd;
+      if (travelled > end + 100) break;
+    }
+    final matcher = const RouteCameraMatcher();
+    final steps = <Map<String, Object?>>[];
+    for (final step in route.steps) {
+      final along = matcher.project(step.location, route.points)?.alongMeters;
+      if (along == null || along < start - 50 || along > end) continue;
+      steps.add({
+        'instruction': step.instruction,
+        'roadName': step.roadName,
+        'maneuverType': step.maneuverType,
+        'maneuverModifier': step.maneuverModifier,
+        'distanceMeters': step.distanceMeters,
+        'alongMeters': along,
+        'latitude': step.location.latitude,
+        'longitude': step.location.longitude,
+      });
+    }
+    final cameras = [
+      for (final match in _driveEngine.routeCameras)
+        if (match.alongMeters >= start - 50 && match.alongMeters <= end)
+          {
+            'id': match.camera.id,
+            'type': match.camera.type,
+            'location': match.camera.location,
+            'latitude': match.camera.latitude,
+            'longitude': match.camera.longitude,
+            'alongMeters': match.alongMeters,
+          },
+    ];
+    final events = [
+      for (final event in _driveEngine.upcomingRoadEvents)
+        if ((event.distanceFromDriver ?? double.infinity) <= 6000)
+          {
+            'id': event.id,
+            'type': event.type.name,
+            'roadName': event.roadName,
+            'latitude': event.location.latitude,
+            'longitude': event.location.longitude,
+            'distanceFromDriver': event.distanceFromDriver,
+            'distanceAlongRoute': event.distanceAlongRoute,
+            'severity': event.severity.name,
+          },
+    ];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'kiwi.navigation.offline_corridor.v1',
+        jsonEncode({
+          'cachedAt': now.toIso8601String(),
+          'destination': _destinationTitle,
+          'routeId': route.id,
+          'fromAlongMeters': start,
+          'aheadMeters': 6000,
+          'geometry': [
+            for (final point in corridor) [point.latitude, point.longitude],
+          ],
+          'steps': steps,
+          'cameras': cameras,
+          'roadEvents': events,
+        }),
+      );
+      _lastCorridorCacheAt = now;
+      if (mounted && !_offlineCorridorReady) {
+        setState(() => _offlineCorridorReady = true);
+      }
+    } catch (_) {
+      // Navigation remains usable from its in-memory route if persistence fails.
     }
   }
 
@@ -644,12 +910,14 @@ class _MapHomePageState extends State<MapHomePage> {
         cameraDistance <= 600 &&
         _lastNotifiedCameraId != camera.id) {
       _lastNotifiedCameraId = camera.id;
+      final cameraType = CameraKindLabel.fromCamera(camera)
+          .localizedLabel(_appLanguage);
       await KiwiLensNotificationService.instance.showRoadAlert(
         id: 'camera:${camera.id}',
         title: _text('Safety camera ahead', '前方安全摄像头'),
         body: _text(
-          '${camera.type} · ${cameraDistance.round()} m',
-          '${camera.type} · ${cameraDistance.round()} 米',
+          '$cameraType · ${cameraDistance.round()} m',
+          '$cameraType · ${cameraDistance.round()} 米',
         ),
       );
     }
@@ -1081,9 +1349,11 @@ class _MapHomePageState extends State<MapHomePage> {
         await _browseRenderer!.moveTo(
           _viewport.copyWith(
             center: GeoPoint(location.latitude, location.longitude),
-            zoom: _mapboxNavigation.active ? 16 : (_northUp ? 16 : 17),
+            zoom: _mapboxNavigation.active
+                ? (_northUp ? 16 : 17.2)
+                : (_northUp ? 16 : 17),
             bearing: _northUp ? 0 : (_travelHeading ?? _deviceHeading ?? 0),
-            pitch: 0,
+            pitch: _mapboxNavigation.active && !_northUp ? 50 : 0,
           ),
         );
       }
@@ -1163,9 +1433,8 @@ class _MapHomePageState extends State<MapHomePage> {
     }
   }
 
-  CameraPerspective get _navigationFollowPerspective => _northUp
-      ? CameraPerspective.topDownNorthUp
-      : CameraPerspective.topDownHeadingUp;
+  CameraPerspective get _navigationFollowPerspective =>
+      _northUp ? CameraPerspective.topDownNorthUp : CameraPerspective.tilted;
 
   Future<void> _followNavigationCamera(
     GoogleNavigationViewController controller, {
@@ -1187,6 +1456,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
   void _recenter() {
     _following = true;
+    _routeOverviewActive = false;
     if (_mapProvider == MapProvider.mapbox) {
       _queueMapRefresh();
       return;
@@ -1209,6 +1479,19 @@ class _MapHomePageState extends State<MapHomePage> {
     return _northUp
         ? _text('Switch to heading-up', '切换到车头朝向')
         : _text('Switch to north-up', '切换到指北');
+  }
+
+  void _markMapManuallyMoved({bool searchArea = false}) {
+    if (mounted) {
+      setState(() {
+        _following = false;
+        _routeOverviewActive = false;
+      });
+    } else {
+      _following = false;
+      _routeOverviewActive = false;
+    }
+    if (searchArea) _maybeShowSearchArea();
   }
 
   void _cycleLocationCamera() {
@@ -1318,7 +1601,10 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   void _showRouteOverview() {
-    setState(() => _following = false);
+    setState(() {
+      _following = false;
+      _routeOverviewActive = true;
+    });
     final renderer = _browseRenderer;
     final route = _mapboxNavigation.route;
     if (_mapProvider == MapProvider.mapbox &&
@@ -1329,6 +1615,18 @@ class _MapHomePageState extends State<MapHomePage> {
     }
     final controller = _navigationController;
     if (controller != null) unawaited(controller.showRouteOverview());
+  }
+
+  void _cycleNavigationCameraMode() {
+    if (!_following && !_routeOverviewActive) {
+      _showRouteOverview();
+      return;
+    }
+    if (_routeOverviewActive) {
+      _recenter();
+      return;
+    }
+    _showRouteOverview();
   }
 
   void _toggleCompass() {
@@ -2129,7 +2427,13 @@ class _MapHomePageState extends State<MapHomePage> {
   Future<void> _navigateToSelectedPoi() async {
     final poi = _selectedPoi;
     final selectedRoute = _selectedRoute;
-    if (poi == null || selectedRoute == null || _busy) return;
+    final destinationPlace = _selectedPlace?.place;
+    if (poi == null ||
+        selectedRoute == null ||
+        destinationPlace == null ||
+        _busy) {
+      return;
+    }
 
     setState(() {
       _busy = true;
@@ -2151,8 +2455,17 @@ class _MapHomePageState extends State<MapHomePage> {
           _journeyPhase = JourneyPhase.navigating;
           _routeStops.clear();
           _following = true;
+          _routeOverviewActive = false;
+          _activeDestinationPlace = destinationPlace;
+          _arrivalMode = false;
+          _arrivalPrefetching = false;
+          _arrivalPrefetched = false;
+          _arrivalParkingPlaces = const [];
+          _arrivalPlaceDetails = null;
+          _offlineCorridorReady = false;
         });
         _beginJourney(poi);
+        unawaited(_cacheNavigationCorridor(force: true));
         _queueMapRefresh();
         return;
       }
@@ -2257,8 +2570,17 @@ class _MapHomePageState extends State<MapHomePage> {
         _journeyPhase = JourneyPhase.navigating;
         _routeStops.clear();
         _following = true;
+        _routeOverviewActive = false;
+        _activeDestinationPlace = destinationPlace;
+        _arrivalMode = false;
+        _arrivalPrefetching = false;
+        _arrivalPrefetched = false;
+        _arrivalParkingPlaces = const [];
+        _arrivalPlaceDetails = null;
+        _offlineCorridorReady = false;
       });
       _beginJourney(poi);
+      unawaited(_cacheNavigationCorridor(force: true));
       _queueNavigationMarkerSync();
       _queueMapRefresh();
     } catch (error) {
@@ -2269,7 +2591,10 @@ class _MapHomePageState extends State<MapHomePage> {
     }
   }
 
-  Future<void> _stopNavigation({bool arrived = false}) async {
+  Future<void> _stopNavigation({
+    bool arrived = false,
+    bool showSummary = true,
+  }) async {
     if (!_guidanceRunning || _endingNavigation) return;
     _endingNavigation = true;
     final route = _activeNavigationRoute;
@@ -2305,12 +2630,23 @@ class _MapHomePageState extends State<MapHomePage> {
         );
       }
       if (!mounted) return;
+      ++_arrivalRequest;
       setState(() {
         _guidanceRunning = false;
         _junctionZoomed = false;
         _activeNavigationRoute = null;
+        _activeDestinationPlace = null;
+        _lastCorridorCacheAt = null;
         _destinationTitle = _text('Destination', '目的地');
         _journeyPhase = JourneyPhase.idle;
+        _following = true;
+        _routeOverviewActive = false;
+        _arrivalMode = false;
+        _arrivalPrefetching = false;
+        _arrivalPrefetched = false;
+        _arrivalParkingPlaces = const [];
+        _arrivalPlaceDetails = null;
+        _offlineCorridorReady = false;
         _parkingLegFinished =
             _selectedParking != null &&
             _parkingOriginalPlace != null &&
@@ -2323,7 +2659,7 @@ class _MapHomePageState extends State<MapHomePage> {
           ),
         );
       }
-      if (summary != null) {
+      if (summary != null && showSummary) {
         unawaited(
           showModalBottomSheet<void>(
             context: context,
@@ -2644,7 +2980,8 @@ class _MapHomePageState extends State<MapHomePage> {
                   ImageDescriptor.defaultImage,
               zIndex: onRoute.contains(camera.id) ? 40 : 12,
               infoWindow: InfoWindow(
-                title: '${camera.type} · ${camera.location}',
+                title:
+                    '${CameraKindLabel.fromCamera(camera).localizedLabel(_appLanguage)} · ${camera.location}',
                 snippet:
                     '${camera.suburb} · GPS ${camera.latitude.toStringAsFixed(5)}, ${camera.longitude.toStringAsFixed(5)}',
               ),
@@ -4320,6 +4657,26 @@ class _MapHomePageState extends State<MapHomePage> {
     if (!_settingsLoaded) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    final cachedGoogleGuidance = _offlineGoogleGuidance();
+    final arrivalRemaining = _navigationRemainingMeters;
+    final arrivalPhotos = _arrivalPlaceDetails?.photos ?? const <PlacePhoto>[];
+    final arrivalPanel =
+        _arrivalMode &&
+            arrivalRemaining != null &&
+            _activeDestinationPlace != null
+        ? ArrivalExperiencePanel(
+            language: _appLanguage,
+            destinationTitle: _destinationTitle,
+            destinationAddress: _activeDestinationPlace!.address,
+            remainingMeters: arrivalRemaining,
+            photoUrl: arrivalPhotos.isEmpty ? null : arrivalPhotos.first.url,
+            selectedParkingTitle: _selectedParking?.name,
+            parkingPlaces: _arrivalParkingPlaces,
+            parkingLoading: _arrivalPrefetching,
+            onParkingSelected: (parking) =>
+                unawaited(_routeToArrivalParking(parking)),
+          )
+        : null;
     return Scaffold(
       body: Stack(
         children: [
@@ -4336,7 +4693,7 @@ class _MapHomePageState extends State<MapHomePage> {
                           zoom: 16,
                         ),
                     onCameraMoveStarted: (_, isGesture) {
-                      if (isGesture) _following = false;
+                      if (isGesture) _markMapManuallyMoved();
                     },
                     initialNavigationUIEnabledPreference: _guidanceRunning
                         ? NavigationUIEnabledPreference.automatic
@@ -4385,10 +4742,7 @@ class _MapHomePageState extends State<MapHomePage> {
                       }
                     },
                     onViewportChanged: (viewport) => _viewport = viewport,
-                    onUserPan: () {
-                      _following = false;
-                      _maybeShowSearchArea();
-                    },
+                    onUserPan: () => _markMapManuallyMoved(searchArea: true),
                     onMapPlace: (place) {
                       _selectPlace(
                         place,
@@ -4438,10 +4792,7 @@ class _MapHomePageState extends State<MapHomePage> {
                         tilt: viewport.pitch,
                       );
                     },
-                    onUserPan: () {
-                      _following = false;
-                      _maybeShowSearchArea();
-                    },
+                    onUserPan: () => _markMapManuallyMoved(searchArea: true),
                     onMapPlace: (place) => _selectPlace(
                       place,
                       place.kind == PlaceKind.coordinate
@@ -4638,6 +4989,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 builder: (context, _) => _guidanceRunning
                     ? NavigationOverlay(
                         engine: _driveEngine,
+                        guidance: cachedGoogleGuidance,
                         onTopInsetChanged: _updateNavigationTopInset,
                         language: _appLanguage,
                         destinationTitle: _destinationTitle,
@@ -4645,8 +4997,10 @@ class _MapHomePageState extends State<MapHomePage> {
                         voiceEnabled: _voiceEnabled,
                         lanesEnabled: _lanesEnabled,
                         onEnd: () => unawaited(_stopNavigation()),
-                        onRecenter: _recenter,
+                        onRecenter: _cycleNavigationCameraMode,
                         onOverview: _showRouteOverview,
+                        following: _following,
+                        overviewMode: _routeOverviewActive,
                         northUp: _northUp,
                         onCompassToggle: _toggleCompass,
                         onReport: () => unawaited(_showRoadReport()),
@@ -4657,6 +5011,9 @@ class _MapHomePageState extends State<MapHomePage> {
                         onLayers: _showMapLayers,
                         onVoiceToggle: _toggleVoice,
                         onLanesToggle: () => _setLanesEnabled(!_lanesEnabled),
+                        arrivalPanel: arrivalPanel,
+                        offlineReady: _offlineCorridorReady,
+                        usingOfflineGuidance: cachedGoogleGuidance != null,
                       )
                     : DriveHud(
                         engine: _driveEngine,
@@ -4672,8 +5029,10 @@ class _MapHomePageState extends State<MapHomePage> {
                 destination: _destinationTitle,
                 language: _appLanguage,
                 onEnd: () => unawaited(_stopNavigation()),
-                onRecenter: _recenter,
+                onRecenter: _cycleNavigationCameraMode,
                 onOverview: _showRouteOverview,
+                following: _following,
+                overviewMode: _routeOverviewActive,
                 gpsAccuracy: _gpsAccuracy,
                 voiceEnabled: _voiceEnabled,
                 lanesEnabled: _lanesEnabled,
@@ -4687,6 +5046,8 @@ class _MapHomePageState extends State<MapHomePage> {
                 onLayers: _showMapLayers,
                 onVoiceToggle: _toggleVoice,
                 onLanesToggle: () => _setLanesEnabled(!_lanesEnabled),
+                arrivalPanel: arrivalPanel,
+                offlineReady: _offlineCorridorReady,
               ),
             ),
           if (_mapProvider == MapProvider.mapbox &&

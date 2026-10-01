@@ -1,20 +1,18 @@
-/// Native map styling keeps road names, traffic, and provider attribution.
+/// Keep map colors geographic: neutral built-up areas, blue water and natural parks.
+/// Kiwi Lime belongs to the controls and route accents rather than a map-wide tint.
 const kiwiMapStyleLight = '''[
-  {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#f4f8e9"}]},
-  {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#d8edb4"}]},
-  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#c9dfdc"}]},
+  {"featureType":"landscape.man_made","elementType":"geometry","stylers":[{"color":"#f4f4f2"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#b8d7eb"}]},
   {"featureType":"road","elementType":"geometry.fill","stylers":[{"color":"#ffffff"}]},
-  {"featureType":"road.highway","elementType":"geometry.fill","stylers":[{"color":"#e1ecad"}]},
-  {"elementType":"labels.text.fill","stylers":[{"color":"#35502b"}]},
-  {"elementType":"labels.text.stroke","stylers":[{"color":"#f8fbef"}]}
+  {"featureType":"road.highway","elementType":"geometry.fill","stylers":[{"color":"#f5e8c8"}]}
 ]''';
 
 const kiwiMapStyleDark = '''[
-  {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#1b2b17"}]},
-  {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#2f4526"}]},
-  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#142a29"}]},
-  {"featureType":"road","elementType":"geometry.fill","stylers":[{"color":"#48503a"}]},
-  {"featureType":"road.highway","elementType":"geometry.fill","stylers":[{"color":"#6c7845"}]},
-  {"elementType":"labels.text.fill","stylers":[{"color":"#dfebcb"}]},
-  {"elementType":"labels.text.stroke","stylers":[{"color":"#1b2b17"}]}
+  {"featureType":"landscape","elementType":"geometry","stylers":[{"color":"#20252b"}]},
+  {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#283b32"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#182e43"}]},
+  {"featureType":"road","elementType":"geometry.fill","stylers":[{"color":"#46505b"}]},
+  {"featureType":"road.highway","elementType":"geometry.fill","stylers":[{"color":"#6b6658"}]},
+  {"elementType":"labels.text.fill","stylers":[{"color":"#d9dfe4"}]},
+  {"elementType":"labels.text.stroke","stylers":[{"color":"#20252b"}]}
 ]''';

@@ -12,12 +12,13 @@ class KiwiMascot extends StatelessWidget {
     child: SizedBox(
       width: size,
       height: size,
-      child: CustomPaint(painter: _KiwiPainter()),
+      child: CustomPaint(painter: KiwiMascotPainter()),
     ),
   );
 }
 
-class _KiwiPainter extends CustomPainter {
+/// The same painter is used for the splash mascot and exported launcher assets.
+class KiwiMascotPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.scale(size.width / 100, size.height / 100);
@@ -55,5 +56,5 @@ class _KiwiPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_KiwiPainter oldDelegate) => false;
+  bool shouldRepaint(KiwiMascotPainter oldDelegate) => false;
 }

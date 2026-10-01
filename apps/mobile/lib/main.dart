@@ -37,7 +37,6 @@ import 'providers/place_search_providers.dart';
 import 'providers/provider_contracts.dart';
 import 'services/notification_service.dart';
 import 'theme/kiwi_lens_theme.dart';
-import 'theme/kiwi_map_style.dart';
 import 'widgets/map_symbols.dart';
 import 'widgets/mapbox_navigation_overlay.dart';
 import 'widgets/drive_hud.dart';
@@ -325,6 +324,7 @@ class _MapHomePageState extends State<MapHomePage> {
   final Map<String, MapProvider> _quickLocationProviders = {};
   GoogleMapViewController? _browseController;
   GoogleNavigationViewController? _navigationController;
+  Brightness? _lastMapBrightness;
   double _navigationTopInset = 125;
   StreamSubscription<Position>? _positionSubscription;
   StreamSubscription<double>? _headingSubscription;
@@ -435,6 +435,24 @@ class _MapHomePageState extends State<MapHomePage> {
     unawaited(_restoreMapSettings().then((_) => _maybeShowCoreOnboarding()));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_startTracking());
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final brightness = Theme.of(context).brightness;
+    if (_lastMapBrightness == brightness) return;
+    _lastMapBrightness = brightness;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final controller = _driveEngine.active
+          ? _navigationController
+          : _browseController;
+      if (controller != null) {
+        unawaited(_applyMapLayers(controller));
+      }
     });
   }
 
@@ -2892,13 +2910,25 @@ class _MapHomePageState extends State<MapHomePage> {
     final style = _driveEngine.active && _layers.style == BaseMapStyle.terrain
         ? BaseMapStyle.standard
         : _layers.style;
+
+    // Use the Google Maps SDK's native light/dark schemes instead of a
+    // hand-authored legacy JSON style. This keeps roads, POIs, labels and
+    // traffic contrast consistent with the Google Maps app and allows the
+    // platform view to switch appearance without being recreated.
     if (_mapId.isEmpty) {
-      await controller.setMapStyle(
-        style == BaseMapStyle.standard
-            ? (dark ? kiwiMapStyleDark : kiwiMapStyleLight)
-            : null,
+      await controller.setMapStyle(null);
+    }
+    await controller.setMapColorScheme(
+      dark ? MapColorScheme.dark : MapColorScheme.light,
+    );
+    if (controller is GoogleNavigationViewController) {
+      await controller.setForceNightMode(
+        dark
+            ? NavigationForceNightMode.forceNight
+            : NavigationForceNightMode.forceDay,
       );
     }
+
     await controller.setMapType(
       mapType: switch (style) {
         BaseMapStyle.standard => MapType.normal,
@@ -4186,7 +4216,10 @@ class _MapHomePageState extends State<MapHomePage> {
                     initialRotateGesturesEnabled: true,
                     initialTiltGesturesEnabled: true,
                     initialScrollGesturesEnabledDuringRotateOrZoom: true,
-                    initialForceNightMode: NavigationForceNightMode.auto,
+                    initialForceNightMode:
+                        Theme.of(context).brightness == Brightness.dark
+                        ? NavigationForceNightMode.forceNight
+                        : NavigationForceNightMode.forceDay,
                     onPoiClicked: _onPoiClicked,
                   )
                 : _mapProvider == MapProvider.mapbox

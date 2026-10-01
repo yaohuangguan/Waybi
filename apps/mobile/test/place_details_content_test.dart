@@ -48,6 +48,8 @@ void main() {
       ],
     );
 
+    bool? expanded;
+
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -65,6 +67,7 @@ void main() {
               onFavorite: () {},
               onReview: () {},
               language: 'zh',
+              onExpandedChanged: (value) => expanded = value,
             ),
           ),
         ),
@@ -81,6 +84,7 @@ void main() {
     await tester.tap(find.byKey(const Key('placeDeckHandle')));
     await tester.pumpAndSettle();
 
+    expect(expanded, isTrue);
     expect(find.text('营业时间'), findsOneWidget);
     expect(find.text('Google 评价'), findsOneWidget);
     expect(find.text('显示 1 条'), findsOneWidget);

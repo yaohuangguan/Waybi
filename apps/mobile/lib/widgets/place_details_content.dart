@@ -20,6 +20,7 @@ class PlaceDetailsContent extends StatefulWidget {
     required this.onFavorite,
     required this.onReview,
     this.language = 'en',
+    this.onExpandedChanged,
   });
 
   final PlaceSummary selectedPlace;
@@ -33,6 +34,7 @@ class PlaceDetailsContent extends StatefulWidget {
   final VoidCallback onFavorite;
   final VoidCallback onReview;
   final String language;
+  final ValueChanged<bool>? onExpandedChanged;
 
   @override
   State<PlaceDetailsContent> createState() => _PlaceDetailsContentState();
@@ -62,14 +64,20 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
     }
   }
 
-  void _toggleExpanded() => setState(() => _expanded = !_expanded);
+  void _setExpanded(bool value) {
+    if (_expanded == value) return;
+    setState(() => _expanded = value);
+    widget.onExpandedChanged?.call(value);
+  }
+
+  void _toggleExpanded() => _setExpanded(!_expanded);
 
   void _settleDrag(DragEndDetails details) {
     final velocity = details.primaryVelocity ?? 0;
     final movement = _dragDelta.abs() >= 18 ? _dragDelta : velocity / 12;
     _dragDelta = 0;
     if (movement.abs() < 18) return;
-    setState(() => _expanded = movement < 0);
+    _setExpanded(movement < 0);
   }
 
   Widget _compactThumbnail(

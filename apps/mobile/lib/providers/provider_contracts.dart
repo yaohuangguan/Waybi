@@ -10,6 +10,12 @@ abstract interface class RouteMapRenderer implements MapRenderer {
   Future<void> fitRoute(List<GeoPoint> points, {required double bottomInset});
 }
 
+abstract interface class PlaceFocusMapRenderer implements MapRenderer {
+  Future<void> focusPlace(GeoPoint point, {required double bottomInset});
+
+  Future<void> clearContentPadding();
+}
+
 abstract interface class SearchProvider {
   Future<List<PlaceCandidate>> search(
     String query, {

@@ -1634,6 +1634,32 @@ class _MapHomePageState extends State<MapHomePage> {
     _recenter();
   }
 
+  double _placeDeckInset({required bool expanded}) {
+    final height = MediaQuery.sizeOf(context).height;
+    final deckHeight = expanded
+        ? (height * .72).clamp(430.0, 660.0)
+        : (height * .36).clamp(245.0, 310.0);
+    return deckHeight + MediaQuery.paddingOf(context).bottom + 24;
+  }
+
+  void _focusSelectedPlace({bool expanded = false}) {
+    if (!mounted ||
+        _routePlan != null ||
+        _driveEngine.active ||
+        _transitTripRunning) {
+      return;
+    }
+    final place = _selectedPlace?.place;
+    final renderer = _browseRenderer;
+    if (place == null || renderer is! PlaceFocusMapRenderer) return;
+    unawaited(
+      renderer.focusPlace(
+        place.location,
+        bottomInset: _placeDeckInset(expanded: expanded),
+      ),
+    );
+  }
+
   Future<void> _clearRoutePreview() async {
     ++_routeRequest;
     ++_parkingRequest;
@@ -1643,6 +1669,12 @@ class _MapHomePageState extends State<MapHomePage> {
       try {
         await controller.clearPolylines();
         await controller.setPadding(EdgeInsets.zero);
+      } catch (_) {}
+    }
+    final renderer = _browseRenderer;
+    if (renderer is PlaceFocusMapRenderer) {
+      try {
+        await renderer.clearContentPadding();
       } catch (_) {}
     }
     if (!mounted) return;
@@ -2813,6 +2845,9 @@ class _MapHomePageState extends State<MapHomePage> {
       _routePlan = null;
       _selectedRouteId = null;
       _message = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusSelectedPlace();
     });
     if (place.reference?.provider == 'google') {
       unawaited(_loadPlaceDetails(_selectedPoi!));
@@ -5116,6 +5151,8 @@ class _MapHomePageState extends State<MapHomePage> {
                     onFavorite: () => unawaited(_toggleFavorite(_selectedPoi!)),
                     onReview: () => unawaited(_reviewPlace(_selectedPoi!)),
                     language: _appLanguage,
+                    onExpandedChanged: (expanded) =>
+                        _focusSelectedPlace(expanded: expanded),
                   ),
                 ),
               ),
@@ -5228,6 +5265,7 @@ class _PlaceCard extends StatelessWidget {
     required this.onFavorite,
     required this.onReview,
     required this.language,
+    required this.onExpandedChanged,
   });
 
   final PlaceSummary selectedPlace;
@@ -5241,6 +5279,7 @@ class _PlaceCard extends StatelessWidget {
   final VoidCallback onFavorite;
   final VoidCallback onReview;
   final String language;
+  final ValueChanged<bool> onExpandedChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -5256,6 +5295,7 @@ class _PlaceCard extends StatelessWidget {
       onFavorite: onFavorite,
       onReview: onReview,
       language: language,
+      onExpandedChanged: onExpandedChanged,
     );
   }
 }

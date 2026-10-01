@@ -77,6 +77,7 @@ class DriveEngine extends ChangeNotifier {
   Set<String> _highConfidenceCameraIds = const {};
   List<RouteCameraMatch> routeCameras = const [];
   List<SafetyCamera> get cameras => _cameras;
+  CameraSnapshot? get cameraSnapshot => _nztaProvider.lastSnapshot;
   List<RoadEvent> roadEvents = const [];
   List<RoadEvent> upcomingRoadEvents = const [];
   String roadIntelligenceStatus = 'not_loaded';
@@ -294,6 +295,13 @@ class DriveEngine extends ChangeNotifier {
     notifyListeners();
     // Start GPS immediately; provider refresh must not delay entering Drive.
     unawaited(loadCameras(force: true));
+  }
+
+  Future<CameraSnapshot?> syncCameraData() async {
+    final snapshot = await _nztaProvider.repository.syncNow();
+    _nztaProvider.lastSnapshot = snapshot;
+    await loadCameras(force: true);
+    return _nztaProvider.lastSnapshot ?? snapshot;
   }
 
   Future<void> loadCameras({bool force = false}) async {

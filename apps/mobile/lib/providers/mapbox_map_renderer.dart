@@ -8,6 +8,7 @@ import '../domain/map_layer_settings.dart';
 import '../domain/map_provider.dart';
 import '../domain/safety_camera.dart';
 import '../domain/road_event.dart';
+import 'camera_marker_art.dart';
 import 'destination_marker_art.dart';
 import 'location_marker_art.dart';
 import 'provider_contracts.dart';
@@ -28,6 +29,7 @@ class MapboxMapRenderer extends StatefulWidget {
     required this.moving,
     required this.language,
     required this.cameras,
+    required this.onCamera,
     required this.roadEvents,
     required this.onRoadEvent,
     required this.route,
@@ -48,6 +50,7 @@ class MapboxMapRenderer extends StatefulWidget {
   final bool moving;
   final String language;
   final List<SafetyCamera> cameras;
+  final ValueChanged<SafetyCamera> onCamera;
   final List<RoadEvent> roadEvents;
   final ValueChanged<RoadEvent> onRoadEvent;
   final List<GeoPoint> route;
@@ -67,11 +70,12 @@ class MapboxMapRenderer extends StatefulWidget {
 class _MapboxMapRendererState extends State<MapboxMapRenderer>
     implements RouteMapRenderer, PlaceFocusMapRenderer {
   mb.MapboxMap? _map;
-  mb.CircleAnnotationManager? _cameraManager;
+  mb.PointAnnotationManager? _cameraManager;
   mb.CircleAnnotationManager? _selectedManager;
   mb.CircleAnnotationManager? _exploreManager;
   mb.CircleAnnotationManager? _roadEventManager;
   mb.PointAnnotationManager? _destinationManager;
+  final Map<String, SafetyCamera> _cameraAnnotations = {};
   final Map<String, RoadEvent> _roadEventAnnotations = {};
   final Map<String, PlaceSummary> _exploreAnnotations = {};
   mb.PolylineAnnotationManager? _routeManager;
@@ -207,7 +211,14 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
       mb.TapInteraction.onMap((gesture) => unawaited(_onTap(gesture))),
     );
     map.addInteraction(mb.LongTapInteraction.onMap(_onLongTap));
-    _cameraManager = await map.annotations.createCircleAnnotationManager();
+    _cameraManager = await map.annotations.createPointAnnotationManager();
+    await _cameraManager!.setIconAllowOverlap(true);
+    _cameraManager!.tapEvents(
+      onTap: (annotation) {
+        final camera = _cameraAnnotations[annotation.id];
+        if (camera != null) widget.onCamera(camera);
+      },
+    );
     _routeManager = await map.annotations.createPolylineAnnotationManager();
     _selectedManager = await map.annotations.createCircleAnnotationManager();
     _exploreManager = await map.annotations.createCircleAnnotationManager();
@@ -294,28 +305,34 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
     if (!listEquals(_renderedCameras, cameraItems) ||
         _renderedCameraLayers != layers.markerSignature) {
       await cameras.deleteAll();
-      final visibleCameras = cameraItems
-          .where(layers.shows)
-          .map(
-            (camera) => mb.CircleAnnotationOptions(
-              geometry: _point(GeoPoint(camera.latitude, camera.longitude)),
-              circleRadius: 7,
-              circleColor: switch (CameraKindLabel.fromCamera(camera)) {
-                CameraKind.spotSpeed => const Color(0xFF1670B9).toARGB32(),
-                CameraKind.averageSpeed => const Color(0xFF0891B2).toARGB32(),
-                CameraKind.redLight => const Color(0xFFD95640).toARGB32(),
-                CameraKind.dualRedLightSpeed => const Color(
-                  0xFFD97706,
-                ).toARGB32(),
-                CameraKind.busLane => const Color(0xFF496B32).toARGB32(),
-                CameraKind.other => const Color(0xFF325A77).toARGB32(),
-              },
-              circleStrokeColor: Colors.white.toARGB32(),
-              circleStrokeWidth: 2,
-            ),
-          )
-          .toList(growable: false);
-      if (visibleCameras.isNotEmpty) await cameras.createMulti(visibleCameras);
+      _cameraAnnotations.clear();
+      final visibleEntries = <(SafetyCamera, mb.PointAnnotationOptions)>[];
+      for (final camera in cameraItems.where(layers.shows)) {
+        final kind = CameraKindLabel.fromCamera(camera);
+        final image = await CameraMarkerArt.png(kind, onRoute: false);
+        if (!mounted || version != _syncVersion) return;
+        visibleEntries.add((
+          camera,
+          mb.PointAnnotationOptions(
+            geometry: _point(GeoPoint(camera.latitude, camera.longitude)),
+            image: image,
+            iconAnchor: mb.IconAnchor.BOTTOM,
+            iconSize: 0.48,
+            symbolSortKey: 30,
+          ),
+        ));
+      }
+      if (visibleEntries.isNotEmpty) {
+        final annotations = await cameras.createMulti(
+          visibleEntries.map((entry) => entry.$2).toList(growable: false),
+        );
+        for (var index = 0; index < annotations.length; index++) {
+          final annotation = annotations[index];
+          if (annotation != null) {
+            _cameraAnnotations[annotation.id] = visibleEntries[index].$1;
+          }
+        }
+      }
       _renderedCameras = List.of(cameraItems);
       _renderedCameraLayers = layers.markerSignature;
     }

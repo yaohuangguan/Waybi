@@ -9,6 +9,7 @@ import { createRoadReport, readRoadReports } from './road_reports.mjs';
 import { recordApiUsage, readUsageSummary } from './cost_guard.mjs';
 
 const CAMERA_KEY = 'cameras/current';
+const CAMERA_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
 let lastSearchAt = 0;
 
 function json(body, status = 200) {
@@ -23,7 +24,14 @@ function json(body, status = 200) {
 }
 
 function seedState() {
-  return { ...seed, checkedAt: null, syncStatus: 'seed', syncError: null, change: { added: 0, removed: 0 } };
+  return {
+    ...seed,
+    checkedAt: null,
+    syncStatus: 'seed',
+    syncError: null,
+    fetchMode: 'bundled-seed',
+    change: { added: 0, removed: 0 }
+  };
 }
 
 export async function readCameraState(env) {
@@ -116,6 +124,21 @@ async function handleApi(request, env, ctx) {
       return json({ error: String(error.message || error) }, 400);
     }
   }
+  if (url.pathname === '/api/cameras/sync' && request.method === 'POST') {
+    const current = await readCameraState(env);
+    const checkedAt = Date.parse(current.checkedAt || '');
+    const recentlyChecked =
+      current.syncStatus === 'live' &&
+      Number.isFinite(checkedAt) &&
+      Date.now() - checkedAt < CAMERA_SYNC_COOLDOWN_MS;
+    const state = recentlyChecked ? current : await syncCameras(env);
+    return json({
+      ...state,
+      source: SOURCE_URL,
+      skipped: recentlyChecked,
+      cooldownSeconds: Math.round(CAMERA_SYNC_COOLDOWN_MS / 1000)
+    });
+  }
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
   if (url.pathname === '/api/admin/costs') {
     const configuredAdmins = String(env.ADMIN_EMAILS || '')
@@ -140,7 +163,14 @@ async function handleApi(request, env, ctx) {
   }
   if (url.pathname === '/api/health') {
     const state = await readCameraState(env);
-    return json({ ok: true, cameraCount: state.cameras.length, syncStatus: state.syncStatus });
+    return json({
+      ok: true,
+      cameraCount: state.cameras.length,
+      syncStatus: state.syncStatus,
+      sourceUpdatedAt: state.sourceUpdatedAt,
+      checkedAt: state.checkedAt,
+      fetchMode: state.fetchMode ?? null
+    });
   }
   if (url.pathname === '/api/cameras') {
     const state = await readCameraState(env);

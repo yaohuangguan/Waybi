@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { readCameraState, syncCameras } from '../src/worker.mjs';
+import seed from '../data/cameras.json' with { type: 'json' };
 
 function fakeEnv(initial = null) {
   let value = initial;
@@ -16,10 +17,10 @@ function fakeEnv(initial = null) {
 test('Worker API serves the full seeded camera list when KV is empty', async () => {
   const env = fakeEnv();
   const state = await readCameraState(env);
-  assert.equal(state.cameras.length, 125);
+  assert.equal(state.cameras.length, seed.cameras.length);
   const response = await worker.fetch(new Request('https://example.test/api/health'), env, { waitUntil() {} });
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).cameraCount, 125);
+  assert.equal((await response.json()).cameraCount, seed.cameras.length);
 });
 
 test('cross-origin address requests get a readable configuration response', async () => {
@@ -144,8 +145,8 @@ test('failed scheduled sync keeps validated cameras in KV', async () => {
   const env = fakeEnv();
   const state = await syncCameras(env, async () => new Response('<html>challenge</html>'));
   assert.equal(state.syncStatus, 'stale');
-  assert.equal(state.cameras.length, 125);
-  assert.equal((await readCameraState(env)).cameras.length, 125);
+  assert.equal(state.cameras.length, seed.cameras.length);
+  assert.equal((await readCameraState(env)).cameras.length, seed.cameras.length);
 });
 
 test('Worker rejects malformed route coordinates before upstream calls', async () => {

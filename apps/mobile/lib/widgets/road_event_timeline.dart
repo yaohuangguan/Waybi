@@ -8,41 +8,47 @@ class RoadEventTimeline extends StatelessWidget {
     super.key,
     required this.events,
     this.maneuverLabel,
+    this.language = 'en',
     this.dark = true,
   });
 
   final List<RoadEvent> events;
   final String? maneuverLabel;
+  final String language;
   final bool dark;
+
+  String _text(String en, String zh) => language == 'zh' ? zh : en;
 
   String _distance(RoadEvent event) {
     final metres = event.distanceAlongRoute ?? event.distanceFromDriver;
     if (metres == null) return '';
-    if (metres >= 1000) return '${(metres / 1000).toStringAsFixed(1)} km';
-    return '${metres.round()} m';
+    if (metres >= 1000) {
+      return '${(metres / 1000).toStringAsFixed(1)} ${_text('km', '公里')}';
+    }
+    return '${metres.round()} ${_text('m', '米')}';
   }
 
   String _label(RoadEvent event) => switch (event.type) {
-    RoadEventType.safetyCamera => 'Camera',
-    RoadEventType.speedLimitChange => 'Speed change',
-    RoadEventType.temporarySpeedLimit => 'Temp. limit',
-    RoadEventType.roadworks => 'Roadworks',
-    RoadEventType.incident => 'Incident',
-    RoadEventType.congestion => 'Traffic',
-    RoadEventType.schoolZone => 'School zone',
-    RoadEventType.sharpCurve => 'Sharp curve',
-    RoadEventType.laneMerge => 'Merge',
-    RoadEventType.laneEnd => 'Lane ends',
-    RoadEventType.oneLaneBridge => 'One-lane bridge',
-    RoadEventType.flooding => 'Flooding',
-    RoadEventType.slip => 'Slip',
-    RoadEventType.strongWind => 'Strong wind',
-    RoadEventType.lowVisibility => 'Low visibility',
+    RoadEventType.safetyCamera => _text('Camera', '摄像头'),
+    RoadEventType.speedLimitChange => _text('Speed change', '限速变化'),
+    RoadEventType.temporarySpeedLimit => _text('Temp. limit', '临时限速'),
+    RoadEventType.roadworks => _text('Roadworks', '道路施工'),
+    RoadEventType.incident => _text('Incident', '事故'),
+    RoadEventType.congestion => _text('Traffic', '拥堵'),
+    RoadEventType.schoolZone => _text('School zone', '学校区域'),
+    RoadEventType.sharpCurve => _text('Sharp curve', '急弯'),
+    RoadEventType.laneMerge => _text('Merge', '车道汇入'),
+    RoadEventType.laneEnd => _text('Lane ends', '车道结束'),
+    RoadEventType.oneLaneBridge => _text('One-lane bridge', '单车道桥'),
+    RoadEventType.flooding => _text('Flooding', '积水'),
+    RoadEventType.slip => _text('Slip', '滑坡'),
+    RoadEventType.strongWind => _text('Strong wind', '强风'),
+    RoadEventType.lowVisibility => _text('Low visibility', '低能见度'),
     RoadEventType.ice =>
       event.observation == RoadEventObservation.inferred
-          ? 'Possible ice'
-          : 'Ice warning',
-    RoadEventType.roadClosure => 'Road closed',
+          ? _text('Possible ice', '可能结冰')
+          : _text('Ice warning', '结冰警告'),
+    RoadEventType.roadClosure => _text('Road closed', '道路封闭'),
   };
 
   IconData _icon(RoadEventType type) => switch (type) {
@@ -83,8 +89,8 @@ class RoadEventTimeline extends StatelessWidget {
     final items = <Widget>[
       _TimelineNode(
         icon: Icons.navigation_rounded,
-        label: 'Now',
-        detail: maneuverLabel ?? 'Driving',
+        label: _text('Now', '当前'),
+        detail: maneuverLabel ?? _text('Driving', '行驶中'),
         color: KiwiLensColors.sky,
         foreground: foreground,
         muted: muted,
@@ -105,7 +111,7 @@ class RoadEventTimeline extends StatelessWidget {
     ];
 
     return Semantics(
-      label: 'Upcoming road events',
+      label: _text('Upcoming road events', '前方道路事件'),
       child: Container(
         constraints: const BoxConstraints(minHeight: 58),
         padding: const EdgeInsets.symmetric(

@@ -7,22 +7,29 @@ import '../domain/route_option.dart';
 import '../data/parking_repository.dart';
 import 'kiwi_mascot.dart';
 
-String _duration(int seconds) {
+String _duration(int seconds, {bool isChinese = false}) {
   final duration = Duration(seconds: seconds);
   if (duration.inHours >= 1) {
     final minutes = duration.inMinutes.remainder(60);
     return minutes == 0
-        ? '${duration.inHours} hr'
-        : '${duration.inHours} hr $minutes min';
+        ? (isChinese ? '${duration.inHours} 小时' : '${duration.inHours} hr')
+        : (isChinese
+              ? '${duration.inHours} 小时 $minutes 分钟'
+              : '${duration.inHours} hr $minutes min');
   }
-  return '${duration.inMinutes.clamp(1, 999)} min';
+  final minutes = duration.inMinutes.clamp(1, 999);
+  return isChinese ? '$minutes 分钟' : '$minutes min';
 }
 
-String _distance(int metres) => metres >= 1000
-    ? '${(metres / 1000).toStringAsFixed(metres < 10000 ? 1 : 0)} km'
-    : '$metres m';
+String _distance(int metres, {bool isChinese = false}) => metres >= 1000
+    ? '${(metres / 1000).toStringAsFixed(metres < 10000 ? 1 : 0)} ${isChinese ? '公里' : 'km'}'
+    : '$metres ${isChinese ? '米' : 'm'}';
 
-String routeExplanation(RouteOption selected, List<RouteOption> routes) {
+String routeExplanation(
+  RouteOption selected,
+  List<RouteOption> routes, {
+  bool isChinese = false,
+}) {
   if (routes.isEmpty) return selected.description;
   final fastest = routes.reduce(
     (a, b) => a.durationSeconds <= b.durationSeconds ? a : b,
@@ -30,20 +37,32 @@ String routeExplanation(RouteOption selected, List<RouteOption> routes) {
   final facts = <String>[];
   final extra = selected.durationSeconds - fastest.durationSeconds;
   if (extra > 60) {
-    facts.add('+${_duration(extra)} vs fastest');
+    facts.add(
+      isChinese
+          ? '比最快路线多 ${_duration(extra, isChinese: true)}'
+          : '+${_duration(extra)} vs fastest',
+    );
   } else if (selected.mode == KiwiTravelMode.drive) {
-    facts.add('Fastest available route');
+    facts.add(isChinese ? '当前最快路线' : 'Fastest available route');
   }
   final distanceDifference = selected.distanceMeters - fastest.distanceMeters;
   if (selected.id != fastest.id && distanceDifference.abs() >= 500) {
     facts.add(
       distanceDifference < 0
-          ? '${_distance(-distanceDifference)} shorter'
-          : '${_distance(distanceDifference)} longer',
+          ? (isChinese
+                ? '少走 ${_distance(-distanceDifference, isChinese: true)}'
+                : '${_distance(-distanceDifference)} shorter')
+          : (isChinese
+                ? '多走 ${_distance(distanceDifference, isChinese: true)}'
+                : '${_distance(distanceDifference)} longer'),
     );
   }
   if ((selected.trafficDelaySeconds ?? 0) > 60) {
-    facts.add('${_duration(selected.trafficDelaySeconds!)} traffic delay');
+    facts.add(
+      isChinese
+          ? '拥堵增加 ${_duration(selected.trafficDelaySeconds!, isChinese: true)}'
+          : '${_duration(selected.trafficDelaySeconds!)} traffic delay',
+    );
   }
   if (selected.description.isNotEmpty) facts.add(selected.description);
   return facts.join(' · ');
@@ -55,6 +74,19 @@ IconData _icon(KiwiTravelMode mode) => switch (mode) {
   KiwiTravelMode.walk => Icons.directions_walk_rounded,
   KiwiTravelMode.bicycle => Icons.pedal_bike_rounded,
 };
+
+String _cameraTypeLabel(String value, {required bool isChinese}) {
+  if (!isChinese) return value;
+  return switch (value.toLowerCase()) {
+    'spot speed' => '定点测速',
+    'average speed' => '区间测速',
+    'red light' => '闯红灯',
+    'red light + speed' => '闯红灯 + 测速',
+    'bus / transit lane' => '公交 / 专用车道',
+    'other' => '其他',
+    _ => value,
+  };
+}
 
 class RouteCameraSummary {
   const RouteCameraSummary({this.count = 0, this.types = const []});
@@ -185,8 +217,8 @@ class RoutePreviewSheet extends StatelessWidget {
                           height: 36,
                         ),
                         tooltip: isFavorite
-                            ? 'Remove favorite'
-                            : 'Save favorite',
+                            ? (isChinese ? '取消收藏' : 'Remove favorite')
+                            : (isChinese ? '收藏' : 'Save favorite'),
                         onPressed: onFavorite,
                         icon: Icon(
                           isFavorite
@@ -203,7 +235,7 @@ class RoutePreviewSheet extends StatelessWidget {
                           width: 36,
                           height: 36,
                         ),
-                        tooltip: 'My review',
+                        tooltip: isChinese ? '我的评价' : 'My review',
                         onPressed: onReview,
                         icon: const Icon(Icons.rate_review_outlined),
                       ),
@@ -319,6 +351,7 @@ class RoutePreviewSheet extends StatelessWidget {
                                                   .forMode(mode)
                                                   .first
                                                   .durationSeconds,
+                                              isChinese: isChinese,
                                             ),
                                       style: const TextStyle(
                                         fontSize: 11,
@@ -349,6 +382,7 @@ class RoutePreviewSheet extends StatelessWidget {
                     for (var index = 0; index < routes.length; index++) ...[
                       _RouteOptionTile(
                         route: routes[index],
+                        isChinese: isChinese,
                         active: routes[index].id == selected?.id,
                         fastestDuration: fastestDuration,
                         cameraSummary:
@@ -364,18 +398,26 @@ class RoutePreviewSheet extends StatelessWidget {
                     if (selected.mode == KiwiTravelMode.drive &&
                         (selected.traffic.hasIssues ||
                             selected.warnings.isNotEmpty))
-                      _TrafficCard(route: selected),
+                      _TrafficCard(route: selected, isChinese: isChinese),
                     if (selected.mode == KiwiTravelMode.transit &&
                         selected.transit.isNotEmpty)
-                      _TransitDetails(route: selected),
+                      _TransitDetails(route: selected, isChinese: isChinese),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
                           child: Text(
-                            routeExplanation(selected, routes).isNotEmpty
-                                ? routeExplanation(selected, routes)
-                                : 'Route preview',
+                            routeExplanation(
+                                  selected,
+                                  routes,
+                                  isChinese: isChinese,
+                                ).isNotEmpty
+                                ? routeExplanation(
+                                    selected,
+                                    routes,
+                                    isChinese: isChinese,
+                                  )
+                                : (isChinese ? '路线预览' : 'Route preview'),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -431,7 +473,7 @@ class RoutePreviewSheet extends StatelessWidget {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          'Custom origin is for route preview; live guidance starts from your GPS.',
+                          isChinese ? '自定义起点仅用于路线预览；实时导航会从当前 GPS 位置开始。' : 'Custom origin is for route preview; live guidance starts from your GPS.',
                           maxLines: 2,
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.tertiary,
@@ -460,7 +502,11 @@ class RoutePreviewSheet extends StatelessWidget {
                               size: 16,
                             ),
                             label: Text(
-                              stopCount == 0 ? 'Add stop' : 'Stops $stopCount',
+                              stopCount == 0
+                                  ? (isChinese ? '添加途经点' : 'Add stop')
+                                  : (isChinese
+                                        ? '途经点 $stopCount'
+                                        : 'Stops $stopCount'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -481,7 +527,7 @@ class RoutePreviewSheet extends StatelessWidget {
                               Icons.bookmark_border_rounded,
                               size: 16,
                             ),
-                            label: const Text('Save', maxLines: 1),
+                            label: Text(isChinese ? '保存' : 'Save', maxLines: 1),
                           ),
                         ),
                       ],
@@ -500,6 +546,7 @@ class RoutePreviewSheet extends StatelessWidget {
 class _RouteOptionTile extends StatelessWidget {
   const _RouteOptionTile({
     required this.route,
+    required this.isChinese,
     required this.active,
     required this.fastestDuration,
     required this.cameraSummary,
@@ -507,15 +554,18 @@ class _RouteOptionTile extends StatelessWidget {
   });
 
   final RouteOption route;
+  final bool isChinese;
   final bool active;
   final int fastestDuration;
   final RouteCameraSummary cameraSummary;
   final VoidCallback onTap;
 
   String get _trafficLabel {
-    if (route.traffic.trafficJam > 0) return 'Heavier traffic';
-    if (route.traffic.slow > 0) return 'Some traffic';
-    return 'Light traffic';
+    if (route.traffic.trafficJam > 0) {
+      return isChinese ? '拥堵较重' : 'Heavier traffic';
+    }
+    if (route.traffic.slow > 0) return isChinese ? '部分拥堵' : 'Some traffic';
+    return isChinese ? '路况顺畅' : 'Light traffic';
   }
 
   Color _trafficColor() {
@@ -561,8 +611,8 @@ class _RouteOptionTile extends StatelessWidget {
     final description = route.description.trim().isNotEmpty
         ? route.description.trim()
         : fastest
-        ? 'Best route'
-        : 'Alternative';
+        ? (isChinese ? '推荐路线' : 'Best route')
+        : (isChinese ? '备选路线' : 'Alternative');
 
     return InkWell(
       onTap: onTap,
@@ -600,7 +650,7 @@ class _RouteOptionTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _duration(route.durationSeconds),
+                    _duration(route.durationSeconds, isChinese: isChinese),
                     style: TextStyle(
                       color: active ? scheme.primary : scheme.onSurface,
                       fontSize: 15,
@@ -609,8 +659,8 @@ class _RouteOptionTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 1),
                   Text(
-                    '${_distance(route.distanceMeters)} · $description'
-                    '${delay != null && delay > 60 ? ' · ${_duration(delay)} traffic' : ''}',
+                    '${_distance(route.distanceMeters, isChinese: isChinese)} · $description'
+                    '${delay != null && delay > 60 ? (isChinese ? ' · 拥堵 ${_duration(delay, isChinese: true)}' : ' · ${_duration(delay)} traffic') : ''}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -651,9 +701,12 @@ class _RouteOptionTile extends StatelessWidget {
                           Flexible(
                             child: Text(
                               cameraSummary.count > 0
-                                  ? '${cameraSummary.count} camera${cameraSummary.count == 1 ? '' : 's'}'
-                                        '${cameraSummary.types.isEmpty ? '' : ' · ${cameraSummary.types.take(2).join(' + ')}'}'
-                                  : 'No cameras matched',
+                                  ? (isChinese
+                                        ? '${cameraSummary.count} 个摄像头${cameraSummary.types.isEmpty ? '' : ' · ${cameraSummary.types.take(2).map((type) => _cameraTypeLabel(type, isChinese: true)).join(' + ')}'}'
+                                        : '${cameraSummary.count} camera${cameraSummary.count == 1 ? '' : 's'}${cameraSummary.types.isEmpty ? '' : ' · ${cameraSummary.types.take(2).join(' + ')}'}')
+                                  : (isChinese
+                                        ? '未匹配到摄像头'
+                                        : 'No cameras matched'),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -714,17 +767,22 @@ class _RouteOptionTile extends StatelessWidget {
 }
 
 class _TrafficCard extends StatelessWidget {
-  const _TrafficCard({required this.route});
+  const _TrafficCard({required this.route, required this.isChinese});
 
   final RouteOption route;
+  final bool isChinese;
 
   @override
   Widget build(BuildContext context) {
     final jam = route.traffic.trafficJam;
     final slow = route.traffic.slow;
     final text = jam > 0
-        ? '$jam heavy-traffic section${jam == 1 ? '' : 's'} ahead'
-        : '$slow slow section${slow == 1 ? '' : 's'} ahead';
+        ? (isChinese
+              ? '前方有 $jam 段严重拥堵'
+              : '$jam heavy-traffic section${jam == 1 ? '' : 's'} ahead')
+        : (isChinese
+              ? '前方有 $slow 段缓行'
+              : '$slow slow section${slow == 1 ? '' : 's'} ahead');
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 7),
@@ -746,7 +804,7 @@ class _TrafficCard extends StatelessWidget {
           Expanded(
             child: Text(
               route.warnings.isNotEmpty
-                  ? '$text · ${route.warnings.first}'
+                  ? '$text · ${isChinese && route.warnings.first == 'This route includes a highway.' ? '路线包含高速公路路段' : route.warnings.first}'
                   : text,
               style: TextStyle(
                 fontSize: 11,
@@ -762,9 +820,10 @@ class _TrafficCard extends StatelessWidget {
 }
 
 class _TransitDetails extends StatelessWidget {
-  const _TransitDetails({required this.route});
+  const _TransitDetails({required this.route, required this.isChinese});
 
   final RouteOption route;
+  final bool isChinese;
 
   @override
   Widget build(BuildContext context) {
@@ -801,7 +860,7 @@ class _TransitDetails extends StatelessWidget {
                       Text(
                         '${route.transit[index].departureStop} → '
                         '${route.transit[index].arrivalStop}'
-                        '${route.transit[index].stopCount > 0 ? ' · ${route.transit[index].stopCount} stops' : ''}',
+                        '${route.transit[index].stopCount > 0 ? (isChinese ? ' · ${route.transit[index].stopCount} 站' : ' · ${route.transit[index].stopCount} stops') : ''}',
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 10,
@@ -839,8 +898,8 @@ class _ParkingChoices extends StatelessWidget {
   final bool isChinese;
 
   String _walkDistance(double metres) => metres >= 1000
-      ? '${(metres / 1000).toStringAsFixed(1)} km'
-      : '${metres.round()} m';
+      ? '${(metres / 1000).toStringAsFixed(1)} ${isChinese ? '公里' : 'km'}'
+      : '${metres.round()} ${isChinese ? '米' : 'm'}';
 
   @override
   Widget build(BuildContext context) {

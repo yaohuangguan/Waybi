@@ -84,7 +84,7 @@ void main() {
       );
       expect(camera.bottom, lessThan(667 / 2));
       expect(find.text('Queen Street'), findsOneWidget);
-      expect(find.byTooltip('Recenter'), findsOneWidget);
+      expect(find.byTooltip('Route overview'), findsOneWidget);
       expect(find.text('End'), findsOneWidget);
       await tester.tap(find.byKey(const Key('navigationSheetHandle')));
       await tester.pumpAndSettle();

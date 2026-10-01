@@ -42,7 +42,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('180 米'), findsOneWidget);
     expect(find.text('2.4 公里'), findsNWidgets(2));
-    expect(find.byTooltip('回到当前位置'), findsOneWidget);
+    expect(find.byTooltip('路线全览'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('结束'));
     await tester.pumpAndSettle();
@@ -62,7 +62,7 @@ void main() {
     expect(find.byKey(const Key('navigationCameraAlert')), findsNothing);
     expect(tester.takeException(), isNull);
     expect(find.text('Turn left onto Queen Street'), findsOneWidget);
-    expect(find.byTooltip('Recenter'), findsOneWidget);
+    expect(find.byTooltip('Route overview'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets('Chinese camera and lanes remain readable at larger text scale', (

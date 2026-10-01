@@ -141,6 +141,11 @@ class DriveEngine extends ChangeNotifier {
   CameraAlertState cameraAlertState = const CameraAlertState.idle();
   bool get routed => _route != null;
   NavInfo? navInfo;
+  DateTime? navInfoUpdatedAt;
+  bool get nativeGuidanceStale =>
+      guidanceRunning &&
+      (navInfoUpdatedAt == null ||
+          DateTime.now().difference(navInfoUpdatedAt!).inSeconds >= 8);
   String? error;
 
   Future<void> start() async {
@@ -170,6 +175,7 @@ class DriveEngine extends ChangeNotifier {
       GoogleMapsNavigator.setNavInfoListener(
         (event) {
           navInfo = event.navInfo;
+          navInfoUpdatedAt = DateTime.now();
           guidanceRunning =
               event.navInfo.navState == NavState.enroute ||
               event.navInfo.navState == NavState.rerouting;
@@ -334,8 +340,9 @@ class DriveEngine extends ChangeNotifier {
     ++_turnRevision;
     unawaited(_voiceEngine.stop());
     _route = route;
-    _progressTracker = route?.provider == 'mapbox'
-        ? RouteProgressTracker(route!.points)
+    navInfoUpdatedAt = null;
+    _progressTracker = route != null && route.points.length >= 2
+        ? RouteProgressTracker(route.points)
         : null;
     routeProgress = null;
     if (!preserveAlerts) _spokenAlerts.clear();

@@ -68,14 +68,14 @@ void main() {
       ),
     );
     expect(find.text('GPS ±18 m'), findsOneWidget);
-    expect(find.byTooltip('Recenter'), findsOneWidget);
+    expect(find.byTooltip('Route overview'), findsOneWidget);
     expect(find.text('Add a report'), findsNothing);
 
     await tester.tap(find.text('GPS ±18 m'));
     await tester.pump();
     expect(recenterCount, 0);
 
-    await tester.tap(find.byTooltip('Recenter'));
+    await tester.tap(find.byTooltip('Route overview'));
     await tester.pump();
     expect(recenterCount, 1);
 
@@ -91,5 +91,47 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Add a report'), findsNothing);
+  });
+
+  testWidgets('route overview control switches to follow action', (
+    tester,
+  ) async {
+    final engine = DriveEngine();
+    addTearDown(engine.dispose);
+    var taps = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: NavigationOverlay(
+            engine: engine,
+            destinationTitle: 'Destination',
+            gpsAccuracy: 8,
+            voiceEnabled: true,
+            lanesEnabled: true,
+            onEnd: () {},
+            onRecenter: () => taps += 1,
+            onOverview: () {},
+            following: false,
+            overviewMode: true,
+            northUp: false,
+            onCompassToggle: () {},
+            onReport: () {},
+            onSearchAlongRoute: () {},
+            onDirections: () {},
+            onShare: () {},
+            onSettings: () {},
+            onLayers: () {},
+            onVoiceToggle: () {},
+            onLanesToggle: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byTooltip('Follow my location'), findsOneWidget);
+    await tester.tap(find.byTooltip('Follow my location'));
+    await tester.pump();
+    expect(taps, 1);
   });
 }

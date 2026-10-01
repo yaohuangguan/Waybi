@@ -29,6 +29,8 @@ class MapboxNavigationOverlay extends StatelessWidget {
     required this.onEnd,
     required this.onRecenter,
     required this.onOverview,
+    this.following = true,
+    this.overviewMode = false,
     required this.northUp,
     required this.onCompassToggle,
     required this.onReport,
@@ -42,15 +44,21 @@ class MapboxNavigationOverlay extends StatelessWidget {
     required this.voiceEnabled,
     required this.lanesEnabled,
     this.gpsAccuracy,
+    this.arrivalPanel,
+    this.offlineReady = false,
   });
   final MapboxNavigationEngine engine;
   final DriveEngine drive;
   final String destination;
   final String language;
   final double? gpsAccuracy;
+  final bool following;
+  final bool overviewMode;
   final bool northUp;
   final bool voiceEnabled;
   final bool lanesEnabled;
+  final Widget? arrivalPanel;
+  final bool offlineReady;
   final VoidCallback onEnd,
       onRecenter,
       onOverview,
@@ -126,6 +134,8 @@ class MapboxNavigationOverlay extends StatelessWidget {
         onEnd: onEnd,
         onRecenter: onRecenter,
         onOverview: onOverview,
+        following: following,
+        overviewMode: overviewMode,
         northUp: northUp,
         onCompassToggle: onCompassToggle,
         onReport: onReport,
@@ -136,6 +146,9 @@ class MapboxNavigationOverlay extends StatelessWidget {
         onLayers: onLayers,
         onVoiceToggle: onVoiceToggle,
         onLanesToggle: onLanesToggle,
+        arrivalPanel: arrivalPanel,
+        offlineReady: offlineReady,
+        usingOfflineGuidance: engine.error != null,
       );
     },
   );

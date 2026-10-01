@@ -107,8 +107,73 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Route' }
+  /route-watches:
+    get:
+      summary: Evaluate and list the signed-in user's saved Route Watch routes
+      responses:
+        '200':
+          description: Current Route Watch states from official road-event matching
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entitlement: { type: string, enum: [plus-preview] }
+                  watches:
+                    type: array
+                    items: { $ref: '#/components/schemas/RouteWatch' }
+        '401': { description: Sign in required }
+    post:
+      summary: Create or refresh a Route Watch from the current driving route geometry
+      responses:
+        '201':
+          description: Route Watch saved and evaluated
+        '400': { description: Invalid route geometry or destination }
+        '401': { description: Sign in required }
+  /route-watches/{id}:
+    delete:
+      summary: Stop watching a saved route
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Route Watch deleted }
+        '401': { description: Sign in required }
 components:
   schemas:
+    RouteWatch:
+      type: object
+      required: [id, label, destinationName, enabled, status, eventCount, events]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        destinationName: { type: string }
+        destination:
+          type: object
+          properties:
+            latitude: { type: number }
+            longitude: { type: number }
+        baselineDurationSeconds: { type: integer, nullable: true }
+        baselineDistanceMeters: { type: integer, nullable: true }
+        enabled: { type: boolean }
+        status: { type: string, enum: [healthy, advisory, warning, disrupted, unknown] }
+        eventCount: { type: integer }
+        lastCheckedAt: { type: string, format: date-time, nullable: true }
+        updatedAt: { type: string, format: date-time }
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              type: { type: string }
+              severity: { type: string }
+              roadName: { type: string, nullable: true }
+              description: { type: string }
+              impact: { type: string }
+              distanceFromRouteMeters: { type: integer }
     ParkingPlace:
       type: object
       required: [id, source, name, address, coordinate, distanceMeters]

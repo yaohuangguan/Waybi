@@ -69,6 +69,9 @@ jobs:
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
       - if: steps.deploy-auth.outputs.ready == 'true'
         run: pnpm install --no-frozen-lockfile
+      - name: Apply D1 migrations
+        if: steps.deploy-auth.outputs.ready == 'true'
+        run: pnpm db:migrate:remote
       - name: Deploy Cloudflare Worker
         if: steps.deploy-auth.outputs.ready == 'true'
         run: pnpm deploy

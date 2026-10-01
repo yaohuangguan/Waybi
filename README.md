@@ -158,3 +158,18 @@ Kiwi Lens deliberately keeps the core map, place search and turn-by-turn navigat
 Usage telemetry is best-effort: a failed write must never block search, route planning or active navigation. The server keeps counts and billable-style units rather than hard-coding provider prices, because provider pricing and free tiers change independently of the app release.
 
 After applying D1 migrations, an authenticated admin can query `GET /api/admin/costs?days=31`. Access is restricted to emails listed in the Worker `ADMIN_EMAILS` binding (comma-separated); do not commit personal admin addresses to the repository. The response exposes daily provider/SKU rows plus aggregate calls and units, which can be combined with the current Google/Mapbox/Geoapify price sheet when reviewing unit economics.
+
+### Route Watch
+
+Route Watch is the first Plus-preview road-intelligence feature. Signed-in users can enable it for configured Home/Work routes from the Trips hub. Enabling a watch stores a sampled route geometry and baseline ETA/distance in D1; it does **not** continuously buy fresh Google routes. A Worker cron evaluates enabled routes every 15 minutes against official NZTA Traffic and Travel road events and records `healthy`, `advisory`, `warning`, or `disrupted` status plus matched event details. Opening Trips refreshes the status immediately. `migrations/0006_route_watch.sql` creates the persisted watch state.
+
+This release intentionally does not claim background push delivery: the server-side monitoring loop is real, but APNs/FCM device-token registration and remote notification delivery remain a separate layer. Core navigation stays free and Route Watch remains a Plus preview until StoreKit entitlement handling is introduced.
+
+
+Route Watch stores up to 220 sampled mobile route points (validated to at most 250 server-side) and evaluates official events against a 180 m route corridor. It does not continuously upload the driver's live GPS position; background checks operate on the saved route rather than the user's current location.
+
+Route Watch API:
+
+- `GET /api/route-watches`: evaluate and return the signed-in user's watches
+- `POST /api/route-watches`: create or refresh a watch from current route geometry
+- `DELETE /api/route-watches/:id`: stop watching a route

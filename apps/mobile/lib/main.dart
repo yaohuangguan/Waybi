@@ -4225,6 +4225,69 @@ class _MapHomePageState extends State<MapHomePage> {
     }
   }
 
+  List<Map<String, double>> _routeWatchPoints(List<GeoPoint> points) {
+    if (points.length < 2) return const [];
+    const maxPoints = 220;
+    final sampled = points.length <= maxPoints
+        ? points
+        : List<GeoPoint>.generate(
+            maxPoints,
+            (index) =>
+                points[(index * (points.length - 1) / (maxPoints - 1)).round()],
+            growable: false,
+          );
+    return sampled
+        .map(
+          (point) => <String, double>{
+            'latitude': point.latitude,
+            'longitude': point.longitude,
+          },
+        )
+        .toList(growable: false);
+  }
+
+  Future<void> _setRouteWatch(
+    String label,
+    RouteWatchItem? current,
+    bool enabled,
+  ) async {
+    if (!_account.signedIn) throw StateError('Sign in to use Route Watch');
+    if (!enabled) {
+      if (current != null) await _account.deleteRouteWatch(current.id);
+      return;
+    }
+
+    var route = _quickCommuteRoutes[label];
+    if (route == null) {
+      await _refreshQuickCommutes(force: true);
+      route = _quickCommuteRoutes[label];
+    }
+    final place = _quickLocations[label];
+    if (place == null) {
+      throw StateError(
+        _text('Set $label before enabling Route Watch.', '请先设置$label，再开启路线监控。'),
+      );
+    }
+    if (route == null || route.points.length < 2) {
+      throw StateError(
+        _text(
+          'A live driving route is required before Route Watch can start.',
+          '需要先获取实时驾车路线，才能开启路线监控。',
+        ),
+      );
+    }
+
+    await _account.saveRouteWatch(
+      label: label,
+      destinationName: place.name,
+      latitude: place.location.latitude,
+      longitude: place.location.longitude,
+      routePoints: _routeWatchPoints(route.points),
+      durationSeconds: route.durationSeconds,
+      distanceMeters: route.distanceMeters,
+    );
+  }
+
   Future<TripsSnapshot> _loadTripsSnapshot() async {
     await _refreshQuickCommutes(force: true);
 
@@ -4278,19 +4341,38 @@ class _MapHomePageState extends State<MapHomePage> {
       );
     }
 
+    final routeWatches = <String, RouteWatchItem>{};
+    if (_account.signedIn) {
+      try {
+        for (final item in await _account.routeWatches()) {
+          final watch = RouteWatchItem.fromJson(item);
+          if (watch.id.isNotEmpty && watch.label.isNotEmpty) {
+            routeWatches[watch.label] = watch;
+          }
+        }
+      } catch (_) {
+        // Trips and navigation stay usable if Route Watch is temporarily unavailable.
+      }
+    }
+
     return TripsSnapshot(
       quickPlaces: quickPlaces,
       quickRoutes: Map<String, RouteOption>.from(_quickCommuteRoutes),
       recent: recent,
       history: history,
+      routeWatches: routeWatches,
+      signedIn: _account.signedIn,
     );
   }
 
   Future<void> _showTrips() async {
     final result = await Navigator.of(context).push<TripsResult>(
       MaterialPageRoute(
-        builder: (_) =>
-            TripsPage(language: _appLanguage, loader: _loadTripsSnapshot),
+        builder: (_) => TripsPage(
+          language: _appLanguage,
+          loader: _loadTripsSnapshot,
+          onRouteWatchChanged: _setRouteWatch,
+        ),
       ),
     );
     if (!mounted || result == null) return;

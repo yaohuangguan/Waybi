@@ -32,18 +32,74 @@ class TripHistoryItem {
   final DateTime? createdAt;
 }
 
+class RouteWatchEvent {
+  const RouteWatchEvent({
+    required this.type,
+    required this.severity,
+    required this.description,
+    required this.impact,
+    this.roadName,
+  });
+
+  final String type;
+  final String severity;
+  final String description;
+  final String impact;
+  final String? roadName;
+
+  factory RouteWatchEvent.fromJson(Map<String, dynamic> json) =>
+      RouteWatchEvent(
+        type: json['type']?.toString() ?? 'incident',
+        severity: json['severity']?.toString() ?? 'advisory',
+        description: json['description']?.toString() ?? '',
+        impact: json['impact']?.toString() ?? '',
+        roadName: json['roadName']?.toString(),
+      );
+}
+
+class RouteWatchItem {
+  const RouteWatchItem({
+    required this.id,
+    required this.label,
+    required this.status,
+    required this.events,
+    this.lastCheckedAt,
+  });
+
+  final String id;
+  final String label;
+  final String status;
+  final List<RouteWatchEvent> events;
+  final DateTime? lastCheckedAt;
+
+  factory RouteWatchItem.fromJson(Map<String, dynamic> json) => RouteWatchItem(
+    id: json['id']?.toString() ?? '',
+    label: json['label']?.toString() ?? '',
+    status: json['status']?.toString() ?? 'unknown',
+    events: (json['events'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(RouteWatchEvent.fromJson)
+        .toList(growable: false),
+    lastCheckedAt: DateTime.tryParse(json['lastCheckedAt']?.toString() ?? ''),
+  );
+}
+
 class TripsSnapshot {
   const TripsSnapshot({
     required this.quickPlaces,
     required this.quickRoutes,
     required this.recent,
     required this.history,
+    this.routeWatches = const {},
+    this.signedIn = false,
   });
 
   final Map<String, TripDestination> quickPlaces;
   final Map<String, RouteOption> quickRoutes;
   final List<TripDestination> recent;
   final List<TripHistoryItem> history;
+  final Map<String, RouteWatchItem> routeWatches;
+  final bool signedIn;
 }
 
 class TripsResult {
@@ -55,10 +111,21 @@ class TripsResult {
 }
 
 class TripsPage extends StatefulWidget {
-  const TripsPage({super.key, required this.language, required this.loader});
+  const TripsPage({
+    super.key,
+    required this.language,
+    required this.loader,
+    this.onRouteWatchChanged,
+  });
 
   final String language;
   final Future<TripsSnapshot> Function() loader;
+  final Future<void> Function(
+    String label,
+    RouteWatchItem? current,
+    bool enabled,
+  )?
+  onRouteWatchChanged;
 
   @override
   State<TripsPage> createState() => _TripsPageState();
@@ -68,6 +135,7 @@ class _TripsPageState extends State<TripsPage> {
   TripsSnapshot? _snapshot;
   bool _loading = true;
   String? _error;
+  final Set<String> _routeWatchBusy = <String>{};
 
   bool get _isChinese => widget.language == 'zh';
   String _text(String en, String zh) => _isChinese ? zh : en;
@@ -149,6 +217,277 @@ class _TripsPageState extends State<TripsPage> {
       return KiwiLensColors.warning;
     }
     return KiwiLensColors.success;
+  }
+
+  Color _watchColor(RouteWatchItem? watch) => switch (watch?.status) {
+    'disrupted' => KiwiLensColors.danger,
+    'warning' => KiwiLensColors.warning,
+    'advisory' => KiwiLensColors.ocean,
+    'healthy' => KiwiLensColors.success,
+    _ => Theme.of(context).colorScheme.outline,
+  };
+
+  String _watchStatus(RouteWatchItem? watch) => switch (watch?.status) {
+    'disrupted' => _text('Disrupted', '已中断'),
+    'warning' => _text('Warning', '有警告'),
+    'advisory' => _text('Advisory', '有提示'),
+    'healthy' => _text('Clear', '正常'),
+    _ => _text('Off', '未开启'),
+  };
+
+  String _watchSummary(RouteWatchItem? watch) {
+    if (watch == null) {
+      return _text(
+        'Watch official NZTA incidents along this route',
+        '持续监控这条路线上的 NZTA 官方道路事件',
+      );
+    }
+    if (watch.events.isEmpty) {
+      final checked = _relativeTime(watch.lastCheckedAt);
+      return checked.isEmpty
+          ? _text('No official disruption detected', '未发现官方道路异常')
+          : _text(
+              'No official disruption · checked $checked',
+              '未发现官方道路异常 · 检查于 $checked',
+            );
+    }
+    final event = watch.events.first;
+    final detail = [
+      if (event.roadName?.isNotEmpty == true) event.roadName!,
+      if (event.impact.isNotEmpty) event.impact,
+      if (event.description.isNotEmpty) event.description,
+    ].firstOrNull;
+    final suffix = watch.events.length > 1
+        ? _text(
+            ' +${watch.events.length - 1} more',
+            ' +另外 ${watch.events.length - 1} 项',
+          )
+        : '';
+    return '${detail ?? _text('Road event detected', '检测到道路事件')}$suffix';
+  }
+
+  Future<void> _toggleRouteWatch(
+    String label,
+    RouteWatchItem? current,
+    bool enabled,
+  ) async {
+    final callback = widget.onRouteWatchChanged;
+    if (callback == null || _routeWatchBusy.contains(label)) return;
+    setState(() {
+      _routeWatchBusy.add(label);
+      _error = null;
+    });
+    try {
+      await callback(label, current, enabled);
+      await _refresh();
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = '$error'.replaceFirst('Bad state: ', '');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _routeWatchBusy.remove(label));
+    }
+  }
+
+  Future<void> _showRouteWatchDetails(
+    String label,
+    RouteWatchItem watch,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final scheme = Theme.of(sheetContext).colorScheme;
+        final color = _watchColor(watch);
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.radar_rounded, color: color),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${_text(label, label == 'Home' ? '家' : '公司')} · ${_watchStatus(watch)}',
+                      style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                watch.lastCheckedAt == null
+                    ? _text('Waiting for the first check', '等待首次检查')
+                    : _text(
+                        'Checked ${_relativeTime(watch.lastCheckedAt)}',
+                        '检查于 ${_relativeTime(watch.lastCheckedAt)}',
+                      ),
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              if (watch.events.isEmpty)
+                Text(
+                  _text(
+                    'No active NZTA road disruption is currently matched to this route.',
+                    '当前没有 NZTA 官方道路异常与这条路线匹配。',
+                  ),
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                )
+              else
+                for (final event in watch.events) ...[
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 9),
+                    padding: const EdgeInsets.all(13),
+                    decoration: BoxDecoration(
+                      color: scheme.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Theme.of(context).dividerColor),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          event.roadName?.isNotEmpty == true
+                              ? event.roadName!
+                              : _text('Road event', '道路事件'),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        if (event.impact.isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            event.impact,
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                        if (event.description.isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            event.description,
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _routeWatchTile(
+    BuildContext context,
+    String label,
+    TripDestination place,
+    RouteWatchItem? watch,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final color = _watchColor(watch);
+    final busy = _routeWatchBusy.contains(label);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 9),
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: busy
+                ? Padding(
+                    padding: const EdgeInsets.all(11),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: color,
+                    ),
+                  )
+                : Icon(Icons.radar_rounded, color: color, size: 21),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '${_text(label, label == 'Home' ? '家' : '公司')} → ${place.name}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Text(
+                      _watchStatus(watch),
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _watchSummary(watch),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 11.5,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          if (watch != null)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: _text('Route Watch details', '路线监控详情'),
+              onPressed: () => _showRouteWatchDetails(label, watch),
+              icon: const Icon(Icons.info_outline_rounded, size: 20),
+            ),
+          Switch.adaptive(
+            value: watch != null,
+            onChanged: busy
+                ? null
+                : (value) => _toggleRouteWatch(label, watch, value),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _quickCard(
@@ -345,6 +684,50 @@ class _TripsPageState extends State<TripsPage> {
                   _error!,
                   style: TextStyle(color: scheme.error, fontSize: 12),
                 ),
+              ],
+              const SizedBox(height: 24),
+              _SectionTitle(
+                title: _text('Route Watch', '路线监控'),
+                subtitle: _text('Plus preview', 'Plus 预览'),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                _text(
+                  'Kiwi Lens checks official NZTA road events against your saved route every 15 minutes without repeatedly buying a new Google route.',
+                  'Kiwi Lens 每 15 分钟用 NZTA 官方道路事件检查收藏路线，不会为了监控反复购买新的 Google 路线。',
+                ),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 11.5,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 11),
+              if (!(snapshot?.signedIn ?? false))
+                _EmptyCard(
+                  icon: Icons.lock_outline_rounded,
+                  text: _text(
+                    'Sign in from My Kiwi Lens to save Route Watch to your account.',
+                    '请先在“我的 Kiwi Lens”登录，再把路线监控保存到账号。',
+                  ),
+                )
+              else if (snapshot?.quickPlaces.isEmpty ?? true)
+                _EmptyCard(
+                  icon: Icons.radar_rounded,
+                  text: _text(
+                    'Set Home or Work first, then Route Watch can monitor it.',
+                    '先设置“家”或“公司”，之后就能开启路线监控。',
+                  ),
+                )
+              else ...[
+                for (final label in const ['Home', 'Work'])
+                  if (snapshot!.quickPlaces[label] != null)
+                    _routeWatchTile(
+                      context,
+                      label,
+                      snapshot.quickPlaces[label]!,
+                      snapshot.routeWatches[label],
+                    ),
               ],
               const SizedBox(height: 24),
               _SectionTitle(

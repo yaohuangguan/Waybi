@@ -85,6 +85,8 @@ class AccountRepository extends ChangeNotifier {
   AccountProfile? profile;
   bool loading = false;
 
+  bool get signedIn => _session != null;
+
   Future<http.Response> _request(
     String path, {
     String method = 'GET',
@@ -377,6 +379,50 @@ class AccountRepository extends ChangeNotifier {
       ),
     );
     notifyListeners();
+  }
+
+  Future<List<Map<String, dynamic>>> routeWatches() async {
+    if (_session == null) return const [];
+    final body = _body(await _request('/api/route-watches'));
+    return (body['watches'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+  }
+
+  Future<void> saveRouteWatch({
+    required String label,
+    required String destinationName,
+    required double latitude,
+    required double longitude,
+    required List<Map<String, double>> routePoints,
+    required int durationSeconds,
+    required int distanceMeters,
+  }) async {
+    if (_session == null) throw StateError('Sign in to use Route Watch');
+    _body(
+      await _request(
+        '/api/route-watches',
+        method: 'POST',
+        body: {
+          'label': label,
+          'destinationName': destinationName,
+          'destination': {'latitude': latitude, 'longitude': longitude},
+          'routePoints': routePoints,
+          'baselineDurationSeconds': durationSeconds,
+          'baselineDistanceMeters': distanceMeters,
+        },
+      ),
+    );
+  }
+
+  Future<void> deleteRouteWatch(String id) async {
+    if (_session == null) return;
+    _body(
+      await _request(
+        '/api/route-watches/${Uri.encodeComponent(id)}',
+        method: 'DELETE',
+      ),
+    );
   }
 
   @override

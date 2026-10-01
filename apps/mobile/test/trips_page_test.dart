@@ -58,6 +58,23 @@ void main() {
             createdAt: DateTime.now().subtract(const Duration(hours: 2)),
           ),
         ],
+        signedIn: true,
+        routeWatches: const {
+          'Home': RouteWatchItem(
+            id: 'watch-home',
+            label: 'Home',
+            status: 'warning',
+            events: [
+              RouteWatchEvent(
+                type: 'roadworks',
+                severity: 'warning',
+                description: 'Road works near the motorway',
+                impact: 'Delays',
+                roadName: 'SH1',
+              ),
+            ],
+          ),
+        },
       );
 
       await tester.pumpWidget(
@@ -70,6 +87,8 @@ void main() {
       expect(find.text('行程'), findsOneWidget);
       expect(find.text('更快出发'), findsOneWidget);
       expect(find.text('15 分钟'), findsOneWidget);
+      expect(find.text('路线监控'), findsOneWidget);
+      expect(find.text('有警告'), findsOneWidget);
       expect(find.text('最近目的地'), findsOneWidget);
       expect(find.text('Auckland Art Gallery'), findsOneWidget);
       expect(find.text('行程记录'), findsOneWidget);

@@ -7,6 +7,7 @@ import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.mjs';
 import { loadRoadEventState } from './road_events.mjs';
 import { createRoadReport, readRoadReports } from './road_reports.mjs';
 import { recordApiUsage, readUsageSummary } from './cost_guard.mjs';
+import { handleRouteWatch, evaluateAllRouteWatches } from './route_watch.mjs';
 
 const CAMERA_KEY = 'cameras/current';
 const CAMERA_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
@@ -354,13 +355,16 @@ export default {
     const pathname = new URL(request.url).pathname;
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     try {
-      const featureResponse = await handleAccount(request, env) || await handlePlaces(
-        request,
-        env,
-        (provider, sku, units) => ctx.waitUntil(
-          recordApiUsage(env, { provider, sku, calls: units, units })
-        )
-      );
+      const featureResponse =
+        await handleAccount(request, env) ||
+        await handleRouteWatch(request, env) ||
+        await handlePlaces(
+          request,
+          env,
+          (provider, sku, units) => ctx.waitUntil(
+            recordApiUsage(env, { provider, sku, calls: units, units })
+          )
+        );
       if (featureResponse) return featureResponse;
       return await handleApi(request, env, ctx);
     } catch (error) {
@@ -368,7 +372,10 @@ export default {
       return json({ error: String(error.message || error) }, 502);
     }
   },
-  async scheduled(_event, env, ctx) {
-    ctx.waitUntil(syncCameras(env));
+  async scheduled(event, env, ctx) {
+    if (event.cron === '0 */6 * * *') {
+      ctx.waitUntil(syncCameras(env));
+    }
+    ctx.waitUntil(evaluateAllRouteWatches(env));
   }
 };

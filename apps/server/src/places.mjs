@@ -1,3 +1,4 @@
+import { geoapifyExplore } from './compatible_places.mjs';
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -55,7 +56,7 @@ export async function handlePlaces(request, env) {
     const point = nzPoint(url.searchParams.get('near'));
     const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
     const googleKey = placesApiKey(env);
-    if (googleKey) {
+    if (googleKey && url.searchParams.get('provider') !== 'geoapify') {
       const body = {
         textQuery: query,
         languageCode: prefersChinese ? 'zh-CN' : 'en',
@@ -84,6 +85,7 @@ export async function handlePlaces(request, env) {
         const data = await google.json();
         const local = (data.places || []).map((place) => ({
           id: place.id || place.formattedAddress || '',
+          provider: 'google',
           name: localizedText(place.displayName) || place.formattedAddress || query,
           address: place.formattedAddress || '',
           label: place.formattedAddress || localizedText(place.displayName) || query,
@@ -121,6 +123,7 @@ export async function handlePlaces(request, env) {
         : fullAddress;
       return {
         id: place.place_id || place.datasource?.raw?.osm_id || fullAddress,
+        provider: 'geoapify',
         name,
         address: isPoi ? (streetAddress || fullAddress) : fullAddress,
         label: fullAddress,
@@ -133,6 +136,9 @@ export async function handlePlaces(request, env) {
   }
   if (url.pathname === '/api/explore') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+    if (url.searchParams.get('provider') === 'geoapify') {
+      return geoapifyExplore(url, env);
+    }
     const apiKey = placesApiKey(env);
     if (!apiKey) return json({ error: 'Google Places server key is not configured' }, 503);
     const point = nzPoint(url.searchParams.get('at'));

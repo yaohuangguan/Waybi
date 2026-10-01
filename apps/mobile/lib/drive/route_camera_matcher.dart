@@ -34,7 +34,12 @@ class RouteCameraMatch {
 class RouteCameraMatcher {
   const RouteCameraMatcher();
 
-  RouteProjection? project(GeoPoint point, List<GeoPoint> route) {
+  RouteProjection? project(
+    GeoPoint point,
+    List<GeoPoint> route, {
+    double minAlongMeters = 0,
+    double maxAlongMeters = double.infinity,
+  }) {
     if (route.length < 2) return null;
     RouteProjection? best;
     var travelled = 0.0;
@@ -48,20 +53,37 @@ class RouteCameraMatcher {
       final y = (point.latitude - start.latitude) * metresPerLatitude;
       final dx = (end.longitude - start.longitude) * metresPerLongitude;
       final dy = (end.latitude - start.latitude) * metresPerLatitude;
-      final lengthSquared = dx * dx + dy * dy;
-      final fraction = lengthSquared == 0
-          ? 0.0
-          : ((x * dx + y * dy) / lengthSquared).clamp(0.0, 1.0);
-      final offset = math.sqrt(
-        math.pow(x - fraction * dx, 2) + math.pow(y - fraction * dy, 2),
-      );
       final segmentLength = distanceMeters(
         start.latitude,
         start.longitude,
         end.latitude,
         end.longitude,
       );
-      if (best == null || offset < best.offsetMeters) {
+      if (segmentLength <= 0 ||
+          travelled + segmentLength < minAlongMeters ||
+          travelled > maxAlongMeters) {
+        travelled += segmentLength;
+        continue;
+      }
+      final lengthSquared = dx * dx + dy * dy;
+      final minFraction = ((minAlongMeters - travelled) / segmentLength).clamp(
+        0.0,
+        1.0,
+      );
+      final maxFraction = ((maxAlongMeters - travelled) / segmentLength).clamp(
+        0.0,
+        1.0,
+      );
+      final fraction = lengthSquared == 0
+          ? 0.0
+          : ((x * dx + y * dy) / lengthSquared).clamp(minFraction, maxFraction);
+      final offset = math.sqrt(
+        math.pow(x - fraction * dx, 2) + math.pow(y - fraction * dy, 2),
+      );
+      final along = travelled + segmentLength * fraction;
+      if (along >= minAlongMeters &&
+          along <= maxAlongMeters &&
+          (best == null || offset < best.offsetMeters)) {
         best = RouteProjection(
           alongMeters: travelled + segmentLength * fraction,
           offsetMeters: offset,
@@ -80,11 +102,26 @@ class RouteCameraMatcher {
 
   List<RouteCameraMatch> match(RouteOption route, List<SafetyCamera> cameras) {
     if (route.points.length < 2 || cameras.isEmpty) return const [];
+    var geometryMeters = 0.0;
+    for (var i = 1; i < route.points.length; i++) {
+      geometryMeters += distanceMeters(
+        route.points[i - 1].latitude,
+        route.points[i - 1].longitude,
+        route.points[i].latitude,
+        route.points[i].longitude,
+      );
+    }
+    final scale = route.distanceMeters > 0
+        ? geometryMeters / route.distanceMeters
+        : 1.0;
     final stepPositions = [
       for (final step in route.steps)
         (
-          instruction: step.instruction,
-          projection: project(step.location, route.points),
+          road: step.roadName.isNotEmpty ? step.roadName : step.instruction,
+          begin: step.alongRouteMeters != null
+              ? step.alongRouteMeters! * scale
+              : project(step.location, route.points)?.alongMeters,
+          length: step.distanceMeters * scale,
         ),
     ];
     final matches = <RouteCameraMatch>[];
@@ -99,10 +136,10 @@ class RouteCameraMatcher {
       }
       final sameRoad = stepPositions.any(
         (step) =>
-            step.projection != null &&
-            (step.projection!.alongMeters - projection.alongMeters).abs() <
-                300 &&
-            _roadMatches(camera.location, step.instruction),
+            step.begin != null &&
+            projection.alongMeters >= step.begin! - 50 &&
+            projection.alongMeters <= step.begin! + step.length + 50 &&
+            _roadMatches(camera.location, step.road),
       );
       final isRedLight = camera.type.toLowerCase().contains('red light');
       final maxOffset = sameRoad

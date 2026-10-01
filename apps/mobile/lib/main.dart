@@ -268,6 +268,9 @@ class _MapHomePageState extends State<MapHomePage> {
   final RouteRepository _routeRepository = RouteRepository();
   final ParkingRepository _parkingRepository = ParkingRepository();
   final WorkerSearchProvider _workerSearch = WorkerSearchProvider();
+  final WorkerSearchProvider _mapCompatibleSearch = WorkerSearchProvider(
+    mapCompatible: true,
+  );
   late final MapboxSearchProvider _mapboxSearch = MapboxSearchProvider(
     _mapboxToken,
   );
@@ -386,7 +389,17 @@ class _MapHomePageState extends State<MapHomePage> {
   @override
   void initState() {
     super.initState();
-    _mapboxNavigation = MapboxNavigationEngine(_driveEngine);
+    _mapboxNavigation = MapboxNavigationEngine(
+      _driveEngine,
+      reroute: (origin, previous, stops) => _mapboxRoutes.reroute(
+        origin: origin,
+        destination: previous.points.last,
+        mode: previous.mode,
+        stops: stops,
+        language: _appLanguage,
+      ),
+    );
+    _mapboxNavigation.addListener(_onMapboxNavigationChanged);
     unawaited(TasmanNotificationService.instance.initialize());
     initializeMapboxMaps(_mapboxToken);
     _account.addListener(_onAccountChanged);
@@ -489,6 +502,15 @@ class _MapHomePageState extends State<MapHomePage> {
 
   void _onAccountChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _onMapboxNavigationChanged() {
+    if (!mounted) return;
+    if (_mapboxNavigation.route != null) {
+      _activeNavigationRoute = _mapboxNavigation.route;
+    }
+    setState(() {});
+    if (_following) _queueMapRefresh();
   }
 
   void _onEngineChanged() {
@@ -811,6 +833,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _mapboxNavigation.dispose();
     _exploreMarkerFocus.dispose();
     _workerSearch.dispose();
+    _mapCompatibleSearch.dispose();
     _mapboxSearch.dispose();
     _mapboxRoutes.dispose();
     _account.dispose();
@@ -895,7 +918,7 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   void _queueMapRefresh() {
-    _mapRefreshTimer?.cancel();
+    if (_mapRefreshTimer?.isActive ?? false) return;
     _mapRefreshTimer = Timer(
       const Duration(milliseconds: 350),
       () => unawaited(_refreshMap()),
@@ -904,7 +927,9 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _refreshMap() async {
     if (_mapProvider == MapProvider.mapbox) {
-      final location = _gpsLocation;
+      final location = _driveEngine.active
+          ? _driveEngine.snappedLocation ?? _gpsLocation
+          : _gpsLocation;
       final routePreviewOwnsCamera =
           _journeyPhase == JourneyPhase.routePreview && _routePlan != null;
       if (_following &&
@@ -916,7 +941,7 @@ class _MapHomePageState extends State<MapHomePage> {
             center: GeoPoint(location.latitude, location.longitude),
             zoom: _mapboxNavigation.active ? 16 : (_northUp ? 16 : 17),
             bearing: _northUp ? 0 : (_travelHeading ?? _deviceHeading ?? 0),
-            pitch: _northUp ? 0 : 45,
+            pitch: 0,
           ),
         );
       }
@@ -1151,7 +1176,15 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   void _showRouteOverview() {
-    _following = false;
+    setState(() => _following = false);
+    final renderer = _browseRenderer;
+    final route = _mapboxNavigation.route;
+    if (_mapProvider == MapProvider.mapbox &&
+        renderer is RouteMapRenderer &&
+        route != null) {
+      unawaited(renderer.fitRoute(route.points, bottomInset: 240));
+      return;
+    }
     final controller = _navigationController;
     if (controller != null) unawaited(controller.showRouteOverview());
   }
@@ -1580,6 +1613,20 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _renderRoutePreview() async {
     _following = false;
+    if (_mapProvider == MapProvider.mapbox) {
+      final renderer = _browseRenderer;
+      final route = _selectedRoute;
+      if (renderer is RouteMapRenderer && route != null) {
+        await renderer.fitRoute(
+          route.points,
+          bottomInset: (MediaQuery.sizeOf(context).height * .44).clamp(
+            330,
+            420,
+          ),
+        );
+      }
+      return;
+    }
     final controller = _browseController;
     final plan = _routePlan;
     if (controller == null || plan == null) return;
@@ -1788,6 +1835,9 @@ class _MapHomePageState extends State<MapHomePage> {
         (prefs) => prefs.setBool('kiwi.voice.enabled', value),
       ),
     );
+    if (_mapProvider == MapProvider.mapbox || !_navigationSessionInitialized) {
+      return;
+    }
     unawaited(
       GoogleMapsNavigator.setAudioGuidance(
         NavigationAudioGuidanceSettings(
@@ -2158,7 +2208,8 @@ class _MapHomePageState extends State<MapHomePage> {
       }
       if (_mapProvider == MapProvider.mapbox) {
         await _driveEngine.startLocal();
-        if (mounted) setState(() {});
+        if (mounted) setState(() => _following = true);
+        _queueMapRefresh();
         return;
       }
       _lastBrowseCamera =
@@ -2893,6 +2944,14 @@ class _MapHomePageState extends State<MapHomePage> {
     final sheetHeight = (size.height * .40).clamp(300.0, 390.0);
     final bottomInset = sheetHeight - 14;
 
+    if (_mapProvider == MapProvider.mapbox &&
+        _browseRenderer is RouteMapRenderer) {
+      _following = false;
+      await (_browseRenderer as RouteMapRenderer).fitRoute(
+        route.points,
+        bottomInset: bottomInset,
+      );
+    }
     if (controller != null) {
       _following = false;
       await controller.setPadding(EdgeInsets.fromLTRB(24, 82, 24, bottomInset));
@@ -3087,8 +3146,12 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _shareTripSnapshot() async {
     final nav = _driveEngine.navInfo;
-    final remaining = nav?.distanceToFinalDestinationMeters;
-    final arrival = nav?.timeToFinalDestinationSeconds;
+    final remaining = _mapboxNavigation.active
+        ? _mapboxNavigation.remainingDistanceMeters
+        : nav?.distanceToFinalDestinationMeters;
+    final arrival = _mapboxNavigation.active
+        ? _mapboxNavigation.remainingSeconds
+        : nav?.timeToFinalDestinationSeconds;
     final details =
         'Tasman trip to $_destinationTitle. '
         'Remaining: ${remaining == null ? 'unknown' : '${(remaining / 1000).toStringAsFixed(1)} km'}. '
@@ -3109,6 +3172,10 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   void _showAlongRouteSearch() {
+    if (_mapboxNavigation.active) {
+      unawaited(_searchMapboxStop());
+      return;
+    }
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -3130,6 +3197,59 @@ class _MapHomePageState extends State<MapHomePage> {
         ),
       ),
     );
+  }
+
+  Future<void> _searchMapboxStop() async {
+    final current = _driveEngine.snappedLocation ?? _gpsLocation;
+    final selected = await Navigator.of(context).push<PlaceSummary>(
+      MaterialPageRoute(
+        builder: (_) => FullScreenSearch(
+          provider: _mapCompatibleSearch,
+          resolve: (candidate) async {
+            if (candidate.location == null) {
+              throw StateError('Place has no location');
+            }
+            return candidate.toPlace(candidate.location!);
+          },
+          language: _appLanguage,
+          recent: const [],
+          currentLocation: current == null
+              ? null
+              : GeoPoint(current.latitude, current.longitude),
+        ),
+      ),
+    );
+    if (!mounted || selected == null || !_mapboxNavigation.active) {
+      return;
+    }
+    final route = _mapboxNavigation.route!;
+    final location = _driveEngine.snappedLocation ?? _gpsLocation;
+    if (location == null) return;
+    try {
+      final updated = await _mapboxRoutes.reroute(
+        origin: GeoPoint(location.latitude, location.longitude),
+        destination: route.points.last,
+        mode: route.mode,
+        stops: [selected.location, ..._mapboxNavigation.remainingStops],
+        language: _appLanguage,
+      );
+      if (!mounted ||
+          !_mapboxNavigation.active ||
+          !identical(route, _mapboxNavigation.route)) {
+        return;
+      }
+      await _mapboxNavigation.start(updated);
+      _recenter();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _message = _text(
+            'Could not add this stop. Your current route is still active.',
+            '无法添加途经点，当前导航路线继续有效。',
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _addAlongRouteStop(DestinationSuggestion stop) async {
@@ -3289,7 +3409,9 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _openSearch({String query = '', String? saveAs}) async {
     setState(() => _journeyPhase = JourneyPhase.searching);
-    final SearchProvider provider = _workerSearch;
+    final SearchProvider provider = _mapProvider == MapProvider.mapbox
+        ? _mapCompatibleSearch
+        : _workerSearch;
     final place = await Navigator.of(context).push<PlaceSummary>(
       PageRouteBuilder<PlaceSummary>(
         transitionDuration: const Duration(milliseconds: 320),
@@ -3652,8 +3774,11 @@ class _MapHomePageState extends State<MapHomePage> {
     );
     final place = await Navigator.of(context).push<ExplorePlace>(
       MaterialPageRoute(
-        builder: (_) =>
-            ExplorePage(currentLocation: current, language: _appLanguage),
+        builder: (_) => ExplorePage(
+          currentLocation: current,
+          language: _appLanguage,
+          mapCompatible: _mapProvider == MapProvider.mapbox,
+        ),
       ),
     );
     if (!mounted || place == null) return;
@@ -3663,7 +3788,7 @@ class _MapHomePageState extends State<MapHomePage> {
         address: place.address,
         category: place.primaryType,
         location: GeoPoint(place.latitude, place.longitude),
-        reference: ProviderReference('google', place.placeId),
+        reference: ProviderReference(place.provider, place.placeId),
       ),
       SelectionSource.explore,
     );
@@ -3960,7 +4085,14 @@ class _MapHomePageState extends State<MapHomePage> {
                     explorePlaces: _exploreResults,
                     onExplorePlace: (place) =>
                         _exploreMarkerFocus.value = place,
-                    onReady: (renderer) => _browseRenderer = renderer,
+                    onReady: (renderer) {
+                      _browseRenderer = renderer;
+                      if (_journeyPhase == JourneyPhase.routePreview) {
+                        unawaited(_renderRoutePreview());
+                      } else {
+                        _queueMapRefresh();
+                      }
+                    },
                     onViewportChanged: (viewport) => _viewport = viewport,
                     onUserPan: () {
                       _following = false;
@@ -4248,6 +4380,20 @@ class _MapHomePageState extends State<MapHomePage> {
                 language: _appLanguage,
                 onEnd: () => unawaited(_stopNavigation()),
                 onRecenter: _recenter,
+                onOverview: _showRouteOverview,
+                gpsAccuracy: _gpsAccuracy,
+                voiceEnabled: _voiceEnabled,
+                lanesEnabled: _lanesEnabled,
+                northUp: _northUp,
+                onCompassToggle: _toggleCompass,
+                onReport: () => unawaited(_showRoadReport()),
+                onSearchAlongRoute: _showAlongRouteSearch,
+                onDirections: _showDirections,
+                onShare: _shareTripSnapshot,
+                onSettings: _showNavigationSettings,
+                onLayers: _showMapLayers,
+                onVoiceToggle: _toggleVoice,
+                onLanesToggle: () => _setLanesEnabled(!_lanesEnabled),
               ),
             ),
           if (_mapProvider == MapProvider.mapbox &&

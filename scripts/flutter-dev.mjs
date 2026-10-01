@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const mobile = resolve(root, 'apps/mobile');
@@ -201,6 +202,10 @@ async function main() {
 
   const targetPlatform = device.targetPlatform?.toLowerCase() ?? '';
   const runArgs = ['run', '-d', device.id];
+  if (existsSync(resolve(mobile, '.dart-defines.local.json'))) {
+    runArgs.push('--dart-define-from-file=.dart-defines.local.json');
+  }
+  runArgs.push(...process.argv.slice(2));
 
   // Flutter 3.47 can intermittently fail to connect its local Dart Development
   // Service proxy after an otherwise successful iOS build. Going directly to

@@ -1,6 +1,6 @@
 # Kiwi Lens Mobile
 
-Kiwi Lens 的原生移动端使用 Flutter，支持在设置中切换 Google Maps 与 Mapbox 地图。Google 原生导航流程保留，Mapbox 浏览与路线使用独立适配器；详细边界和剩余验证见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
+Kiwi Lens 的原生移动端使用 Flutter，支持在设置中切换 Google Maps 与 Mapbox 地图。Google 原生导航流程保留，Mapbox 浏览、路线、偏航重算与驾驶模式使用独立适配器；详细边界和剩余验证见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
 
 - `google_navigation_flutter`：地图浏览、POI 点击、路线与 turn-by-turn 导航
 - `mapbox_maps_flutter`：第二地图渲染器、地点选择与 Kiwi Lens 覆盖物
@@ -16,9 +16,9 @@ Kiwi Lens 的原生移动端使用 Flutter，支持在设置中切换 Google Map
 2. 通过搜索、Explore、收藏、最近地点、快捷地点、地图 POI 或长按坐标选择目的地
 3. 显示统一 Kiwi Lens 地点预览；点击 Directions 才进入路线预览
 4. 在路线预览中选择模式/备选路线；点击 Start 才开始导航
-5. Google 路线继续使用 Google Navigation SDK；Mapbox 路线使用 GPS 与路线步骤提供基础引导
+5. Google 路线继续使用 Google Navigation SDK；Mapbox 使用连续 GPS 路线进度、步骤 ETA、偏航重算、途经点和共享摄像头提醒
 
-搜索页支持自动补全、地址完整展示与最近搜索；Explore 以新西兰道路出行相关地点为主。Google POI 的照片、评分、营业时间尚未接入原生地点卡；路线摄像头总数也尚未从原生导航路线中取得，因此显示 `—`。Mapbox 的原生重算路线、车道引导与沿途绕行时间尚未接入，界面不会编造这些数值。iOS 真机的罗盘与地图叠加层仍需用 Xcode 实测；iOS Simulator 没有磁力计。
+搜索页支持自动补全、地址完整展示与最近搜索；Explore 以新西兰道路出行相关地点为主。Google POI 的照片、评分、营业时间尚未接入原生地点卡；路线摄像头总数也尚未从原生导航路线中取得，因此显示 `—`。Mapbox 已实现在线偏航重算，并展示 Directions 实际返回的车道数据；当前使用自有 GPS 引导，尚未接入原生 Mapbox Navigation SDK、离线路由与实测沿途绕行时间。Mapbox 的新西兰搜索与 Explore 使用 Geoapify，需要部署更新后的 Worker 并配置 GEOAPIFY_API_KEY。iOS 真机的罗盘与地图叠加层仍需用 Xcode 实测；iOS Simulator 没有磁力计。
 
 ## 本地 Flutter
 
@@ -30,6 +30,8 @@ pnpm install
 pnpm mobile:doctor
 pnpm mobile:dev
 ```
+
+在忽略的 `apps/mobile/.dart-defines.local.json` 中配置公开的 `MAPBOX_ACCESS_TOKEN` 后，移动端与 iOS 启动/构建脚本会自动读取该文件。详细 Mapbox 设置见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
 
 `pnpm mobile:dev` 和 `pnpm mobile:run` 都会自动执行 `flutter pub get` 并选择可用的移动设备。在 macOS 上会自动启用 Flutter Swift Package Manager，优先使用已连接的 iPhone 或已启动的 iOS Simulator；如果没有运行中的 iOS 设备，会尝试自动启动可用的 iPhone Simulator。其他平台优先使用 Android 设备/模拟器，没有运行中的 Android 设备时会从 `flutter emulators` 列表中启动 AVD。
 
@@ -193,7 +195,7 @@ DriveEngine
 Kiwi Lens Drive HUD
 ```
 
-当前 Drive Mode 即使没有设置目的地也可以启动。它会加载 Cloudflare `/api/cameras`，根据 road-snapped 行驶轨迹推导前进方向，筛选前方安全摄像头，并在约 800 m 和 300 m 触发 Kiwi Lens 自己的 UI + TTS 提醒。设置目的地后，同一套 DriveEngine 会继续消费 Google NavInfo，显示转弯、剩余距离和可用的推荐车道。
+Google 和 Mapbox 的 Drive Mode 即使没有设置目的地也可以启动；Mapbox 使用系统高精度 GPS、Android 前台定位通知 / iOS 后台定位设置，并在驾驶期间保持屏幕常亮。它会加载 Cloudflare `/api/cameras`，根据 road-snapped 行驶轨迹推导前进方向，筛选前方安全摄像头，并在约 800 m 和 300 m 触发 Kiwi Lens 自己的 UI + TTS 提醒。设置目的地后，同一套 DriveEngine 继续提供摄像头提醒；Google 消费原生 NavInfo，Mapbox 消费 Directions 路线与连续 GPS 进度，显示转弯、剩余距离、ETA 和可用的推荐车道。摄像头语音优先于转弯播报，静音与退出会取消待播报内容。
 
 摄像头数据目前没有执法方向，因此 Free Drive 的匹配策略刻意保守：优先前进方向锥形范围内的摄像头，避免侧路或身后的明显误报。真实驾驶测试后再调提醒距离与 heading 阈值。
 

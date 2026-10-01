@@ -63,6 +63,22 @@ void main() {
     },
   );
 
+  test('road confidence covers the full step, far from its maneuver', () {
+    const roadside = SafetyCamera(
+      id: 'roadside',
+      name: 'Queen St camera',
+      region: 'Auckland',
+      suburb: 'City',
+      location: 'Queen Street NB',
+      type: 'Spot speed',
+      latitude: -36.841,
+      longitude: 174.76035,
+    );
+    final match = matcher.match(route, [roadside]).single;
+    expect(match.offsetMeters, greaterThan(28));
+    expect(match.highConfidence, isTrue);
+  });
+
   test('upcoming is based on distance along the route, not raw radius', () {
     final matches = matcher.match(route, [onRoute]);
     expect(

@@ -288,6 +288,20 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               },
             ),
           ),
+          if (items.any((item) => item.reference?.provider == 'geoapify'))
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+                child: Text(
+                  'Places by Geoapify · © OpenStreetMap contributors',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

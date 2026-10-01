@@ -1,74 +1,127 @@
-# Map provider boundary
+# Map providers and navigation
 
-The existing Google navigation flow remains available. A second Mapbox Maps
-renderer is selected in Settings without restarting the app. `main.dart` still
-owns the Google Navigation SDK controllers, so this is an incremental boundary,
-not a claim that every legacy Google type has already been removed from the
-screen coordinator.
+Tasman retains Google native Navigation SDK guidance and adds Mapbox Maps with
+Directions API routes and Tasman's own GPS guidance engine. Users select the
+map in Settings. Each provider feeds the same navigation HUD and camera alerts.
 
-## Product models and adapters
+## Mapbox flow
 
-- `domain/map_provider.dart`: `GeoPoint`, `PlaceSummary`, `ProviderReference`,
-  `SelectedPlace`, `MapViewportState`, provider capability/policy decisions.
-- `domain/route_option.dart`: provider-neutral route geometry, steps and route
-  options. Google `LatLng` conversion happens only where the SDK is called.
-- `providers/provider_contracts.dart`: map, search, place, Explore, routing and
-  navigation interfaces.
-- `providers/google_map_renderer.dart`: existing Google browse map adapted to
-  neutral viewport, POI, long-press and pan events without changing native
-  Google turn guidance.
-- `providers/place_search_providers.dart`: existing Worker/Geoapify search for
-  Google, Mapbox Search Box for Mapbox. Search Box suggestions are retrieved
-  before becoming a selected place; reverse lookup enriches Mapbox POI taps.
-- `providers/mapbox_routing_provider.dart`: Mapbox Directions routes and
-  alternatives. New Zealand traffic availability is not assumed.
-- `providers/mapbox_map_renderer.dart`: Mapbox camera, native location puck,
-  selected/Explore markers, safety camera overlays and route polyline.
-- `providers/mapbox_navigation_engine.dart`: GPS/route-step guidance with the
-  existing independent `DriveEngine` safety-camera alerts. This is not the
-  Mapbox Navigation SDK and does not yet provide native rerouting or lanes.
+- Browse, tap a POI, long-press a coordinate, search NZ places or open Explore.
+- Preview driving, walking and cycling routes; optional modes may be unavailable.
+- Fit the whole preview/active route, start guidance, pan freely and recenter.
+- Follow continuous route progress, upcoming maneuvers, per-step ETA and available
+  lane recommendations. GPS accuracy and off-route status are visible.
+- After at least three accurate off-route fixes over three seconds, request a
+  replacement for the active mode, retaining unvisited stops. Requests are
+  limited to one at a time with a 15-second cooldown. Failed requests retain the
+  previous route; late responses cannot restart an ended session.
+- Search for an extra stop during navigation and route through that stop.
+- Arrive only near the destination at low speed over two location fixes.
+- Enter Drive Mode without a destination for speed, NZ limits and camera alerts.
+- Keep the display awake while driving. Android uses a foreground location
+  notification; iOS requests automotive background location updates.
 
-Provider references are checked before showing content on a map. Google Places
-or Worker/Geoapify POI content is not silently shown on Mapbox. Search Box
-results and Mapbox routes remain session-scoped because persistent storage
-needs a separate Mapbox entitlement. Switching providers preserves the camera
-and destination coordinate, then re-resolves a place via the new provider where
-possible. Home/Work selected from Mapbox search are session-only for the same
-reason.
+Camera matching uses route distance and direction, a narrow road corridor and
+road names across the full step. Free Drive uses direction-aware nearby matches.
+The existing 800/300-metre alerts and passed-camera lifecycle remain shared.
+Camera speech interrupts turn guidance; the latest turn waits until the alert
+finishes. Mute/End stop pending speech. Reroutes retain spoken-camera memory.
 
-## Configure Mapbox
+Mapbox Standard rendering follows the user's top-down follow preference. Route,
+camera, Explore and selection annotations update independently; unchanged
+groups are not deleted and recreated on every compass/GPS update.
 
-Pass a public `pk.` Mapbox access token when building or running Flutter:
+## NZ search and provider boundaries
+
+Mapbox Search Box's documented coverage excludes New Zealand. Tasman therefore
+uses Worker requests with `provider=geoapify` for Mapbox search and Explore.
+The Worker explicitly bypasses Google Places for these requests, even when a
+Google key is configured, and labels results with their actual source.
+Geoapify/OSM attribution is displayed in search and Explore.
+
+Deploy the updated Worker with its existing `GEOAPIFY_API_KEY` secret before
+using these flows on a device. An old backend's Google results are rejected on
+Mapbox; a missing independent-search key reports an unavailable service.
+Google searches/Explore continue to use their existing provider.
+
+Mapbox map taps use the feature's actual POI coordinates. Reverse address
+enrichment uses Mapbox Geocoding v6, including Chinese. Mapbox-derived content
+remains session-scoped under the existing storage policy. Google Places content
+cannot be displayed on Mapbox, or Mapbox content on Google. Independent
+Geoapify/OSM/AT data may be displayed on either map.
+
+## Configure and build
+
+Provide a public Mapbox token at build time. Never embed a private `sk.` token.
 
 ```bash
+cd apps/mobile
 flutter run --dart-define=MAPBOX_ACCESS_TOKEN=YOUR_PUBLIC_TOKEN
 flutter build apk --dart-define=MAPBOX_ACCESS_TOKEN=YOUR_PUBLIC_TOKEN
 ```
 
-For local development, put `{"MAPBOX_ACCESS_TOKEN":"pk..."}` in the ignored
-`apps/mobile/.dart-defines.local.json`, then run from `apps/mobile`:
+For development, create the ignored `apps/mobile/.dart-defines.local.json`:
+
+```json
+{"MAPBOX_ACCESS_TOKEN":"pk..."}
+```
+
+The repository's `pnpm mobile:dev`/`mobile:run` and iOS build/install launchers
+automatically include this file when present. Direct Flutter commands need:
 
 ```bash
 flutter run --dart-define-from-file=.dart-defines.local.json
-flutter build apk --dart-define-from-file=.dart-defines.local.json
+flutter build apk --debug --dart-define-from-file=.dart-defines.local.json
 ```
 
-CI and release builds should supply the public token as a build variable. This
-Maps SDK integration does not currently request a private Mapbox SDK download
-token. A future native Navigation SDK could require a separate `sk.` download
-token stored only in local Gradle properties or CI secrets; never pass that
-secret through `--dart-define` or embed it in the app.
+Release CI must supply the public token explicitly. Without it, Mapbox cannot
+be selected and a saved Mapbox selection falls back to Google. Google platform
+keys remain configured separately. Android API 24+ and iOS 16+ are required.
 
-If no public token is provided, Settings explains why Mapbox cannot be
-selected and a previously selected Mapbox map falls back to Google. Existing
-Google Maps platform key setup is unchanged. iOS deployment target remains
-16.0; Android remains API 24+.
+## Capabilities and release verification
 
-## Remaining verification
+This is **Maps SDK + Directions API + Tasman GPS guidance**, not the native
+Mapbox Navigation SDK. It does not provide native road snapping, offline route
+calculation, voice assets or guaranteed background behavior. Lane information
+appears only when returned by Directions. NZ routing uses `driving`; live Mapbox
+traffic coverage is not assumed. Explore does not invent ratings, photos,
+opening hours or along-route detour times.
 
-The Android debug APK builds, Flutter analysis and unit/widget tests pass.
-Google and Mapbox live map taps, permission changes, lifecycle/resume, Chinese
-results, and native iOS builds require instrumented device testing with valid
-provider credentials. Native Mapbox Navigation SDK capabilities and measured
-along-route detour times remain future adapter work; the UI does not invent
-traffic or detour figures for unsupported regions.
+Verification includes Flutter analysis, unit/widget tests, all Worker/shared
+tests, Worker bundle validation, an Android debug build and successful live
+Auckland Directions/Chinese reverse-geocoding requests. Simulated tests cover
+progress across route crossings, jitter/backward travel, poor GPS, ETA,
+sustained deviation, stop-preserving reroutes, failures, late responses, arrival,
+voice priority/mute, independent-source searches and a 375×667 dark HUD.
+
+Before calling this App Store/Play Store ready, run on physical Android and
+iPhone devices with production credentials:
+
+1. Search/Explore in English and Chinese; choose a POI or long-pressed coordinate,
+   preview alternatives, start, pan, recenter and view the whole route.
+2. Drive past same-road and adjacent-road cameras, cross the 800/300-metre
+   thresholds, confirm speech priority, mute and the passed-camera lifecycle.
+3. Deviate, lose network, regain network and add stops; confirm old geometry
+   stays usable and unvisited stops survive rerouting.
+4. Test destination-free Drive, lock screen, background/resume, calls/audio
+   interruption, location permission removal and End. Verify background service,
+   speech and display wake lock stop when driving ends.
+5. Approach/drive past/stop at the destination and check single arrival speech.
+6. Switch providers in browsing and verify Google native navigation still works.
+
+No physical device was connected in this workspace. Native iOS build/signing and
+actual GPS/background/audio/performance behavior remain unverified here.
+
+## Code boundaries
+
+- `domain/map_provider.dart`, `domain/route_option.dart`: neutral places,
+  geometry, maneuver/lanes and source policy.
+- `providers/mapbox_map_renderer.dart`: map events, annotation groups, follow
+  camera and route fitting.
+- `providers/mapbox_routing_provider.dart`: online route preview and rerouting.
+- `drive/route_progress_tracker.dart`: GPS continuity and accuracy-aware progress.
+- `providers/mapbox_navigation_engine.dart`: maneuver/ETA, deviation and arrival.
+- `drive/drive_engine.dart`: location, NZ road intelligence, limits and alerts.
+- `drive/voice_engine.dart`: speech priority and cancellation.
+- `widgets/navigation_overlay.dart`: shared navigation HUD.
+- `apps/server/src/compatible_places.mjs`: independent NZ Explore endpoint.

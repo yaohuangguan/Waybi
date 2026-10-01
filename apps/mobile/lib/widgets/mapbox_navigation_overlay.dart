@@ -1,9 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../domain/route_option.dart';
 import '../drive/drive_engine.dart';
 import '../providers/mapbox_navigation_engine.dart';
-import '../theme/tasman_theme.dart';
-import 'road_event_timeline.dart';
+import 'navigation_overlay.dart';
+
+IconData mapboxManeuverIcon(RouteStepInfo? step) {
+  final type = step?.maneuverType ?? '';
+  final modifier = step?.maneuverModifier ?? '';
+  if (type == 'arrive') return Icons.flag_rounded;
+  if (modifier == 'uturn') return Icons.u_turn_left_rounded;
+  if (type.contains('roundabout') || type == 'rotary') {
+    return Icons.roundabout_left_rounded;
+  }
+  if (modifier.contains('right')) return Icons.turn_right_rounded;
+  if (modifier.contains('left')) return Icons.turn_left_rounded;
+  return Icons.straight_rounded;
+}
 
 class MapboxNavigationOverlay extends StatelessWidget {
   const MapboxNavigationOverlay({
@@ -14,14 +27,41 @@ class MapboxNavigationOverlay extends StatelessWidget {
     required this.language,
     required this.onEnd,
     required this.onRecenter,
+    required this.onOverview,
+    required this.northUp,
+    required this.onCompassToggle,
+    required this.onReport,
+    required this.onSearchAlongRoute,
+    required this.onDirections,
+    required this.onShare,
+    required this.onSettings,
+    required this.onLayers,
+    required this.onVoiceToggle,
+    required this.onLanesToggle,
+    required this.voiceEnabled,
+    required this.lanesEnabled,
+    this.gpsAccuracy,
   });
-
   final MapboxNavigationEngine engine;
   final DriveEngine drive;
   final String destination;
   final String language;
-  final VoidCallback onEnd;
-  final VoidCallback onRecenter;
+  final double? gpsAccuracy;
+  final bool northUp;
+  final bool voiceEnabled;
+  final bool lanesEnabled;
+  final VoidCallback onEnd,
+      onRecenter,
+      onOverview,
+      onCompassToggle,
+      onReport,
+      onSearchAlongRoute,
+      onDirections,
+      onShare,
+      onSettings,
+      onLayers,
+      onVoiceToggle,
+      onLanesToggle;
 
   String _text(String en, String zh) => language == 'zh' ? zh : en;
 
@@ -29,127 +69,71 @@ class MapboxNavigationOverlay extends StatelessWidget {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: Listenable.merge([engine, drive]),
     builder: (context, _) {
-      final theme = Theme.of(context);
-      final scheme = theme.colorScheme;
-      final dark = theme.brightness == Brightness.dark;
       final next = engine.nextStep;
-      final distance = engine.distanceToStepMeters;
-      final remaining = engine.remainingDistanceMeters;
-      return SafeArea(
-        child: Stack(
-          children: [
-            Positioned(
-              top: 12,
-              left: 14,
-              right: 14,
-              child: Material(
-                color: TasmanColors.midnightOcean,
-                elevation: 10,
-                borderRadius: BorderRadius.circular(20),
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        next == null
-                            ? _text('Continue to destination', '继续前往目的地')
-                            : distance >= 1000
-                            ? '${(distance / 1000).toStringAsFixed(1)} km'
-                            : '${distance.round()} m',
-                        style: const TextStyle(
-                          color: Color(0xFF8CC5FF),
-                          fontWeight: FontWeight.w900,
-                          fontSize: 15,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        next?.instruction ?? destination,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 22,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              right: 16,
-              bottom: 120,
-              child: FloatingActionButton.small(
-                heroTag: 'mapbox-recenter',
-                onPressed: onRecenter,
-                child: const Icon(Icons.my_location_rounded),
-              ),
-            ),
-            Positioned(
-              left: 14,
-              right: 14,
-              bottom: 14,
-              child: Material(
-                color: scheme.surface,
-                elevation: 12,
-                borderRadius: BorderRadius.circular(20),
-                child: Padding(
-                  padding: const EdgeInsets.all(17),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${engine.remainingSeconds ~/ 60} min · '
-                                  '${(remaining / 1000).toStringAsFixed(1)} km',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 18,
-                                  ),
-                                ),
-                                if (drive.upcomingCamera != null)
-                                  Text(
-                                    _text(
-                                      'Safety camera ahead · '
-                                          '${drive.upcomingCameraDistanceMeters?.round() ?? 0} m',
-                                      '前方摄像头 · '
-                                          '${drive.upcomingCameraDistanceMeters?.round() ?? 0} 米',
-                                    ),
-                                    style: TextStyle(
-                                      color: scheme.error,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: onEnd,
-                            child: Text(_text('End', '结束')),
-                          ),
-                        ],
-                      ),
-                      if (drive.upcomingRoadEvents.isNotEmpty) ...[
-                        const SizedBox(height: TasmanSpacing.x2),
-                        RoadEventTimeline(
-                          events: drive.upcomingRoadEvents,
-                          dark: dark,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+      final status = engine.arrived
+          ? _text('Arrived at $destination', '已抵达 $destination')
+          : engine.rerouting
+          ? _text('Updating route…', '正在重新规划路线…')
+          : engine.offRoute
+          ? _text('Off route · finding your way', '已偏离路线，正在更新')
+          : engine.error != null
+          ? _text('Route update unavailable · retrying', '路线更新暂不可用，正在重试')
+          : drive.error != null
+          ? _text('Waiting for accurate GPS', '正在等待准确定位')
+          : null;
+      return NavigationOverlay(
+        engine: drive,
+        guidance: NavigationGuidance(
+          instruction: status ?? next?.instruction ?? destination,
+          maneuverIcon: engine.arrived
+              ? Icons.flag_rounded
+              : engine.rerouting || engine.offRoute
+              ? Icons.alt_route_rounded
+              : mapboxManeuverIcon(next),
+          stepMeters: engine.offRoute ? null : engine.distanceToStepMeters,
+          remainingMeters: engine.remainingDistanceMeters,
+          remainingSeconds: engine.remainingSeconds,
+          lanes:
+              engine.distanceToStepMeters <= 300 &&
+                  !engine.offRoute &&
+                  !engine.arrived
+              ? [
+                  for (final lane in next?.lanes ?? <RouteLane>[])
+                    NavigationLane(
+                      lane.indications
+                          .map(
+                            (name) => name.contains('left')
+                                ? '←'
+                                : name.contains('right')
+                                ? '→'
+                                : name == 'uturn'
+                                ? '↶'
+                                : '↑',
+                          )
+                          .toSet()
+                          .join(),
+                      lane.recommended,
+                    ),
+                ]
+              : const [],
         ),
+        destinationTitle: destination,
+        gpsAccuracy: gpsAccuracy,
+        voiceEnabled: voiceEnabled,
+        lanesEnabled: lanesEnabled,
+        onEnd: onEnd,
+        onRecenter: onRecenter,
+        onOverview: onOverview,
+        northUp: northUp,
+        onCompassToggle: onCompassToggle,
+        onReport: onReport,
+        onSearchAlongRoute: onSearchAlongRoute,
+        onDirections: onDirections,
+        onShare: onShare,
+        onSettings: onSettings,
+        onLayers: onLayers,
+        onVoiceToggle: onVoiceToggle,
+        onLanesToggle: onLanesToggle,
       );
     },
   );

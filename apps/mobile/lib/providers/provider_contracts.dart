@@ -6,6 +6,10 @@ abstract interface class MapRenderer {
   Future<void> moveTo(MapViewportState viewport);
 }
 
+abstract interface class RouteMapRenderer implements MapRenderer {
+  Future<void> fitRoute(List<GeoPoint> points, {required double bottomInset});
+}
+
 abstract interface class SearchProvider {
   Future<List<PlaceCandidate>> search(
     String query, {

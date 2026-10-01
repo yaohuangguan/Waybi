@@ -8,6 +8,8 @@ const mobile = resolve(root, 'apps/mobile');
 const releaseApp = resolve(mobile, 'build/ios/iphoneos/Runner.app');
 const bundleId = 'me.samyao.kiwilens';
 const mode = process.argv[2] ?? 'install';
+const buildDefines = existsSync(resolve(mobile, '.dart-defines.local.json'))
+  ? ['--dart-define-from-file=.dart-defines.local.json'] : [];
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -78,7 +80,7 @@ function debugOnDevice(device) {
   console.log('Starting Kiwi Lens debug build on ' + device.name + '...');
   const child = spawn(
     'flutter',
-    ['run', '-d', device.id, '--no-dds'],
+    ['run', '-d', device.id, '--no-dds', ...buildDefines],
     {
       cwd: mobile,
       stdio: 'inherit',
@@ -90,7 +92,7 @@ function debugOnDevice(device) {
 function buildRelease() {
   console.log('Building signed iOS Release app...');
   try {
-    run('flutter', ['build', 'ios', '--release'], {
+    run('flutter', ['build', 'ios', '--release', ...buildDefines], {
       cwd: mobile,
       stdio: 'inherit',
     });
@@ -132,7 +134,7 @@ function installRelease(device) {
 function buildIpa() {
   console.log('Building signed IPA...');
   try {
-    run('flutter', ['build', 'ipa', '--release'], {
+    run('flutter', ['build', 'ipa', '--release', ...buildDefines], {
       cwd: mobile,
       stdio: 'inherit',
     });

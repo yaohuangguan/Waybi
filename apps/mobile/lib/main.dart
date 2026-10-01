@@ -54,6 +54,7 @@ import 'widgets/map_layer_sheet.dart';
 import 'widgets/splash_gate.dart';
 import 'widgets/route_preview_sheet.dart';
 import 'widgets/transit_trip_overlay.dart';
+import 'widgets/trips_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -4074,9 +4075,101 @@ class _MapHomePageState extends State<MapHomePage> {
     }
   }
 
+  Future<TripsSnapshot> _loadTripsSnapshot() async {
+    await _refreshQuickCommutes(force: true);
+
+    final quickPlaces = <String, TripDestination>{};
+    for (final label in const ['Home', 'Work']) {
+      final place = _quickLocations[label];
+      if (place == null) continue;
+      quickPlaces[label] = TripDestination(
+        name: place.name,
+        address: place.address,
+        location: place.location,
+      );
+    }
+
+    final recent = _recentDestinations
+        .map(
+          (item) => TripDestination(
+            name: item.name ?? item.label,
+            address: item.address ?? '',
+            location: GeoPoint(item.location.latitude, item.location.longitude),
+          ),
+        )
+        .toList(growable: false);
+
+    final history = <TripHistoryItem>[];
+    for (final record
+        in _account.profile?.routes ?? const <Map<String, dynamic>>[]) {
+      final latitude = record['latitude'];
+      final longitude = record['longitude'];
+      final distance = record['distanceMeters'];
+      final duration = record['durationSeconds'];
+      if (latitude is! num ||
+          longitude is! num ||
+          distance is! num ||
+          duration is! num) {
+        continue;
+      }
+      history.add(
+        TripHistoryItem(
+          destination: TripDestination(
+            name:
+                record['destinationName']?.toString() ??
+                _text('Recent trip', '最近行程'),
+            location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
+          ),
+          mode: record['mode']?.toString() ?? 'drive',
+          distanceMeters: distance.toInt(),
+          durationSeconds: duration.toInt(),
+          createdAt: DateTime.tryParse(record['createdAt']?.toString() ?? ''),
+        ),
+      );
+    }
+
+    return TripsSnapshot(
+      quickPlaces: quickPlaces,
+      quickRoutes: Map<String, RouteOption>.from(_quickCommuteRoutes),
+      recent: recent,
+      history: history,
+    );
+  }
+
+  Future<void> _showTrips() async {
+    final result = await Navigator.of(context).push<TripsResult>(
+      MaterialPageRoute(
+        builder: (_) =>
+            TripsPage(language: _appLanguage, loader: _loadTripsSnapshot),
+      ),
+    );
+    if (!mounted || result == null) return;
+
+    final configureLabel = result.configureLabel;
+    if (configureLabel != null) {
+      await _openSearch(saveAs: configureLabel);
+      return;
+    }
+
+    final destination = result.destination;
+    if (destination == null) return;
+    _selectPlace(
+      PlaceSummary(
+        name: destination.name,
+        address: destination.address,
+        location: destination.location,
+      ),
+      SelectionSource.frequent,
+    );
+  }
+
   Future<void> _showSaved() async {
     final prefs = await SharedPreferences.getInstance();
     final savedRoutes = prefs.getStringList('kiwi.saved.routes') ?? [];
+    final favoritePlaces =
+        (_account.profile?.places ?? <Map<String, dynamic>>[])
+            .where((item) => item['isFavorite'] == true)
+            .toList(growable: false);
     if (!mounted) return;
     showModalBottomSheet<void>(
       context: context,
@@ -4086,14 +4179,16 @@ class _MapHomePageState extends State<MapHomePage> {
         height: MediaQuery.sizeOf(sheetContext).height * .65,
         child: ListView(
           children: [
-            const ListTile(
+            ListTile(
               title: Text(
-                'Saved places & routes',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                _text('Saved places & routes', '收藏地点与路线'),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
-            for (final place
-                in _account.profile?.places ?? <Map<String, dynamic>>[])
+            for (final place in favoritePlaces)
               ListTile(
                 leading: const Icon(Icons.bookmark_rounded),
                 title: Text(place['name']?.toString() ?? 'Saved place'),
@@ -4165,11 +4260,15 @@ class _MapHomePageState extends State<MapHomePage> {
                   }
                 },
               ),
-            if (savedRoutes.isEmpty &&
-                (_account.profile?.places.isEmpty ?? true))
-              const ListTile(
-                title: Text('No saved places yet'),
-                subtitle: Text('Tap the bookmark on a place to keep it here.'),
+            if (savedRoutes.isEmpty && favoritePlaces.isEmpty)
+              ListTile(
+                title: Text(_text('No saved places yet', '还没有收藏地点')),
+                subtitle: Text(
+                  _text(
+                    'Tap the bookmark on a place to keep it here.',
+                    '打开地点后点收藏，就会出现在这里。',
+                  ),
+                ),
               ),
           ],
         ),
@@ -4729,9 +4828,9 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
               item(
-                Icons.bookmark_outline_rounded,
-                _text('Saved', '收藏'),
-                () => unawaited(_showSaved()),
+                Icons.route_rounded,
+                _text('Trips', '行程'),
+                () => unawaited(_showTrips()),
               ),
               item(
                 Icons.person_outline_rounded,
@@ -5062,7 +5161,18 @@ class _MapHomePageState extends State<MapHomePage> {
                       elevation: 5,
                       borderRadius: BorderRadius.circular(14),
                       child: IconButton(
-                        tooltip: 'Map layers',
+                        tooltip: _text('Saved places', '收藏地点'),
+                        icon: const Icon(Icons.bookmark_outline_rounded),
+                        onPressed: () => unawaited(_showSaved()),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Material(
+                      color: Theme.of(context).colorScheme.surface,
+                      elevation: 5,
+                      borderRadius: BorderRadius.circular(14),
+                      child: IconButton(
+                        tooltip: _text('Map layers', '地图图层'),
                         icon: const Icon(Icons.layers_rounded),
                         onPressed: _showMapLayers,
                       ),

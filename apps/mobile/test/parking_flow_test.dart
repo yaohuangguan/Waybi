@@ -135,6 +135,7 @@ void main() {
           onNotifyRoadIncidentsChanged: (_) {},
           onNotifyCommunityReportsChanged: (_) {},
           onNotifySavedRouteDisruptionsChanged: (_) {},
+          onSyncCameraData: () async => null,
         ),
       ),
     );

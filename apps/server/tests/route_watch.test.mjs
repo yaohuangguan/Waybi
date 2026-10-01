@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { evaluateRouteWatch, routeGeometryFresh, __test } from '../src/route_watch.mjs';
+import {
+  evaluateRouteWatch,
+  handleRouteWatch,
+  routeGeometryFresh,
+  __test
+} from '../src/route_watch.mjs';
 
 const route = [
   { latitude: -36.85, longitude: 174.75 },
@@ -86,4 +91,61 @@ test('Route Watch stays healthy when no official event intersects the route', ()
   ]);
   assert.equal(result.status, 'healthy');
   assert.deepEqual(result.events, []);
+});
+
+
+function entitlementDb(plan) {
+  return {
+    prepare(sql) {
+      return {
+        bind() {
+          return {
+            async first() {
+              if (sql.includes('FROM sessions')) {
+                return { id: 'user-1', email: 'test@example.com' };
+              }
+              if (sql.includes('FROM user_subscriptions')) {
+                return plan === 'plus'
+                  ? { plan: 'plus', source: 'test', expiresAt: null }
+                  : null;
+              }
+              return null;
+            },
+            async all() {
+              if (sql.includes('FROM route_watches')) return { results: [] };
+              return { results: [] };
+            },
+            async run() {
+              return { success: true };
+            }
+          };
+        }
+      };
+    }
+  };
+}
+
+test('Route Watch rejects signed-in free users with PLUS_REQUIRED', async () => {
+  const response = await handleRouteWatch(
+    new Request('https://example.test/api/route-watches', {
+      headers: { cookie: `kiwi_session=${'a'.repeat(64)}` }
+    }),
+    { USER_DB: entitlementDb('free'), CAMERA_DATA: {} }
+  );
+  assert.equal(response.status, 403);
+  const body = await response.json();
+  assert.equal(body.code, 'PLUS_REQUIRED');
+});
+
+test('Route Watch returns Plus entitlement for active Plus users', async () => {
+  const response = await handleRouteWatch(
+    new Request('https://example.test/api/route-watches', {
+      headers: { cookie: `kiwi_session=${'b'.repeat(64)}` }
+    }),
+    { USER_DB: entitlementDb('plus'), CAMERA_DATA: {} }
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.entitlement, 'plus');
+  assert.deepEqual(body.watches, []);
 });

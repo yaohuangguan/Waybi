@@ -342,6 +342,9 @@ class _MapHomePageState extends State<MapHomePage> {
   DestinationSuggestion? _manualOrigin;
   final List<DestinationSuggestion> _guestRecent = [];
   final Map<String, RouteOption> _quickCommuteRoutes = {};
+  final Map<String, RouteOption> _smartCommuteRoutes = {};
+  DateTime? _smartCommuteRefreshedAt;
+  bool _smartCommuteRefreshing = false;
   DateTime? _quickCommuteRefreshedAt;
   LatLng? _quickCommuteOrigin;
   bool _quickCommuteRefreshing = false;
@@ -646,6 +649,7 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   NavigationGuidance? _offlineGoogleGuidance() {
+    if (_account.profile?.isPlus != true) return null;
     if (!_guidanceRunning ||
         _mapboxNavigation.active ||
         !_driveEngine.nativeGuidanceStale) {
@@ -703,6 +707,7 @@ class _MapHomePageState extends State<MapHomePage> {
   void _updateArrivalExperience() {
     final remaining = _navigationRemainingMeters;
     final eligible =
+        _account.profile?.isPlus == true &&
         _guidanceRunning &&
         _selectedMode == KiwiTravelMode.drive &&
         remaining != null;
@@ -720,6 +725,7 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _prefetchArrivalExperience() async {
+    if (_account.profile?.isPlus != true) return;
     final destination = _activeDestinationPlace;
     if (destination == null || _arrivalPrefetching) return;
     final request = ++_arrivalRequest;
@@ -779,6 +785,12 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _cacheNavigationCorridor({bool force = false}) async {
+    if (_account.profile?.isPlus != true) {
+      if (_offlineCorridorReady && mounted) {
+        setState(() => _offlineCorridorReady = false);
+      }
+      return;
+    }
     final route = _activeNavigationRoute;
     if (!_guidanceRunning || route == null || route.points.length < 2) return;
     final now = DateTime.now();
@@ -1563,6 +1575,73 @@ class _MapHomePageState extends State<MapHomePage> {
       if (request == _quickCommuteRequest) {
         _quickCommuteRefreshing = false;
       }
+    }
+  }
+
+  Future<void> _refreshSmartCommutes({bool force = false}) async {
+    if (!mounted || _driveEngine.active || _account.profile?.isPlus != true) {
+      if (_smartCommuteRoutes.isNotEmpty && mounted) {
+        setState(_smartCommuteRoutes.clear);
+      }
+      return;
+    }
+    if (_smartCommuteRefreshing) return;
+    final home = _quickLocations['Home'];
+    final work = _quickLocations['Work'];
+    if (home == null || work == null) {
+      if (_smartCommuteRoutes.isNotEmpty && mounted) {
+        setState(_smartCommuteRoutes.clear);
+      }
+      return;
+    }
+    final now = DateTime.now();
+    final fresh =
+        _smartCommuteRefreshedAt != null &&
+        now.difference(_smartCommuteRefreshedAt!) < const Duration(minutes: 10);
+    if (!force && fresh) return;
+
+    _smartCommuteRefreshing = true;
+    final results = <String, RouteOption>{};
+    Future<void> load(
+      String label,
+      PlaceSummary origin,
+      PlaceSummary destination,
+    ) async {
+      try {
+        final plan = await _routeRepository.fetch(
+          origin: LatLng(
+            latitude: origin.location.latitude,
+            longitude: origin.location.longitude,
+          ),
+          destination: LatLng(
+            latitude: destination.location.latitude,
+            longitude: destination.location.longitude,
+          ),
+          mode: KiwiTravelMode.drive,
+        );
+        final driving = plan.forMode(KiwiTravelMode.drive).toList()
+          ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
+        if (driving.isNotEmpty) results[label] = driving.first;
+      } catch (_) {
+        // Smart Commute remains useful with the saved baseline if live routing
+        // is temporarily unavailable.
+      }
+    }
+
+    try {
+      await Future.wait([
+        load('home-work', home, work),
+        load('work-home', work, home),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _smartCommuteRoutes
+          ..clear()
+          ..addAll(results);
+        _smartCommuteRefreshedAt = now;
+      });
+    } finally {
+      _smartCommuteRefreshing = false;
     }
   }
 
@@ -4260,6 +4339,14 @@ class _MapHomePageState extends State<MapHomePage> {
     bool enabled,
   ) async {
     if (!_account.signedIn) throw StateError('Sign in to use Route Watch');
+    if (_account.profile?.isPlus != true) {
+      throw StateError(
+        _text(
+          'Smart Commute is a Kiwi Lens Plus feature.',
+          '智能通勤是 Kiwi Lens Plus 功能。',
+        ),
+      );
+    }
     if (!enabled) {
       if (current != null) await _account.deleteRouteWatch(current.id);
       return;
@@ -4373,7 +4460,7 @@ class _MapHomePageState extends State<MapHomePage> {
     }
 
     final routeWatches = <String, RouteWatchItem>{};
-    if (_account.signedIn) {
+    if (_account.signedIn && _account.profile?.isPlus == true) {
       try {
         for (final item in await _account.routeWatches()) {
           final watch = RouteWatchItem.fromJson(item);
@@ -4382,8 +4469,13 @@ class _MapHomePageState extends State<MapHomePage> {
           }
         }
       } catch (_) {
-        // Trips and navigation stay usable if Route Watch is temporarily unavailable.
+        // Trips and navigation stay usable if Smart Commute is temporarily unavailable.
       }
+    }
+    if (routeWatches.isNotEmpty) {
+      await _refreshSmartCommutes();
+    } else if (_smartCommuteRoutes.isNotEmpty && mounted) {
+      setState(_smartCommuteRoutes.clear);
     }
 
     return TripsSnapshot(
@@ -4392,7 +4484,9 @@ class _MapHomePageState extends State<MapHomePage> {
       recent: recent,
       history: history,
       routeWatches: routeWatches,
+      smartCommuteRoutes: Map<String, RouteOption>.from(_smartCommuteRoutes),
       signedIn: _account.signedIn,
+      isPlus: _account.profile?.isPlus == true,
     );
   }
 
@@ -5621,7 +5715,9 @@ class _MapHomePageState extends State<MapHomePage> {
                         onVoiceToggle: _toggleVoice,
                         onLanesToggle: () => _setLanesEnabled(!_lanesEnabled),
                         arrivalPanel: arrivalPanel,
-                        offlineReady: _offlineCorridorReady,
+                        offlineReady:
+                            _account.profile?.isPlus == true &&
+                            _offlineCorridorReady,
                         usingOfflineGuidance: cachedGoogleGuidance != null,
                       )
                     : DriveHud(
@@ -5657,7 +5753,8 @@ class _MapHomePageState extends State<MapHomePage> {
                 onVoiceToggle: _toggleVoice,
                 onLanesToggle: () => _setLanesEnabled(!_lanesEnabled),
                 arrivalPanel: arrivalPanel,
-                offlineReady: _offlineCorridorReady,
+                offlineReady:
+                    _account.profile?.isPlus == true && _offlineCorridorReady,
               ),
             ),
           if (_mapProvider == MapProvider.mapbox &&

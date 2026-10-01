@@ -1,4 +1,4 @@
-import { userFromRequest } from './auth.mjs';
+import { userFromRequest, userHasPlus } from './auth.mjs';
 import { loadRoadEventState } from './road_events.mjs';
 
 const MAX_WATCHES_PER_USER = 8;
@@ -241,11 +241,18 @@ async function listUserWatches(db, userId) {
 export async function evaluateAllRouteWatches(env, now = new Date()) {
   if (!env?.USER_DB || !env?.CAMERA_DATA) return { checked: 0 };
   const result = await env.USER_DB.prepare(`
-    SELECT * FROM route_watches
-    WHERE enabled = 1
-    ORDER BY updated_at DESC
+    SELECT route_watches.* FROM route_watches
+    JOIN user_subscriptions
+      ON user_subscriptions.user_id = route_watches.user_id
+    WHERE route_watches.enabled = 1
+      AND user_subscriptions.plan = 'plus'
+      AND (
+        user_subscriptions.expires_at IS NULL OR
+        user_subscriptions.expires_at > ?
+      )
+    ORDER BY route_watches.updated_at DESC
     LIMIT 500
-  `).all();
+  `).bind(now.getTime()).all();
   const rows = result.results || [];
   if (!rows.length) return { checked: 0 };
   const hasFreshGeometry = rows.some((row) => routeGeometryFresh(row, now));
@@ -267,6 +274,12 @@ export async function handleRouteWatch(request, env) {
 
   const user = await userFromRequest(env.USER_DB, request);
   if (!user) return json({ error: 'Sign in required' }, 401);
+  if (!await userHasPlus(env.USER_DB, user.id)) {
+    return json({
+      error: 'Kiwi Lens Plus is required for Smart Commute',
+      code: 'PLUS_REQUIRED'
+    }, 403);
+  }
 
   if (request.method === 'GET' && url.pathname === '/api/route-watches') {
     const rows = await listUserWatches(env.USER_DB, user.id);
@@ -285,7 +298,7 @@ export async function handleRouteWatch(request, env) {
       output.push(routeWatchJson(evaluated));
     }
     return json({
-      entitlement: 'plus-preview',
+      entitlement: 'plus',
       watches: output
     });
   }
@@ -388,7 +401,7 @@ export async function handleRouteWatch(request, env) {
       'SELECT * FROM route_watches WHERE user_id = ? AND label = ?'
     ).bind(user.id, label).first();
     const evaluated = await evaluateRow(env.USER_DB, stored, state.events || []);
-    return json({ entitlement: 'plus-preview', watch: routeWatchJson(evaluated) }, 201);
+    return json({ entitlement: 'plus', watch: routeWatchJson(evaluated) }, 201);
   }
 
   const match = /^\/api\/route-watches\/([^/]+)$/.exec(url.pathname);

@@ -720,6 +720,55 @@ class _TripsPageState extends State<TripsPage> {
               .first;
     final distanceKm = totalDistance / 1000;
     final hours = totalSeconds / 3600;
+    final averageMinutes = (totalSeconds / recent.length / 60).round();
+    final weekdayCounts = <int, int>{};
+    var morningTrips = 0;
+    var eveningTrips = 0;
+    var otherTrips = 0;
+    TripHistoryItem? longest;
+    for (final item in recent) {
+      final created = item.createdAt!.toLocal();
+      weekdayCounts[created.weekday] =
+          (weekdayCounts[created.weekday] ?? 0) + 1;
+      if (created.hour >= 6 && created.hour < 10) {
+        morningTrips++;
+      } else if (created.hour >= 15 && created.hour < 19) {
+        eveningTrips++;
+      } else {
+        otherTrips++;
+      }
+      if (longest == null || item.durationSeconds > longest.durationSeconds) {
+        longest = item;
+      }
+    }
+    final busiestWeekday = weekdayCounts.entries.isEmpty
+        ? null
+        : (weekdayCounts.entries.toList()
+                ..sort((a, b) => b.value.compareTo(a.value)))
+              .first;
+    const weekdaysEn = <int, String>{
+      DateTime.monday: 'Mon',
+      DateTime.tuesday: 'Tue',
+      DateTime.wednesday: 'Wed',
+      DateTime.thursday: 'Thu',
+      DateTime.friday: 'Fri',
+      DateTime.saturday: 'Sat',
+      DateTime.sunday: 'Sun',
+    };
+    const weekdaysZh = <int, String>{
+      DateTime.monday: '周一',
+      DateTime.tuesday: '周二',
+      DateTime.wednesday: '周三',
+      DateTime.thursday: '周四',
+      DateTime.friday: '周五',
+      DateTime.saturday: '周六',
+      DateTime.sunday: '周日',
+    };
+    final peakLabel = morningTrips >= eveningTrips && morningTrips >= otherTrips
+        ? _text('Morning peak', '早高峰')
+        : eveningTrips >= otherTrips
+        ? _text('Evening peak', '晚高峰')
+        : _text('Mixed times', '时段分散');
 
     return Container(
       width: double.infinity,
@@ -781,6 +830,37 @@ class _TripsPageState extends State<TripsPage> {
               ),
             ),
           ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _TripPatternChip(
+                icon: Icons.timelapse_rounded,
+                label: _text('Avg', '平均'),
+                value: _text('$averageMinutes min', '$averageMinutes 分钟'),
+              ),
+              if (busiestWeekday != null)
+                _TripPatternChip(
+                  icon: Icons.calendar_today_rounded,
+                  label: _text('Busiest', '最多'),
+                  value: _isChinese
+                      ? weekdaysZh[busiestWeekday.key]!
+                      : weekdaysEn[busiestWeekday.key]!,
+                ),
+              _TripPatternChip(
+                icon: Icons.schedule_rounded,
+                label: _text('Pattern', '时段'),
+                value: peakLabel,
+              ),
+              if (longest != null)
+                _TripPatternChip(
+                  icon: Icons.route_rounded,
+                  label: _text('Longest', '最长'),
+                  value: _duration(longest.durationSeconds),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -1013,6 +1093,45 @@ class _TripInsightStat extends StatelessWidget {
               color: scheme.onSurfaceVariant,
               fontSize: 10.5,
               fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TripPatternChip extends StatelessWidget {
+  const _TripPatternChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: .58),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: scheme.primary),
+          const SizedBox(width: 5),
+          Text(
+            '$label · $value',
+            style: TextStyle(
+              color: scheme.onSurface,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],

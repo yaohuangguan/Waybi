@@ -96,9 +96,17 @@ void main() {
       expect(find.text('当前 15 分钟 · 比平时多 5 分钟 · 建议提前 5 分钟出发'), findsOneWidget);
       expect(find.text('行程洞察'), findsOneWidget);
       expect(find.text('7.8 km'), findsOneWidget);
+      expect(find.text('平均 · 18 分钟'), findsOneWidget);
+      expect(find.text('最长 · 19 分钟'), findsOneWidget);
       expect(find.textContaining('Mission Bay'), findsWidgets);
       expect(find.text('家 → 公司'), findsOneWidget);
       expect(find.text('公司 → 家'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('最近目的地'),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
       expect(find.text('最近目的地'), findsOneWidget);
       expect(find.text('Auckland Art Gallery'), findsOneWidget);
       await tester.scrollUntilVisible(

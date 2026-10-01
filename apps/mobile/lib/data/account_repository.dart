@@ -382,6 +382,25 @@ class AccountRepository extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<List<Map<String, dynamic>>> routeWatchAlerts() async {
+    if (_session == null) return const [];
+    final body = _body(await _request('/api/route-watch-alerts'));
+    return (body['alerts'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+  }
+
+  Future<void> markRouteWatchAlertsRead(List<String> ids) async {
+    if (_session == null || ids.isEmpty) return;
+    _body(
+      await _request(
+        '/api/route-watch-alerts/read',
+        method: 'POST',
+        body: {'ids': ids.take(50).toList(growable: false)},
+      ),
+    );
+  }
+
   Future<List<Map<String, dynamic>>> routeWatches() async {
     if (_session == null) return const [];
     final body = _body(await _request('/api/route-watches'));

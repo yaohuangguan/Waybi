@@ -1,14 +1,16 @@
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../drive/drive_engine.dart';
+import '../drive/navigation_language.dart';
+import 'kiwi_mascot.dart';
 import 'road_event_timeline.dart';
 
-const _ink = TasmanColors.darkOcean;
-const _accent = TasmanColors.sky;
+const _ink = KiwiLensColors.darkOcean;
+const _accent = KiwiLensColors.sky;
 
 String navigationDistanceLabel(num? metres) {
   if (metres == null || !metres.isFinite) return '—';
@@ -20,9 +22,9 @@ String navigationDistanceLabel(num? metres) {
 IconData _maneuverIcon(Maneuver? maneuver) {
   final name = maneuver?.name.toLowerCase() ?? '';
   if (name.contains('uturn')) return Icons.u_turn_left_rounded;
+  if (name.contains('roundabout')) return Icons.roundabout_right_rounded;
   if (name.contains('right')) return Icons.turn_right_rounded;
   if (name.contains('left')) return Icons.turn_left_rounded;
-  if (name.contains('roundabout')) return Icons.roundabout_right_rounded;
   return Icons.straight_rounded;
 }
 
@@ -32,7 +34,7 @@ class NavigationLane {
   final bool recommended;
 }
 
-/// Both providers feed the same Tasman HUD without manufacturing Google events.
+/// Both providers feed the same Kiwi Lens HUD without manufacturing Google events.
 class NavigationGuidance {
   const NavigationGuidance({
     required this.instruction,
@@ -41,6 +43,7 @@ class NavigationGuidance {
     this.remainingMeters,
     this.remainingSeconds,
     this.lanes = const [],
+    this.lanesImage,
   });
   final String instruction;
   final IconData maneuverIcon;
@@ -48,6 +51,7 @@ class NavigationGuidance {
   final num? remainingMeters;
   final int? remainingSeconds;
   final List<NavigationLane> lanes;
+  final ImageDescriptor? lanesImage;
 }
 
 class NavigationOverlay extends StatefulWidget {
@@ -55,6 +59,7 @@ class NavigationOverlay extends StatefulWidget {
     super.key,
     required this.engine,
     this.guidance,
+    this.language = 'en',
     required this.destinationTitle,
     required this.gpsAccuracy,
     required this.voiceEnabled,
@@ -76,6 +81,7 @@ class NavigationOverlay extends StatefulWidget {
 
   final DriveEngine engine;
   final NavigationGuidance? guidance;
+  final String language;
   final String destinationTitle;
   final double? gpsAccuracy;
   final bool voiceEnabled;
@@ -101,6 +107,12 @@ class NavigationOverlay extends StatefulWidget {
 class _NavigationOverlayState extends State<NavigationOverlay> {
   bool expanded = false;
   double _sheetDrag = 0;
+  ImageDescriptor? _laneDescriptor;
+  Future<Image?>? _laneImage;
+  String _text(String en, String zh) => widget.language == 'zh' ? zh : en;
+  String _distance(num? metres) => metres == null || !metres.isFinite
+      ? '—'
+      : navigationMetres(metres, widget.language);
 
   void _settleSheet(DragEndDetails details) {
     final velocity = details.primaryVelocity ?? 0;
@@ -119,10 +131,10 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
     final guidance =
         widget.guidance ??
         NavigationGuidance(
-          instruction:
-              step?.fullInstructions ??
-              step?.fullRoadName ??
-              'Continue on route',
+          instruction: nav?.navState == NavState.rerouting
+              ? _text('Updating route…', '正在重新规划路线…')
+              : navigationInstruction(step, widget.language),
+          lanesImage: step?.lanesImage,
           maneuverIcon: _maneuverIcon(step?.maneuver),
           stepMeters: nav?.distanceToCurrentStepMeters,
           remainingMeters: nav?.distanceToFinalDestinationMeters,
@@ -145,6 +157,18 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
               ),
           ],
         );
+    final showLanes =
+        widget.lanesEnabled &&
+        guidance.stepMeters != null &&
+        guidance.stepMeters! <= 300 &&
+        (guidance.lanes.any((lane) => lane.recommended) ||
+            guidance.lanesImage != null);
+    if (guidance.lanesImage != _laneDescriptor) {
+      _laneDescriptor = guidance.lanesImage;
+      _laneImage = _laneDescriptor == null
+          ? null
+          : getRegisteredImage(_laneDescriptor!).catchError((Object _) => null);
+    }
     final camera = widget.engine.upcomingCamera;
     final cameraDistance = widget.engine.upcomingCameraDistanceMeters;
     final remainingSeconds = guidance.remainingSeconds;
@@ -169,137 +193,190 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
             left: 14,
             right: 14,
             child: PointerInterceptor(
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(17, 15, 17, 15),
-                decoration: BoxDecoration(
-                  color: _ink,
-                  borderRadius: BorderRadius.circular(23),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x36000000),
-                      blurRadius: 18,
-                      offset: Offset(0, 7),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Icon(guidance.maneuverIcon, color: _accent, size: 40),
-                    const SizedBox(width: 13),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 220),
+                alignment: Alignment.topCenter,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: _ink,
+                    borderRadius: BorderRadius.circular(23),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x36000000),
+                        blurRadius: 18,
+                        offset: Offset(0, 7),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
                         children: [
-                          Text(
-                            navigationDistanceLabel(guidance.stepMeters),
-                            style: const TextStyle(
-                              color: _accent,
-                              fontSize: 25,
-                              fontWeight: FontWeight.w900,
+                          Icon(guidance.maneuverIcon, color: _accent, size: 38),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _distance(guidance.stepMeters),
+                                  style: const TextStyle(
+                                    color: _accent,
+                                    fontSize: 25,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Text(
+                                  guidance.instruction,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    height: 1.3,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          Text(
-                            guidance.instruction,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                arrival,
+                                style: const TextStyle(
+                                  color: _accent,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              Text(
+                                _distance(guidance.remainingMeters),
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(width: 1, height: 53, color: Colors.white30),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          arrival,
-                          style: const TextStyle(
-                            color: _accent,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                          ),
+                      if (showLanes) ...[
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: Divider(color: Colors.white24, height: 1),
                         ),
-                        Text(
-                          navigationDistanceLabel(guidance.remainingMeters),
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (widget.lanesEnabled && guidance.lanes.isNotEmpty)
-            Positioned(
-              top: 113,
-              left: 14,
-              right: 98,
-              child: PointerInterceptor(
-                child: Material(
-                  color: _ink,
-                  borderRadius: BorderRadius.circular(17),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 13,
-                      vertical: 10,
-                    ),
-                    child: Wrap(
-                      spacing: 7,
-                      runSpacing: 5,
-                      children: [
-                        const Text(
-                          'LANES',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        for (final lane in guidance.lanes)
-                          Container(
-                            constraints: const BoxConstraints(minWidth: 38),
-                            alignment: Alignment.center,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: lane.recommended
-                                  ? _accent
-                                  : TasmanColors.darkSurface,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              lane.symbol,
-                              style: TextStyle(
-                                color: lane.recommended ? _ink : Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w900,
+                        Row(
+                          children: [
+                            Text(
+                              _text('USE LANE', '推荐车道'),
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                          ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: guidance.lanes.isNotEmpty
+                                  ? FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerRight,
+                                      child: Row(
+                                        children: [
+                                          for (
+                                            var index = 0;
+                                            index < guidance.lanes.length;
+                                            index++
+                                          )
+                                            Semantics(
+                                              label: _text(
+                                                'Lane ${index + 1}',
+                                                '第 ${index + 1} 车道',
+                                              ),
+                                              selected: guidance
+                                                  .lanes[index]
+                                                  .recommended,
+                                              child: Container(
+                                                key: ValueKey(
+                                                  'navigation-lane-$index',
+                                                ),
+                                                margin: const EdgeInsets.only(
+                                                  left: 5,
+                                                ),
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      minWidth: 40,
+                                                    ),
+                                                alignment: Alignment.center,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 5,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color:
+                                                      guidance
+                                                          .lanes[index]
+                                                          .recommended
+                                                      ? _accent
+                                                      : KiwiLensColors
+                                                            .darkSurface,
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                child: Text(
+                                                  guidance.lanes[index].symbol,
+                                                  style: TextStyle(
+                                                    color:
+                                                        guidance
+                                                            .lanes[index]
+                                                            .recommended
+                                                        ? _ink
+                                                        : Colors.white54,
+                                                    fontSize: 25,
+                                                    fontWeight: FontWeight.w900,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    )
+                                  : SizedBox(
+                                      height: 43,
+                                      child: FutureBuilder<Image?>(
+                                        future: _laneImage,
+                                        builder: (_, snapshot) =>
+                                            snapshot.data == null
+                                            ? const SizedBox.shrink()
+                                            : FittedBox(
+                                                fit: BoxFit.contain,
+                                                child: snapshot.data!,
+                                              ),
+                                      ),
+                                    ),
+                            ),
+                          ],
+                        ),
                       ],
-                    ),
+                    ],
                   ),
                 ),
               ),
             ),
+          ),
           Positioned(
             top: 198,
             right: 14,
             child: PointerInterceptor(
               child: _NavigationControlRail(
+                language: widget.language,
                 northUp: widget.northUp,
                 onCompassToggle: widget.onCompassToggle,
                 onRecenter: widget.onRecenter,
@@ -360,7 +437,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                       ],
                     ),
                     Text(
-                      'LIMIT ${widget.engine.speedLimitKph ?? '—'}',
+                      '${_text('LIMIT', '限速')} ${widget.engine.speedLimitKph ?? '—'}',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 10,
@@ -384,7 +461,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: (dark ? TasmanColors.darkSurface : scheme.surface)
+                    color: (dark ? KiwiLensColors.darkSurface : scheme.surface)
                         .withValues(alpha: .97),
                     borderRadius: BorderRadius.circular(19),
                     border: Border.all(
@@ -402,7 +479,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const CircleAvatar(
-                        backgroundColor: TasmanColors.ocean,
+                        backgroundColor: KiwiLensColors.ocean,
                         child: Icon(Icons.speed_rounded, color: Colors.white),
                       ),
                       const SizedBox(width: 10),
@@ -412,7 +489,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Camera · ${navigationDistanceLabel(cameraDistance)}',
+                              '${_text('Camera', '摄像头')} · ${_distance(cameraDistance)}',
                               style: const TextStyle(
                                 fontWeight: FontWeight.w900,
                                 fontSize: 14,
@@ -452,7 +529,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                   curve: Curves.easeOutCubic,
                   alignment: Alignment.bottomCenter,
                   child: Material(
-                    color: dark ? TasmanColors.darkOcean : scheme.surface,
+                    color: dark ? KiwiLensColors.darkOcean : scheme.surface,
                     elevation: 0,
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(27),
@@ -480,6 +557,8 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                           ),
                           Row(
                             children: [
+                              const KiwiMascot(size: 32),
+                              const SizedBox(width: 9),
                               Expanded(
                                 child: Text(
                                   widget.destinationTitle,
@@ -495,7 +574,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               FilledButton.icon(
                                 onPressed: widget.onEnd,
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: TasmanColors.danger,
+                                  backgroundColor: KiwiLensColors.danger,
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 10,
@@ -503,7 +582,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                   ),
                                 ),
                                 icon: const Icon(Icons.stop_rounded, size: 18),
-                                label: const Text('End'),
+                                label: Text(_text('End', '结束')),
                               ),
                             ],
                           ),
@@ -514,22 +593,23 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             child: Row(
                               children: [
                                 _TripStat(
-                                  label: 'Cameras on route',
+                                  label: _text('Cameras on route', '沿途摄像头'),
                                   value: '${widget.engine.routeCameraCount}',
                                 ),
                                 _TripStat(
-                                  label: 'Distance',
-                                  value: navigationDistanceLabel(
-                                    guidance.remainingMeters,
-                                  ),
+                                  label: _text('Distance', '剩余距离'),
+                                  value: _distance(guidance.remainingMeters),
                                 ),
-                                _TripStat(label: 'Arrival', value: arrival),
+                                _TripStat(
+                                  label: _text('Arrival', '预计到达'),
+                                  value: arrival,
+                                ),
                               ],
                             ),
                           ),
                           const Divider(height: 1),
                           if (widget.engine.upcomingRoadEvents.isNotEmpty) ...[
-                            const SizedBox(height: TasmanSpacing.x2),
+                            const SizedBox(height: KiwiLensSpacing.x2),
                             RoadEventTimeline(
                               events: widget.engine.upcomingRoadEvents,
                               dark: dark,
@@ -543,16 +623,16 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                     ? Icons.volume_up_rounded
                                     : Icons.volume_off_rounded,
                                 label: widget.voiceEnabled
-                                    ? 'Voice ✓'
-                                    : 'Voice off',
+                                    ? _text('Voice ✓', '语音 ✓')
+                                    : _text('Voice off', '语音关闭'),
                                 onTap: widget.onVoiceToggle,
                               ),
                               const SizedBox(width: 6),
                               _Chip(
                                 icon: Icons.alt_route_rounded,
                                 label: widget.lanesEnabled
-                                    ? 'Lanes ✓'
-                                    : 'Lanes off',
+                                    ? _text('Lanes ✓', '车道 ✓')
+                                    : _text('Lanes off', '车道关闭'),
                                 onTap: widget.onLanesToggle,
                               ),
                               const SizedBox(width: 6),
@@ -560,17 +640,17 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                 icon: Icons.gps_fixed_rounded,
                                 label: widget.gpsAccuracy == null
                                     ? 'GPS —'
-                                    : 'GPS ±${widget.gpsAccuracy!.round()} m',
+                                    : 'GPS ±${widget.gpsAccuracy!.round()} ${_text('m', '米')}',
                               ),
                             ],
                           ),
                           if (expanded) ...[
                             const SizedBox(height: 15),
-                            const Align(
+                            Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                'Trip tools',
-                                style: TextStyle(
+                                _text('Trip tools', '行程工具'),
+                                style: const TextStyle(
                                   fontWeight: FontWeight.w900,
                                   fontSize: 16,
                                 ),
@@ -583,32 +663,32 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               children: [
                                 _ActionButton(
                                   icon: Icons.add_a_photo_rounded,
-                                  label: 'Add a report',
+                                  label: _text('Add a report', '添加上报'),
                                   onTap: widget.onReport,
                                 ),
                                 _ActionButton(
                                   icon: Icons.share_rounded,
-                                  label: 'Share ETA snapshot',
+                                  label: _text('Share ETA snapshot', '分享预计到达'),
                                   onTap: widget.onShare,
                                 ),
                                 _ActionButton(
                                   icon: Icons.search_rounded,
-                                  label: 'Search along route',
+                                  label: _text('Search along route', '沿途搜索'),
                                   onTap: widget.onSearchAlongRoute,
                                 ),
                                 _ActionButton(
                                   icon: Icons.route_rounded,
-                                  label: 'Preview route',
+                                  label: _text('Preview route', '路线总览'),
                                   onTap: widget.onOverview,
                                 ),
                                 _ActionButton(
                                   icon: Icons.list_alt_rounded,
-                                  label: 'Directions',
+                                  label: _text('Directions', '路线步骤'),
                                   onTap: widget.onDirections,
                                 ),
                                 _ActionButton(
                                   icon: Icons.settings_rounded,
-                                  label: 'Settings',
+                                  label: _text('Settings', '设置'),
                                   onTap: widget.onSettings,
                                 ),
                               ],
@@ -722,6 +802,7 @@ class _Chip extends StatelessWidget {
 
 class _NavigationControlRail extends StatelessWidget {
   const _NavigationControlRail({
+    required this.language,
     required this.northUp,
     required this.onCompassToggle,
     required this.onRecenter,
@@ -730,6 +811,8 @@ class _NavigationControlRail extends StatelessWidget {
   });
 
   final bool northUp;
+  final String language;
+  String _text(String en, String zh) => language == 'zh' ? zh : en;
   final VoidCallback onCompassToggle;
   final VoidCallback onRecenter;
   final VoidCallback onLayers;
@@ -748,28 +831,28 @@ class _NavigationControlRail extends StatelessWidget {
           _RailButton(
             icon: northUp ? Icons.explore_rounded : Icons.navigation_rounded,
             tooltip: northUp
-                ? 'North up · tap for follow view'
-                : 'Follow view · tap for north up',
+                ? _text('North up · tap for follow view', '北向朝上 · 点击跟随')
+                : _text('Follow view · tap for north up', '跟随视角 · 点击北向朝上'),
             onTap: onCompassToggle,
           ),
           const _RailDivider(),
           _RailButton(
             icon: Icons.my_location_rounded,
-            tooltip: 'Recenter',
+            tooltip: _text('Recenter', '回到当前位置'),
             onTap: onRecenter,
           ),
           const _RailDivider(),
           _RailButton(
             icon: Icons.layers_rounded,
-            tooltip: 'Map layers',
+            tooltip: _text('Map layers', '地图图层'),
             onTap: onLayers,
           ),
           const _RailDivider(),
           _RailButton(
             icon: Icons.add_alert_rounded,
-            tooltip: 'Report road issue',
+            tooltip: _text('Report road issue', '报告路况'),
             onTap: onReport,
-            iconColor: TasmanColors.danger,
+            iconColor: KiwiLensColors.danger,
             backgroundColor: Color(0xFFFFF3F1),
           ),
         ],
@@ -783,7 +866,7 @@ class _RailDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Container(width: 28, height: 1, color: TasmanColors.lightBorder);
+      Container(width: 28, height: 1, color: KiwiLensColors.lightBorder);
 }
 
 class _RailButton extends StatelessWidget {
@@ -813,7 +896,7 @@ class _RailButton extends StatelessWidget {
           onPressed: onTap,
           tooltip: tooltip,
           iconSize: 21,
-          icon: Icon(icon, color: iconColor ?? TasmanColors.darkOcean),
+          icon: Icon(icon, color: iconColor ?? KiwiLensColors.darkOcean),
         ),
       ),
     );

@@ -1,12 +1,12 @@
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/route_option.dart';
 
-const _ink = TasmanColors.darkOcean;
-const _accent = TasmanColors.sky;
+const _ink = KiwiLensColors.darkOcean;
+const _accent = KiwiLensColors.sky;
 
 String _duration(int seconds) {
   final duration = Duration(seconds: seconds);

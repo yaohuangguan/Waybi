@@ -144,7 +144,12 @@ void main() {
     expect(nav.arrived, isTrue);
     expect(nav.remainingSeconds, 0);
     expect(nav.remainingDistanceMeters, 0);
-    expect(drive.spoken.where((text) => text == 'You have arrived').length, 1);
+    expect(
+      drive.spoken.where((text) => text == 'You have arrived'),
+      isEmpty,
+      reason:
+          'The host announces arrival after confirming the exact destination',
+    );
   });
 
   test(

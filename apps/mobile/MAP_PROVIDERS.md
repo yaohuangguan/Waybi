@@ -1,7 +1,7 @@
 # Map providers and navigation
 
-Tasman retains Google native Navigation SDK guidance and adds Mapbox Maps with
-Directions API routes and Tasman's own GPS guidance engine. Users select the
+Kiwi Lens retains Google native Navigation SDK guidance and adds Mapbox Maps with
+Directions API routes and Kiwi Lens's own GPS guidance engine. Users select the
 map in Settings. Each provider feeds the same navigation HUD and camera alerts.
 
 ## Mapbox flow
@@ -33,7 +33,7 @@ groups are not deleted and recreated on every compass/GPS update.
 
 ## NZ search and provider boundaries
 
-Mapbox Search Box's documented coverage excludes New Zealand. Tasman therefore
+Mapbox Search Box's documented coverage excludes New Zealand. Kiwi Lens therefore
 uses Worker requests with `provider=geoapify` for Mapbox search and Explore.
 The Worker explicitly bypasses Google Places for these requests, even when a
 Google key is configured, and labels results with their actual source.
@@ -80,7 +80,7 @@ keys remain configured separately. Android API 24+ and iOS 16+ are required.
 
 ## Capabilities and release verification
 
-This is **Maps SDK + Directions API + Tasman GPS guidance**, not the native
+This is **Maps SDK + Directions API + Kiwi Lens GPS guidance**, not the native
 Mapbox Navigation SDK. It does not provide native road snapping, offline route
 calculation, voice assets or guaranteed background behavior. Lane information
 appears only when returned by Directions. NZ routing uses `driving`; live Mapbox

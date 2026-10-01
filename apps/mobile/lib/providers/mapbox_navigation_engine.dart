@@ -7,6 +7,7 @@ import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../drive/drive_engine.dart';
+import '../drive/navigation_language.dart';
 import '../drive/route_camera_matcher.dart';
 import '../drive/route_progress_tracker.dart';
 import 'provider_contracts.dart';
@@ -191,7 +192,7 @@ class MapboxNavigationEngine extends ChangeNotifier
       destination.latitude,
       destination.longitude,
     );
-    if (_remainingMeters <= 40 && toDestination <= 35 && drive.speedKph < 15) {
+    if (_remainingMeters <= 15 && toDestination <= 10 && drive.speedKph < 15) {
       _arrivalFixes++;
       if (_arrivalFixes >= 2) {
         arrived = true;
@@ -199,13 +200,8 @@ class MapboxNavigationEngine extends ChangeNotifier
         _remainingSeconds = 0;
         _distanceToStep = 0;
         drive.guidanceRunning = false;
-        unawaited(
-          drive.speakMessage(
-            _nextStep?.instruction.isNotEmpty == true
-                ? _nextStep!.instruction
-                : 'You have arrived',
-          ),
-        );
+        // The host confirms arrival against the requested GPS coordinate
+        // before announcing completion and presenting the trip summary.
       }
     } else {
       _arrivalFixes = 0;
@@ -221,9 +217,16 @@ class MapboxNavigationEngine extends ChangeNotifier
           : _distanceToStep < approach
           ? 'approach'
           : null;
-      if (stage != null && _spokenSteps.add('$nextIndex:$stage')) {
-        if (stage == 'turn') _spokenSteps.add('$nextIndex:approach');
-        unawaited(drive.speakMessage(_nextStep!.instruction));
+      if (stage != null &&
+          _spokenSteps.add('$nextIndex:$stage:${drive.navigationLanguage}')) {
+        if (stage == 'turn') {
+          _spokenSteps.add('$nextIndex:approach:${drive.navigationLanguage}');
+        }
+        unawaited(
+          drive.speakMessage(
+            routeStepInstruction(_nextStep, drive.navigationLanguage),
+          ),
+        );
       }
     }
     notifyListeners();

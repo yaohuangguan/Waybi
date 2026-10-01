@@ -1,11 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-class TasmanNotificationService {
-  TasmanNotificationService._();
+class KiwiLensNotificationService {
+  KiwiLensNotificationService._();
 
-  static final TasmanNotificationService instance =
-      TasmanNotificationService._();
+  static final KiwiLensNotificationService instance =
+      KiwiLensNotificationService._();
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;

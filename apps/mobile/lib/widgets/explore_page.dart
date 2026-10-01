@@ -5,7 +5,7 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../data/explore_repository.dart';
 import '../domain/geo_math.dart';
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 class ExplorePage extends StatefulWidget {
   const ExplorePage({
@@ -414,7 +414,7 @@ class _ExploreCard extends StatelessWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             color: place.openNow!
-                                ? TasmanColors.success
+                                ? KiwiLensColors.success
                                 : scheme.error,
                           ),
                         ),

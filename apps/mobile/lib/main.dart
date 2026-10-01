@@ -21,6 +21,12 @@ import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
 import 'domain/road_event.dart';
 import 'drive/device_heading.dart';
+import 'drive/journey_tracker.dart';
+import 'services/native_map_language.dart';
+import 'widgets/journey_summary_sheet.dart';
+
+import 'package:flutter_localizations/flutter_localizations.dart';
+
 import 'drive/drive_engine.dart';
 import 'drive/route_camera_matcher.dart';
 import 'providers/google_map_renderer.dart';
@@ -30,7 +36,8 @@ import 'providers/mapbox_routing_provider.dart';
 import 'providers/place_search_providers.dart';
 import 'providers/provider_contracts.dart';
 import 'services/notification_service.dart';
-import 'theme/tasman_theme.dart';
+import 'theme/kiwi_lens_theme.dart';
+import 'theme/kiwi_map_style.dart';
 import 'widgets/map_symbols.dart';
 import 'widgets/mapbox_navigation_overlay.dart';
 import 'widgets/drive_hud.dart';
@@ -59,6 +66,7 @@ class KiwiLensApp extends StatefulWidget {
 
 class _KiwiLensAppState extends State<KiwiLensApp> {
   ThemeMode _themeMode = ThemeMode.system;
+  Locale _locale = const Locale('en');
 
   @override
   void initState() {
@@ -74,7 +82,12 @@ class _KiwiLensAppState extends State<KiwiLensApp> {
       'dark' => ThemeMode.dark,
       _ => ThemeMode.system,
     };
-    if (mounted) setState(() => _themeMode = mode);
+    if (mounted) {
+      setState(() {
+        _themeMode = mode;
+        _locale = Locale(prefs.getString('kiwi.app.language') ?? 'en');
+      });
+    }
   }
 
   Future<void> _setThemeMode(ThemeMode mode) async {
@@ -91,14 +104,19 @@ class _KiwiLensAppState extends State<KiwiLensApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Tasman',
+      title: 'Kiwi Lens',
+      locale: _locale,
+      supportedLocales: const [Locale('en'), Locale('zh')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       debugShowCheckedModeBanner: false,
-      theme: TasmanTheme.light,
-      darkTheme: TasmanTheme.dark,
+      theme: KiwiLensTheme.light,
+      darkTheme: KiwiLensTheme.dark,
       themeMode: _themeMode,
       home: SplashGate(
         child: MapHomePage(
           themeMode: _themeMode,
+          onAppLanguageChanged: (value) =>
+              setState(() => _locale = Locale(value)),
           onThemeModeChanged: (mode) => unawaited(_setThemeMode(mode)),
         ),
       ),
@@ -127,10 +145,10 @@ class _OnboardingFeature extends StatelessWidget {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: TasmanColors.ice,
+            color: KiwiLensColors.ice,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, color: TasmanColors.ocean, size: 21),
+          child: Icon(icon, color: KiwiLensColors.ocean, size: 21),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -141,7 +159,7 @@ class _OnboardingFeature extends StatelessWidget {
                 title,
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
-                  color: TasmanColors.deepOcean,
+                  color: KiwiLensColors.deepOcean,
                 ),
               ),
               const SizedBox(height: 2),
@@ -150,7 +168,7 @@ class _OnboardingFeature extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 12.5,
                   height: 1.35,
-                  color: TasmanColors.lightTextSecondary,
+                  color: KiwiLensColors.lightTextSecondary,
                 ),
               ),
             ],
@@ -161,8 +179,8 @@ class _OnboardingFeature extends StatelessWidget {
   );
 }
 
-class _TransientTasmanBanner extends StatefulWidget {
-  const _TransientTasmanBanner({
+class _TransientKiwiLensBanner extends StatefulWidget {
+  const _TransientKiwiLensBanner({
     super.key,
     required this.message,
     required this.onDismiss,
@@ -172,10 +190,11 @@ class _TransientTasmanBanner extends StatefulWidget {
   final VoidCallback onDismiss;
 
   @override
-  State<_TransientTasmanBanner> createState() => _TransientTasmanBannerState();
+  State<_TransientKiwiLensBanner> createState() =>
+      _TransientKiwiLensBannerState();
 }
 
-class _TransientTasmanBannerState extends State<_TransientTasmanBanner> {
+class _TransientKiwiLensBannerState extends State<_TransientKiwiLensBanner> {
   Timer? _timer;
 
   @override
@@ -198,7 +217,7 @@ class _TransientTasmanBannerState extends State<_TransientTasmanBanner> {
         padding: const EdgeInsets.fromLTRB(20, 76, 20, 0),
         child: PointerInterceptor(
           child: Material(
-            color: TasmanColors.darkOcean.withValues(alpha: .96),
+            color: KiwiLensColors.darkOcean.withValues(alpha: .96),
             elevation: 8,
             borderRadius: BorderRadius.circular(15),
             child: Padding(
@@ -208,7 +227,7 @@ class _TransientTasmanBannerState extends State<_TransientTasmanBanner> {
                 children: [
                   const Icon(
                     Icons.info_outline_rounded,
-                    color: TasmanColors.sky,
+                    color: KiwiLensColors.sky,
                     size: 19,
                   ),
                   const SizedBox(width: 9),
@@ -246,10 +265,12 @@ class MapHomePage extends StatefulWidget {
     super.key,
     this.themeMode = ThemeMode.system,
     this.onThemeModeChanged,
+    this.onAppLanguageChanged,
   });
 
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode>? onThemeModeChanged;
+  final ValueChanged<String>? onAppLanguageChanged;
 
   @override
   State<MapHomePage> createState() => _MapHomePageState();
@@ -337,6 +358,10 @@ class _MapHomePageState extends State<MapHomePage> {
   bool _refreshAgain = false;
   bool _following = true;
   bool _voiceEnabled = true;
+  bool _keepScreenAwake = true;
+  bool _settingsLoaded = false;
+  bool _endingNavigation = false;
+  JourneyTracker? _journey;
   bool _lanesEnabled = true;
   bool _notifySafetyCameras = false;
   bool _notifyRoadIncidents = false;
@@ -400,7 +425,7 @@ class _MapHomePageState extends State<MapHomePage> {
       ),
     );
     _mapboxNavigation.addListener(_onMapboxNavigationChanged);
-    unawaited(TasmanNotificationService.instance.initialize());
+    unawaited(KiwiLensNotificationService.instance.initialize());
     initializeMapboxMaps(_mapboxToken);
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
@@ -434,7 +459,7 @@ class _MapHomePageState extends State<MapHomePage> {
               height: 44,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [TasmanColors.ocean, TasmanColors.teal],
+                  colors: [KiwiLensColors.ocean, KiwiLensColors.teal],
                 ),
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -443,7 +468,7 @@ class _MapHomePageState extends State<MapHomePage> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                _text('Welcome to Tasman', '欢迎使用 Tasman'),
+                _text('Welcome to Kiwi Lens', '欢迎使用 Kiwi Lens'),
                 style: const TextStyle(fontWeight: FontWeight.w900),
               ),
             ),
@@ -472,8 +497,8 @@ class _MapHomePageState extends State<MapHomePage> {
               icon: Icons.add_alert_rounded,
               title: _text('Report the road', '上报道路情况'),
               body: _text(
-                'Share crashes, hazards, roadworks, flooding and congestion with other Tasman drivers.',
-                '向其他 Tasman 用户分享事故、危险、施工、积水与拥堵。',
+                'Share crashes, hazards, roadworks, flooding and congestion with other Kiwi Lens drivers.',
+                '向其他 Kiwi Lens 用户分享事故、危险、施工、积水与拥堵。',
               ),
             ),
             _OnboardingFeature(
@@ -481,7 +506,7 @@ class _MapHomePageState extends State<MapHomePage> {
               title: _text('Made for New Zealand', '为新西兰道路设计'),
               body: _text(
                 'Kiwi location marker, NZ road data and a calm ocean-blue driving interface.',
-                'Kiwi 定位标记、新西兰道路数据，以及 Tasman 海洋蓝驾驶界面。',
+                'Kiwi 定位标记、新西兰道路数据，以及 Kiwi Lens 海洋蓝驾驶界面。',
               ),
             ),
           ],
@@ -515,6 +540,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
   void _onEngineChanged() {
     if (!mounted) return;
+    _journey?.cameraPassed(_driveEngine.passedCamera?.id);
     final distance = _driveEngine.navInfo?.distanceToCurrentStepMeters;
     final shouldZoom =
         _guidanceRunning && _following && distance != null && distance < 200;
@@ -594,7 +620,7 @@ class _MapHomePageState extends State<MapHomePage> {
         cameraDistance <= 600 &&
         _lastNotifiedCameraId != camera.id) {
       _lastNotifiedCameraId = camera.id;
-      await TasmanNotificationService.instance.showRoadAlert(
+      await KiwiLensNotificationService.instance.showRoadAlert(
         id: 'camera:${camera.id}',
         title: _text('Safety camera ahead', '前方安全摄像头'),
         body: _text(
@@ -617,7 +643,7 @@ class _MapHomePageState extends State<MapHomePage> {
           : _notifyRoadIncidents && importantOfficial;
       if (!enabled || !_notifiedRoadEventIds.add(event.id)) continue;
       final reporter = event.metadata['reporterName']?.toString();
-      await TasmanNotificationService.instance.showRoadAlert(
+      await KiwiLensNotificationService.instance.showRoadAlert(
         id: event.id,
         title: _roadEventLabel(event.type),
         body: reporter == null
@@ -633,7 +659,7 @@ class _MapHomePageState extends State<MapHomePage> {
   Future<void> _showRoadEventDetails(RoadEvent event) async {
     final reporter =
         event.metadata['reporterName']?.toString() ??
-        _text('Tasman driver', 'Tasman 用户');
+        _text('Kiwi Lens driver', 'Kiwi Lens 用户');
     final description = event.metadata['description']?.toString();
     final reportedAt =
         DateTime.tryParse(event.metadata['reportedAt']?.toString() ?? '') ??
@@ -664,12 +690,12 @@ class _MapHomePageState extends State<MapHomePage> {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: TasmanColors.ice,
+                    color: KiwiLensColors.ice,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Icon(
                     Icons.add_alert_rounded,
-                    color: TasmanColors.ocean,
+                    color: KiwiLensColors.ocean,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -679,7 +705,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     style: const TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.w900,
-                      color: TasmanColors.deepOcean,
+                      color: KiwiLensColors.deepOcean,
                     ),
                   ),
                 ),
@@ -693,7 +719,7 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
               style: const TextStyle(
                 fontWeight: FontWeight.w800,
-                color: TasmanColors.deepOcean,
+                color: KiwiLensColors.deepOcean,
               ),
             ),
             if (description != null && description.isNotEmpty) ...[
@@ -704,7 +730,7 @@ class _MapHomePageState extends State<MapHomePage> {
             Text(
               _remainingTime(event.validUntil),
               style: const TextStyle(
-                color: TasmanColors.lightTextSecondary,
+                color: KiwiLensColors.lightTextSecondary,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -753,6 +779,11 @@ class _MapHomePageState extends State<MapHomePage> {
     _voiceLanguage = prefs.getString('kiwi.voice.language') ?? 'en-NZ';
     _voiceEnabled = prefs.getBool('kiwi.voice.enabled') ?? true;
     _lanesEnabled = prefs.getBool('kiwi.nav.lanes') ?? true;
+    _keepScreenAwake = prefs.getBool('kiwi.nav.keep_screen_awake') ?? true;
+    _driveEngine.navigationLanguage = _appLanguage;
+    await _driveEngine.setKeepScreenAwake(_keepScreenAwake);
+    await NativeMapLanguage.apply(_appLanguage);
+    _settingsLoaded = true;
     _notifySafetyCameras =
         prefs.getBool('tasman.notifications.safety_cameras') ?? false;
     _notifyRoadIncidents =
@@ -853,7 +884,7 @@ class _MapHomePageState extends State<MapHomePage> {
     if (!mounted) return false;
     setState(() {
       _message = whenInUse.isPermanentlyDenied
-          ? 'Location is disabled for Tasman. Enable it in system settings.'
+          ? 'Location is disabled for Kiwi Lens. Enable it in system settings.'
           : 'Location permission is required for navigation.';
     });
     return false;
@@ -876,7 +907,7 @@ class _MapHomePageState extends State<MapHomePage> {
         Geolocator.getPositionStream(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.bestForNavigation,
-            distanceFilter: 2,
+            distanceFilter: 0,
           ),
         ).listen(
           _onPosition,
@@ -912,6 +943,19 @@ class _MapHomePageState extends State<MapHomePage> {
       _travelHeading = position.heading % 360;
     } else {
       _travelHeading = null;
+    }
+    if (_guidanceRunning &&
+        !_endingNavigation &&
+        DateTime.now().difference(position.timestamp).abs() <=
+            const Duration(seconds: 10)) {
+      final arrived =
+          _journey?.update(
+            GeoPoint(position.latitude, position.longitude),
+            accuracyMeters: position.accuracy,
+            time: position.timestamp,
+          ) ??
+          false;
+      if (arrived) unawaited(_stopNavigation(arrived: true));
     }
     setState(() {});
     _queueMapRefresh();
@@ -962,8 +1006,8 @@ class _MapHomePageState extends State<MapHomePage> {
       if (heading != null) {
         final options = PolygonOptions(
           points: radarSector(location, heading),
-          fillColor: const Color(0x332196F3),
-          strokeColor: const Color(0xAA1976D2),
+          fillColor: const Color(0x33AAD85F),
+          strokeColor: const Color(0xAA486B29),
           strokeWidth: 1.4,
           geodesic: true,
           zIndex: 5,
@@ -1034,7 +1078,7 @@ class _MapHomePageState extends State<MapHomePage> {
       zoomLevel: zoomLevel,
     );
     if (_useCarMarker) {
-      // followMyLocation can recreate native location chrome on iOS. Tasman
+      // followMyLocation can recreate native location chrome on iOS. Kiwi Lens
       // owns the visible vehicle marker, so suppress Google's indicator after
       // every follow/recenter/automatic junction zoom.
       await controller.setMyLocationEnabled(false);
@@ -1129,14 +1173,14 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
               subtitle: Text(
                 _text(
-                  'Reports are shared with Tasman drivers for about 2 hours.',
-                  '上报内容将在约 2 小时内共享给 Tasman 驾驶用户。',
+                  'Reports are shared with Kiwi Lens drivers for about 2 hours.',
+                  '上报内容将在约 2 小时内共享给 Kiwi Lens 驾驶用户。',
                 ),
               ),
             ),
             for (final choice in choices)
               ListTile(
-                leading: Icon(choice.$4, color: TasmanColors.ocean),
+                leading: Icon(choice.$4, color: KiwiLensColors.ocean),
                 title: Text(_text(choice.$2, choice.$3)),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () =>
@@ -1420,7 +1464,7 @@ class _MapHomePageState extends State<MapHomePage> {
         ? 0xE5484D
         : speed == 'slow'
         ? 0xF59E0B
-        : 0x0284C7;
+        : 0x486B29;
     return Color((alpha << 24) | rgb);
   }
 
@@ -1442,6 +1486,11 @@ class _MapHomePageState extends State<MapHomePage> {
           account: _account,
           voiceEnabled: _voiceEnabled,
           lanesEnabled: _lanesEnabled,
+          keepScreenAwake: _keepScreenAwake,
+          onKeepScreenAwakeChanged: (value) =>
+              unawaited(_setKeepScreenAwake(value)),
+          onNativeLanguageSettings: () =>
+              unawaited(NativeMapLanguage.openSettings()),
           appLanguage: _appLanguage,
           voiceLanguage: _voiceLanguage,
           themeMode: widget.themeMode,
@@ -1578,7 +1627,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 ),
               ),
               const Text(
-                'Saved to Tasman only; not published to Google.',
+                'Saved to Kiwi Lens only; not published to Google.',
                 style: TextStyle(fontSize: 11, color: Colors.black54),
               ),
             ],
@@ -1652,8 +1701,8 @@ class _MapHomePageState extends State<MapHomePage> {
               )
               .toList(growable: false),
           strokeColor: active
-              ? TasmanColors.ocean.withValues(alpha: .92)
-              : TasmanColors.sky.withValues(alpha: .38),
+              ? KiwiLensColors.ocean.withValues(alpha: .92)
+              : KiwiLensColors.sky.withValues(alpha: .38),
           strokeWidth: active ? 8 : 6,
           zIndex: active ? 18 : 8,
           clickable: false,
@@ -1841,9 +1890,7 @@ class _MapHomePageState extends State<MapHomePage> {
     unawaited(
       GoogleMapsNavigator.setAudioGuidance(
         NavigationAudioGuidanceSettings(
-          guidanceType: value
-              ? NavigationAudioGuidanceType.alertsAndGuidance
-              : NavigationAudioGuidanceType.silent,
+          guidanceType: NavigationAudioGuidanceType.silent,
           isBluetoothAudioEnabled: true,
           isVibrationEnabled: true,
         ),
@@ -1871,8 +1918,8 @@ class _MapHomePageState extends State<MapHomePage> {
 
     if (!await GoogleMapsNavigator.areTermsAccepted()) {
       final accepted = await GoogleMapsNavigator.showTermsAndConditionsDialog(
-        'Tasman Navigation',
-        'Tasman',
+        'Kiwi Lens Navigation',
+        'Kiwi Lens',
       );
       if (!accepted) return false;
     }
@@ -1895,9 +1942,7 @@ class _MapHomePageState extends State<MapHomePage> {
     }
     await GoogleMapsNavigator.setAudioGuidance(
       NavigationAudioGuidanceSettings(
-        guidanceType: _voiceEnabled
-            ? NavigationAudioGuidanceType.alertsAndGuidance
-            : NavigationAudioGuidanceType.silent,
+        guidanceType: NavigationAudioGuidanceType.silent,
         isBluetoothAudioEnabled: true,
         isVibrationEnabled: true,
       ),
@@ -2009,6 +2054,7 @@ class _MapHomePageState extends State<MapHomePage> {
           _routeStops.clear();
           _following = true;
         });
+        _beginJourney(poi);
         _queueMapRefresh();
         return;
       }
@@ -2094,7 +2140,7 @@ class _MapHomePageState extends State<MapHomePage> {
       await _navigationController?.setNavigationUIEnabled(true);
       final navigationController = _navigationController;
       if (navigationController != null) {
-        await _applyTasmanNavigationChrome(navigationController);
+        await _applyKiwiLensNavigationChrome(navigationController);
         await _followNavigationCamera(navigationController);
         await navigationController.setReportIncidentButtonEnabled(false);
       }
@@ -2114,6 +2160,7 @@ class _MapHomePageState extends State<MapHomePage> {
         _routeStops.clear();
         _following = true;
       });
+      _beginJourney(poi);
       _queueNavigationMarkerSync();
       _queueMapRefresh();
     } catch (error) {
@@ -2124,67 +2171,74 @@ class _MapHomePageState extends State<MapHomePage> {
     }
   }
 
-  Future<void> _stopNavigation() async {
-    if (!_guidanceRunning) return;
-    if (_mapboxNavigation.active) {
-      // Search Box and Directions content stays session-scoped. Persisting
-      // Mapbox-derived route data needs a separate storage entitlement.
-      await _mapboxNavigation.stop();
+  Future<void> _stopNavigation({bool arrived = false}) async {
+    if (!_guidanceRunning || _endingNavigation) return;
+    _endingNavigation = true;
+    final route = _activeNavigationRoute;
+    final summary = _journey?.finish(arrived: arrived);
+    _journey = null;
+    try {
+      if (_mapboxNavigation.active) {
+        await _mapboxNavigation.stop();
+      } else {
+        await GoogleMapsNavigator.stopGuidance();
+        await GoogleMapsNavigator.clearDestinations();
+        await _driveEngine.stop();
+        await _navigationController?.setNavigationUIEnabled(false);
+      }
+      if (_account.profile != null &&
+          route?.provider != 'mapbox' &&
+          route != null &&
+          route.points.isNotEmpty) {
+        final destination = route.points.last;
+        unawaited(
+          _account
+              .recordRoute(
+                destinationName: _destinationTitle,
+                latitude: destination.latitude,
+                longitude: destination.longitude,
+                mode: _selectedMode.apiValue,
+                distanceMeters:
+                    summary?.distanceMeters.round() ?? route.distanceMeters,
+                durationSeconds:
+                    summary?.elapsed.inSeconds ?? route.durationSeconds,
+              )
+              .catchError((_) {}),
+        );
+      }
       if (!mounted) return;
       setState(() {
         _guidanceRunning = false;
+        _junctionZoomed = false;
         _activeNavigationRoute = null;
-        _destinationTitle = 'Destination';
+        _destinationTitle = _text('Destination', '目的地');
         _journeyPhase = JourneyPhase.idle;
         _parkingLegFinished =
             _selectedParking != null &&
             _parkingOriginalPlace != null &&
             _selectedMode == KiwiTravelMode.drive;
       });
-      return;
-    }
-    final route = _activeNavigationRoute;
-    if (_account.profile != null && route != null && route.points.isNotEmpty) {
-      final destination = route.points.last;
-      unawaited(
-        _account
-            .recordRoute(
-              destinationName: _destinationTitle,
-              latitude: destination.latitude,
-              longitude: destination.longitude,
-              mode: _selectedMode.apiValue,
-              distanceMeters: route.distanceMeters,
-              durationSeconds: route.durationSeconds,
-            )
-            .catchError((_) {}),
-      );
-    }
-    _driveEngine.setRoute(null);
-    await GoogleMapsNavigator.stopGuidance();
-    await GoogleMapsNavigator.clearDestinations();
-    if (_selectedParking != null && _selectedMode == KiwiTravelMode.drive) {
-      await _driveEngine.stop();
-    }
-    await _navigationController?.setNavigationUIEnabled(false);
-    final navigationController = _navigationController;
-    if (navigationController != null) {
-      await _followNavigationCamera(navigationController);
-    }
-    if (!mounted) return;
-    setState(() {
-      _guidanceRunning = false;
-      _junctionZoomed = false;
-      _activeNavigationRoute = null;
-      _destinationTitle = 'Destination';
-      _journeyPhase = JourneyPhase.idle;
-      _parkingLegFinished =
-          _selectedParking != null &&
-          _parkingOriginalPlace != null &&
-          _selectedMode == KiwiTravelMode.drive;
-    });
-    if (_useCarMarker && _navigationController != null) {
-      await _navigationController!.setMyLocationEnabled(false);
-      _queueMapRefresh();
+      if (arrived) {
+        unawaited(
+          _driveEngine.speakMessage(
+            _text('You have arrived. Well done!', '已到达目的地，这段旅程辛苦啦！'),
+          ),
+        );
+      }
+      if (summary != null) {
+        unawaited(
+          showModalBottomSheet<void>(
+            context: context,
+            isScrollControlled: true,
+            useSafeArea: true,
+            showDragHandle: true,
+            builder: (_) =>
+                JourneySummarySheet(summary: summary, language: _appLanguage),
+          ),
+        );
+      }
+    } finally {
+      _endingNavigation = false;
     }
   }
 
@@ -2515,7 +2569,7 @@ class _MapHomePageState extends State<MapHomePage> {
               snippet: () {
                 final reporter =
                     event.metadata['reporterName']?.toString() ??
-                    _text('Tasman driver', 'Tasman 用户');
+                    _text('Kiwi Lens driver', 'Kiwi Lens 用户');
                 final time = _relativeTime(
                   DateTime.tryParse(
                         event.metadata['reportedAt']?.toString() ?? '',
@@ -2555,7 +2609,7 @@ class _MapHomePageState extends State<MapHomePage> {
   void _queueNavigationMarkerSync() {
     if (!_useCarMarker || !_driveEngine.active) return;
     final controller = _navigationController;
-    final location = _driveEngine.snappedLocation ?? _gpsLocation;
+    final location = _driveEngine.snappedLocation;
     if (controller == null || location == null) return;
 
     final heading =
@@ -2597,6 +2651,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
         final controller = _navigationController;
         if (controller == null) break;
+        await controller.setMyLocationEnabled(false);
         await _syncCarMarker(controller, location, headingOverride: heading);
         _lastNavigationMarkerLocation = location;
         _lastNavigationMarkerHeading = heading;
@@ -2652,8 +2707,8 @@ class _MapHomePageState extends State<MapHomePage> {
           position: location,
           radius: accuracy.clamp(5, 150).toDouble(),
           strokeWidth: 1,
-          strokeColor: const Color(0x882E86C9),
-          fillColor: const Color(0x222E86C9),
+          strokeColor: const Color(0x88729F36),
+          fillColor: const Color(0x22729F36),
           zIndex: 1,
         );
         if (_accuracyCircle == null) {
@@ -2727,6 +2782,7 @@ class _MapHomePageState extends State<MapHomePage> {
         _carMarker = null;
       }
     }
+    if (_driveEngine.active) _queueNavigationMarkerSync();
     _queueMapRefresh();
   }
 
@@ -2830,10 +2886,18 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   Future<void> _applyMapLayers(GoogleMapViewController controller) async {
+    final dark = Theme.of(context).brightness == Brightness.dark;
     await controller.settings.setTrafficEnabled(_layers.traffic);
     final style = _driveEngine.active && _layers.style == BaseMapStyle.terrain
         ? BaseMapStyle.standard
         : _layers.style;
+    if (_mapId.isEmpty) {
+      await controller.setMapStyle(
+        style == BaseMapStyle.standard
+            ? (dark ? kiwiMapStyleDark : kiwiMapStyleLight)
+            : null,
+      );
+    }
     await controller.setMapType(
       mapType: switch (style) {
         BaseMapStyle.standard => MapType.normal,
@@ -2899,7 +2963,7 @@ class _MapHomePageState extends State<MapHomePage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
     if (value) {
-      await TasmanNotificationService.instance.requestPermission();
+      await KiwiLensNotificationService.instance.requestPermission();
     }
     if (!mounted) return;
     setState(() {
@@ -2928,6 +2992,34 @@ class _MapHomePageState extends State<MapHomePage> {
     setState(() => _appLanguage = next);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('kiwi.app.language', next);
+    _driveEngine.navigationLanguage = next;
+    widget.onAppLanguageChanged?.call(next);
+    final applied = await NativeMapLanguage.apply(next);
+    if (!applied && mounted) {
+      setState(
+        () => _message = _text(
+          'Navigation text updated. Change the app language in system Settings for Google map labels, then reopen Kiwi Lens.',
+          '导航文字已更新。Google 地图标签请在系统设置中选择应用语言，然后重新打开 Kiwi Lens。',
+        ),
+      );
+    }
+    if (_routePlan != null && _selectedPoi != null) {
+      unawaited(_loadRoutePreview(_selectedPoi!));
+    }
+  }
+
+  Future<void> _setKeepScreenAwake(bool value) async {
+    setState(() => _keepScreenAwake = value);
+    await _driveEngine.setKeepScreenAwake(value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('kiwi.nav.keep_screen_awake', value);
+  }
+
+  void _beginJourney(PointOfInterest poi) {
+    _journey = JourneyTracker(
+      target: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
+      destination: poi.name,
+    );
   }
 
   String _text(String english, String chinese) =>
@@ -2964,16 +3056,18 @@ class _MapHomePageState extends State<MapHomePage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
-    final sheetColor = dark ? TasmanColors.darkOcean : scheme.surface;
-    final headerColor = dark ? TasmanColors.darkSurface : scheme.surface;
+    final sheetColor = dark ? KiwiLensColors.darkOcean : scheme.surface;
+    final headerColor = dark ? KiwiLensColors.darkSurface : scheme.surface;
     final badgeColor = dark
-        ? TasmanColors.deepTeal.withValues(alpha: .38)
+        ? KiwiLensColors.deepTeal.withValues(alpha: .38)
         : scheme.primaryContainer;
-    final badgeForeground = dark ? TasmanColors.sky : scheme.onPrimaryContainer;
+    final badgeForeground = dark
+        ? KiwiLensColors.sky
+        : scheme.onPrimaryContainer;
     final secondaryColor = dark
-        ? TasmanColors.darkTextSecondary
+        ? KiwiLensColors.darkTextSecondary
         : scheme.onSurfaceVariant;
-    final dividerColor = dark ? TasmanColors.darkBorder : theme.dividerColor;
+    final dividerColor = dark ? KiwiLensColors.darkBorder : theme.dividerColor;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -3153,7 +3247,7 @@ class _MapHomePageState extends State<MapHomePage> {
         ? _mapboxNavigation.remainingSeconds
         : nav?.timeToFinalDestinationSeconds;
     final details =
-        'Tasman trip to $_destinationTitle. '
+        'Kiwi Lens trip to $_destinationTitle. '
         'Remaining: ${remaining == null ? 'unknown' : '${(remaining / 1000).toStringAsFixed(1)} km'}. '
         'ETA: ${arrival == null ? 'unknown' : DateTime.now().add(Duration(seconds: arrival)).toLocal().toString().substring(0, 16)}. '
         'This is an ETA snapshot, not live location sharing.';
@@ -3541,14 +3635,16 @@ class _MapHomePageState extends State<MapHomePage> {
               avatar: Icon(
                 _quickActionIcon(action),
                 size: 15,
-                color: TasmanColors.ocean,
+                color: KiwiLensColors.ocean,
               ),
               visualDensity: VisualDensity.compact,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               padding: const EdgeInsets.symmetric(horizontal: 7),
               backgroundColor: Theme.of(context).colorScheme.surface
                   .withValues(alpha: .96),
-              side: BorderSide(color: TasmanColors.sky.withValues(alpha: .28)),
+              side: BorderSide(
+                color: KiwiLensColors.sky.withValues(alpha: .28),
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(13),
               ),
@@ -3835,7 +3931,7 @@ class _MapHomePageState extends State<MapHomePage> {
           ),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x22082F49),
+              color: Color(0x2220351C),
               blurRadius: 22,
               offset: Offset(0, 8),
             ),
@@ -3870,12 +3966,15 @@ class _MapHomePageState extends State<MapHomePage> {
                             gradient: const LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: [TasmanColors.ocean, TasmanColors.teal],
+                              colors: [
+                                KiwiLensColors.ocean,
+                                KiwiLensColors.teal,
+                              ],
                             ),
                             borderRadius: BorderRadius.circular(15),
                             boxShadow: const [
                               BoxShadow(
-                                color: Color(0x300077B6),
+                                color: Color(0x30486B29),
                                 blurRadius: 10,
                                 offset: Offset(0, 4),
                               ),
@@ -3891,7 +3990,7 @@ class _MapHomePageState extends State<MapHomePage> {
                         Text(
                           _text('Start', '出发'),
                           style: TextStyle(
-                            color: TasmanColors.ocean,
+                            color: KiwiLensColors.ocean,
                             fontSize: 10,
                             fontWeight: FontWeight.w900,
                           ),
@@ -3923,6 +4022,8 @@ class _MapHomePageState extends State<MapHomePage> {
     _cameraMarkers = [];
     _roadEventMarkers = [];
     _carMarker = null;
+    _lastNavigationMarkerLocation = null;
+    _lastNavigationMarkerHeading = null;
     _accuracyCircle = null;
     _markerSignature = '';
     _navigationController = null;
@@ -3942,9 +4043,10 @@ class _MapHomePageState extends State<MapHomePage> {
     _queueMapRefresh();
   }
 
-  Future<void> _applyTasmanNavigationChrome(
+  Future<void> _applyKiwiLensNavigationChrome(
     GoogleNavigationViewController controller,
   ) async {
+    await controller.setMyLocationEnabled(!_useCarMarker);
     await controller.setNavigationHeaderEnabled(false);
     await controller.setNavigationFooterEnabled(false);
     await controller.settings.setMyLocationButtonEnabled(false);
@@ -3959,7 +4061,7 @@ class _MapHomePageState extends State<MapHomePage> {
   Future<void> _onNavigationViewCreated(
     GoogleNavigationViewController controller,
   ) async {
-    await controller.setMyLocationEnabled(!_useCarMarker || _guidanceRunning);
+    await controller.setMyLocationEnabled(!_useCarMarker);
     await _applyMapLayers(controller);
     await controller.settings.setCompassEnabled(false);
     await controller.settings.setRotateGesturesEnabled(true);
@@ -3970,11 +4072,13 @@ class _MapHomePageState extends State<MapHomePage> {
     _cameraMarkers = [];
     _roadEventMarkers = [];
     _carMarker = null;
+    _lastNavigationMarkerLocation = null;
+    _lastNavigationMarkerHeading = null;
     _accuracyCircle = null;
     _markerSignature = '';
     _radarPolygon = null;
     await controller.setNavigationUIEnabled(_guidanceRunning);
-    await _applyTasmanNavigationChrome(controller);
+    await _applyKiwiLensNavigationChrome(controller);
     if (_driveEngine.snappedLocation != null) {
       await _followNavigationCamera(controller);
       await controller.setReportIncidentButtonEnabled(false);
@@ -4032,13 +4136,16 @@ class _MapHomePageState extends State<MapHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_settingsLoaded) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       body: Stack(
         children: [
           Positioned.fill(
             child: _driveEngine.active && _mapProvider == MapProvider.google
                 ? GoogleMapsNavigationView(
-                    key: const ValueKey('navigation-view'),
+                    key: ValueKey('navigation-view-$_appLanguage'),
                     onViewCreated: _onNavigationViewCreated,
                     mapId: _mapId.isEmpty ? null : _mapId,
                     initialCameraPosition:
@@ -4113,7 +4220,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     },
                   )
                 : GoogleMapRenderer(
-                    key: const ValueKey('browse-map-view'),
+                    key: ValueKey('browse-map-view-$_appLanguage'),
                     onControllerCreated: _onMapViewCreated,
                     onReady: (renderer) => _browseRenderer = renderer,
                     mapId: _mapId.isEmpty ? null : _mapId,
@@ -4200,7 +4307,7 @@ class _MapHomePageState extends State<MapHomePage> {
                         tooltip: _text('Report road issue', '上报道路情况'),
                         icon: const Icon(
                           Icons.add_alert_rounded,
-                          color: TasmanColors.ocean,
+                          color: KiwiLensColors.ocean,
                         ),
                         onPressed: () => unawaited(_showRoadReport()),
                       ),
@@ -4215,8 +4322,8 @@ class _MapHomePageState extends State<MapHomePage> {
                         icon: Icon(
                           _locationControlIcon,
                           color: _following
-                              ? TasmanColors.ocean
-                              : TasmanColors.deepOcean,
+                              ? KiwiLensColors.ocean
+                              : KiwiLensColors.deepOcean,
                         ),
                         onPressed: _cycleLocationCamera,
                       ),
@@ -4247,7 +4354,7 @@ class _MapHomePageState extends State<MapHomePage> {
                         ),
                         boxShadow: const [
                           BoxShadow(
-                            color: Color(0x18082F49),
+                            color: Color(0x1820351C),
                             blurRadius: 18,
                             offset: Offset(0, 7),
                           ),
@@ -4268,8 +4375,8 @@ class _MapHomePageState extends State<MapHomePage> {
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                     colors: [
-                                      TasmanColors.ocean,
-                                      TasmanColors.teal,
+                                      KiwiLensColors.ocean,
+                                      KiwiLensColors.teal,
                                     ],
                                   ),
                                   borderRadius: BorderRadius.circular(13),
@@ -4298,8 +4405,8 @@ class _MapHomePageState extends State<MapHomePage> {
                                     ),
                                     Text(
                                       _text(
-                                        'Navigate Aotearoa with Tasman',
-                                        '用 Tasman 探索新西兰',
+                                        'Navigate Aotearoa with Kiwi Lens',
+                                        '用 Kiwi Lens 探索新西兰',
                                       ),
                                       style: TextStyle(
                                         color: Theme.of(context)
@@ -4314,7 +4421,7 @@ class _MapHomePageState extends State<MapHomePage> {
                               ),
                               const Icon(
                                 Icons.arrow_forward_rounded,
-                                color: TasmanColors.ocean,
+                                color: KiwiLensColors.ocean,
                                 size: 19,
                               ),
                             ],
@@ -4347,6 +4454,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 builder: (context, _) => _guidanceRunning
                     ? NavigationOverlay(
                         engine: _driveEngine,
+                        language: _appLanguage,
                         destinationTitle: _destinationTitle,
                         gpsAccuracy: _gpsAccuracy,
                         voiceEnabled: _voiceEnabled,
@@ -4406,7 +4514,7 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
             ),
           if (_message != null)
-            _TransientTasmanBanner(
+            _TransientKiwiLensBanner(
               key: ValueKey(_message),
               message: _message!,
               onDismiss: () {
@@ -4531,7 +4639,7 @@ class _MapHomePageState extends State<MapHomePage> {
                   onPressed: _busy
                       ? null
                       : () => unawaited(_navigateToSelectedPoi()),
-                  backgroundColor: TasmanColors.ocean,
+                  backgroundColor: KiwiLensColors.ocean,
                   foregroundColor: Colors.white,
                   icon: _busy
                       ? const SizedBox(

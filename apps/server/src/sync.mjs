@@ -43,7 +43,7 @@ export function parseNztaPage(html) {
 
 export async function fetchNztaCameras(fetcher = fetch) {
   const response = await fetcher(SOURCE_URL, {
-    headers: { 'user-agent': 'Tasman/0.1 (+https://github.com/yaohuangguan/tasman)', accept: 'text/html' },
+    headers: { 'user-agent': 'Kiwi Lens/0.1 (+https://github.com/yaohuangguan/tasman)', accept: 'text/html' },
     signal: AbortSignal.timeout(15000)
   });
   if (!response.ok) throw new Error(`NZTA returned HTTP ${response.status}`);

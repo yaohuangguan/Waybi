@@ -1,4 +1,4 @@
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 import 'dart:ui' as ui;
 
@@ -58,10 +58,10 @@ class MapSymbols {
       CameraKind.averageSpeed => const Color(0xFF0891B2),
       CameraKind.redLight => const Color(0xFFC64539),
       CameraKind.dualRedLightSpeed => const Color(0xFFD97706),
-      CameraKind.busLane => const Color(0xFF0E7490),
+      CameraKind.busLane => const Color(0xFF496B32),
       CameraKind.other => const Color(0xFF7250A1),
     };
-    paint.color = onRoute ? TasmanColors.sky : Colors.white;
+    paint.color = onRoute ? KiwiLensColors.sky : Colors.white;
     canvas.drawCircle(const Offset(36, 34), 32, paint);
     paint.color = color;
     canvas.drawCircle(const Offset(36, 34), onRoute ? 27 : 29, paint);
@@ -166,7 +166,7 @@ class MapSymbols {
     final paint = Paint()..isAntiAlias = true;
     paint.color = Colors.white;
     canvas.drawCircle(const Offset(36, 34), 32, paint);
-    paint.color = TasmanColors.ocean;
+    paint.color = KiwiLensColors.ocean;
     canvas.drawCircle(const Offset(36, 34), 28, paint);
     paint.color = Colors.white;
     final path = Path()
@@ -175,7 +175,7 @@ class MapSymbols {
       ..lineTo(18, 48)
       ..close();
     canvas.drawPath(path, paint);
-    paint.color = TasmanColors.ocean;
+    paint.color = KiwiLensColors.ocean;
     paint.strokeWidth = 4;
     paint.strokeCap = StrokeCap.round;
     canvas.drawLine(const Offset(36, 27), const Offset(36, 37), paint);
@@ -192,9 +192,9 @@ class MapSymbols {
     final paint = Paint()..isAntiAlias = true;
     paint.color = Colors.white;
     canvas.drawCircle(const Offset(36, 36), 30, paint);
-    paint.color = TasmanColors.deepOcean;
+    paint.color = KiwiLensColors.deepOcean;
     canvas.drawCircle(const Offset(36, 36), 26, paint);
-    paint.color = TasmanColors.sky;
+    paint.color = KiwiLensColors.sky;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         const Rect.fromLTWH(17, 29, 38, 19),
@@ -209,7 +209,7 @@ class MapSymbols {
       ),
       paint,
     );
-    paint.color = TasmanColors.deepOcean;
+    paint.color = KiwiLensColors.deepOcean;
     canvas.drawCircle(const Offset(25, 49), 4, paint);
     canvas.drawCircle(const Offset(47, 49), 4, paint);
     final image = await recorder.endRecording().toImage(72, 72);

@@ -195,7 +195,7 @@ DriveEngine
 Kiwi Lens Drive HUD
 ```
 
-Google 和 Mapbox 的 Drive Mode 即使没有设置目的地也可以启动；Mapbox 使用系统高精度 GPS、Android 前台定位通知 / iOS 后台定位设置，并在驾驶期间保持屏幕常亮。它会加载 Cloudflare `/api/cameras`，根据 road-snapped 行驶轨迹推导前进方向，筛选前方安全摄像头，并在约 800 m 和 300 m 触发 Kiwi Lens 自己的 UI + TTS 提醒。设置目的地后，同一套 DriveEngine 继续提供摄像头提醒；Google 消费原生 NavInfo，Mapbox 消费 Directions 路线与连续 GPS 进度，显示转弯、剩余距离、ETA 和可用的推荐车道。摄像头语音优先于转弯播报，静音与退出会取消待播报内容。
+Google 和 Mapbox 的 Drive Mode 即使没有设置目的地也可以启动；Mapbox 使用系统高精度 GPS、Android 前台定位通知 / iOS 后台定位设置，并在驾驶期间保持屏幕常亮。它会加载 Cloudflare `/api/cameras`，根据 road-snapped 行驶轨迹推导前进方向，筛选前方安全摄像头，并在约 800 m 和 300 m 触发 Kiwi Lens 自己的 UI + TTS 提醒。设置目的地后，同一套 DriveEngine 继续提供摄像头提醒；Google 消费原生 NavInfo，Mapbox 消费 Directions 路线与连续 GPS 进度，显示转弯、剩余距离、ETA 和可用的推荐车道。转弯和摄像头提醒使用同一个等待播放完成的 TTS 队列；摄像头提醒会等当前转弯播报结束，静音与退出会取消待播报内容。
 
 摄像头数据目前没有执法方向，因此 Free Drive 的匹配策略刻意保守：优先前进方向锥形范围内的摄像头，避免侧路或身后的明显误报。真实驾驶测试后再调提醒距离与 heading 阈值。
 
@@ -211,3 +211,23 @@ Google 和 Mapbox 的 Drive Mode 即使没有设置目的地也可以启动；Ma
 - Kiwi Lens 自有地图样式
 
 PWA 继续作为快速试驾版本，原生端与 PWA 共用 Cloudflare 后端，但导航能力逐步迁移到 Google Navigation SDK。
+
+
+## Kiwi Lime 导航体验
+
+- 恢复 Kiwi Lens 品牌和原始应用图标，界面采用 Kiwi Lime 配色，并加入 kiwi 鸟插画。
+- 导航/Drive Mode 的屏幕常亮默认开启，可在设置中关闭。退出会释放常亮锁。
+- Google SDK 的语音设为 silent；实时 NavInfo 转向数据进入应用自己的 TTS 队列。导航文字语言与摄像头播报语言可分别设置，过时的待播报提示会跳过。
+- 中文导航卡片使用结构化转向数据，不依赖 SDK 返回的英文句子。Android 通过应用资源语言在创建地图前初始化；iOS 使用系统的应用语言。原生 Google 地图标签可能需要在系统设置选择应用语言并重新打开应用，没有受支持的 iOS SDK 运行时语言 setter。
+- Kiwi/箭头/汽车标记关闭 Google 定位层，并且导航时只跟随 SDK 道路吸附坐标；classic 选项保留原生定位标记。原生 SDK 没有通过当前 Flutter 插件暴露车辆图标替换接口。
+- 路口前 300 米显示 SDK 提供的推荐车道。Android 使用结构化车道方向，iOS 使用 SDK 生成的车道图片；没有真实车道数据时隐藏该区域。
+- 自动到达基于选定地点的原始 GPS 坐标：连续两个定位、至少 750ms、准确度不超过 25m，并且都在 10m 内。主定位流还会拒绝超过 10 秒的旧定位。SDK 的道路终点或到达通知不会提前结束行程。
+- 行程总结显示实际 GPS 距离、耗时、经过摄像头数量和轨迹总览。Google 商标与版权归属必须保留；设置 MAP_ID 时应在 Google Cloud 配置对应的地图样式，没有 MAP_ID 时使用本地 Kiwi Lime JSON 样式。
+
+在不连接手机时，可运行实际 HUD/总结组件的视觉预览：
+
+```powershell
+flutter run -d web-server --target tool/navigation_preview.dart --web-port 5180
+```
+
+该入口只提供明确的示例导航数据和路线草图，不验证原生地图、真实定位或手机音频。iOS/Android 的路口缩放、蓝色定位标记隐藏、地图语言和蓝牙播报仍需设备验证。

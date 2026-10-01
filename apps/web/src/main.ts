@@ -43,8 +43,15 @@ const routeStops: { label: string; coordinate: Coordinate }[] = [];
 let navigating = false;
 let uiMode: 'explore' | 'navigation' = 'explore';
 let following = true;
-let language: Language = 'en';
-let voiceEnabled = true;
+let language: Language = localStorage.getItem('kiwi-language') === 'zh' ? 'zh' : 'en';
+let voiceEnabled = localStorage.getItem('kiwi-voice') !== 'off';
+let keepScreenAwake = localStorage.getItem('kiwi-keep-screen-awake') !== 'off';
+let journeyStarted = 0;
+let journeyDistance = 0;
+let journeyPoints: Coordinate[] = [];
+let arrivalWithinRadiusAt = 0;
+let latestGpsFixAt = 0;
+let mapLanguage: Language | null = null;
 let laneGuidanceEnabled = localStorage.getItem('kiwi-lane-guidance') !== 'off';
 let searchTarget: 'origin' | 'destination' | 'stop' = 'destination';
 let routeAbort: AbortController | null = null;
@@ -336,10 +343,25 @@ function setUiMode(next: 'explore' | 'navigation') {
 }
 
 function updateNavigationOverlayLayout() {
+  updateMapViewport();
   if (uiMode !== 'navigation') return;
   document.body.style.setProperty('--nav-sheet-clearance', `${Math.ceil($('navSheet').getBoundingClientRect().height) + 12}px`);
   document.body.style.setProperty('--nav-banner-clearance', `${Math.ceil($('navBanner').getBoundingClientRect().bottom) + 18}px`);
 }
+
+// Keep provider attribution inside the visible map viewport above mobile sheets.
+function updateMapViewport() {
+  const sheet = $(uiMode === 'navigation' ? 'navSheet' : 'bottomPanel');
+  const clearance = window.innerWidth < 760 && !sheet.hidden
+    ? Math.max(0, window.innerHeight - sheet.getBoundingClientRect().top) : 0;
+  $('map').style.bottom = `${Math.ceil(clearance)}px`;
+}
+const mapViewportObserver = new ResizeObserver(updateMapViewport);
+for (const id of ['bottomPanel', 'navSheet']) {
+  mapViewportObserver.observe($(id));
+  $(id).addEventListener('transitionend', updateMapViewport);
+}
+window.addEventListener('resize', updateMapViewport);
 
 function renderSpeedHud() {
   const hud = $('speedHud');
@@ -438,7 +460,18 @@ function requestCompassFromGesture() {
 
 function updatePosition(latitude: number, longitude: number, heading: number | null, accuracy: number, speedMetersPerSecond?: number | null) {
   if (!(latitude > -48 && latitude < -34 && longitude > 166 && longitude < 179)) return;
+  const previous = current;
+  const now = Date.now();
+  latestGpsFixAt = now;
   current = [longitude, latitude];
+  if (navigating && Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= 25) {
+    if (previous) {
+      const moved = distanceMeters(previous, current);
+      if (moved > 2 && moved < 150) journeyDistance += moved;
+    }
+    journeyPoints.push([...current] as Coordinate);
+  }
+
   latestHeading = heading;
   if (!placeLookupStarted) {
     placeLookupStarted = true;
@@ -661,6 +694,7 @@ function applyDrivingRoute(index: number) {
   routeCameras = matchCamerasToRoute(cameras, route);
   renderCameras();
   map.renderRoute(route, destination, navigating);
+  mapLanguage = language;
   map.setTrafficEnabled(trafficLayerEnabled);
   map.renderTrafficRoutes(trafficVisuals(), selectedDrivingRoute, (chosen) => {
     if (chosen === selectedDrivingRoute || navigating) return;
@@ -961,31 +995,41 @@ function saveCurrentRoute() {
   } else toast(language === 'zh' ? '路线仅保留到本次会话' : 'Route saved for this session only');
 }
 
-function speak(message: string) {
+let speechGeneration = 0;
+let speechQueue = Promise.resolve();
+function stopSpeech() {
+  speechGeneration++;
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+}
+function speak(message: string, stillRelevant: () => boolean = () => true) {
   if (!voiceEnabled || !('speechSynthesis' in window)) return;
-  speechSynthesis.resume();
-  const utterance = new SpeechSynthesisUtterance(message);
-  utterance.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
-  utterance.rate = language === 'zh' ? .95 : .9;
-  utterance.pitch = 1;
-  utterance.volume = 1;
-  const voices = speechSynthesis.getVoices();
-  const preferred = voices.find((voice) =>
-    language === 'zh'
-      ? voice.lang.toLowerCase().startsWith('zh')
-      : voice.lang.toLowerCase().startsWith('en-nz')
-  ) || voices.find((voice) => language === 'en' && voice.lang.toLowerCase().startsWith('en'));
-  if (preferred) utterance.voice = preferred;
-  speechSynthesis.cancel();
-  utterance.onerror = () => toast(language === 'zh'
-    ? '语音播放失败，请检查静音开关、音量和浏览器语音权限。'
-    : 'Voice playback failed. Check silent mode, volume and browser speech support.');
-  speechSynthesis.resume();
-  speechSynthesis.speak(utterance);
+  const generation = speechGeneration;
+  const speechLanguage = language;
+  speechQueue = speechQueue.catch(() => {}).then(() => {
+    if (!voiceEnabled || generation !== speechGeneration || !stillRelevant()) return;
+    return new Promise<void>((resolve) => {
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.lang = speechLanguage === 'zh' ? 'zh-CN' : 'en-NZ';
+      utterance.rate = speechLanguage === 'zh' ? .95 : .9;
+      const voices = speechSynthesis.getVoices();
+      const preferred = voices.find((voice) => voice.lang.toLowerCase().startsWith(speechLanguage === 'zh' ? 'zh' : 'en-nz'))
+        || voices.find((voice) => speechLanguage === 'en' && voice.lang.toLowerCase().startsWith('en'));
+      if (preferred) utterance.voice = preferred;
+      utterance.onend = () => resolve();
+      utterance.onerror = (event) => {
+        if (event.error !== 'canceled' && event.error !== 'interrupted') toast(speechLanguage === 'zh'
+          ? '语音播放失败，请检查音量和浏览器语音权限。'
+          : 'Voice playback failed. Check volume and browser speech support.');
+        resolve();
+      };
+      speechSynthesis.resume();
+      speechSynthesis.speak(utterance);
+    });
+  });
 }
 
 function turnText(step: RouteStep) {
-  if (step.instruction?.trim()) return step.instruction;
+  if (step.instruction?.trim() && (language !== 'zh' || /[\u3400-\u9fff]/.test(step.instruction))) return step.instruction;
   const modifier = step.modifier || '';
   const road = step.name || (language === 'zh' ? '道路' : 'the road');
   if (step.maneuver === 'arrive') return language === 'zh' ? '到达目的地' : 'Arrive at destination';
@@ -1032,7 +1076,7 @@ function renderLaneGuidance(step?: RouteStep) {
     const item = document.createElement('span');
     item.className = 'lane' + (lane.valid ? ' recommended' : '') + (lane.indications.length > 1 ? ' multi' : '');
     item.textContent = laneSymbol(lane.indications);
-    item.setAttribute('aria-label', (lane.valid ? 'Recommended' : 'Lane') + ': ' + (lane.indications.join(', ') || 'unknown'));
+    item.setAttribute('aria-label', (lane.valid ? (language === 'zh' ? '推荐车道' : 'Recommended') : (language === 'zh' ? '车道' : 'Lane')) + ': ' + (lane.indications.join(', ') || 'unknown'));
     return item;
   }));
   root.hidden = false;
@@ -1046,6 +1090,12 @@ function nextStep(progress: number) {
 
 function updateGuidance() {
   if (!current || !route || !navigating) return;
+  const nearExactDestination = destination && distanceMeters(current, destination) <= 10;
+  const accurate = gpsAccuracy !== null && Number.isFinite(gpsAccuracy) && gpsAccuracy <= 25 && gpsAccuracy >= 0;
+  if (nearExactDestination && accurate && Date.now() - latestGpsFixAt < 3000) {
+    arrivalWithinRadiusAt ||= latestGpsFixAt;
+    if (latestGpsFixAt - arrivalWithinRadiusAt >= 750) { stopNavigation(true); return; }
+  } else arrivalWithinRadiusAt = 0;
   const position = nearestOnRoute(current, route.coordinates);
   if (position.offsetMeters > 100 && Date.now() - lastRerouteAt > 20000 && !manualOrigin) {
     lastRerouteAt = Date.now();
@@ -1059,7 +1109,7 @@ function updateGuidance() {
   $('turnArrow').textContent = maneuver ? turnArrow(maneuver.step) : '◆';
   $('turnDistance').textContent = maneuver ? formatDistance(Math.max(0, maneuver.along - progress), language) : '—';
   $('turnInstruction').textContent = maneuver ? turnText(maneuver.step) : t(language, 'arrived');
-  renderLaneGuidance(maneuver?.step);
+  renderLaneGuidance(maneuver && maneuver.along - progress <= 300 ? maneuver.step : undefined);
   $('turnEta').textContent = new Date(Date.now() + remainingSeconds * 1000).toLocaleTimeString(language === 'zh' ? 'zh-NZ' : 'en-NZ', { hour: '2-digit', minute: '2-digit' });
   $('turnRemaining').textContent = formatDistance(remaining, language);
   $('tripDistance').textContent = formatDistance(remaining, language);
@@ -1073,10 +1123,10 @@ function updateGuidance() {
       const lookAhead = toTurn < 45 ? 35 : toTurn < 140 ? 60 : 150;
       map.focusNavigation(lookAheadCenter(current, latestHeading, route, lookAhead), zoom);
     }
-    const key = `${maneuver.step.location.join(',')}:${toTurn <= 100 ? '100' : '500'}`;
+    const key = `${language}:${maneuver.step.location.join(',')}:${toTurn <= 100 ? '100' : '500'}`;
     if (toTurn > 0 && toTurn <= 500 && key !== lastTurnKey) {
       lastTurnKey = key;
-      speak(language === 'zh' ? `${formatDistance(toTurn, 'zh')}后，${turnText(maneuver.step)}` : `In ${formatDistance(toTurn, 'en')}, ${turnText(maneuver.step)}`);
+      speak(language === 'zh' ? `${formatDistance(toTurn, 'zh')}后，${turnText(maneuver.step)}` : `In ${formatDistance(toTurn, 'en')}, ${turnText(maneuver.step)}`, () => navigating && key === lastTurnKey);
     }
   }
   const upcoming = routeCameras.filter((item) => item.confidence === 'high' && item.alongMeters >= progress - 15).sort((a, b) => a.alongMeters - b.alongMeters)[0];
@@ -1090,23 +1140,28 @@ function updateGuidance() {
     $('alertType').textContent = cameraLabel(upcoming.camera.type, language);
     $('alertRoad').textContent = upcoming.camera.location;
     $('alertDistance').textContent = formatDistance(ahead, language);
-    for (const threshold of [800, 300]) {
+    for (const threshold of [ahead <= 300 ? 300 : 800]) {
       const key = `${upcoming.camera.id}:${threshold}`;
       if (ahead <= threshold && ahead > 0 && !spokenCameras.has(key)) {
         spokenCameras.add(key);
         const label = cameraLabel(upcoming.camera.type, language);
-        speak(language === 'zh' ? `前方 ${threshold} 米${label}，${upcoming.camera.location}` : `${label} in ${threshold} metres, ${upcoming.camera.location}`);
+        speak(language === 'zh' ? `前方 ${threshold} 米${label}，${upcoming.camera.location}` : `${label} in ${threshold} metres, ${upcoming.camera.location}`, () => navigating && current !== null && route !== null && upcoming.alongMeters > nearestOnRoute(current, route.coordinates).alongMeters);
       }
     }
   } else $('cameraAlert').hidden = true;
   requestAnimationFrame(updateNavigationOverlayLayout);
-  if (remaining < 25) stopNavigation(true);
+
 }
 
 async function startNavigation() {
   if (!current) { requestGps(); toast(t(language, 'noGps')); return; }
   if (!route) { toast(t(language, 'routeError')); return; }
   navigating = true;
+  journeyStarted = Date.now();
+  journeyDistance = 0;
+  journeyPoints = [[...current] as Coordinate];
+  arrivalWithinRadiusAt = 0;
+  spokenCameras.clear();
   following = true;
   requestCompassFromGesture();
   document.body.dataset.travelMode = selectedTravelMode;
@@ -1126,7 +1181,7 @@ async function startNavigation() {
       ? (language === 'zh' ? '行程开始，请按照换乘信息出行。' : 'Trip started. Follow the transit itinerary.')
       : (language === 'zh' ? '导航开始，请注意安全。' : 'Navigation started. Travel safely.')
   );
-  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch { /* browser may deny wake lock */ }
+  await updateWakeLock();
   updateGuidance();
 }
 
@@ -1139,6 +1194,8 @@ function stopNavigation(arrived = false) {
     }).catch(() => { /* Ending navigation must work even if account sync fails. */ });
   }
   navigating = false;
+  stopSpeech();
+  showJourneySummary(arrived);
   delete document.body.dataset.travelMode;
   renderLaneGuidance();
   $('cameraAlert').hidden = true;
@@ -1192,7 +1249,7 @@ function renderPoiAccountState(place: PoiSelection) {
   comment.disabled = !signedIn;
   saveReview.disabled = !signedIn;
   $('poiOwnReviewHint').textContent = signedIn
-    ? (language === 'zh' ? '仅保存在 Tasman 账户，不会发布到 Google' : 'Private to Tasman; not posted to Google')
+    ? (language === 'zh' ? '仅保存在 Kiwi Lens 账户，不会发布到 Google' : 'Private to Kiwi Lens; not posted to Google')
     : (language === 'zh' ? '登录后撰写私人评价' : 'Sign in to write a private review');
   $('poiAccountHint').textContent = signedIn
     ? (language === 'zh' ? `同步到 ${currentAccountEmail()}` : `Synced to ${currentAccountEmail()}`)
@@ -1509,6 +1566,8 @@ $('recenterButton').onclick = () => {
 };
 $('navVoiceChip').onclick = () => {
   voiceEnabled = !voiceEnabled;
+  localStorage.setItem('kiwi-voice', voiceEnabled ? 'on' : 'off');
+  if (!voiceEnabled) stopSpeech();
   ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled;
   renderTripFlags();
   void rememberPreferences(language, voiceEnabled);
@@ -1560,6 +1619,8 @@ $('closeData').onclick = () => hideOverlay('dataOverlay');
 for (const id of ['settingsOverlay', 'dataOverlay']) $(id).addEventListener('click', (event) => { if (event.target === $(id)) hideOverlay(id); });
 function applyLanguage() {
   applyUiLanguage(language);
+  $('keepScreenAwakeTitle').textContent = language === 'zh' ? '导航时屏幕常亮' : 'Keep screen awake';
+  $('keepScreenAwakeDescription').textContent = language === 'zh' ? '导航期间防止自动锁屏' : 'Prevent auto-lock while navigating';
   $('profileButton').setAttribute('aria-label', language === 'zh' ? '账户总览' : 'Account dashboard');
   $('profileButton').title = language === 'zh' ? '账户总览' : 'Account dashboard';
   $('poiOwnReviewTitle').textContent = language === 'zh' ? '我的评价' : 'My review';
@@ -1603,11 +1664,13 @@ function applyLanguage() {
   if (selectedPoi) showPoiCard(selectedPoi);
   if (navigating) updateGuidance();
 }
-$('zhButton').onclick = () => { language = 'zh'; applyLanguage(); void rememberPreferences(language, voiceEnabled); };
-$('enButton').onclick = () => { language = 'en'; applyLanguage(); void rememberPreferences(language, voiceEnabled); };
+$('zhButton').onclick = () => changeLanguage('zh');
+$('enButton').onclick = () => changeLanguage('en');
 ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled;
 $('voiceToggle').addEventListener('change', () => {
   voiceEnabled = ($('voiceToggle') as HTMLInputElement).checked;
+  localStorage.setItem('kiwi-voice', voiceEnabled ? 'on' : 'off');
+  if (!voiceEnabled) stopSpeech();
   renderTripFlags();
   void rememberPreferences(language, voiceEnabled);
   if (voiceEnabled) speak(language === 'zh' ? '语音提示已开启。' : 'Voice guidance is on.');
@@ -1620,7 +1683,7 @@ $('laneToggle').addEventListener('change', () => {
   renderTripFlags();
   if (navigating) updateGuidance(); else renderLaneGuidance();
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden && navigating && !wakeLock && 'wakeLock' in navigator) void navigator.wakeLock.request('screen').then((lock) => { wakeLock = lock; }).catch(() => {}); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) void updateWakeLock(); });
 $('gpsBadge').onclick = () => { requestCompassFromGesture(); requestGps(); };
 window.addEventListener('resize', () => {
   if (!route) return;
@@ -1663,6 +1726,7 @@ async function initializeMap() {
     },
     onPoiSelected: showPoiCard
   });
+  mapLanguage = language;
   map.setTrafficEnabled(trafficLayerEnabled);
   renderParking();
   if (destination && !parkingDestination && !parkingPlaces.length) void loadParking();
@@ -1676,8 +1740,7 @@ void initGps();
 void loadCameras();
 if (typeof DeviceOrientationEvent !== 'undefined' && !('requestPermission' in DeviceOrientationEvent)) listenToCompass();
 window.setInterval(() => void loadCameras(), 15 * 60_000);
-localStorage.removeItem('kiwi-language');
-localStorage.removeItem('kiwi-voice');
+
 const accountRoot = document.createElement('div');
 accountRoot.className = 'account-section';
 document.querySelector('#settingsOverlay .modal')?.append(accountRoot);
@@ -1690,3 +1753,67 @@ void initAccount(accountRoot, () => language, () => voiceEnabled, (saved: Accoun
   renderTripFlags();
   if (selectedPoi) renderPoiAccountState(selectedPoi);
 });
+
+
+let wakeLockRequest: Promise<void> | null = null;
+async function updateWakeLock() {
+  if (!navigating || !keepScreenAwake || document.hidden) {
+    await wakeLock?.release(); wakeLock = null; return;
+  }
+  if ((wakeLock && !wakeLock.released) || wakeLockRequest) return;
+  wakeLockRequest = (async () => {
+    try {
+      if ('wakeLock' in navigator) {
+        const lock = await navigator.wakeLock.request('screen');
+        if (!navigating || !keepScreenAwake || document.hidden) { await lock.release(); return; }
+        wakeLock = lock;
+        lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
+      }
+    } catch { /* Browser permission and foreground visibility apply. */ }
+  })();
+  try { await wakeLockRequest; } finally { wakeLockRequest = null; }
+}
+
+function changeLanguage(next: Language) {
+  language = next;
+  localStorage.setItem('kiwi-language', next);
+  applyLanguage();
+  updateGuidance();
+  void rememberPreferences(language, voiceEnabled);
+  if (mapLanguage && mapLanguage !== next) {
+    if (!navigating) window.location.reload();
+    else toast(next === 'zh' ? '导航文字已更新。地图标签将在重新打开时更新。' : 'Navigation text updated. Map labels update when reopened.');
+  }
+}
+
+function showJourneySummary(arrived: boolean) {
+  const root = $('journeySummaryOverlay');
+  const points = journeyPoints;
+  const title = language === 'zh' ? (arrived ? '到啦！' : '本次导航已结束') : (arrived ? 'You made it!' : 'Journey complete');
+  const minutes = Math.max(1, Math.round((Date.now() - journeyStarted) / 60000));
+  const minX = Math.min(...points.map(p => p[0])), maxX = Math.max(...points.map(p => p[0]));
+  const minY = Math.min(...points.map(p => p[1])), maxY = Math.max(...points.map(p => p[1]));
+  const aspect = Math.cos((minY + maxY) / 2 * Math.PI / 180);
+  const scale = Math.min(300 / Math.max(.00001, (maxX - minX) * aspect), 140 / Math.max(.00001, maxY - minY));
+  const trace = points.map(p => `${(180 + (p[0] - (minX + maxX) / 2) * aspect * scale).toFixed(1)},${(95 - (p[1] - (minY + maxY) / 2) * scale).toFixed(1)}`).join(' ');
+  root.replaceChildren();
+  const modal = document.createElement('section'); modal.className = 'modal journey-summary';
+  modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', 'journeySummaryTitle');
+  modal.innerHTML = `<img src="/brand/kiwi-lens-lockup.svg" alt="Kiwi Lens" width="210" /><h2 id="journeySummaryTitle">${title}</h2>
+    <p>${escapeHtml(destinationName)}</p><div class="journey-stats"><div><strong>${formatDistance(journeyDistance, language)}</strong><span>${language === 'zh' ? '行驶距离' : 'Travelled'}</span></div>
+    <div><strong>${minutes} ${language === 'zh' ? '分钟' : 'min'}</strong><span>${language === 'zh' ? '行程用时' : 'Journey time'}</span></div></div>
+    <svg class="journey-trace" viewBox="0 0 360 190" role="img" aria-label="${language === 'zh' ? '行程路线总览' : 'Journey route overview'}"><rect width="360" height="190" rx="20" fill="#eaf5cf"/>
+    <polyline points="${trace}" fill="none" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <polyline points="${trace}" fill="none" stroke="#486b29" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <p>${language === 'zh' ? '小 kiwi 陪你，又完成了一段旅程。' : 'A little kiwi, a good journey.'}</p>`;
+  const done = document.createElement('button'); done.className = 'primary-button'; done.textContent = language === 'zh' ? '继续探索' : 'Keep exploring';
+  done.onclick = () => { root.hidden = true; $('driveButton').focus(); };
+  modal.append(done); root.append(modal); root.hidden = false; done.focus();
+}
+
+($('keepScreenAwakeToggle') as HTMLInputElement).checked = keepScreenAwake;
+$('keepScreenAwakeToggle').onchange = () => {
+  keepScreenAwake = ($('keepScreenAwakeToggle') as HTMLInputElement).checked;
+  localStorage.setItem('kiwi-keep-screen-awake', keepScreenAwake ? 'on' : 'off');
+  void updateWakeLock();
+};

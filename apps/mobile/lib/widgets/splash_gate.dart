@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../theme/kiwi_lens_theme.dart';
+import 'kiwi_mascot.dart';
+
 class SplashGate extends StatefulWidget {
   const SplashGate({super.key, required this.child});
   final Widget child;
@@ -35,16 +38,28 @@ class _SplashGateState extends State<SplashGate> {
         ? KeyedSubtree(key: const ValueKey('kiwi-map'), child: widget.child)
         : Scaffold(
             key: ValueKey('kiwi-splash'),
-            backgroundColor: Colors.white,
+            backgroundColor: KiwiLensColors.lightBackground,
             body: SafeArea(
               child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Image.asset(
-                      'assets/icon/tasman_lockup.png',
-                      width: 315,
-                      fit: BoxFit.contain,
+                    const KiwiMascot(size: 136),
+                    const SizedBox(height: 22),
+                    const Text(
+                      'Kiwi Lens',
+                      style: TextStyle(
+                        color: KiwiLensColors.deepOcean,
+                        fontSize: 36,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'A little kiwi. A clearer journey.',
+                      style: TextStyle(
+                        color: KiwiLensColors.lightTextSecondary,
+                      ),
                     ),
                   ],
                 ),

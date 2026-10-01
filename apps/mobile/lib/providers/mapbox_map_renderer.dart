@@ -262,7 +262,7 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
                 CameraKind.dualRedLightSpeed => const Color(
                   0xFFD97706,
                 ).toARGB32(),
-                CameraKind.busLane => const Color(0xFF0E7490).toARGB32(),
+                CameraKind.busLane => const Color(0xFF496B32).toARGB32(),
                 CameraKind.other => const Color(0xFF325A77).toARGB32(),
               },
               circleStrokeColor: Colors.white.toARGB32(),
@@ -283,7 +283,7 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
           mb.CircleAnnotationOptions(
             geometry: _point(event.location),
             circleRadius: 9,
-            circleColor: const Color(0xFF0284C7).toARGB32(),
+            circleColor: const Color(0xFF486B29).toARGB32(),
             circleStrokeColor: Colors.white.toARGB32(),
             circleStrokeWidth: 3,
           ),

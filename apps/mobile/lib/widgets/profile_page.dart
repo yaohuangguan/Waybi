@@ -1,4 +1,4 @@
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -12,6 +12,9 @@ class ProfilePage extends StatefulWidget {
     required this.account,
     required this.voiceEnabled,
     required this.lanesEnabled,
+    this.keepScreenAwake = true,
+    this.onKeepScreenAwakeChanged,
+    this.onNativeLanguageSettings,
     required this.appLanguage,
     required this.voiceLanguage,
     this.themeMode = ThemeMode.system,
@@ -39,6 +42,9 @@ class ProfilePage extends StatefulWidget {
   final AccountRepository account;
   final bool voiceEnabled;
   final bool lanesEnabled;
+  final bool keepScreenAwake;
+  final ValueChanged<bool>? onKeepScreenAwakeChanged;
+  final VoidCallback? onNativeLanguageSettings;
   final String appLanguage;
   final String voiceLanguage;
   final ThemeMode themeMode;
@@ -73,6 +79,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _error;
   late bool _voice = widget.voiceEnabled;
   late bool _lanes = widget.lanesEnabled;
+  late bool _keepScreenAwake = widget.keepScreenAwake;
   late String _appLanguage = widget.appLanguage;
   late String _language = widget.voiceLanguage;
   late ThemeMode _themeMode = widget.themeMode;
@@ -191,10 +198,10 @@ class _ProfilePageState extends State<ProfilePage> {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          backgroundColor: TasmanColors.darkOcean,
+          backgroundColor: KiwiLensColors.darkOcean,
           foregroundColor: Colors.white,
           title: Text(
-            _text('My Tasman', '我的 Tasman'),
+            _text('My Kiwi Lens', '我的 Kiwi Lens'),
             style: const TextStyle(fontWeight: FontWeight.w900),
           ),
         ),
@@ -208,7 +215,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [TasmanColors.darkOcean, TasmanColors.ocean],
+                    colors: [KiwiLensColors.darkOcean, KiwiLensColors.ocean],
                   ),
                   borderRadius: BorderRadius.circular(22),
                 ),
@@ -216,13 +223,13 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     CircleAvatar(
                       radius: 27,
-                      backgroundColor: TasmanColors.sky,
+                      backgroundColor: KiwiLensColors.sky,
                       child: Text(
                         profile?.displayName.isNotEmpty == true
                             ? profile!.displayName[0].toUpperCase()
                             : 'T',
                         style: const TextStyle(
-                          color: TasmanColors.darkOcean,
+                          color: KiwiLensColors.darkOcean,
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
                         ),
@@ -238,7 +245,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ? profile!.displayName
                                 : profile == null
                                 ? _text('Guest explorer', '访客')
-                                : _text('Tasman member', 'Tasman 用户'),
+                                : _text('Kiwi Lens member', 'Kiwi Lens 用户'),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 19,
@@ -267,7 +274,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         tooltip: _text('Edit profile', '编辑资料'),
                         icon: const Icon(
                           Icons.edit_rounded,
-                          color: TasmanColors.sky,
+                          color: KiwiLensColors.sky,
                         ),
                       ),
                   ],
@@ -383,7 +390,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _text('Tasman Sync', 'Tasman 同步'),
+                              _text('Kiwi Lens Sync', 'Kiwi Lens 同步'),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w900,
                               ),
@@ -475,6 +482,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.translate_rounded),
                 title: Text(_text('App language', '应用语言')),
+                subtitle: Text(
+                  _text('Navigation cards update immediately', '导航卡片即时切换语言'),
+                ),
                 trailing: DropdownButton<String>(
                   value: _appLanguage,
                   items: const [
@@ -498,7 +508,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 title: Text(_text('Appearance', '外观')),
                 subtitle: Text(
                   _text(
-                    'Use Tasman in light, dark or follow the system',
+                    'Use Kiwi Lens in light, dark or follow the system',
                     '选择浅色、深色或跟随系统',
                   ),
                 ),
@@ -527,6 +537,22 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 8),
               _SectionTitle(_text('Map', '地图')),
+              if (widget.onNativeLanguageSettings != null)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.translate_rounded),
+                  title: Text(
+                    _text('Google map label language', 'Google 地图标签语言'),
+                  ),
+                  subtitle: Text(
+                    _text(
+                      'Native maps use the system app language. Reopen after changing it.',
+                      '原生地图使用系统应用语言，修改后重新打开应用。',
+                    ),
+                  ),
+                  trailing: const Icon(Icons.open_in_new_rounded),
+                  onTap: widget.onNativeLanguageSettings,
+                ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.map_outlined),
@@ -586,7 +612,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   items: [
                     DropdownMenuItem(
                       value: LocationMarkerStyle.kiwi,
-                      child: Text(_text('Tasman bird', 'Tasman 鸟标')),
+                      child: Text(_text('Kiwi bird', 'kiwi 鸟标')),
                     ),
                     DropdownMenuItem(
                       value: LocationMarkerStyle.arrow,
@@ -610,6 +636,19 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 8),
               _SectionTitle(_text('Navigation & voice', '导航与语音')),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.wb_sunny_outlined),
+                title: Text(_text('Keep screen awake', '导航时屏幕常亮')),
+                subtitle: Text(
+                  _text('Prevent auto-lock while navigating', '导航期间保持屏幕亮起'),
+                ),
+                value: _keepScreenAwake,
+                onChanged: (value) {
+                  setState(() => _keepScreenAwake = value);
+                  widget.onKeepScreenAwakeChanged?.call(value);
+                },
+              ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 secondary: const Icon(Icons.volume_up_rounded),
@@ -659,8 +698,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 _SectionTitle(_text('Notifications', '通知')),
                 Text(
                   _text(
-                    'Tasman only asks for system notification permission when you turn on a notification below.',
-                    '只有当你主动开启下面的通知类型时，Tasman 才会请求系统通知权限。',
+                    'Kiwi Lens only asks for system notification permission when you turn on a notification below.',
+                    '只有当你主动开启下面的通知类型时，Kiwi Lens 才会请求系统通知权限。',
                   ),
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -705,8 +744,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   title: Text(_text('Community reports', '社区上报')),
                   subtitle: Text(
                     _text(
-                      'Nearby reports shared by Tasman drivers',
-                      '附近 Tasman 用户分享的道路报告',
+                      'Nearby reports shared by Kiwi Lens drivers',
+                      '附近 Kiwi Lens 用户分享的道路报告',
                     ),
                   ),
                   value: _notifyCommunityReports,

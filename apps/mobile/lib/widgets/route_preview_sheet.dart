@@ -1,10 +1,11 @@
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/route_option.dart';
 import '../data/parking_repository.dart';
+import 'kiwi_mascot.dart';
 
 String _duration(int seconds) {
   final duration = Duration(seconds: seconds);
@@ -176,6 +177,7 @@ class RoutePreviewSheet extends StatelessWidget {
                           ),
                         ),
                       ),
+                      const KiwiMascot(size: 30),
                       IconButton(
                         visualDensity: VisualDensity.compact,
                         constraints: const BoxConstraints.tightFor(
@@ -517,36 +519,36 @@ class _RouteOptionTile extends StatelessWidget {
   }
 
   Color _trafficColor() {
-    if (route.traffic.trafficJam > 0) return TasmanColors.danger;
-    if (route.traffic.slow > 0) return TasmanColors.warning;
-    return TasmanColors.ocean;
+    if (route.traffic.trafficJam > 0) return KiwiLensColors.danger;
+    if (route.traffic.slow > 0) return KiwiLensColors.warning;
+    return KiwiLensColors.ocean;
   }
 
   List<Color> _trafficBars() {
     if (route.traffic.trafficJam > 0) {
       return const [
-        TasmanColors.ocean,
-        TasmanColors.warning,
-        TasmanColors.warning,
-        TasmanColors.danger,
-        TasmanColors.danger,
+        KiwiLensColors.ocean,
+        KiwiLensColors.warning,
+        KiwiLensColors.warning,
+        KiwiLensColors.danger,
+        KiwiLensColors.danger,
       ];
     }
     if (route.traffic.slow > 0) {
       return const [
-        TasmanColors.ocean,
-        TasmanColors.ocean,
-        TasmanColors.ocean,
-        TasmanColors.warning,
-        TasmanColors.warning,
+        KiwiLensColors.ocean,
+        KiwiLensColors.ocean,
+        KiwiLensColors.ocean,
+        KiwiLensColors.warning,
+        KiwiLensColors.warning,
       ];
     }
     return const [
-      TasmanColors.ocean,
-      TasmanColors.ocean,
-      TasmanColors.ocean,
-      TasmanColors.ocean,
-      TasmanColors.ocean,
+      KiwiLensColors.ocean,
+      KiwiLensColors.ocean,
+      KiwiLensColors.ocean,
+      KiwiLensColors.ocean,
+      KiwiLensColors.ocean,
     ];
   }
 

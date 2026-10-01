@@ -6,8 +6,13 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>zh-Hans</string>
+	</array>
 	<key>CFBundleDisplayName</key>
-	<string>Tasman</string>
+	<string>Kiwi Lens</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +20,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Tasman</string>
+	<string>Kiwi Lens</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -44,11 +49,11 @@
 		</dict>
 	</array>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Tasman uses background location during active navigation so guidance can continue when the screen is locked.</string>
+	<string>Kiwi Lens uses background location during active navigation so guidance can continue when the screen is locked.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Tasman uses your location to show your position, calculate routes, and provide driving guidance.</string>
+	<string>Kiwi Lens uses your location to show your position, calculate routes, and provide driving guidance.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>Tasman uses motion data to improve navigation guidance while you are driving.</string>
+	<string>Kiwi Lens uses motion data to improve navigation guidance while you are driving.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

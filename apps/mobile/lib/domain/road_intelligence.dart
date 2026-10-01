@@ -97,7 +97,9 @@ class RoadIntelligenceEngine {
             continue;
           }
           final candidateAlong = projected.alongMeters - progress.alongMeters;
-          if (candidateAlong < -15 || candidateAlong > maxDistanceMeters) continue;
+          if (candidateAlong < -15 || candidateAlong > maxDistanceMeters) {
+            continue;
+          }
           if (event.headingDegrees != null &&
               angleDifference(event.headingDegrees!, projected.bearingDegrees) > 55) {
             continue;

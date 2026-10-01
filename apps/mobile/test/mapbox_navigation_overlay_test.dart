@@ -4,7 +4,7 @@ import 'package:kiwi_lens_mobile/domain/route_option.dart';
 import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
 import 'package:kiwi_lens_mobile/providers/mapbox_navigation_engine.dart';
 import 'package:kiwi_lens_mobile/widgets/mapbox_navigation_overlay.dart';
-import 'package:kiwi_lens_mobile/theme/tasman_theme.dart';
+import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
 
 import 'mapbox_navigation_engine_test.dart' show FakeDrive, makeRoute, origin;
 
@@ -41,7 +41,7 @@ void main() {
       drive.upcomingCameraDistanceMeters = 300;
       await tester.pumpWidget(
         MaterialApp(
-          theme: TasmanTheme.dark,
+          theme: KiwiLensTheme.dark,
           home: Scaffold(
             body: MapboxNavigationOverlay(
               engine: nav,

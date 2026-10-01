@@ -32,6 +32,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
     this.following = true,
     this.overviewMode = false,
     required this.northUp,
+    this.perspectiveTilted = false,
     required this.onCompassToggle,
     required this.onReport,
     required this.onSearchAlongRoute,
@@ -55,6 +56,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
   final bool following;
   final bool overviewMode;
   final bool northUp;
+  final bool perspectiveTilted;
   final bool voiceEnabled;
   final bool lanesEnabled;
   final Widget? arrivalPanel;
@@ -137,6 +139,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
         following: following,
         overviewMode: overviewMode,
         northUp: northUp,
+        perspectiveTilted: perspectiveTilted,
         onCompassToggle: onCompassToggle,
         onReport: onReport,
         onSearchAlongRoute: onSearchAlongRoute,

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../data/place_details_repository.dart';
 import '../domain/coordinate_formatter.dart';
 import '../domain/map_provider.dart';
+import '../domain/route_option.dart';
 import '../theme/kiwi_lens_theme.dart';
 
 class PlaceDetailsContent extends StatefulWidget {
@@ -14,6 +15,8 @@ class PlaceDetailsContent extends StatefulWidget {
     required this.detailsLoading,
     required this.detailsError,
     required this.routeBusy,
+    this.quickRoute,
+    this.quickRouteLoading = false,
     required this.isFavorite,
     required this.onClose,
     required this.onNavigate,
@@ -28,6 +31,8 @@ class PlaceDetailsContent extends StatefulWidget {
   final bool detailsLoading;
   final String? detailsError;
   final bool routeBusy;
+  final RouteOption? quickRoute;
+  final bool quickRouteLoading;
   final bool isFavorite;
   final VoidCallback onClose;
   final VoidCallback onNavigate;
@@ -71,6 +76,128 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
   }
 
   void _toggleExpanded() => _setExpanded(!_expanded);
+
+  String _durationLabel(int seconds) {
+    final minutes = (seconds / 60).ceil().clamp(1, 9999);
+    if (minutes < 60) return _text('$minutes min', '$minutes 分钟');
+    final hours = minutes ~/ 60;
+    final remainder = minutes % 60;
+    if (remainder == 0) return _text('${hours}h', '$hours 小时');
+    return _text('${hours}h ${remainder}m', '$hours 小时 $remainder 分');
+  }
+
+  String _distanceLabel(int meters) {
+    if (meters < 1000) return _text('$meters m', '$meters 米');
+    final km = meters / 1000;
+    return _text(
+      '${km.toStringAsFixed(km < 10 ? 1 : 0)} km',
+      '${km.toStringAsFixed(km < 10 ? 1 : 0)} 公里',
+    );
+  }
+
+  Widget _quickRouteSummary(ColorScheme scheme) {
+    final route = widget.quickRoute;
+    if (route == null && !widget.quickRouteLoading) {
+      return const SizedBox.shrink();
+    }
+    if (route == null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 7, 16, 0),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: scheme.primary,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _text('Checking drive time…', '正在获取驾车时间…'),
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final delaySeconds = route.trafficDelaySeconds ?? 0;
+    final delayMinutes = (delaySeconds / 60).round();
+    final trafficHeavy = delaySeconds >= 300 || route.traffic.trafficJam > 0;
+    final trafficModerate = delaySeconds >= 120 || route.traffic.slow > 0;
+    final trafficColor = trafficHeavy
+        ? KiwiLensColors.danger
+        : trafficModerate
+        ? KiwiLensColors.warning
+        : KiwiLensColors.success;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 7, 16, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: .58),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: .55),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.directions_car_filled_rounded,
+              size: 18,
+              color: scheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              _durationLabel(route.durationSeconds),
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              '· ${_distanceLabel(route.distanceMeters)}',
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: trafficColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              delayMinutes >= 2
+                  ? _text('+$delayMinutes min traffic', '拥堵 +$delayMinutes 分钟')
+                  : _text('Traffic good', '路况良好'),
+              style: TextStyle(
+                color: trafficColor,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _settleDrag(DragEndDetails details) {
     final velocity = details.primaryVelocity ?? 0;
@@ -318,6 +445,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                       ],
                     ),
                   ),
+                _quickRouteSummary(scheme),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
                   child: Row(

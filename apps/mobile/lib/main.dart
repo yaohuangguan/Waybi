@@ -17,6 +17,7 @@ import 'data/route_repository.dart';
 import 'domain/radar_geometry.dart';
 import 'domain/map_layer_settings.dart';
 import 'domain/map_provider.dart';
+import 'domain/navigation_camera_mode.dart';
 import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
 import 'domain/road_event.dart';
@@ -340,9 +341,17 @@ class _MapHomePageState extends State<MapHomePage> {
   LatLng? _quickCommuteOrigin;
   bool _quickCommuteRefreshing = false;
   int _quickCommuteRequest = 0;
+  RouteOption? _placeQuickRoute;
+  bool _placeQuickRouteLoading = false;
+  String? _placeQuickRouteLoadingKey;
+  int _placeQuickRouteRequest = 0;
+  final Map<String, RouteOption> _placeQuickRouteCache = {};
+  final Map<String, DateTime> _placeQuickRouteCachedAt = {};
+  final Map<String, LatLng> _placeQuickRouteOrigins = {};
   CameraPosition? _lastBrowseCamera;
   List<Marker> _cameraMarkers = [];
   List<Marker> _roadEventMarkers = [];
+  Marker? _destinationMarker;
   Marker? _carMarker;
   Circle? _accuracyCircle;
   bool _navigationMarkerSyncing = false;
@@ -354,7 +363,7 @@ class _MapHomePageState extends State<MapHomePage> {
   bool _markerSyncing = false;
   bool _useCarMarker = false;
   MapLayerSettings _layers = const MapLayerSettings();
-  bool _northUp = false;
+  NavigationCameraMode _cameraMode = NavigationCameraMode.headingUpFlat;
   bool _junctionZoomed = false;
   String _appLanguage = 'en';
   String _voiceLanguage = 'en-NZ';
@@ -1253,6 +1262,104 @@ class _MapHomePageState extends State<MapHomePage> {
     setState(() {});
     _queueMapRefresh();
     unawaited(_refreshQuickCommutes());
+    final selected = _selectedPlace?.place;
+    if (selected != null && _routePlan == null && !_driveEngine.active) {
+      unawaited(_loadPlaceQuickRoute(selected));
+    }
+  }
+
+  String _placeRouteKey(PlaceSummary place) {
+    final reference = place.reference;
+    if (reference != null) return '${reference.provider}:${reference.id}';
+    return '${place.location.latitude.toStringAsFixed(5)},${place.location.longitude.toStringAsFixed(5)}';
+  }
+
+  Future<void> _loadPlaceQuickRoute(PlaceSummary place) async {
+    if (!mounted || _driveEngine.active || _routePlan != null) return;
+    final origin = _gpsLocation;
+    if (origin == null) return;
+    final key = _placeRouteKey(place);
+    final cached = _placeQuickRouteCache[key];
+    final cachedAt = _placeQuickRouteCachedAt[key];
+    final cachedOrigin = _placeQuickRouteOrigins[key];
+    final movedMeters = cachedOrigin == null
+        ? double.infinity
+        : distanceMeters(
+            origin.latitude,
+            origin.longitude,
+            cachedOrigin.latitude,
+            cachedOrigin.longitude,
+          );
+    final fresh =
+        cached != null &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < const Duration(minutes: 5) &&
+        movedMeters < 300;
+    if (fresh) {
+      if (_placeRouteKey(_selectedPlace?.place ?? place) == key && mounted) {
+        setState(() {
+          _placeQuickRoute = cached;
+          _placeQuickRouteLoading = false;
+          _placeQuickRouteLoadingKey = null;
+        });
+      }
+      return;
+    }
+    if (_placeQuickRouteLoading && _placeQuickRouteLoadingKey == key) return;
+
+    final request = ++_placeQuickRouteRequest;
+    if (mounted) {
+      setState(() {
+        _placeQuickRoute = null;
+        _placeQuickRouteLoading = true;
+        _placeQuickRouteLoadingKey = key;
+      });
+    }
+    try {
+      final plan = await _routeRepository.fetch(
+        origin: origin,
+        destination: LatLng(
+          latitude: place.location.latitude,
+          longitude: place.location.longitude,
+        ),
+        mode: KiwiTravelMode.drive,
+      );
+      final driving = plan.forMode(KiwiTravelMode.drive).toList()
+        ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
+      if (driving.isEmpty || !mounted || request != _placeQuickRouteRequest) {
+        return;
+      }
+      if (_selectedPlace == null ||
+          _placeRouteKey(_selectedPlace!.place) != key ||
+          _routePlan != null) {
+        return;
+      }
+      final route = driving.first;
+      if (_placeQuickRouteCache.length >= 20 &&
+          !_placeQuickRouteCache.containsKey(key)) {
+        final oldestKey = _placeQuickRouteCachedAt.entries
+            .reduce((a, b) => a.value.isBefore(b.value) ? a : b)
+            .key;
+        _placeQuickRouteCache.remove(oldestKey);
+        _placeQuickRouteCachedAt.remove(oldestKey);
+        _placeQuickRouteOrigins.remove(oldestKey);
+      }
+      _placeQuickRouteCache[key] = route;
+      _placeQuickRouteCachedAt[key] = DateTime.now();
+      _placeQuickRouteOrigins[key] = origin;
+      setState(() {
+        _placeQuickRoute = route;
+        _placeQuickRouteLoading = false;
+        _placeQuickRouteLoadingKey = null;
+      });
+    } catch (_) {
+      if (!mounted || request != _placeQuickRouteRequest) return;
+      setState(() {
+        _placeQuickRoute = null;
+        _placeQuickRouteLoading = false;
+        _placeQuickRouteLoadingKey = null;
+      });
+    }
   }
 
   Future<void> _refreshQuickCommutes({bool force = false}) async {
@@ -1342,18 +1449,22 @@ class _MapHomePageState extends State<MapHomePage> {
           : _gpsLocation;
       final routePreviewOwnsCamera =
           _journeyPhase == JourneyPhase.routePreview && _routePlan != null;
+      final placeDeckOwnsCamera = _selectedPlace != null && _routePlan == null;
       if (_following &&
           !routePreviewOwnsCamera &&
+          !placeDeckOwnsCamera &&
           location != null &&
           _browseRenderer != null) {
         await _browseRenderer!.moveTo(
           _viewport.copyWith(
             center: GeoPoint(location.latitude, location.longitude),
             zoom: _mapboxNavigation.active
-                ? (_northUp ? 16 : 17.2)
-                : (_northUp ? 16 : 17),
-            bearing: _northUp ? 0 : (_travelHeading ?? _deviceHeading ?? 0),
-            pitch: _mapboxNavigation.active && !_northUp ? 50 : 0,
+                ? (_cameraMode.northUp ? 16 : 17.2)
+                : (_cameraMode.northUp ? 16 : 17),
+            bearing: _cameraMode.northUp
+                ? 0
+                : (_travelHeading ?? _deviceHeading ?? 0),
+            pitch: _cameraMode.tilted ? 50 : 0,
           ),
         );
       }
@@ -1410,14 +1521,20 @@ class _MapHomePageState extends State<MapHomePage> {
       // moving it on every GPS/heading update causes visible tug-of-war.
       final routePreviewOwnsCamera =
           _journeyPhase == JourneyPhase.routePreview && _routePlan != null;
-      if (_following && !_driveEngine.active && !routePreviewOwnsCamera) {
+      final placeDeckOwnsCamera = _selectedPlace != null && _routePlan == null;
+      if (_following &&
+          !_driveEngine.active &&
+          !routePreviewOwnsCamera &&
+          !placeDeckOwnsCamera) {
         await controller.animateCamera(
           CameraUpdate.newCameraPosition(
             CameraPosition(
               target: location,
-              bearing: _northUp ? 0 : (_travelHeading ?? _deviceHeading ?? 0),
-              tilt: _northUp ? 0 : 45,
-              zoom: _northUp ? 16 : 17,
+              bearing: _cameraMode.northUp
+                  ? 0
+                  : (_travelHeading ?? _deviceHeading ?? 0),
+              tilt: _cameraMode.tilted ? 45 : 0,
+              zoom: _cameraMode.northUp ? 16 : 17,
             ),
           ),
         );
@@ -1433,8 +1550,11 @@ class _MapHomePageState extends State<MapHomePage> {
     }
   }
 
-  CameraPerspective get _navigationFollowPerspective =>
-      _northUp ? CameraPerspective.topDownNorthUp : CameraPerspective.tilted;
+  CameraPerspective get _navigationFollowPerspective => switch (_cameraMode) {
+    NavigationCameraMode.northUpFlat => CameraPerspective.topDownNorthUp,
+    NavigationCameraMode.headingUpFlat => CameraPerspective.topDownHeadingUp,
+    NavigationCameraMode.headingUpPerspective => CameraPerspective.tilted,
+  };
 
   Future<void> _followNavigationCamera(
     GoogleNavigationViewController controller, {
@@ -1471,14 +1591,25 @@ class _MapHomePageState extends State<MapHomePage> {
 
   IconData get _locationControlIcon {
     if (!_following) return Icons.my_location_outlined;
-    return _northUp ? Icons.north_rounded : Icons.navigation_rounded;
+    return _cameraMode.northUp ? Icons.north_rounded : Icons.navigation_rounded;
   }
 
   String get _locationControlTooltip {
     if (!_following) return _text('Return to my location', '回到我的位置');
-    return _northUp
-        ? _text('Switch to heading-up', '切换到车头朝向')
-        : _text('Switch to north-up', '切换到指北');
+    return switch (_cameraMode) {
+      NavigationCameraMode.headingUpFlat => _text(
+        'Switch to perspective view',
+        '切换到透视跟车',
+      ),
+      NavigationCameraMode.headingUpPerspective => _text(
+        'Switch to north-up',
+        '切换到指北俯视',
+      ),
+      NavigationCameraMode.northUpFlat => _text(
+        'Switch to heading-up',
+        '切换到车头朝上俯视',
+      ),
+    };
   }
 
   void _markMapManuallyMoved({bool searchArea = false}) {
@@ -1498,10 +1629,10 @@ class _MapHomePageState extends State<MapHomePage> {
     if (!_following) {
       setState(() {
         _following = true;
-        _northUp = true;
+        _cameraMode = NavigationCameraMode.headingUpFlat;
       });
     } else {
-      setState(() => _northUp = !_northUp);
+      setState(() => _cameraMode = _cameraMode.next);
     }
     _recenter();
   }
@@ -1630,7 +1761,7 @@ class _MapHomePageState extends State<MapHomePage> {
   }
 
   void _toggleCompass() {
-    setState(() => _northUp = !_northUp);
+    setState(() => _cameraMode = _cameraMode.next);
     _recenter();
   }
 
@@ -1663,11 +1794,16 @@ class _MapHomePageState extends State<MapHomePage> {
   Future<void> _clearRoutePreview() async {
     ++_routeRequest;
     ++_parkingRequest;
+    ++_placeQuickRouteRequest;
     _driveEngine.setRoute(null);
     final controller = _browseController;
     if (controller != null) {
       try {
         await controller.clearPolylines();
+        if (_destinationMarker != null) {
+          await controller.removeMarkers([_destinationMarker!]);
+          _destinationMarker = null;
+        }
         await controller.setPadding(EdgeInsets.zero);
       } catch (_) {}
     }
@@ -1689,6 +1825,9 @@ class _MapHomePageState extends State<MapHomePage> {
       _placeDetailsLoading = false;
       _placeDetailsError = null;
       _placeDetailsRequest++;
+      _placeQuickRoute = null;
+      _placeQuickRouteLoading = false;
+      _placeQuickRouteLoadingKey = null;
       _routeStops.clear();
       _parkingPlaces = const [];
       _parkingOriginalPlace = null;
@@ -2178,6 +2317,7 @@ class _MapHomePageState extends State<MapHomePage> {
     }
 
     if (options.isNotEmpty) await controller.addPolylines(options);
+    await _syncDestinationMarker(controller);
     if (selected != null && selected.points.length >= 2) {
       await controller.setPadding(EdgeInsets.fromLTRB(24, 76, 24, sheetInset));
       final bounds = LatLngBounds.createBoundsFromPoints(
@@ -2546,7 +2686,7 @@ class _MapHomePageState extends State<MapHomePage> {
               ),
           ],
           displayOptions: NavigationDisplayOptions(
-            showDestinationMarkers: true,
+            showDestinationMarkers: false,
             showStopSigns: true,
             showTrafficLights: true,
           ),
@@ -2613,6 +2753,10 @@ class _MapHomePageState extends State<MapHomePage> {
       });
       _beginJourney(poi);
       unawaited(_cacheNavigationCorridor(force: true));
+      final activeNavigationController = _navigationController;
+      if (activeNavigationController != null) {
+        unawaited(_syncDestinationMarker(activeNavigationController));
+      }
       _queueNavigationMarkerSync();
       _queueMapRefresh();
     } catch (error) {
@@ -2638,8 +2782,15 @@ class _MapHomePageState extends State<MapHomePage> {
       } else {
         await GoogleMapsNavigator.stopGuidance();
         await GoogleMapsNavigator.clearDestinations();
+        final navigationController = _navigationController;
+        if (navigationController != null && _destinationMarker != null) {
+          try {
+            await navigationController.removeMarkers([_destinationMarker!]);
+          } catch (_) {}
+          _destinationMarker = null;
+        }
         await _driveEngine.stop();
-        await _navigationController?.setNavigationUIEnabled(false);
+        await navigationController?.setNavigationUIEnabled(false);
       }
       if (_account.profile != null &&
           route?.provider != 'mapbox' &&
@@ -2844,10 +2995,15 @@ class _MapHomePageState extends State<MapHomePage> {
       _parkingLegFinished = false;
       _routePlan = null;
       _selectedRouteId = null;
+      _placeQuickRoute = null;
+      _placeQuickRouteLoading = false;
+      _placeQuickRouteLoadingKey = null;
       _message = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focusSelectedPlace();
+      if (!mounted) return;
+      _focusSelectedPlace();
+      unawaited(_loadPlaceQuickRoute(place));
     });
     if (place.reference?.provider == 'google') {
       unawaited(_loadPlaceDetails(_selectedPoi!));
@@ -2972,6 +3128,45 @@ class _MapHomePageState extends State<MapHomePage> {
     ];
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('kiwi.recent.google', records);
+  }
+
+  Future<void> _syncDestinationMarker(
+    GoogleMapViewController controller,
+  ) async {
+    try {
+      if (_destinationMarker != null) {
+        await controller.removeMarkers([_destinationMarker!]);
+        _destinationMarker = null;
+      }
+      final route = _driveEngine.active
+          ? _activeNavigationRoute
+          : _selectedRoute;
+      if (route == null || route.points.isEmpty) return;
+      try {
+        await MapSymbols.ensureRegistered();
+      } catch (_) {}
+      final destination = route.points.last;
+      final markers = await controller.addMarkers([
+        MarkerOptions(
+          position: LatLng(
+            latitude: destination.latitude,
+            longitude: destination.longitude,
+          ),
+          icon: MapSymbols.finish ?? ImageDescriptor.defaultImage,
+          zIndex: 90,
+          flat: false,
+          anchor: const MarkerAnchor(u: 0.32, v: 1.0),
+          consumeTapEvents: false,
+          infoWindow: InfoWindow(
+            title: _destinationTitle,
+            snippet: _text('Finish', '终点'),
+          ),
+        ),
+      ]);
+      _destinationMarker = markers.whereType<Marker>().firstOrNull;
+    } catch (_) {
+      _destinationMarker = null;
+    }
   }
 
   Future<void> _syncCameraMarkers() async {
@@ -3301,6 +3496,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _lastBrowseCamera = null;
     _cameraMarkers = [];
     _roadEventMarkers = [];
+    _destinationMarker = null;
     _carMarker = null;
     _accuracyCircle = null;
     _exploreMarkers = [];
@@ -3860,7 +4056,7 @@ class _MapHomePageState extends State<MapHomePage> {
             ),
           ],
           displayOptions: NavigationDisplayOptions(
-            showDestinationMarkers: true,
+            showDestinationMarkers: false,
           ),
           routingOptions: RoutingOptions(
             travelMode: _nativeTravelMode!,
@@ -4553,6 +4749,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _browseController = controller;
     _cameraMarkers = [];
     _roadEventMarkers = [];
+    _destinationMarker = null;
     _carMarker = null;
     _lastNavigationMarkerLocation = null;
     _lastNavigationMarkerHeading = null;
@@ -4617,6 +4814,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _browseController = null;
     _cameraMarkers = [];
     _roadEventMarkers = [];
+    _destinationMarker = null;
     _carMarker = null;
     _lastNavigationMarkerLocation = null;
     _lastNavigationMarkerHeading = null;
@@ -4683,6 +4881,7 @@ class _MapHomePageState extends State<MapHomePage> {
         await controller.addPolylines(trafficOptions);
       }
     }
+    await _syncDestinationMarker(controller);
     await _syncCameraMarkers();
     _queueMapRefresh();
   }
@@ -5036,7 +5235,8 @@ class _MapHomePageState extends State<MapHomePage> {
                         onOverview: _showRouteOverview,
                         following: _following,
                         overviewMode: _routeOverviewActive,
-                        northUp: _northUp,
+                        northUp: _cameraMode.northUp,
+                        perspectiveTilted: _cameraMode.tilted,
                         onCompassToggle: _toggleCompass,
                         onReport: () => unawaited(_showRoadReport()),
                         onSearchAlongRoute: _showAlongRouteSearch,
@@ -5071,7 +5271,8 @@ class _MapHomePageState extends State<MapHomePage> {
                 gpsAccuracy: _gpsAccuracy,
                 voiceEnabled: _voiceEnabled,
                 lanesEnabled: _lanesEnabled,
-                northUp: _northUp,
+                northUp: _cameraMode.northUp,
+                perspectiveTilted: _cameraMode.tilted,
                 onCompassToggle: _toggleCompass,
                 onReport: () => unawaited(_showRoadReport()),
                 onSearchAlongRoute: _showAlongRouteSearch,
@@ -5144,6 +5345,8 @@ class _MapHomePageState extends State<MapHomePage> {
                     detailsLoading: _placeDetailsLoading,
                     detailsError: _placeDetailsError,
                     busy: _routePreviewLoading,
+                    quickRoute: _placeQuickRoute,
+                    quickRouteLoading: _placeQuickRouteLoading,
                     onClose: () => unawaited(_clearRoutePreview()),
                     onNavigate: () =>
                         unawaited(_loadRoutePreview(_selectedPoi!)),
@@ -5259,6 +5462,8 @@ class _PlaceCard extends StatelessWidget {
     required this.detailsLoading,
     required this.detailsError,
     required this.busy,
+    required this.quickRoute,
+    required this.quickRouteLoading,
     required this.onClose,
     required this.onNavigate,
     required this.isFavorite,
@@ -5273,6 +5478,8 @@ class _PlaceCard extends StatelessWidget {
   final bool detailsLoading;
   final String? detailsError;
   final bool busy;
+  final RouteOption? quickRoute;
+  final bool quickRouteLoading;
   final VoidCallback onClose;
   final VoidCallback onNavigate;
   final bool isFavorite;
@@ -5289,6 +5496,8 @@ class _PlaceCard extends StatelessWidget {
       detailsLoading: detailsLoading,
       detailsError: detailsError,
       routeBusy: busy,
+      quickRoute: quickRoute,
+      quickRouteLoading: quickRouteLoading,
       isFavorite: isFavorite,
       onClose: onClose,
       onNavigate: onNavigate,

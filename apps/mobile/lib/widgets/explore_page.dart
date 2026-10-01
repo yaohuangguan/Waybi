@@ -164,7 +164,7 @@ class _ExplorePageState extends State<ExplorePage> {
         surfaceTintColor: Colors.transparent,
         title: Text(
           _text('Explore', '探索'),
-          style: const TextStyle(fontWeight: FontWeight.w900),
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
       body: RefreshIndicator(
@@ -182,7 +182,7 @@ class _ExplorePageState extends State<ExplorePage> {
                       _text('Discover something nearby', '看看附近有什么好玩的'),
                       style: const TextStyle(
                         fontSize: 25,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 5),
@@ -383,7 +383,7 @@ class _ExploreCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 17,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -395,7 +395,7 @@ class _ExploreCard extends StatelessWidget {
                       if (rating != null)
                         Text(
                           '${rating.toStringAsFixed(1)} ★',
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       if (place.userRatingCount != null)
                         Text('(${place.userRatingCount})'),
@@ -412,7 +412,7 @@ class _ExploreCard extends StatelessWidget {
                               ? (isChinese ? '营业中' : 'Open now')
                               : (isChinese ? '已关闭' : 'Closed'),
                           style: TextStyle(
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                             color: place.openNow!
                                 ? KiwiLensColors.success
                                 : scheme.error,

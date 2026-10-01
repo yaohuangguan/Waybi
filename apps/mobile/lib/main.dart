@@ -109,8 +109,8 @@ class _KiwiLensAppState extends State<KiwiLensApp> {
       supportedLocales: const [Locale('en'), Locale('zh')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       debugShowCheckedModeBanner: false,
-      theme: KiwiLensTheme.light,
-      darkTheme: KiwiLensTheme.dark,
+      theme: KiwiLensTheme.lightFor(_locale.languageCode),
+      darkTheme: KiwiLensTheme.darkFor(_locale.languageCode),
       themeMode: _themeMode,
       home: SplashGate(
         child: MapHomePage(
@@ -158,7 +158,7 @@ class _OnboardingFeature extends StatelessWidget {
               Text(
                 title,
                 style: const TextStyle(
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                   color: KiwiLensColors.deepOcean,
                 ),
               ),
@@ -325,6 +325,7 @@ class _MapHomePageState extends State<MapHomePage> {
   final Map<String, MapProvider> _quickLocationProviders = {};
   GoogleMapViewController? _browseController;
   GoogleNavigationViewController? _navigationController;
+  double _navigationTopInset = 125;
   StreamSubscription<Position>? _positionSubscription;
   StreamSubscription<double>? _headingSubscription;
   Timer? _mapRefreshTimer;
@@ -469,7 +470,7 @@ class _MapHomePageState extends State<MapHomePage> {
             Expanded(
               child: Text(
                 _text('Welcome to Kiwi Lens', '欢迎使用 Kiwi Lens'),
-                style: const TextStyle(fontWeight: FontWeight.w900),
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
           ],
@@ -704,7 +705,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     _roadEventLabel(event.type),
                     style: const TextStyle(
                       fontSize: 21,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                       color: KiwiLensColors.deepOcean,
                     ),
                   ),
@@ -718,7 +719,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 '$reporter · ${_relativeTime(reportedAt)}报告',
               ),
               style: const TextStyle(
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 color: KiwiLensColors.deepOcean,
               ),
             ),
@@ -1168,7 +1169,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 _text('Report road issue', '上报道路情况'),
                 style: const TextStyle(
                   fontSize: 22,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               subtitle: Text(
@@ -3128,7 +3129,7 @@ class _MapHomePageState extends State<MapHomePage> {
                                   _text('Directions', '路线指引'),
                                   style: const TextStyle(
                                     fontSize: 17,
-                                    fontWeight: FontWeight.w900,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                                 Text(
@@ -3199,7 +3200,7 @@ class _MapHomePageState extends State<MapHomePage> {
                                 style: TextStyle(
                                   color: badgeForeground,
                                   fontSize: 10,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                             ),
@@ -3411,7 +3412,7 @@ class _MapHomePageState extends State<MapHomePage> {
             const ListTile(
               title: Text(
                 'Saved places & routes',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
               ),
             ),
             for (final place
@@ -3911,7 +3912,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 10,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -3992,7 +3993,7 @@ class _MapHomePageState extends State<MapHomePage> {
                           style: TextStyle(
                             color: KiwiLensColors.ocean,
                             fontSize: 10,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ],
@@ -4043,6 +4044,20 @@ class _MapHomePageState extends State<MapHomePage> {
     _queueMapRefresh();
   }
 
+  void _updateNavigationTopInset(double inset) {
+    _navigationTopInset = inset;
+    final controller = _navigationController;
+    if (controller != null && _guidanceRunning) {
+      unawaited(
+        controller
+            .setPadding(EdgeInsets.fromLTRB(16, inset, 16, 215))
+            .catchError((Object error) {
+              debugPrint('Navigation layout update: $error');
+            }),
+      );
+    }
+  }
+
   Future<void> _applyKiwiLensNavigationChrome(
     GoogleNavigationViewController controller,
   ) async {
@@ -4085,7 +4100,14 @@ class _MapHomePageState extends State<MapHomePage> {
     }
     await controller.setTrafficIncidentCardsEnabled(true);
     await controller.setTrafficPromptsEnabled(true);
-    await controller.setPadding(const EdgeInsets.fromLTRB(16, 125, 16, 215));
+    await controller.setPadding(
+      EdgeInsets.fromLTRB(
+        16,
+        _guidanceRunning ? _navigationTopInset : 125,
+        16,
+        215,
+      ),
+    );
     final activeRoute = _activeNavigationRoute;
     if (_selectedMode == KiwiTravelMode.drive &&
         activeRoute != null &&
@@ -4400,7 +4422,7 @@ class _MapHomePageState extends State<MapHomePage> {
                                             .colorScheme
                                             .onSurface,
                                         fontSize: 16,
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                     Text(
@@ -4454,6 +4476,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 builder: (context, _) => _guidanceRunning
                     ? NavigationOverlay(
                         engine: _driveEngine,
+                        onTopInsetChanged: _updateNavigationTopInset,
                         language: _appLanguage,
                         destinationTitle: _destinationTitle,
                         gpsAccuracy: _gpsAccuracy,
@@ -4657,7 +4680,7 @@ class _MapHomePageState extends State<MapHomePage> {
                         : _selectedMode == KiwiTravelMode.transit
                         ? _text('Start trip', '开始行程')
                         : _text('Start', '开始导航'),
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
               ),

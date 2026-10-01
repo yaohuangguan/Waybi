@@ -219,7 +219,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                 _text('Recent', '最近搜索'),
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -265,7 +265,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                     item.name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: item.secondaryAddress.isEmpty
                       ? null

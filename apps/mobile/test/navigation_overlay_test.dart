@@ -19,6 +19,7 @@ void main() {
     });
     final engine = DriveEngine();
     var recenterCount = 0;
+    final insets = <double>[];
     addTearDown(engine.dispose);
 
     await tester.pumpWidget(
@@ -29,6 +30,7 @@ void main() {
               Positioned.fill(
                 child: NavigationOverlay(
                   engine: engine,
+                  onTopInsetChanged: insets.add,
                   destinationTitle:
                       'Te Whatu Stardome Observatory & Planetarium',
                   gpsAccuracy: 18,
@@ -56,6 +58,15 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     expect(find.text('End'), findsOneWidget);
+    expect(insets, hasLength(1));
+    expect(
+      insets.single,
+      greaterThan(
+        tester
+            .getRect(find.byKey(const Key('navigationGuidanceHeader')))
+            .bottom,
+      ),
+    );
     expect(find.text('GPS ±18 m'), findsOneWidget);
     expect(find.byTooltip('Recenter'), findsOneWidget);
     expect(find.text('Add a report'), findsNothing);
@@ -72,6 +83,7 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.text('Add a report'), findsOneWidget);
+    expect(insets.last, lessThan(insets.first));
 
     await tester.drag(
       find.byKey(const Key('navigationSheetSurface')),

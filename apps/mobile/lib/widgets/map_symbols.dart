@@ -123,7 +123,7 @@ class MapSymbols {
                     ui.ParagraphStyle(
                       textAlign: TextAlign.center,
                       fontSize: 15,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                     ),
                   )
                   ..pushStyle(ui.TextStyle(color: color))

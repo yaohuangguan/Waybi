@@ -479,7 +479,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 14,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     subtitle: address.isEmpty && distance.isEmpty
@@ -604,7 +604,7 @@ class DestinationSearchPage extends StatelessWidget {
                     leading: const Icon(Icons.directions_car_filled_rounded),
                     title: const Text(
                       'Just Drive',
-                      style: TextStyle(fontWeight: FontWeight.w800),
+                      style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                     subtitle: const Text('Camera alerts without a destination'),
                     trailing: const Icon(Icons.chevron_right_rounded),

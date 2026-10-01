@@ -1,4 +1,6 @@
 :root {
+  --font-ui: 'DM Sans', 'Hiragino Sans GB', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei UI', sans-serif;
+
   --brand-sky: #D0F58A;
   --brand-coastal: #79A83B;
   --brand-ocean: #486B29;

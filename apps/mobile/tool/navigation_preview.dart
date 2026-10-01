@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:kiwi_lens_mobile/domain/map_provider.dart';
+import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
 import 'package:kiwi_lens_mobile/drive/drive_engine.dart';
 import 'package:kiwi_lens_mobile/drive/journey_tracker.dart';
 import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
@@ -25,7 +26,20 @@ class NavigationPreview extends StatefulWidget {
 }
 
 class _NavigationPreviewState extends State<NavigationPreview> {
-  final engine = DriveEngine();
+  final engine = DriveEngine()
+    ..upcomingCamera = const SafetyCamera(
+      id: 'preview-camera',
+      name: 'Queen St camera',
+      region: 'Auckland',
+      suburb: 'City',
+      location: 'Queen Street',
+      type: 'Spot speed',
+      latitude: -36.845,
+      longitude: 174.76,
+    )
+    ..upcomingCameraDistanceMeters = 300
+    ..speedKph = 38
+    ..speedLimitKph = 50;
   String language = 'zh';
   bool lanes = true, voice = true, dark = false;
   static const points = [
@@ -37,10 +51,18 @@ class _NavigationPreviewState extends State<NavigationPreview> {
     GeoPoint(-36.849, 174.765),
   ];
   @override
+  void dispose() {
+    engine.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
     title: 'Kiwi Lens navigation preview',
-    theme: dark ? KiwiLensTheme.dark : KiwiLensTheme.light,
+    theme: dark
+        ? KiwiLensTheme.darkFor(language)
+        : KiwiLensTheme.lightFor(language),
     locale: Locale(language),
     supportedLocales: const [Locale('en'), Locale('zh')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
@@ -56,6 +78,14 @@ class _NavigationPreviewState extends State<NavigationPreview> {
               onPressed: () =>
                   setState(() => language = language == 'zh' ? 'en' : 'zh'),
               child: Text(language == 'zh' ? 'EN' : '中文'),
+            ),
+            IconButton(
+              tooltip: 'Camera alert',
+              onPressed: () => setState(() {
+                engine.upcomingCameraDistanceMeters =
+                    engine.upcomingCameraDistanceMeters == null ? 300 : null;
+              }),
+              icon: const Icon(Icons.speed_rounded),
             ),
             IconButton(
               tooltip: 'Theme',

@@ -48,7 +48,20 @@ abstract final class KiwiLensTheme {
   static ThemeData get light => _build(Brightness.light);
   static ThemeData get dark => _build(Brightness.dark);
 
-  static ThemeData _build(Brightness brightness) {
+  static ThemeData lightFor(String language) =>
+      _build(Brightness.light, language);
+  static ThemeData darkFor(String language) =>
+      _build(Brightness.dark, language);
+
+  static const chineseFontFallback = <String>[
+    'PingFang SC',
+    'Noto Sans CJK SC',
+    'Noto Sans SC',
+    'Microsoft YaHei UI',
+    'sans-serif',
+  ];
+
+  static ThemeData _build(Brightness brightness, [String language = 'en']) {
     final dark = brightness == Brightness.dark;
     final scheme = ColorScheme.fromSeed(
       seedColor: KiwiLensColors.ocean,
@@ -61,6 +74,8 @@ abstract final class KiwiLensTheme {
     );
     return ThemeData(
       useMaterial3: true,
+      fontFamily: language == 'zh' ? 'Hiragino Sans GB' : null,
+      fontFamilyFallback: language == 'zh' ? chineseFontFallback : null,
       colorScheme: scheme,
       scaffoldBackgroundColor: dark
           ? KiwiLensColors.midnightOcean
@@ -144,7 +159,7 @@ abstract final class KiwiLensTheme {
         labelTextStyle: WidgetStatePropertyAll(
           TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
             color: dark ? KiwiLensColors.darkText : KiwiLensColors.deepOcean,
           ),
         ),

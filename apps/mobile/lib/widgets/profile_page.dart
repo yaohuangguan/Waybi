@@ -290,6 +290,11 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ),
+              const SizedBox(height: 16),
+              _PlusCard(
+                isPlus: profile?.isPlus ?? false,
+                chinese: _appLanguage == 'zh',
+              ),
               if (profile == null) ...[
                 const SizedBox(height: 19),
                 TextField(
@@ -925,4 +930,197 @@ class _ActivitySection extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PlusCard extends StatelessWidget {
+  const _PlusCard({required this.isPlus, required this.chinese});
+
+  final bool isPlus;
+  final bool chinese;
+
+  String t(String en, String zh) => chinese ? zh : en;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(17),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            KiwiLensColors.darkOcean,
+            KiwiLensColors.ocean.withValues(alpha: .92),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: KiwiLensColors.darkOcean.withValues(alpha: .13),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: KiwiLensColors.sky.withValues(alpha: .16),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.radar_rounded,
+                  color: KiwiLensColors.sky,
+                  size: 21,
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Kiwi Lens Plus',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      isPlus
+                          ? t('Plus is active', 'Plus 已启用')
+                          : t(
+                              'Road intelligence, not paid navigation',
+                              '为道路情报付费，而不是为导航付费',
+                            ),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isPlus)
+                const Icon(Icons.verified_rounded, color: KiwiLensColors.sky),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            t(
+              'Core maps, search and turn-by-turn navigation stay free. Plus is for people who want Kiwi Lens to watch the road for them.',
+              '地图、搜索和逐向导航保持免费。Plus 面向希望 Kiwi Lens 主动替你盯路况的人。',
+            ),
+            style: const TextStyle(
+              color: Colors.white,
+              height: 1.35,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 13),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _PlusChip(
+                icon: Icons.route_rounded,
+                label: t('Route Watch', '路线监控'),
+              ),
+              _PlusChip(
+                icon: Icons.warning_amber_rounded,
+                label: t('Road alerts', '道路预警'),
+              ),
+              _PlusChip(
+                icon: Icons.cloud_outlined,
+                label: t('Weather risk', '天气风险'),
+              ),
+              _PlusChip(
+                icon: Icons.photo_camera_outlined,
+                label: t('Camera intelligence', '摄像头情报'),
+              ),
+            ],
+          ),
+          if (!isPlus) ...[
+            const SizedBox(height: 15),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    t(
+                      r'Planned: NZ$39.99/year · NZ$4.99/month',
+                      r'计划价格：NZ$39.99/年 · NZ$4.99/月',
+                    ),
+                    style: const TextStyle(
+                      color: KiwiLensColors.sky,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.surface.withValues(alpha: .12),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Text(
+                    t('Coming soon', '即将推出'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PlusChip extends StatelessWidget {
+  const _PlusChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: .1),
+      borderRadius: BorderRadius.circular(999),
+      border: Border.all(color: Colors.white12),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: KiwiLensColors.sky, size: 15),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    ),
+  );
 }

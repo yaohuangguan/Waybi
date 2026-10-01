@@ -14,6 +14,7 @@ import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
 import 'data/parking_repository.dart';
 import 'data/route_repository.dart';
+import 'data/usage_telemetry_repository.dart';
 import 'domain/radar_geometry.dart';
 import 'domain/map_layer_settings.dart';
 import 'domain/map_provider.dart';
@@ -292,6 +293,7 @@ class _MapHomePageState extends State<MapHomePage> {
   final PlaceDetailsRepository _placeDetailsRepository =
       PlaceDetailsRepository();
   final RouteRepository _routeRepository = RouteRepository();
+  final UsageTelemetryRepository _usageTelemetry = UsageTelemetryRepository();
   final ParkingRepository _parkingRepository = ParkingRepository();
   final WorkerSearchProvider _workerSearch = WorkerSearchProvider();
   final WorkerSearchProvider _mapCompatibleSearch = WorkerSearchProvider(
@@ -1172,6 +1174,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _mapboxSearch.dispose();
     _mapboxRoutes.dispose();
     _account.dispose();
+    _usageTelemetry.dispose();
     _placeDetailsRepository.dispose();
     _parkingRepository.dispose();
     _driveEngine.dispose();
@@ -2619,6 +2622,7 @@ class _MapHomePageState extends State<MapHomePage> {
       if (_mapProvider == MapProvider.mapbox) {
         if (!await _ensureLocationPermission()) return;
         await _mapboxNavigation.start(selectedRoute);
+        unawaited(_usageTelemetry.record('mapbox_navigation_trip'));
         if (!mounted) return;
         setState(() {
           _guidanceRunning = true;
@@ -2722,6 +2726,12 @@ class _MapHomePageState extends State<MapHomePage> {
       }
 
       _driveEngine.setRoute(selectedRoute);
+      unawaited(
+        _usageTelemetry.record(
+          'google_navigation_destination',
+          units: _routeStops.length + 1,
+        ),
+      );
       await GoogleMapsNavigator.startGuidance();
       await _navigationController?.setNavigationUIEnabled(true);
       final navigationController = _navigationController;
@@ -4070,6 +4080,9 @@ class _MapHomePageState extends State<MapHomePage> {
       if (status != NavigationRouteStatus.statusOk) {
         throw StateError(status.name);
       }
+      unawaited(
+        _usageTelemetry.record('google_navigation_destination', units: 2),
+      );
       _driveEngine.setRoute(next);
       setState(() => _activeNavigationRoute = next);
     } catch (error) {

@@ -142,3 +142,19 @@ Flutter 路线预览同样支持选择终点附近停车场、驾车到停车点
 ## 隐私
 
 GPS 在设备浏览器中用于导航与匹配提醒。路线起终点会发给本项目 Worker 和路线服务；搜索文字会发给地址服务。Worker 不记录用户位置历史。浏览器仅缓存摄像头数据和语言/语音偏好。
+
+## Cost Guard and Kiwi Lens Plus
+
+Kiwi Lens deliberately keeps the core map, place search and turn-by-turn navigation outside the paid tier. The planned **Kiwi Lens Plus** tier is for proactive New Zealand road intelligence such as Route Watch, disruption alerts, weather-risk context and richer camera intelligence. The initial product target shown in the mobile UI is **NZ$39.99/year or NZ$4.99/month**; it is currently presented as coming soon and does not lock any existing feature.
+
+`migrations/0005_cost_guard.sql` adds daily API-usage aggregation so growth can be evaluated against real provider consumption before paid entitlements are enforced. Cost Guard currently records:
+
+- Google Routes compute requests
+- Google Places text / nearby search, place details and place photos
+- Google Navigation destination units reported by the mobile app after a route is accepted
+- Mapbox navigation trips reported by the mobile app
+- Geoapify autocomplete calls
+
+Usage telemetry is best-effort: a failed write must never block search, route planning or active navigation. The server keeps counts and billable-style units rather than hard-coding provider prices, because provider pricing and free tiers change independently of the app release.
+
+After applying D1 migrations, an authenticated admin can query `GET /api/admin/costs?days=31`. Access is restricted to emails listed in the Worker `ADMIN_EMAILS` binding (comma-separated); do not commit personal admin addresses to the repository. The response exposes daily provider/SKU rows plus aggregate calls and units, which can be combined with the current Google/Mapbox/Geoapify price sheet when reviewing unit economics.

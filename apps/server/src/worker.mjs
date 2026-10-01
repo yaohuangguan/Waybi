@@ -1,11 +1,12 @@
 import seed from '../data/cameras.json' with { type: 'json' };
 import { fetchNztaCameras, SOURCE_URL } from './sync.mjs';
-import { handleAccount, roadReportAuthor } from './auth.mjs';
+import { handleAccount, roadReportAuthor, userFromRequest } from './auth.mjs';
 import { handlePlaces } from './places.mjs';
 import { routeOptions } from './routes.mjs';
 import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.mjs';
 import { loadRoadEventState } from './road_events.mjs';
 import { createRoadReport, readRoadReports } from './road_reports.mjs';
+import { recordApiUsage, readUsageSummary } from './cost_guard.mjs';
 
 const CAMERA_KEY = 'cameras/current';
 let lastSearchAt = 0;
@@ -79,6 +80,27 @@ async function upstreamJson(url, headers = {}) {
 
 async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
+  if (url.pathname === '/api/telemetry/usage' && request.method === 'POST') {
+    if (request.headers.get('x-kiwi-client') !== 'mobile') {
+      return json({ error: 'Invalid telemetry client' }, 403);
+    }
+    const body = await request.json().catch(() => null);
+    const events = {
+      google_navigation_destination: ['google', 'navigation_destination'],
+      mapbox_navigation_trip: ['mapbox', 'navigation_trip'],
+      mapbox_search_session: ['mapbox', 'search_session']
+    };
+    const event = events[body?.event];
+    if (!event) return json({ error: 'Unknown usage event' }, 400);
+    const units = Math.max(1, Math.min(25, Math.round(Number(body?.units) || 1)));
+    ctx.waitUntil(recordApiUsage(env, {
+      provider: event[0],
+      sku: event[1],
+      calls: 1,
+      units
+    }));
+    return json({ ok: true }, 202);
+  }
   if (url.pathname === '/api/road-reports' && request.method === 'POST') {
     try {
       const reporter = env.USER_DB
@@ -95,6 +117,18 @@ async function handleApi(request, env, ctx) {
     }
   }
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+  if (url.pathname === '/api/admin/costs') {
+    const configuredAdmins = String(env.ADMIN_EMAILS || '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+    const user = env.USER_DB ? await userFromRequest(env.USER_DB, request) : null;
+    if (!user || !configuredAdmins.includes(String(user.email || '').toLowerCase())) {
+      return json({ error: 'Admin access required' }, 403);
+    }
+    const days = Number.parseInt(url.searchParams.get('days') || '31', 10);
+    return json(await readUsageSummary(env, days));
+  }
   if (url.pathname === '/api/config') {
     if (!env.GOOGLE_MAPS_BROWSER_API_KEY) {
       return json({ error: 'Google Maps browser key is not configured' }, 503);
@@ -199,7 +233,16 @@ async function handleApi(request, env, ctx) {
     if (stops.length && googleMode === 'TRANSIT') {
       return json({ error: 'Transit route options do not support intermediate stops' }, 400);
     }
-    return json(await routeOptions(from, to, env, stops, googleMode ? [googleMode] : null));
+    return json(await routeOptions(
+      from,
+      to,
+      env,
+      stops,
+      googleMode ? [googleMode] : null,
+      (provider, sku, units) => ctx.waitUntil(
+        recordApiUsage(env, { provider, sku, calls: units, units })
+      )
+    ));
   }
   if (url.pathname === '/api/search') {
     const query = (url.searchParams.get('q') || '').trim();
@@ -281,7 +324,13 @@ export default {
     const pathname = new URL(request.url).pathname;
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     try {
-      const featureResponse = await handleAccount(request, env) || await handlePlaces(request, env);
+      const featureResponse = await handleAccount(request, env) || await handlePlaces(
+        request,
+        env,
+        (provider, sku, units) => ctx.waitUntil(
+          recordApiUsage(env, { provider, sku, calls: units, units })
+        )
+      );
       if (featureResponse) return featureResponse;
       return await handleApi(request, env, ctx);
     } catch (error) {

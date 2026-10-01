@@ -16,6 +16,7 @@ class AccountProfile {
     required this.places,
     required this.reviews,
     required this.recentDestinations,
+    required this.plan,
   });
 
   final String email;
@@ -25,6 +26,9 @@ class AccountProfile {
   final List<Map<String, dynamic>> places;
   final List<Map<String, dynamic>> reviews;
   final List<Map<String, dynamic>> recentDestinations;
+  final String plan;
+
+  bool get isPlus => plan == 'plus';
 
   factory AccountProfile.fromJson(Map<String, dynamic> json) {
     List<Map<String, dynamic>> list(String key) =>
@@ -46,6 +50,9 @@ class AccountProfile {
       places: list('savedPlaces'),
       reviews: list('reviews'),
       recentDestinations: list('recentDestinations'),
+      plan:
+          (json['subscription'] as Map<String, dynamic>?)?['plan'] as String? ??
+          'free',
     );
   }
 }

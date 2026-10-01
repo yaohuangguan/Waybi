@@ -31,3 +31,37 @@ test('Google driving alternatives request traffic on the polyline', async () => 
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test('commute ETA can request only the driving route mode', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    requests.push(body);
+    return new Response(JSON.stringify({
+      routes: [{
+        duration: '600s',
+        staticDuration: '540s',
+        distanceMeters: 8000,
+        polyline: { encodedPolyline: 'abc' },
+        travelAdvisory: { speedReadingIntervals: [] },
+        legs: []
+      }]
+    }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const plan = await routeOptions(
+      [174.76, -36.85],
+      [174.77, -36.86],
+      { GOOGLE_ROUTES_API_KEY: 'test' },
+      [],
+      ['DRIVE']
+    );
+    assert.deepEqual(requests.map((request) => request.travelMode), ['DRIVE']);
+    assert.equal(plan.options.length, 1);
+    assert.equal(plan.options[0].mode, 'drive');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

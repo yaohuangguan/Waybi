@@ -8,7 +8,7 @@ import 'api_config.dart';
 
 class RouteRepository {
   RouteRepository({http.Client? client, this.baseUrl = workerBaseUrl})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   final http.Client _client;
   final String baseUrl;
@@ -17,6 +17,7 @@ class RouteRepository {
     required LatLng origin,
     required LatLng destination,
     List<LatLng> stops = const [],
+    KiwiTravelMode? mode,
   }) async {
     final uri = Uri.parse('$baseUrl/api/route-options').replace(
       queryParameters: {
@@ -26,6 +27,7 @@ class RouteRepository {
           'stops': stops
               .map((stop) => '${stop.longitude},${stop.latitude}')
               .join(';'),
+        if (mode != null) 'mode': mode.apiValue,
       },
     );
     final response = await _client.get(uri);
@@ -36,9 +38,11 @@ class RouteRepository {
     final options = (body['options'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(RouteOption.fromJson)
-        .where((option) =>
-            option.points.length >= 2 ||
-            option.mode == KiwiTravelMode.transit)
+        .where(
+          (option) =>
+              option.points.length >= 2 ||
+              option.mode == KiwiTravelMode.transit,
+        )
         .toList(growable: false);
     if (options.isEmpty) throw StateError('No routes available');
     return RoutePlan(

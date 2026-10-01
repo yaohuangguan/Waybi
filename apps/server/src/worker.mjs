@@ -186,7 +186,20 @@ async function handleApi(request, env, ctx) {
       .map((value) => validateCoordinatePair(value))
       .filter(Boolean);
     if (stops.length > 23) return json({ error: 'At most 23 intermediate stops are supported' }, 400);
-    return json(await routeOptions(from, to, env, stops));
+    const requestedMode = url.searchParams.get('mode');
+    const googleMode = requestedMode == null ? null : ({
+      drive: 'DRIVE',
+      transit: 'TRANSIT',
+      walk: 'WALK',
+      bicycle: 'BICYCLE'
+    })[requestedMode];
+    if (requestedMode != null && !googleMode) {
+      return json({ error: 'mode must be drive, transit, walk or bicycle' }, 400);
+    }
+    if (stops.length && googleMode === 'TRANSIT') {
+      return json({ error: 'Transit route options do not support intermediate stops' }, 400);
+    }
+    return json(await routeOptions(from, to, env, stops, googleMode ? [googleMode] : null));
   }
   if (url.pathname === '/api/search') {
     const query = (url.searchParams.get('q') || '').trim();

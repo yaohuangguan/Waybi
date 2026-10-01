@@ -89,6 +89,21 @@ export async function userFromRequest(db, request) {
     .bind(await digest(token), Date.now()).first();
 }
 
+export async function subscriptionForUser(db, userId, now = Date.now()) {
+  const row = await db.prepare(
+    'SELECT plan, source, expires_at AS expiresAt FROM user_subscriptions WHERE user_id = ?'
+  ).bind(userId).first();
+  const activePlus = row?.plan === 'plus' &&
+    (row.expiresAt == null || Number(row.expiresAt) > now);
+  return activePlus
+    ? { plan: 'plus', source: row.source || null, expiresAt: row.expiresAt ?? null }
+    : { plan: 'free', source: null, expiresAt: null };
+}
+
+export async function userHasPlus(db, userId, now = Date.now()) {
+  return (await subscriptionForUser(db, userId, now)).plan === 'plus';
+}
+
 export async function roadReportAuthor(db, request) {
   const user = await userFromRequest(db, request);
   if (!user) return null;
@@ -120,13 +135,14 @@ async function userProfile(db, user) {
   const reviews = await db.prepare(`SELECT place_id AS placeId, place_name AS placeName,
     rating, comment, updated_at AS updatedAt
     FROM place_reviews WHERE user_id = ? ORDER BY updated_at DESC LIMIT 100`).bind(user.id).all();
+  const subscription = await subscriptionForUser(db, user.id);
   return {
     user: { id: user.id, email: user.email, displayName: profile?.display_name || '', providers: [
       ...(passwordUser?.password_hash ? ['password'] : []), ...(googleIdentity ? ['google'] : [])
     ] },
     language: profile?.language === 'zh' ? 'zh' : 'en',
     voiceEnabled: profile?.voice_enabled !== 0,
-    subscription: { plan: 'free', source: null, expiresAt: null },
+    subscription,
     recentDestinations: recent.results || [],
     savedPlaces: (saved.results || []).map((place) => ({
       ...place,

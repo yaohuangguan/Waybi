@@ -297,8 +297,10 @@ class DriveEngine extends ChangeNotifier {
     unawaited(loadCameras(force: true));
   }
 
-  Future<CameraSnapshot?> syncCameraData() async {
-    final snapshot = await _nztaProvider.repository.syncNow();
+  Future<CameraSnapshot?> syncCameraData({required String sessionToken}) async {
+    final snapshot = await _nztaProvider.repository.syncNow(
+      sessionToken: sessionToken,
+    );
     _nztaProvider.lastSnapshot = snapshot;
     await loadCameras(force: true);
     return _nztaProvider.lastSnapshot ?? snapshot;

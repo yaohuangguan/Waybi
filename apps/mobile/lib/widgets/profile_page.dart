@@ -109,12 +109,19 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _syncCameraData() async {
-    if (_cameraSyncing) return;
+    if (_cameraSyncing || widget.account.profile?.isPlus != true) return;
     setState(() => _cameraSyncing = true);
     try {
       final snapshot = await widget.onSyncCameraData();
       if (!mounted) return;
       setState(() => _cameraSnapshot = snapshot ?? _cameraSnapshot);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Bad state: ', '')),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _cameraSyncing = false);
     }
@@ -236,6 +243,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _cameraDataCard(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final snapshot = _cameraSnapshot;
+    final isPlus = widget.account.profile?.isPlus == true;
     final status = snapshot?.syncStatus ?? 'unknown';
     final statusColor = switch (status) {
       'live' => KiwiLensColors.success,
@@ -384,21 +392,49 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           const SizedBox(height: 12),
+          if (!isPlus) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.lock_rounded, size: 16, color: scheme.primary),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    _text(
+                      'Instant NZTA refresh is a Kiwi Lens Plus feature. Automatic camera updates still stay available to everyone.',
+                      '立即刷新 NZTA 摄像头是 Kiwi Lens Plus 功能。后台自动更新仍然对所有用户开放。',
+                    ),
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 10.5,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
           SizedBox(
             width: double.infinity,
             child: FilledButton.tonalIcon(
-              onPressed: _cameraSyncing ? null : _syncCameraData,
+              onPressed: !isPlus || _cameraSyncing ? null : _syncCameraData,
               icon: _cameraSyncing
                   ? const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.sync_rounded),
+                  : Icon(isPlus ? Icons.sync_rounded : Icons.lock_rounded),
               label: Text(
                 _cameraSyncing
                     ? _text('Checking NZTA…', '正在检查 NZTA…')
-                    : _text('Check for camera updates', '检查摄像头更新'),
+                    : isPlus
+                    ? _text('Check for camera updates', '检查摄像头更新')
+                    : _text(
+                        'Plus · Check for camera updates',
+                        'Plus · 检查摄像头更新',
+                      ),
               ),
             ),
           ),

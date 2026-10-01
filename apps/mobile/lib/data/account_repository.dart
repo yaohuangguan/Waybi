@@ -86,6 +86,7 @@ class AccountRepository extends ChangeNotifier {
   bool loading = false;
 
   bool get signedIn => _session != null;
+  String? get sessionToken => _session;
 
   Future<http.Response> _request(
     String path, {

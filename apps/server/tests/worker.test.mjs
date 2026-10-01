@@ -14,6 +14,30 @@ function fakeEnv(initial = null) {
   };
 }
 
+function fakeUserDb(plan = 'free') {
+  return {
+    prepare(sql) {
+      return {
+        bind() {
+          return {
+            async first() {
+              if (sql.includes('FROM sessions')) {
+                return { id: 'user-1', email: 'test@example.com' };
+              }
+              if (sql.includes('FROM user_subscriptions')) {
+                return plan === 'plus'
+                  ? { plan: 'plus', source: 'test', expiresAt: null }
+                  : null;
+              }
+              return null;
+            }
+          };
+        }
+      };
+    }
+  };
+}
+
 test('Worker API serves the full seeded camera list when KV is empty', async () => {
   const env = fakeEnv();
   const state = await readCameraState(env);
@@ -311,4 +335,57 @@ test('Cost Guard telemetry accepts only known mobile usage events', async () => 
     { waitUntil() {} }
   );
   assert.equal(spoofedClient.status, 403);
+});
+
+
+test('manual camera sync is rejected for free users', async () => {
+  const cached = {
+    ...seed,
+    checkedAt: new Date().toISOString(),
+    syncStatus: 'live',
+    syncError: null,
+    fetchMode: 'reader-fallback',
+    change: { added: 0, removed: 0 }
+  };
+  const env = { ...fakeEnv(cached), USER_DB: fakeUserDb('free') };
+  const response = await worker.fetch(
+    new Request('https://example.test/api/cameras/sync', {
+      method: 'POST',
+      headers: {
+        'x-kiwi-client': 'mobile',
+        cookie: `kiwi_session=${'a'.repeat(64)}`
+      }
+    }),
+    env,
+    { waitUntil() {} }
+  );
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).code, 'PLUS_REQUIRED');
+});
+
+test('manual camera sync is available to Plus users', async () => {
+  const cached = {
+    ...seed,
+    checkedAt: new Date().toISOString(),
+    syncStatus: 'live',
+    syncError: null,
+    fetchMode: 'reader-fallback',
+    change: { added: 0, removed: 0 }
+  };
+  const env = { ...fakeEnv(cached), USER_DB: fakeUserDb('plus') };
+  const response = await worker.fetch(
+    new Request('https://example.test/api/cameras/sync', {
+      method: 'POST',
+      headers: {
+        'x-kiwi-client': 'mobile',
+        cookie: `kiwi_session=${'b'.repeat(64)}`
+      }
+    }),
+    env,
+    { waitUntil() {} }
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.skipped, true);
+  assert.equal(body.cameras.length, seed.cameras.length);
 });

@@ -91,7 +91,7 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 13,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
                 color: scheme.onSurface,
               ),
             ),
@@ -234,7 +234,7 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                             _text('Map layers', '地图图层'),
                             style: const TextStyle(
                               fontSize: 22,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),

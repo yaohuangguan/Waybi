@@ -202,7 +202,7 @@ class _ProfilePageState extends State<ProfilePage> {
           foregroundColor: Colors.white,
           title: Text(
             _text('My Kiwi Lens', '我的 Kiwi Lens'),
-            style: const TextStyle(fontWeight: FontWeight.w900),
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
         body: SafeArea(
@@ -231,7 +231,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         style: const TextStyle(
                           color: KiwiLensColors.darkOcean,
                           fontSize: 24,
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -249,7 +249,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 19,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           Text(
@@ -349,7 +349,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     'G',
                     style: TextStyle(
                       color: Color(0xFF4285F4),
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                       fontSize: 20,
                     ),
                   ),
@@ -392,7 +392,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             Text(
                               _text('Kiwi Lens Sync', 'Kiwi Lens 同步'),
                               style: const TextStyle(
-                                fontWeight: FontWeight.w900,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                             Text(
@@ -420,7 +420,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             .join(' · '),
                         style: TextStyle(
                           fontSize: 11,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
@@ -836,7 +836,7 @@ class _SectionTitle extends StatelessWidget {
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: Text(
       title,
-      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
     ),
   );
 }
@@ -859,7 +859,7 @@ class _Stat extends StatelessWidget {
         children: [
           Text(
             value,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
           ),
           Text(label, style: const TextStyle(fontSize: 11)),
         ],
@@ -895,7 +895,7 @@ class _ActivitySection extends StatelessWidget {
         shape: const Border(),
         collapsedShape: const Border(),
         leading: Icon(icon),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text('${items.length} $countLabel'),
         children: items.isEmpty
             ? [ListTile(title: Text(emptyLabel))]
@@ -917,7 +917,7 @@ class _ActivitySection extends StatelessWidget {
                       '+${items.length - preview.length}',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),

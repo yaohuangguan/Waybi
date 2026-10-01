@@ -203,7 +203,7 @@ class _TimelineNode extends StatelessWidget {
           style: TextStyle(
             color: foreground,
             fontSize: 11,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
           ),
         ),
         if (detail.isNotEmpty)

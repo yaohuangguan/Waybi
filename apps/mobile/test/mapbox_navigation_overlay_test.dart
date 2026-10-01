@@ -71,6 +71,18 @@ void main() {
       expect(find.text('54'), findsOneWidget);
       expect(find.text('LIMIT 50'), findsOneWidget);
       expect(find.text('Camera · 300 m'), findsOneWidget);
+      final camera = tester.getRect(
+        find.byKey(const Key('navigationCameraAlert')),
+      );
+      expect(
+        camera.top,
+        greaterThan(
+          tester
+              .getRect(find.byKey(const Key('navigationGuidanceHeader')))
+              .bottom,
+        ),
+      );
+      expect(camera.bottom, lessThan(667 / 2));
       expect(find.text('Queen Street'), findsOneWidget);
       expect(find.byTooltip('Recenter'), findsOneWidget);
       expect(find.text('End'), findsOneWidget);

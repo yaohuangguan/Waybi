@@ -51,7 +51,7 @@ class _SplashGateState extends State<SplashGate> {
                       style: TextStyle(
                         color: KiwiLensColors.deepOcean,
                         fontSize: 36,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 8),

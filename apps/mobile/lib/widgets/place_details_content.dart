@@ -103,7 +103,7 @@ class PlaceDetailsContent extends StatelessWidget {
                             style: const TextStyle(
                               fontSize: 22,
                               height: 1.05,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           if (type.isNotEmpty) ...[
@@ -113,7 +113,7 @@ class PlaceDetailsContent extends StatelessWidget {
                               style: TextStyle(
                                 color: scheme.primary,
                                 fontSize: 11,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
@@ -161,7 +161,7 @@ class PlaceDetailsContent extends StatelessWidget {
                             place!.rating!.toStringAsFixed(1),
                             style: const TextStyle(
                               fontSize: 12,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           const SizedBox(width: 5),
@@ -349,7 +349,7 @@ class _PlaceAction extends StatelessWidget {
               style: TextStyle(
                 color: foreground,
                 fontSize: 10.5,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -515,7 +515,7 @@ class _DetailsBody extends StatelessWidget {
             collapsedShape: const Border(),
             title: const Text(
               'Opening hours',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             children: [
               for (final line in place.openingHours)
@@ -541,7 +541,7 @@ class _DetailsBody extends StatelessWidget {
             children: [
               const Text(
                 'Google reviews',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
               ),
               const Spacer(),
               Text(
@@ -596,7 +596,7 @@ class _ReviewTile extends StatelessWidget {
                         review.author,
                         style: const TextStyle(
                           fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -606,7 +606,7 @@ class _ReviewTile extends StatelessWidget {
                         style: const TextStyle(
                           color: KiwiLensColors.warning,
                           fontSize: 10,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                   ],

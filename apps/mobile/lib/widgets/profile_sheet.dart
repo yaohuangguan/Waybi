@@ -79,7 +79,7 @@ class _ProfileSheetState extends State<ProfileSheet> {
                           'My Kiwi Lens',
                           style: TextStyle(
                             fontSize: 24,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
@@ -255,7 +255,7 @@ class _Stat extends StatelessWidget {
         children: [
           Text(
             value,
-            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900),
+            style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w700),
           ),
           Text(
             label,
@@ -286,7 +286,7 @@ class _Section extends StatelessWidget {
       const SizedBox(height: 12),
       Text(
         title,
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
       if (items.isEmpty)
         Padding(

@@ -32,7 +32,7 @@ class JourneySummarySheet extends StatelessWidget {
                 ? _text('You made it!', '到啦！')
                 : _text('Journey complete', '本次导航已结束'),
             style: Theme.of(context).textTheme.headlineSmall
-                ?.copyWith(fontWeight: FontWeight.w900),
+                ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 5),
           Text(summary.destination, textAlign: TextAlign.center),
@@ -55,7 +55,7 @@ class JourneySummarySheet extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Text(
               _text('Your journey at a glance', '这次走过的路'),
-              style: const TextStyle(fontWeight: FontWeight.w800),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
           const SizedBox(height: 10),
@@ -94,7 +94,7 @@ class JourneySummarySheet extends StatelessWidget {
       children: [
         Text(
           value,
-          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
         ),
         const SizedBox(height: 4),
         Text(label, style: const TextStyle(fontSize: 11)),

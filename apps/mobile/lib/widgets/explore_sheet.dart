@@ -201,7 +201,7 @@ class _ExploreSheetState extends State<ExploreSheet> {
                   _text('Explore useful stops', '探索实用目的地'),
                   style: const TextStyle(
                     fontSize: 23,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -246,7 +246,7 @@ class _ExploreSheetState extends State<ExploreSheet> {
                 _text('Around you', '附近'),
                 style: const TextStyle(
                   fontSize: 17,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -274,7 +274,7 @@ class _ExploreSheetState extends State<ExploreSheet> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w700,
                                   fontSize: 16,
                                 ),
                               ),
@@ -293,7 +293,7 @@ class _ExploreSheetState extends State<ExploreSheet> {
                                 _distance(place),
                                 style: const TextStyle(
                                   color: Color(0xFF1479FF),
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
@@ -315,7 +315,7 @@ class _ExploreSheetState extends State<ExploreSheet> {
                     _text('Along your route', '沿途'),
                     style: const TextStyle(
                       fontSize: 17,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 5),
@@ -336,7 +336,7 @@ class _ExploreSheetState extends State<ExploreSheet> {
                     _text('Saved / frequent', '收藏与常去'),
                     style: const TextStyle(
                       fontSize: 17,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   for (final place in widget.saved.take(4))

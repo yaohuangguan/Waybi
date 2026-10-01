@@ -77,7 +77,7 @@ class TransitTripOverlay extends StatelessWidget {
                               style: TextStyle(
                                 color: _accent,
                                 fontSize: 11,
-                                fontWeight: FontWeight.w900,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                             Text(
@@ -87,7 +87,7 @@ class TransitTripOverlay extends StatelessWidget {
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 17,
-                                fontWeight: FontWeight.w900,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ],
@@ -135,7 +135,7 @@ class TransitTripOverlay extends StatelessWidget {
                                     _duration(route.durationSeconds),
                                     style: const TextStyle(
                                       fontSize: 24,
-                                      fontWeight: FontWeight.w900,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                   Text(
@@ -188,7 +188,7 @@ class TransitTripOverlay extends StatelessWidget {
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                          fontWeight: FontWeight.w900,
+                                          fontWeight: FontWeight.w700,
                                         ),
                                       ),
                                       const SizedBox(height: 4),

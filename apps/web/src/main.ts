@@ -346,7 +346,11 @@ function updateNavigationOverlayLayout() {
   updateMapViewport();
   if (uiMode !== 'navigation') return;
   document.body.style.setProperty('--nav-sheet-clearance', `${Math.ceil($('navSheet').getBoundingClientRect().height) + 12}px`);
-  document.body.style.setProperty('--nav-banner-clearance', `${Math.ceil($('navBanner').getBoundingClientRect().bottom) + 18}px`);
+  const bannerBottom = Math.ceil($('navBanner').getBoundingClientRect().bottom);
+  document.body.style.setProperty('--nav-camera-top', `${bannerBottom + 8}px`);
+  const camera = $('cameraAlert');
+  const topBottom = camera.hidden ? bannerBottom : Math.ceil(camera.getBoundingClientRect().bottom);
+  document.body.style.setProperty('--nav-banner-clearance', `${topBottom + 18}px`);
 }
 
 // Keep provider attribution inside the visible map viewport above mobile sheets.
@@ -361,7 +365,9 @@ for (const id of ['bottomPanel', 'navSheet']) {
   mapViewportObserver.observe($(id));
   $(id).addEventListener('transitionend', updateMapViewport);
 }
-window.addEventListener('resize', updateMapViewport);
+window.addEventListener('resize', updateNavigationOverlayLayout);
+const navigationHeaderObserver = new ResizeObserver(() => requestAnimationFrame(updateNavigationOverlayLayout));
+for (const id of ['navBanner', 'cameraAlert']) navigationHeaderObserver.observe($(id));
 
 function renderSpeedHud() {
   const hud = $('speedHud');
@@ -1618,7 +1624,9 @@ $('dataButton').onclick = () => showOverlay('dataOverlay');
 $('closeData').onclick = () => hideOverlay('dataOverlay');
 for (const id of ['settingsOverlay', 'dataOverlay']) $(id).addEventListener('click', (event) => { if (event.target === $(id)) hideOverlay(id); });
 function applyLanguage() {
+  document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
   applyUiLanguage(language);
+  $('cameraAlert').setAttribute('aria-label', language === 'zh' ? '前方摄像头提醒' : 'Upcoming safety camera');
   $('keepScreenAwakeTitle').textContent = language === 'zh' ? '导航时屏幕常亮' : 'Keep screen awake';
   $('keepScreenAwakeDescription').textContent = language === 'zh' ? '导航期间防止自动锁屏' : 'Prevent auto-lock while navigating';
   $('profileButton').setAttribute('aria-label', language === 'zh' ? '账户总览' : 'Account dashboard');

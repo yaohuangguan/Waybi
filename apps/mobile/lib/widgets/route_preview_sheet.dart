@@ -173,7 +173,7 @@ class RoutePreviewSheet extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 18,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
@@ -260,7 +260,7 @@ class RoutePreviewSheet extends StatelessWidget {
                               : 'Parking for $finalDestinationTitle',
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.primary,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -322,7 +322,7 @@ class RoutePreviewSheet extends StatelessWidget {
                                             ),
                                       style: const TextStyle(
                                         fontSize: 11,
-                                        fontWeight: FontWeight.w800,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ],
@@ -341,7 +341,7 @@ class RoutePreviewSheet extends StatelessWidget {
                         isChinese ? '路线选项' : 'Route options',
                         style: const TextStyle(
                           fontSize: 13,
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -408,7 +408,7 @@ class RoutePreviewSheet extends StatelessWidget {
                                 '$cameraCount',
                                 style: const TextStyle(
                                   fontSize: 11,
-                                  fontWeight: FontWeight.w900,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                             ],
@@ -604,7 +604,7 @@ class _RouteOptionTile extends StatelessWidget {
                     style: TextStyle(
                       color: active ? scheme.primary : scheme.onSurface,
                       fontSize: 15,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 1),
@@ -661,7 +661,7 @@ class _RouteOptionTile extends StatelessWidget {
                                     ? scheme.primary
                                     : scheme.onSurfaceVariant,
                                 fontSize: 9.5,
-                                fontWeight: FontWeight.w900,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
@@ -683,7 +683,7 @@ class _RouteOptionTile extends StatelessWidget {
                     style: TextStyle(
                       color: _trafficColor(),
                       fontSize: 9.5,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 5),
@@ -795,7 +795,7 @@ class _TransitDetails extends StatelessWidget {
                           route.transit[index].lineName,
                           route.transit[index].headsign,
                         ].where((value) => value.isNotEmpty).join(' → '),
-                        style: const TextStyle(fontWeight: FontWeight.w900),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 3),
                       Text(
@@ -878,7 +878,7 @@ class _ParkingChoices extends StatelessWidget {
                   isChinese ? '附近停车' : 'Nearby parking',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
               if (loading)
@@ -953,7 +953,7 @@ class _ParkingChoices extends StatelessWidget {
                             place.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w800),
+                            style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(height: 3),
                           Text(
@@ -1048,7 +1048,7 @@ class ParkingContinuationCard extends StatelessWidget {
                       child: Text(
                         isChinese ? '驾车路段已结束' : 'Driving leg ended',
                         style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w900),
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                     ),
                   ],

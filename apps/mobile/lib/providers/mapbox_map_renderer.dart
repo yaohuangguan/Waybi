@@ -64,7 +64,7 @@ class MapboxMapRenderer extends StatefulWidget {
 }
 
 class _MapboxMapRendererState extends State<MapboxMapRenderer>
-    implements RouteMapRenderer {
+    implements RouteMapRenderer, PlaceFocusMapRenderer {
   mb.MapboxMap? _map;
   mb.CircleAnnotationManager? _cameraManager;
   mb.CircleAnnotationManager? _selectedManager;
@@ -138,6 +138,46 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
         pitch: viewport.pitch,
       ),
       mb.MapAnimationOptions(duration: 400),
+    );
+  }
+
+  @override
+  Future<void> focusPlace(GeoPoint point, {required double bottomInset}) async {
+    final map = _map;
+    if (map == null) return;
+    final focus = MapViewportState(
+      center: point,
+      zoom: _viewport.zoom < 15 ? 15 : _viewport.zoom,
+      bearing: _viewport.bearing,
+      pitch: _viewport.pitch,
+    );
+    _viewport = focus;
+    await map.easeTo(
+      mb.CameraOptions(
+        center: _point(point),
+        zoom: focus.zoom,
+        bearing: focus.bearing,
+        pitch: focus.pitch,
+        padding: mb.MbxEdgeInsets(
+          top: 104,
+          left: 18,
+          bottom: bottomInset,
+          right: 18,
+        ),
+      ),
+      mb.MapAnimationOptions(duration: 360),
+    );
+  }
+
+  @override
+  Future<void> clearContentPadding() async {
+    final map = _map;
+    if (map == null) return;
+    await map.easeTo(
+      mb.CameraOptions(
+        padding: mb.MbxEdgeInsets(top: 0, left: 0, bottom: 0, right: 0),
+      ),
+      mb.MapAnimationOptions(duration: 220),
     );
   }
 

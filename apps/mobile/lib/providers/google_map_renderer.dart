@@ -66,7 +66,7 @@ class GoogleMapRenderer extends StatefulWidget {
 }
 
 class _GoogleMapRendererState extends State<GoogleMapRenderer>
-    implements MapRenderer {
+    implements PlaceFocusMapRenderer {
   GoogleMapViewController? _controller;
   late MapViewportState _viewport = widget.initialViewport;
   bool _userPanning = false;
@@ -94,6 +94,22 @@ class _GoogleMapRendererState extends State<GoogleMapRenderer>
         ),
       ),
     );
+  }
+
+  @override
+  Future<void> focusPlace(GeoPoint point, {required double bottomInset}) async {
+    final controller = _controller;
+    if (controller == null) return;
+    await controller.setPadding(EdgeInsets.fromLTRB(18, 104, 18, bottomInset));
+    await controller.animateCamera(
+      CameraUpdate.newLatLng(_latLng(point)),
+      duration: const Duration(milliseconds: 360),
+    );
+  }
+
+  @override
+  Future<void> clearContentPadding() async {
+    await _controller?.setPadding(EdgeInsets.zero);
   }
 
   Future<void> _created(GoogleMapViewController controller) async {

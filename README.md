@@ -12,6 +12,8 @@
   ·
   <a href="packages/contracts/openapi.yaml">OpenAPI contract</a>
   ·
+  <a href="LICENSE">Noncommercial license</a>
+  ·
   <a href="#development">Development</a>
 </p>
 
@@ -300,6 +302,14 @@ Kiwi Lens uses location on the device for navigation, route progress and road-in
 - account data and Route Watch state are stored in D1
 - validated camera snapshots are stored in Workers KV
 - API keys and privileged provider credentials must not be committed to the repository
+
+## License
+
+Kiwi Lens is **source-available for noncommercial use** under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+You may study, run, modify and redistribute the code for permitted noncommercial purposes under that license. **Commercial use, commercial integration, resale, paid services based on this code, or other commercial exploitation is not permitted without a separate written commercial license from the copyright holder.**
+
+This repository is therefore **not licensed under a permissive open-source licence such as MIT or Apache-2.0**. If you want to use Kiwi Lens commercially, contact the repository owner for separate licensing.
 
 ## Current limitations
 

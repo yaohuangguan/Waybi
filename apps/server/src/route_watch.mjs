@@ -3,7 +3,7 @@ import { loadRoadEventState } from './road_events.mjs';
 
 const MAX_WATCHES_PER_USER = 8;
 const MAX_POINTS = 250;
-const ROUTE_CORRIDOR_METERS = 140;
+const ROUTE_CORRIDOR_METERS = 180;
 const ROUTE_CACHE_MS = 29 * 24 * 60 * 60 * 1000;
 const MAX_MATCHES = 6;
 

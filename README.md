@@ -165,7 +165,7 @@ Route Watch is the first Plus-preview road-intelligence feature. It watches a **
 
 Enabling or refreshing a watch requests the current driving route once, stores its sampled corridor plus baseline ETA/distance in D1, and records the route provider. `migrations/0006_route_watch.sql` creates watch state; `migrations/0007_route_watch_route_identity.sql` adds origin identity, provider and route-geometry expiry. Cached route geometry expires after **29 days** and the UI changes to **Refresh / 需刷新** instead of monitoring indefinitely with stale geometry.
 
-A Worker cron evaluates enabled, non-expired routes every 15 minutes against official NZTA Traffic and Travel road events. It does not repeatedly call Google Routes during those background checks. Matching uses a 140 m corridor and records `healthy`, `advisory`, `warning`, or `disrupted` plus the highest-priority matching events. Opening Trips also refreshes the road-event evaluation immediately.
+A Worker cron evaluates enabled, non-expired routes every 15 minutes against official NZTA Traffic and Travel road events. It does not repeatedly call Google Routes during those background checks. Matching uses a 180 m corridor and records `healthy`, `advisory`, `warning`, or `disrupted` plus the highest-priority matching events. Opening Trips also refreshes the road-event evaluation immediately.
 
 This release intentionally does not claim background push delivery: the server-side monitoring loop is real, but APNs/FCM device-token registration and remote notification delivery remain a separate layer. Core navigation stays free and Route Watch remains a Plus preview until StoreKit entitlement handling is introduced.
 

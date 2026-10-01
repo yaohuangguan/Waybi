@@ -34,8 +34,8 @@ function event({
   };
 }
 
-test('Route Watch uses a narrow corridor and 29-day route cache', () => {
-  assert.equal(__test.ROUTE_CORRIDOR_METERS, 140);
+test('Route Watch keeps the production corridor and uses a 29-day route cache', () => {
+  assert.equal(__test.ROUTE_CORRIDOR_METERS, 180);
   assert.equal(__test.ROUTE_CACHE_MS, 29 * 24 * 60 * 60 * 1000);
 });
 

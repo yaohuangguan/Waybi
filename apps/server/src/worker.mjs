@@ -1,6 +1,6 @@
 import seed from '../data/cameras.json' with { type: 'json' };
 import { fetchNztaCameras, SOURCE_URL } from './sync.mjs';
-import { handleAccount, roadReportAuthor, userFromRequest } from './auth.mjs';
+import { handleAccount, roadReportAuthor, userFromRequest, userHasPlus } from './auth.mjs';
 import { handlePlaces } from './places.mjs';
 import { routeOptions } from './routes.mjs';
 import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.mjs';
@@ -126,6 +126,19 @@ async function handleApi(request, env, ctx) {
     }
   }
   if (url.pathname === '/api/cameras/sync' && request.method === 'POST') {
+    if (!env.USER_DB) return json({ error: 'Account storage is not configured' }, 503);
+    if (request.headers.get('x-kiwi-client') !== 'mobile') {
+      return json({ error: 'Invalid client' }, 403);
+    }
+    const user = await userFromRequest(env.USER_DB, request);
+    if (!user) return json({ error: 'Sign in required', code: 'SIGN_IN_REQUIRED' }, 401);
+    if (!await userHasPlus(env.USER_DB, user.id)) {
+      return json({
+        error: 'Kiwi Lens Plus is required to check NZTA camera updates now',
+        code: 'PLUS_REQUIRED'
+      }, 403);
+    }
+
     const current = await readCameraState(env);
     const checkedAt = Date.parse(current.checkedAt || '');
     const recentlyChecked =

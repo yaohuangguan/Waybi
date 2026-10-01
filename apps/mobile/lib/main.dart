@@ -2232,7 +2232,15 @@ class _MapHomePageState extends State<MapHomePage> {
           ),
           cameraSnapshot: _driveEngine.cameraSnapshot,
           onSyncCameraData: () async {
-            final snapshot = await _driveEngine.syncCameraData();
+            final token = _account.sessionToken;
+            if (token == null) {
+              throw StateError(
+                _text('Sign in to use Plus camera sync', '请先登录后使用 Plus 摄像头同步'),
+              );
+            }
+            final snapshot = await _driveEngine.syncCameraData(
+              sessionToken: token,
+            );
             if (mounted) {
               setState(() {});
               unawaited(_syncCameraMarkers());

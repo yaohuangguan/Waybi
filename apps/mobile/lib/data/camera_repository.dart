@@ -82,12 +82,26 @@ class CameraRepository {
     throw networkError;
   }
 
-  Future<CameraSnapshot> syncNow() async {
+  Future<CameraSnapshot> syncNow({required String sessionToken}) async {
     final response = await _client
-        .post(Uri.parse('$baseUrl/api/cameras/sync'))
+        .post(
+          Uri.parse('$baseUrl/api/cameras/sync'),
+          headers: {
+            'cookie': 'kiwi_session=$sessionToken',
+            'x-kiwi-client': 'mobile',
+          },
+        )
         .timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
-      throw StateError('Camera sync failed: ${response.statusCode}');
+      try {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        throw StateError(
+          body['error']?.toString() ??
+              'Camera sync failed: ${response.statusCode}',
+        );
+      } on FormatException {
+        throw StateError('Camera sync failed: ${response.statusCode}');
+      }
     }
     final snapshot = _decodeSnapshot(response.body);
     try {

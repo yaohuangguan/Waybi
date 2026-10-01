@@ -68,22 +68,6 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
         })
         .whereType<PlaceCandidate>()
         .toList();
-    if (proximity != null) {
-      results.sort((a, b) {
-        final aPoint = a.location;
-        final bPoint = b.location;
-        if (aPoint == null && bPoint == null) return 0;
-        if (aPoint == null) return 1;
-        if (bPoint == null) return -1;
-        final aDistance =
-            pow(aPoint.latitude - proximity.latitude, 2) +
-            pow(aPoint.longitude - proximity.longitude, 2);
-        final bDistance =
-            pow(bPoint.latitude - proximity.latitude, 2) +
-            pow(bPoint.longitude - proximity.longitude, 2);
-        return aDistance.compareTo(bDistance);
-      });
-    }
     return List.unmodifiable(results);
   }
 
@@ -137,47 +121,53 @@ class MapboxSearchProvider
     required String language,
   }) async {
     if (accessToken.isEmpty) throw StateError('Mapbox token is not configured');
-    final uri = Uri.https('api.mapbox.com', '/search/searchbox/v1/suggest', {
-      'q': query,
-      'access_token': accessToken,
-      'session_token': _sessionToken,
-      'country': 'NZ',
-      'language': language == 'zh' ? 'zh' : 'en',
-      'limit': '8',
-      if (proximity != null)
-        'proximity': '${proximity.longitude},${proximity.latitude}',
-    });
-    final response = await _client.get(uri);
-    if (response.statusCode != 200) {
-      throw StateError('Mapbox search unavailable: ${response.statusCode}');
+    Future<List<PlaceCandidate>> load({required bool localFirst}) async {
+      final uri = Uri.https('api.mapbox.com', '/search/searchbox/v1/suggest', {
+        'q': query,
+        'access_token': accessToken,
+        'session_token': _sessionToken,
+        if (localFirst) 'country': 'NZ',
+        'language': language == 'zh' ? 'zh' : 'en',
+        'limit': '8',
+        if (localFirst && proximity != null)
+          'proximity': '${proximity.longitude},${proximity.latitude}',
+      });
+      final response = await _client.get(uri);
+      if (response.statusCode != 200) {
+        throw StateError('Mapbox search unavailable: ${response.statusCode}');
+      }
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return (body['suggestions'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map((item) {
+            final id = item['mapbox_id']?.toString() ?? '';
+            if (id.isEmpty) return null;
+            final type = item['feature_type']?.toString() ?? '';
+            return PlaceCandidate(
+              name:
+                  item['name_preferred']?.toString() ??
+                  item['name']?.toString() ??
+                  '',
+              address:
+                  item['full_address']?.toString() ??
+                  item['place_formatted']?.toString() ??
+                  '',
+              category: item['poi_category'] is List
+                  ? (item['poi_category'] as List).join(', ')
+                  : '',
+              kind: type == 'address' || type == 'street'
+                  ? PlaceKind.address
+                  : PlaceKind.poi,
+              reference: ProviderReference('mapbox', id),
+            );
+          })
+          .whereType<PlaceCandidate>()
+          .toList(growable: false);
     }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return (body['suggestions'] as List<dynamic>? ?? const [])
-        .whereType<Map<String, dynamic>>()
-        .map((item) {
-          final id = item['mapbox_id']?.toString() ?? '';
-          if (id.isEmpty) return null;
-          final type = item['feature_type']?.toString() ?? '';
-          return PlaceCandidate(
-            name:
-                item['name_preferred']?.toString() ??
-                item['name']?.toString() ??
-                '',
-            address:
-                item['full_address']?.toString() ??
-                item['place_formatted']?.toString() ??
-                '',
-            category: item['poi_category'] is List
-                ? (item['poi_category'] as List).join(', ')
-                : '',
-            kind: type == 'address' || type == 'street'
-                ? PlaceKind.address
-                : PlaceKind.poi,
-            reference: ProviderReference('mapbox', id),
-          );
-        })
-        .whereType<PlaceCandidate>()
-        .toList(growable: false);
+
+    final local = await load(localFirst: true);
+    if (local.isNotEmpty) return local;
+    return load(localFirst: false);
   }
 
   @override

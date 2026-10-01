@@ -17,6 +17,7 @@ import 'data/route_repository.dart';
 import 'domain/radar_geometry.dart';
 import 'domain/map_layer_settings.dart';
 import 'domain/map_provider.dart';
+import 'domain/country_profile.dart';
 import 'domain/navigation_camera_mode.dart';
 import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
@@ -1277,6 +1278,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _loadPlaceQuickRoute(PlaceSummary place) async {
     if (!mounted || _driveEngine.active || _routePlan != null) return;
+    if (CountryProfiles.at(place.location)?.code != 'NZ') return;
     final origin = _gpsLocation;
     if (origin == null) return;
     final key = _placeRouteKey(place);
@@ -5457,6 +5459,10 @@ class _MapHomePageState extends State<MapHomePage> {
                     busy: _routePreviewLoading,
                     quickRoute: _placeQuickRoute,
                     quickRouteLoading: _placeQuickRouteLoading,
+                    navigationAvailable:
+                        CountryProfiles.at(_selectedPlace!.place.location)
+                            ?.code ==
+                        'NZ',
                     onClose: () => unawaited(_clearRoutePreview()),
                     onNavigate: () =>
                         unawaited(_loadRoutePreview(_selectedPoi!)),
@@ -5574,6 +5580,7 @@ class _PlaceCard extends StatelessWidget {
     required this.busy,
     required this.quickRoute,
     required this.quickRouteLoading,
+    required this.navigationAvailable,
     required this.onClose,
     required this.onNavigate,
     required this.isFavorite,
@@ -5590,6 +5597,7 @@ class _PlaceCard extends StatelessWidget {
   final bool busy;
   final RouteOption? quickRoute;
   final bool quickRouteLoading;
+  final bool navigationAvailable;
   final VoidCallback onClose;
   final VoidCallback onNavigate;
   final bool isFavorite;
@@ -5608,6 +5616,7 @@ class _PlaceCard extends StatelessWidget {
       routeBusy: busy,
       quickRoute: quickRoute,
       quickRouteLoading: quickRouteLoading,
+      navigationAvailable: navigationAvailable,
       isFavorite: isFavorite,
       onClose: onClose,
       onNavigate: onNavigate,

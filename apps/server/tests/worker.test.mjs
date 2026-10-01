@@ -90,7 +90,10 @@ test('Google place search handles nearby POIs and two-character Chinese queries 
       const [suggestion] = await response.json();
       assert.equal(suggestion.name, 'Tai Ping Asian Supermarket Greenlane 太平亚洲食品超市');
     }
-    assert.ok(Math.abs(bodies[0].locationRestriction.rectangle.low.latitude - (-37.2985)) < 1e-9);
+    assert.equal(bodies[0].locationRestriction, undefined);
+    assert.equal(bodies[0].locationBias.circle.center.latitude, -36.8485);
+    assert.equal(bodies[0].locationBias.circle.center.longitude, 174.7633);
+    assert.equal(bodies[0].locationBias.circle.radius, 50000);
     assert.equal(bodies[1].languageCode, 'zh-CN');
   } finally {
     globalThis.fetch = originalFetch;
@@ -215,6 +218,51 @@ test('route API preserves OSRM lane guidance for turn steps', async () => {
       { indications: ['straight'], valid: false },
       { indications: ['straight', 'right'], valid: true }
     ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test('Google place search falls back globally when NZ-biased search has no result', async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies = [];
+  globalThis.fetch = async (_url, options = {}) => {
+    const body = JSON.parse(options.body);
+    bodies.push(body);
+    if (bodies.length === 1) {
+      return Response.json({ places: [] });
+    }
+    return Response.json({
+      places: [{
+        id: 'shijiazhuang-city',
+        displayName: { text: '石家庄市' },
+        formattedAddress: '河北省石家庄市，中国',
+        primaryTypeDisplayName: { text: '城市' },
+        location: { latitude: 38.0428, longitude: 114.5149 }
+      }]
+    });
+  };
+  try {
+    const env = { ...fakeEnv(), GOOGLE_ROUTES_API_KEY: 'test-key' };
+    const response = await worker.fetch(
+      new Request(
+        'https://example.test/api/suggest?q=%E7%9F%B3%E5%AE%B6%E5%BA%84&lang=zh&near=174.7633,-36.8485'
+      ),
+      env,
+      { waitUntil() {} }
+    );
+    assert.equal(response.status, 200);
+    const [place] = await response.json();
+    assert.equal(place.name, '石家庄市');
+    assert.equal(place.latitude, 38.0428);
+    assert.equal(place.longitude, 114.5149);
+    assert.equal(bodies.length, 2);
+    assert.equal(bodies[0].regionCode, 'NZ');
+    assert.ok(bodies[0].locationBias);
+    assert.equal(bodies[1].regionCode, undefined);
+    assert.equal(bodies[1].locationBias, undefined);
+    assert.equal(bodies[1].languageCode, 'zh-CN');
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -75,3 +75,36 @@ test('independent Explore handles upstream failure and invalid coordinates', asy
     assert.equal(response.status, 502);
   } finally { globalThis.fetch = previous; }
 });
+
+
+test('independent search falls back globally after NZ search has no result', async () => {
+  const previous = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(url);
+    urls.push(parsed);
+    if (urls.length === 1) return Response.json({ results: [] });
+    return Response.json({ results: [{
+      place_id: 'shijiazhuang',
+      name: '石家庄市',
+      country_code: 'cn',
+      formatted: '石家庄市, 河北省, 中国',
+      result_type: 'city',
+      lat: 38.0428,
+      lon: 114.5149,
+    }]});
+  };
+  try {
+    const response = await handlePlaces(new Request(
+      'https://example.test/api/suggest?q=%E7%9F%B3%E5%AE%B6%E5%BA%84&lang=zh&provider=geoapify&near=174.76,-36.85'),
+      { GEOAPIFY_API_KEY: 'geo-key' });
+    assert.equal(response.status, 200);
+    const [place] = await response.json();
+    assert.equal(place.name, '石家庄市, 河北省, 中国');
+    assert.equal(place.latitude, 38.0428);
+    assert.equal(urls.length, 2);
+    assert.equal(urls[0].searchParams.get('filter'), 'countrycode:nz');
+    assert.equal(urls[1].searchParams.get('filter'), null);
+    assert.equal(urls[1].searchParams.get('bias'), null);
+  } finally { globalThis.fetch = previous; }
+});

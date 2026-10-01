@@ -64,10 +64,10 @@ export async function handlePlaces(request, env) {
         pageSize: 10
       };
       if (point) {
-        body.locationRestriction = {
-          rectangle: {
-            low: { latitude: point[1] - 0.45, longitude: point[0] - 0.6 },
-            high: { latitude: point[1] + 0.45, longitude: point[0] + 0.6 }
+        body.locationBias = {
+          circle: {
+            center: { latitude: point[1], longitude: point[0] },
+            radius: 50000
           }
         };
       }
@@ -81,39 +81,47 @@ export async function handlePlaces(request, env) {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000)
       });
+      const mapGooglePlaces = (data) => (data.places || []).map((place) => ({
+        id: place.id || place.formattedAddress || '',
+        provider: 'google',
+        name: localizedText(place.displayName) || place.formattedAddress || query,
+        address: place.formattedAddress || '',
+        label: place.formattedAddress || localizedText(place.displayName) || query,
+        isPoi: true,
+        resultType: localizedText(place.primaryTypeDisplayName),
+        latitude: Number(place.location?.latitude),
+        longitude: Number(place.location?.longitude)
+      })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
       if (google.ok) {
-        const data = await google.json();
-        const local = (data.places || []).map((place) => ({
-          id: place.id || place.formattedAddress || '',
-          provider: 'google',
-          name: localizedText(place.displayName) || place.formattedAddress || query,
-          address: place.formattedAddress || '',
-          label: place.formattedAddress || localizedText(place.displayName) || query,
-          isPoi: true,
-          resultType: localizedText(place.primaryTypeDisplayName),
-          latitude: Number(place.location?.latitude),
-          longitude: Number(place.location?.longitude)
-        })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
+        const local = mapGooglePlaces(await google.json());
         if (local.length) return json(local);
+      }
+
+      const globalGoogle = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'X-Goog-Api-Key': googleKey,
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName'
+        },
+        body: JSON.stringify({
+          textQuery: query,
+          languageCode: prefersChinese ? 'zh-CN' : 'en',
+          pageSize: 10
+        }),
+        signal: AbortSignal.timeout(10000)
+      });
+      if (globalGoogle.ok) {
+        const global = mapGooglePlaces(await globalGoogle.json());
+        if (global.length) return json(global);
       }
     }
 
     if (!env.GEOAPIFY_API_KEY) {
       return json({ error: 'Place search is not configured' }, 503);
     }
-    const provider = new URL('https://api.geoapify.com/v1/geocode/autocomplete');
-    provider.searchParams.set('text', query);
-    provider.searchParams.set('filter', 'countrycode:nz');
-    provider.searchParams.set('lang', prefersChinese ? 'zh' : 'en');
-    provider.searchParams.set('limit', '6');
-    provider.searchParams.set('format', 'json');
-    provider.searchParams.set('apiKey', env.GEOAPIFY_API_KEY);
-    if (point) provider.searchParams.set('bias', `proximity:${point.join(',')}`);
-    const upstream = await fetch(provider, { signal: AbortSignal.timeout(10000) });
-    if (!upstream.ok) return json({ error: 'Address autocomplete unavailable' }, 502);
-    const data = await upstream.json();
-    return json((data.results || []).filter((place) =>
-      Number.isFinite(place.lat) && Number.isFinite(place.lon) && place.country_code?.toLowerCase() === 'nz'
+    const mapGeoapifyPlaces = (data) => (data.results || []).filter((place) =>
+      Number.isFinite(place.lat) && Number.isFinite(place.lon)
     ).map((place) => {
       const isPoi = isGeoapifyPoi(place);
       const fullAddress = place.formatted || [place.address_line1, place.address_line2].filter(Boolean).join(', ');
@@ -132,7 +140,34 @@ export async function handlePlaces(request, env) {
         latitude: place.lat,
         longitude: place.lon
       };
-    }));
+    });
+    const buildGeoapifyUrl = ({ localFirst }) => {
+      const provider = new URL('https://api.geoapify.com/v1/geocode/autocomplete');
+      provider.searchParams.set('text', query);
+      if (localFirst) provider.searchParams.set('filter', 'countrycode:nz');
+      provider.searchParams.set('lang', prefersChinese ? 'zh' : 'en');
+      provider.searchParams.set('limit', '6');
+      provider.searchParams.set('format', 'json');
+      provider.searchParams.set('apiKey', env.GEOAPIFY_API_KEY);
+      if (localFirst && point) {
+        provider.searchParams.set('bias', `proximity:${point.join(',')}`);
+      }
+      return provider;
+    };
+
+    const localUpstream = await fetch(buildGeoapifyUrl({ localFirst: true }), {
+      signal: AbortSignal.timeout(10000)
+    });
+    if (localUpstream.ok) {
+      const local = mapGeoapifyPlaces(await localUpstream.json());
+      if (local.length) return json(local);
+    }
+
+    const globalUpstream = await fetch(buildGeoapifyUrl({ localFirst: false }), {
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!globalUpstream.ok) return json({ error: 'Address autocomplete unavailable' }, 502);
+    return json(mapGeoapifyPlaces(await globalUpstream.json()));
   }
   if (url.pathname === '/api/explore') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);

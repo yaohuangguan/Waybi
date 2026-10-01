@@ -1,18 +1,18 @@
 import './site.css';
 
-const logo = `<img class="site-lockup" src="/brand/tasman-lockup.png" alt="Tasman Maps & Navigation" />`;
+const logo = `<img class="site-lockup" src="/brand/kiwi-lens-lockup.svg" alt="Kiwi Lens Maps & Navigation" />`;
 
 document.documentElement.lang = 'en-NZ';
-document.title = 'Tasman · Navigate New Zealand with clarity';
+document.title = 'Kiwi Lens · Navigate New Zealand with clarity';
 document.querySelector('meta[name="description"]')?.setAttribute(
   'content',
-  'Tasman combines route planning, official NZ safety-camera data and focused driving guidance in one navigation experience.',
+  'Kiwi Lens combines route planning, official NZ safety-camera data and focused driving guidance in one navigation experience.',
 );
 document.body.dataset.surface = 'marketing';
 document.body.innerHTML = `
   <div class="site-shell">
     <header class="site-header">
-      <a class="site-brand" href="/" aria-label="Tasman home">${logo}</a>
+      <a class="site-brand" href="/" aria-label="Kiwi Lens home">${logo}</a>
       <nav class="site-nav" aria-label="Main navigation">
         <a href="#product">Product</a>
         <a href="#platform">Platform</a>
@@ -36,7 +36,7 @@ document.body.innerHTML = `
         <div class="hero-copy">
           <div class="hero-kicker"><span></span> Built for New Zealand roads</div>
           <h1>Navigate with a clearer view of what’s ahead.</h1>
-          <p class="hero-lead">Tasman brings route planning, official safety-camera locations and focused driving guidance into one calm, practical experience.</p>
+          <p class="hero-lead">Kiwi Lens brings route planning, official safety-camera locations and focused driving guidance into one calm, practical experience.</p>
           <div class="hero-actions">
             <a class="site-primary-button" href="/app">Plan a route <span>→</span></a>
             <a class="site-secondary-button" href="#how-it-works">See how it works</a>
@@ -48,7 +48,7 @@ document.body.innerHTML = `
           </div>
         </div>
 
-        <div class="hero-product" aria-label="Tasman navigation preview">
+        <div class="hero-product" aria-label="Kiwi Lens navigation preview">
           <div class="product-glow"></div>
           <div class="product-window">
             <div class="product-window-bar">
@@ -88,7 +88,7 @@ document.body.innerHTML = `
           <span class="section-label">ONE FOCUSED SYSTEM</span>
           <h2>Useful before the trip.<br />Quietly helpful on the road.</h2>
         </div>
-        <p>Tasman is designed around the decisions drivers actually make: where to go, which route to take and what deserves attention next.</p>
+        <p>Kiwi Lens is designed around the decisions drivers actually make: where to go, which route to take and what deserves attention next.</p>
       </section>
 
       <section class="feature-grid" id="safety">
@@ -121,13 +121,13 @@ document.body.innerHTML = `
             <span class="section-label">PLATFORM</span>
             <h2>One navigation layer, built from accountable inputs.</h2>
           </div>
-          <p>Tasman keeps routing, places, safety data and account features separate by design, then brings only the context you need into the map.</p>
+          <p>Kiwi Lens keeps routing, places, safety data and account features separate by design, then brings only the context you need into the map.</p>
         </div>
         <div class="capability-grid">
           <article>
             <span>01 · ROUTING</span>
             <strong>Traffic-aware route planning</strong>
-            <p>Driving alternatives use Google routing data with live traffic context where available, while Tasman keeps the route comparison focused.</p>
+            <p>Driving alternatives use Google routing data with live traffic context where available, while Kiwi Lens keeps the route comparison focused.</p>
             <em>Google Maps Platform</em>
           </article>
           <article>
@@ -160,7 +160,7 @@ document.body.innerHTML = `
         <div class="data-copy">
           <span class="section-label">TRUSTED INPUTS</span>
           <h2>Road awareness starts with accountable data.</h2>
-          <p>Tasman checks the official New Zealand fixed safety-camera list every six hours. If a refresh fails, the last validated snapshot remains available instead of silently disappearing.</p>
+          <p>Kiwi Lens checks the official New Zealand fixed safety-camera list every six hours. If a refresh fails, the last validated snapshot remains available instead of silently disappearing.</p>
           <a class="inline-link" href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" target="_blank" rel="noopener noreferrer">View the NZTA source <span>↗</span></a>
         </div>
         <div class="data-pipeline" aria-label="Safety data processing flow">
@@ -206,7 +206,7 @@ document.body.innerHTML = `
           <h2>Useful context, without pretending the map knows everything.</h2>
         </div>
         <div class="standard-copy">
-          <p>Tasman treats navigation and camera information as driving aids. Road signs, current conditions and New Zealand law always take priority.</p>
+          <p>Kiwi Lens treats navigation and camera information as driving aids. Road signs, current conditions and New Zealand law always take priority.</p>
           <div class="standard-facts">
             <span><b>Fixed cameras</b><small>The official source does not provide enforcement direction or lane data.</small></span>
             <span><b>Traffic context</b><small>Live traffic availability can vary by route, mode and Google data coverage.</small></span>
@@ -217,9 +217,9 @@ document.body.innerHTML = `
 
       <section class="final-cta">
         <span class="section-label">READY WHEN YOU ARE</span>
-        <h2>See the road ahead with Tasman.</h2>
+        <h2>See the road ahead with Kiwi Lens.</h2>
         <p>Plan your next route and explore the navigation experience in your browser.</p>
-        <a class="site-primary-button inverse" href="/app">Open Tasman <span>→</span></a>
+        <a class="site-primary-button inverse" href="/app">Open Kiwi Lens <span>→</span></a>
       </section>
     </main>
 
@@ -227,7 +227,7 @@ document.body.innerHTML = `
       <a class="site-brand footer-brand" href="/">${logo}</a>
       <p>Navigation and safety information are driving aids only. Always follow road signs, conditions and New Zealand law.</p>
       <div><a href="/app">Navigator</a><a href="/dashboard">Dashboard</a><a href="mailto:hello@kiwilens.nz">Contact</a></div>
-      <small>© ${new Date().getFullYear()} Tasman</small>
+      <small>© ${new Date().getFullYear()} Kiwi Lens</small>
     </footer>
   </div>`;
 

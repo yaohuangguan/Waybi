@@ -8,7 +8,7 @@ import 'package:kiwi_lens_mobile/data/account_repository.dart';
 import 'package:kiwi_lens_mobile/data/parking_repository.dart';
 import 'package:kiwi_lens_mobile/domain/map_provider.dart';
 import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/theme/tasman_theme.dart';
+import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
 import 'package:kiwi_lens_mobile/widgets/profile_page.dart';
 import 'package:kiwi_lens_mobile/widgets/route_preview_sheet.dart';
 
@@ -106,11 +106,11 @@ void main() {
     repository.dispose();
   });
 
-  testWidgets('My Tasman uses the dark scaffold background', (tester) async {
+  testWidgets('My Kiwi Lens uses the dark scaffold background', (tester) async {
     final account = AccountRepository();
     await tester.pumpWidget(
       MaterialApp(
-        theme: TasmanTheme.dark,
+        theme: KiwiLensTheme.dark,
         home: ProfilePage(
           account: account,
           voiceEnabled: true,
@@ -139,7 +139,7 @@ void main() {
       ),
     );
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
-    expect(scaffold.backgroundColor, TasmanColors.midnightOcean);
+    expect(scaffold.backgroundColor, KiwiLensColors.midnightOcean);
     await tester.pumpWidget(const SizedBox.shrink());
     account.dispose();
   });
@@ -166,7 +166,7 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
-        theme: TasmanTheme.dark,
+        theme: KiwiLensTheme.dark,
         home: Scaffold(
           body: RoutePreviewSheet(
             destinationTitle: 'City Library',
@@ -216,7 +216,7 @@ void main() {
     var continued = false;
     await tester.pumpWidget(
       MaterialApp(
-        theme: TasmanTheme.dark,
+        theme: KiwiLensTheme.dark,
         home: Scaffold(
           body: ParkingContinuationCard(
             destinationTitle: 'City Library',

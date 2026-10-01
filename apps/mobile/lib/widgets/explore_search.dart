@@ -1,4 +1,4 @@
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -317,7 +317,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                       const Icon(
                         Icons.my_location_rounded,
                         size: 19,
-                        color: TasmanColors.deepOcean,
+                        color: KiwiLensColors.deepOcean,
                       ),
                       const SizedBox(width: 11),
                       Expanded(
@@ -375,7 +375,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                         width: 20,
                         height: 20,
                         decoration: BoxDecoration(
-                          color: TasmanColors.sky,
+                          color: KiwiLensColors.sky,
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
                             color: const Color(0xFF477B36),
@@ -387,7 +387,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                             width: 6,
                             height: 6,
                             decoration: const BoxDecoration(
-                              color: TasmanColors.deepOcean,
+                              color: KiwiLensColors.deepOcean,
                               shape: BoxShape.circle,
                             ),
                           ),

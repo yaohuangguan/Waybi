@@ -23,6 +23,24 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    FlutterMethodChannel(
+      name: "kiwi_lens/map_language",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    ).setMethodCallHandler { call, result in
+      if call.method == "setLanguage" {
+        // Native Google maps use the system's per-app language. There is no
+        // supported runtime SDK language setter on iOS.
+        let language = call.arguments as? String ?? "en"
+        let native = Bundle.main.preferredLocalizations.first ?? "en"
+        result(native.hasPrefix(language))
+      } else if call.method == "openSettings",
+                let url = URL(string: UIApplication.openSettingsURLString) {
+        UIApplication.shared.open(url)
+        result(nil)
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    }
     FlutterEventChannel(
       name: "kiwi_lens/device_heading",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()

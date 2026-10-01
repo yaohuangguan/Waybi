@@ -22,6 +22,7 @@ class ControlledTts extends FlutterTts {
   Future<void> setAudioAttributesForNavigation() async {}
   @override
   Future<dynamic> speak(String text, {bool focus = false}) {
+    expect(speaking, isNull, reason: 'Speech must never overlap');
     spoken.add(text);
     speaking = Completer<dynamic>();
     return speaking!.future;
@@ -47,67 +48,89 @@ Future<void> flush() => Future<void>.delayed(Duration.zero);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  test(
-    'camera alert interrupts guidance and keeps the latest pending turn',
-    () async {
-      final tts = ControlledTts();
-      final voice = VoiceEngine(tts: tts);
-      await voice.initialize();
-      final first = voice.guidance('Continue straight');
-      await flush();
-      final camera = voice.cameraAlert(
-        distanceMeters: 300,
-        cameraType: 'Spot speed',
-        roadName: 'Queen Street',
-      );
-      await flush();
-      expect(tts.spoken.length, 2);
-      expect(tts.spoken.last, contains('Fixed speed camera'));
-      await voice.guidance('Earlier turn');
-      await voice.guidance('Turn left');
-      await flush();
-      expect(
-        tts.spoken.length,
-        2,
-        reason: 'Turn guidance must not interrupt the camera',
-      );
-      tts.completeSpeech();
-      await camera;
-      await flush();
-      expect(tts.spoken.last, 'Turn left');
-      expect(tts.spoken, isNot(contains('Earlier turn')));
-      tts.completeSpeech();
-      await first;
-      await voice.dispose();
-    },
-  );
-
-  test(
-    'mute cancels pending turns and prevents a camera starting after stop',
-    () async {
-      final tts = ControlledTts();
-      final voice = VoiceEngine(tts: tts);
-      await voice.initialize();
-      tts.holdStop = true;
-      final camera = voice.cameraAlert(
-        distanceMeters: 800,
-        cameraType: 'Spot speed',
-        roadName: 'Queen Street',
-      );
-      await flush();
-      await voice.guidance('Turn right');
-      final mute = voice.stop();
-      await flush();
-      for (final stop in tts.stops) {
-        stop.complete(1);
-      }
-      await camera;
-      await mute;
-      await flush();
-      expect(tts.spoken, isEmpty);
-      tts.holdStop = false;
-      await voice.dispose();
-    },
-  );
+  test('camera waits for guidance completion and never overlaps', () async {
+    final tts = ControlledTts();
+    final voice = VoiceEngine(tts: tts);
+    final turn = voice.guidance('Turn left');
+    await flush();
+    final camera = voice.cameraAlert(
+      distanceMeters: 300,
+      cameraType: 'Spot speed',
+      roadName: 'Queen Street',
+    );
+    final next = voice.guidance('Continue straight');
+    await flush();
+    expect(tts.spoken, ['Turn left']);
+    tts.completeSpeech();
+    await turn;
+    await flush();
+    expect(tts.spoken.last, contains('Fixed speed camera'));
+    tts.completeSpeech();
+    await camera;
+    await flush();
+    expect(tts.spoken.last, 'Continue straight');
+    tts.completeSpeech();
+    await next;
+    await voice.dispose();
+  });
+  test('mute cancels current speech and all pending alerts', () async {
+    final tts = ControlledTts();
+    final voice = VoiceEngine(tts: tts);
+    final turn = voice.guidance('Turn right');
+    await flush();
+    final camera = voice.cameraAlert(
+      distanceMeters: 800,
+      cameraType: 'Spot speed',
+      roadName: 'Queen Street',
+    );
+    await voice.stop();
+    await turn;
+    await camera;
+    expect(tts.spoken, ['Turn right']);
+    final resumed = voice.guidance('Resumed');
+    await flush();
+    expect(tts.spoken.last, 'Resumed');
+    tts.completeSpeech();
+    await resumed;
+    await voice.dispose();
+  });
+  test('queued camera is skipped after it has been passed', () async {
+    final tts = ControlledTts();
+    final voice = VoiceEngine(tts: tts);
+    var relevant = true;
+    final turn = voice.guidance('Turn left');
+    await flush();
+    final camera = voice.cameraAlert(
+      distanceMeters: 300,
+      cameraType: 'Spot speed',
+      roadName: 'Queen Street',
+      stillRelevant: () => relevant,
+    );
+    relevant = false;
+    tts.completeSpeech();
+    await turn;
+    await camera;
+    expect(tts.spoken, ['Turn left']);
+    await voice.dispose();
+  });
+  test('resuming waits for the pending native stop to finish', () async {
+    final tts = ControlledTts();
+    final voice = VoiceEngine(tts: tts);
+    final first = voice.guidance('Original');
+    await flush();
+    tts.holdStop = true;
+    final stopped = voice.stop();
+    final resumed = voice.guidance('Resumed');
+    await flush();
+    expect(tts.spoken, ['Original']);
+    tts.stops.single.complete(1);
+    await stopped;
+    await first;
+    await flush();
+    expect(tts.spoken, ['Original', 'Resumed']);
+    tts.completeSpeech();
+    await resumed;
+    tts.holdStop = false;
+    await voice.dispose();
+  });
 }

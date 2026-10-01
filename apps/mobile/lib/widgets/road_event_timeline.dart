@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/road_event.dart';
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 class RoadEventTimeline extends StatelessWidget {
   const RoadEventTimeline({
@@ -71,19 +71,21 @@ class RoadEventTimeline extends StatelessWidget {
     if (visible.isEmpty && maneuverLabel == null) {
       return const SizedBox.shrink();
     }
-    final foreground = dark ? TasmanColors.darkText : TasmanColors.lightText;
+    final foreground = dark
+        ? KiwiLensColors.darkText
+        : KiwiLensColors.lightText;
     final muted = dark
-        ? TasmanColors.darkTextSecondary
-        : TasmanColors.lightTextSecondary;
+        ? KiwiLensColors.darkTextSecondary
+        : KiwiLensColors.lightTextSecondary;
     final surface = dark
-        ? TasmanColors.darkOcean.withValues(alpha: .94)
-        : TasmanColors.lightSurface.withValues(alpha: .96);
+        ? KiwiLensColors.darkOcean.withValues(alpha: .94)
+        : KiwiLensColors.lightSurface.withValues(alpha: .96);
     final items = <Widget>[
       _TimelineNode(
         icon: Icons.navigation_rounded,
         label: 'Now',
         detail: maneuverLabel ?? 'Driving',
-        color: TasmanColors.sky,
+        color: KiwiLensColors.sky,
         foreground: foreground,
         muted: muted,
       ),
@@ -93,10 +95,10 @@ class RoadEventTimeline extends StatelessWidget {
           label: _label(event),
           detail: _distance(event),
           color: event.severity.index >= RoadEventSeverity.warning.index
-              ? TasmanColors.warning
+              ? KiwiLensColors.warning
               : event.type == RoadEventType.safetyCamera
-              ? TasmanColors.teal
-              : TasmanColors.coastal,
+              ? KiwiLensColors.teal
+              : KiwiLensColors.coastal,
           foreground: foreground,
           muted: muted,
         ),
@@ -107,14 +109,16 @@ class RoadEventTimeline extends StatelessWidget {
       child: Container(
         constraints: const BoxConstraints(minHeight: 58),
         padding: const EdgeInsets.symmetric(
-          horizontal: TasmanSpacing.x3,
-          vertical: TasmanSpacing.x2,
+          horizontal: KiwiLensSpacing.x3,
+          vertical: KiwiLensSpacing.x2,
         ),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(TasmanRadius.panel),
+          borderRadius: BorderRadius.circular(KiwiLensRadius.panel),
           border: Border.all(
-            color: dark ? TasmanColors.darkBorder : TasmanColors.lightBorder,
+            color: dark
+                ? KiwiLensColors.darkBorder
+                : KiwiLensColors.lightBorder,
           ),
         ),
         child: Row(
@@ -126,12 +130,12 @@ class RoadEventTimeline extends StatelessWidget {
                 gradient: const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [TasmanColors.ocean, TasmanColors.teal],
+                  colors: [KiwiLensColors.ocean, KiwiLensColors.teal],
                 ),
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            const SizedBox(width: TasmanSpacing.x2),
+            const SizedBox(width: KiwiLensSpacing.x2),
             Expanded(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -143,8 +147,8 @@ class RoadEventTimeline extends StatelessWidget {
                           width: 24,
                           height: 2,
                           color: dark
-                              ? TasmanColors.darkBorder
-                              : TasmanColors.lightBorder,
+                              ? KiwiLensColors.darkBorder
+                              : KiwiLensColors.lightBorder,
                         ),
                       items[index],
                     ],

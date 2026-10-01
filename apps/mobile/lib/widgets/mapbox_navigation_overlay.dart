@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/route_option.dart';
 import '../drive/drive_engine.dart';
+import '../drive/navigation_language.dart';
 import '../providers/mapbox_navigation_engine.dart';
 import 'navigation_overlay.dart';
 
@@ -83,8 +84,9 @@ class MapboxNavigationOverlay extends StatelessWidget {
           : null;
       return NavigationOverlay(
         engine: drive,
+        language: language,
         guidance: NavigationGuidance(
-          instruction: status ?? next?.instruction ?? destination,
+          instruction: status ?? routeStepInstruction(next, language),
           maneuverIcon: engine.arrived
               ? Icons.flag_rounded
               : engine.rerouting || engine.offRoute

@@ -1,16 +1,16 @@
 :root {
-  --brand-sky: #b9e1ff;
-  --brand-coastal: #3b82f6;
-  --brand-ocean: #0077b6;
-  --brand-teal: #00a6a6;
-  --deep-ocean: #032b45;
-  --dark-ocean: #032b45;
+  --brand-sky: #D0F58A;
+  --brand-coastal: #79A83B;
+  --brand-ocean: #486B29;
+  --brand-teal: #729F36;
+  --deep-ocean: #152510;
+  --dark-ocean: #152510;
   --surface: #fff;
-  --surface-subtle: #f3fafc;
-  --text-primary: #123044;
-  --text-secondary: #526979;
-  --border: #d4e3ea;
-  --focus: #0284c7;
+  --surface-subtle: #F8FBEF;
+  --text-primary: #23351D;
+  --text-secondary: #64705B;
+  --border: #DBE5CB;
+  --focus: #486B29;
   --danger: #dc2626;
   --warning: #f59e0b;
   --success: #15803d;

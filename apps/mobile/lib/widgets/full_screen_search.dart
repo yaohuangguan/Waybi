@@ -1,4 +1,4 @@
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 import 'dart:async';
 
@@ -173,21 +173,21 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
                 borderSide: const BorderSide(
-                  color: TasmanColors.sky,
+                  color: KiwiLensColors.sky,
                   width: 1.3,
                 ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
                 borderSide: const BorderSide(
-                  color: TasmanColors.sky,
+                  color: KiwiLensColors.sky,
                   width: 1.3,
                 ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
                 borderSide: const BorderSide(
-                  color: TasmanColors.ocean,
+                  color: KiwiLensColors.ocean,
                   width: 1.8,
                 ),
               ),

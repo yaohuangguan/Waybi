@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/map_layer_settings.dart';
 import '../domain/map_provider.dart';
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 class MapLayerSheet extends StatefulWidget {
   const MapLayerSheet({
@@ -44,12 +44,12 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
-    final activeBlue = dark ? TasmanColors.sky : TasmanColors.ocean;
+    final activeBlue = dark ? KiwiLensColors.sky : KiwiLensColors.ocean;
     final activeSurface = dark
-        ? TasmanColors.deepTeal.withValues(alpha: .20)
-        : TasmanColors.sky.withValues(alpha: .10);
+        ? KiwiLensColors.deepTeal.withValues(alpha: .20)
+        : KiwiLensColors.sky.withValues(alpha: .10);
     final idleSurface = dark
-        ? TasmanColors.darkSurface
+        ? KiwiLensColors.darkSurface
         : scheme.surfaceContainerLow;
 
     return AnimatedContainer(
@@ -103,25 +103,25 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
               onChanged: onVisible,
               thumbColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.selected)) {
-                  return dark ? TasmanColors.midnightOcean : Colors.white;
+                  return dark ? KiwiLensColors.midnightOcean : Colors.white;
                 }
-                return dark ? TasmanColors.darkTextSecondary : Colors.white;
+                return dark ? KiwiLensColors.darkTextSecondary : Colors.white;
               }),
               trackColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.selected)) {
                   return activeBlue;
                 }
                 return dark
-                    ? TasmanColors.darkBorder
-                    : TasmanColors.lightBorder;
+                    ? KiwiLensColors.darkBorder
+                    : KiwiLensColors.lightBorder;
               }),
               trackOutlineColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.selected)) {
                   return Colors.transparent;
                 }
                 return dark
-                    ? TasmanColors.darkBorder
-                    : TasmanColors.lightBorder;
+                    ? KiwiLensColors.darkBorder
+                    : KiwiLensColors.lightBorder;
               }),
             ),
           ),
@@ -164,27 +164,27 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
 
   SwitchThemeData _tasmanLayerSwitchTheme(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final activeBlue = dark ? TasmanColors.sky : TasmanColors.ocean;
+    final activeBlue = dark ? KiwiLensColors.sky : KiwiLensColors.ocean;
     return SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) {
           return Theme.of(context).disabledColor;
         }
         if (states.contains(WidgetState.selected)) {
-          return dark ? TasmanColors.midnightOcean : Colors.white;
+          return dark ? KiwiLensColors.midnightOcean : Colors.white;
         }
-        return dark ? TasmanColors.darkTextSecondary : Colors.white;
+        return dark ? KiwiLensColors.darkTextSecondary : Colors.white;
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) {
           return Theme.of(context).disabledColor.withValues(alpha: .20);
         }
         if (states.contains(WidgetState.selected)) return activeBlue;
-        return dark ? TasmanColors.darkBorder : TasmanColors.lightBorder;
+        return dark ? KiwiLensColors.darkBorder : KiwiLensColors.lightBorder;
       }),
       trackOutlineColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) return Colors.transparent;
-        return dark ? TasmanColors.darkBorder : TasmanColors.lightBorder;
+        return dark ? KiwiLensColors.darkBorder : KiwiLensColors.lightBorder;
       }),
     );
   }

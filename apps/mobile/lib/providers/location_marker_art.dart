@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../domain/map_provider.dart';
 
 /// A small north-facing bird silhouette for the location puck. This is
-/// separate from the Tasman brand mark; map-location art stays independent.
+/// separate from the Kiwi Lens brand mark; map-location art stays independent.
 class LocationMarkerArt {
   static final Map<LocationMarkerStyle, Future<Uint8List>> _cache = {};
 
@@ -20,7 +20,7 @@ class LocationMarkerArt {
     final paint = Paint()..isAntiAlias = true;
     paint.color = Colors.white;
     canvas.drawCircle(const Offset(48, 48), 43, paint);
-    paint.color = const Color(0xFF0879E8);
+    paint.color = const Color(0xFF486B29);
     canvas.drawCircle(const Offset(48, 48), 38, paint);
     paint.color = Colors.white;
 
@@ -39,7 +39,7 @@ class LocationMarkerArt {
           ..lineTo(54, 30)
           ..close();
         canvas.drawPath(beak, paint);
-        paint.color = const Color(0xFF0A3769);
+        paint.color = const Color(0xFF23351D);
         canvas.drawCircle(const Offset(58, 38), 2.8, paint);
         paint.strokeWidth = 4;
         canvas.drawLine(const Offset(37, 68), const Offset(33, 76), paint);
@@ -60,7 +60,7 @@ class LocationMarkerArt {
           ),
           paint,
         );
-        paint.color = const Color(0xFF0A3769);
+        paint.color = const Color(0xFF23351D);
         canvas.drawRRect(
           RRect.fromRectAndRadius(
             const Rect.fromLTWH(34, 32, 28, 17),

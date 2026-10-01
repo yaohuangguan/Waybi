@@ -37,7 +37,7 @@ export async function createRoadReport(env, payload, reporter = null, now = new 
     validFrom: now.toISOString(),
     validUntil: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
     source: {
-      provider: 'Tasman road reports',
+      provider: 'Kiwi Lens road reports',
       country: 'NZ',
       region: null,
       sourceId: id,
@@ -46,7 +46,7 @@ export async function createRoadReport(env, payload, reporter = null, now = new 
     metadata: {
       description: String(payload?.description || '').trim().slice(0, 120),
       userReported: true,
-      reporterName: reporter?.displayName || 'Tasman driver',
+      reporterName: reporter?.displayName || 'Kiwi Lens driver',
       reporterId: reporter?.id || null,
       reportedAt: now.toISOString()
     }

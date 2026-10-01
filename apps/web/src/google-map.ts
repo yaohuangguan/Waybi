@@ -362,7 +362,7 @@ export class GoogleMapAdapter {
     this.clearTrafficRoutes();
 
     const color = (speed: TrafficInterval['speed']) =>
-      speed === 'trafficJam' ? '#EA4335' : speed === 'slow' ? '#F9AB00' : '#00A6A6';
+      speed === 'trafficJam' ? '#EA4335' : speed === 'slow' ? '#F9AB00' : '#729F36';
 
     routes.forEach(({ route, trafficIntervals }, index) => {
       const selected = index === selectedIndex;

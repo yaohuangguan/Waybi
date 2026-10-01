@@ -76,7 +76,7 @@ class _ProfileSheetState extends State<ProfileSheet> {
                     children: [
                       const Expanded(
                         child: Text(
-                          'My Tasman',
+                          'My Kiwi Lens',
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w900,

@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../data/place_details_repository.dart';
 import '../domain/coordinate_formatter.dart';
 import '../domain/map_provider.dart';
-import '../theme/tasman_theme.dart';
+import '../theme/kiwi_lens_theme.dart';
 
 class PlaceDetailsContent extends StatelessWidget {
   const PlaceDetailsContent({
@@ -153,7 +153,7 @@ class PlaceDetailsContent extends StatelessWidget {
                         children: [
                           const Icon(
                             Icons.star_rounded,
-                            color: TasmanColors.warning,
+                            color: KiwiLensColors.warning,
                             size: 17,
                           ),
                           const SizedBox(width: 4),
@@ -193,7 +193,7 @@ class PlaceDetailsContent extends StatelessWidget {
                                   : place.businessStatus!.replaceAll('_', ' '),
                               style: TextStyle(
                                 color: place.businessStatus == 'OPERATIONAL'
-                                    ? TasmanColors.success
+                                    ? KiwiLensColors.success
                                     : scheme.onSurfaceVariant,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
@@ -604,7 +604,7 @@ class _ReviewTile extends StatelessWidget {
                       Text(
                         '${review.rating!.toStringAsFixed(1)} ★',
                         style: const TextStyle(
-                          color: TasmanColors.warning,
+                          color: KiwiLensColors.warning,
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
                         ),

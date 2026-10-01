@@ -21,6 +21,7 @@ import 'camera_matcher.dart';
 import 'route_camera_matcher.dart';
 import 'route_progress_tracker.dart';
 import 'voice_engine.dart';
+import 'navigation_language.dart';
 
 class DriveEngine extends ChangeNotifier {
   DriveEngine({
@@ -98,6 +99,23 @@ class DriveEngine extends ChangeNotifier {
   double speedKph = 0;
   int? speedLimitKph;
   bool _voiceEnabled = true;
+  bool _keepScreenAwake = true;
+  String navigationLanguage = 'en';
+  String? _spokenTurn;
+  int _turnRevision = 0;
+  Future<void> setKeepScreenAwake(bool value) async {
+    _keepScreenAwake = value;
+    await _updateWakeLock();
+  }
+
+  Future<void> _updateWakeLock() async {
+    try {
+      await WakelockPlus.toggle(enable: active && _keepScreenAwake);
+    } catch (_) {
+      /* Unsupported test/desktop platform. */
+    }
+  }
+
   bool get voiceEnabled => _voiceEnabled;
   set voiceEnabled(bool enabled) {
     _voiceEnabled = enabled;
@@ -149,20 +167,27 @@ class DriveEngine extends ChangeNotifier {
     );
 
     _subscriptions.add(
-      GoogleMapsNavigator.setNavInfoListener((event) {
-        navInfo = event.navInfo;
-        guidanceRunning =
-            event.navInfo.navState == NavState.enroute ||
-            event.navInfo.navState == NavState.rerouting;
-        notifyListeners();
-      }, numNextStepsToPreview: 3),
+      GoogleMapsNavigator.setNavInfoListener(
+        (event) {
+          navInfo = event.navInfo;
+          guidanceRunning =
+              event.navInfo.navState == NavState.enroute ||
+              event.navInfo.navState == NavState.rerouting;
+          _speakNativeTurn(event.navInfo);
+          notifyListeners();
+        },
+        numNextStepsToPreview: 3,
+        stepImageGenerationOptions: const StepImageGenerationOptions(
+          generateLaneImages: true,
+        ),
+      ),
     );
 
     _subscriptions.add(
       Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.bestForNavigation,
-          distanceFilter: 2,
+          distanceFilter: 0,
         ),
       ).listen((position) {
         final metresPerSecond = position.speed.isFinite && position.speed > 0
@@ -179,6 +204,7 @@ class DriveEngine extends ChangeNotifier {
       }),
     );
     active = true;
+    await _updateWakeLock();
     _startRoadIntelligenceRefreshTimer();
     notifyListeners();
   }
@@ -197,19 +223,19 @@ class DriveEngine extends ChangeNotifier {
     final settings = switch (defaultTargetPlatform) {
       TargetPlatform.android => AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 2,
+        distanceFilter: 0,
         intervalDuration: const Duration(seconds: 1),
         foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'Tasman Drive',
+          notificationTitle: 'Kiwi Lens Drive',
           notificationText: 'Navigation and safety-camera alerts are active',
-          notificationChannelName: 'Tasman navigation',
+          notificationChannelName: 'Kiwi Lens navigation',
           enableWakeLock: true,
           setOngoing: true,
         ),
       ),
       TargetPlatform.iOS => AppleSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 2,
+        distanceFilter: 0,
         activityType: ActivityType.automotiveNavigation,
         pauseLocationUpdatesAutomatically: false,
         showBackgroundLocationIndicator: true,
@@ -217,7 +243,7 @@ class DriveEngine extends ChangeNotifier {
       ),
       _ => const LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 2,
+        distanceFilter: 0,
       ),
     };
     _subscriptions.add(
@@ -256,7 +282,7 @@ class DriveEngine extends ChangeNotifier {
       ),
     );
     active = true;
-    unawaited(WakelockPlus.enable().catchError((Object _) {}));
+    await _updateWakeLock();
     guidanceRunning = _route != null;
     _startRoadIntelligenceRefreshTimer();
     notifyListeners();
@@ -304,6 +330,9 @@ class DriveEngine extends ChangeNotifier {
   }
 
   void setRoute(RouteOption? route, {bool preserveAlerts = false}) {
+    _spokenTurn = null;
+    ++_turnRevision;
+    unawaited(_voiceEngine.stop());
     _route = route;
     _progressTracker = route?.provider == 'mapbox'
         ? RouteProgressTracker(route!.points)
@@ -495,7 +524,54 @@ class DriveEngine extends ChangeNotifier {
 
   Future<void> speakMessage(String message) async {
     if (!voiceEnabled) return;
-    await _voiceEngine.guidance(message);
+    await _voiceEngine.guidance(
+      message,
+      language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
+    );
+  }
+
+  void _speakNativeTurn(NavInfo info) {
+    if (!_voiceEnabled || _route == null || info.navState != NavState.enroute) {
+      return;
+    }
+    final step = info.currentStep;
+    final distance = info.distanceToCurrentStepMeters;
+    if (step == null || distance == null || distance > 800) return;
+    if (info.routeChanged) {
+      _spokenTurn = null;
+      ++_turnRevision;
+    }
+    final bucket = distance <= 60
+        ? 0
+        : distance <= 300
+        ? 300
+        : 800;
+    final identity =
+        '${step.stepNumber}:${step.maneuver.name}:${step.fullRoadName}';
+    final key = '$identity:$bucket:$navigationLanguage';
+    if (_spokenTurn == key) return;
+    _spokenTurn = key;
+    final revision = _turnRevision;
+    final instruction = navigationInstruction(step, navigationLanguage);
+    final message = bucket == 0
+        ? instruction
+        : navigationLanguage == 'zh'
+        ? '${navigationMetres(distance, navigationLanguage)}后，$instruction'
+        : 'In ${navigationMetres(distance, navigationLanguage)}, $instruction';
+    unawaited(
+      _voiceEngine
+          .guidance(
+            message,
+            language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
+            stillRelevant: () =>
+                active &&
+                _voiceEnabled &&
+                _route != null &&
+                revision == _turnRevision &&
+                _spokenTurn == key,
+          )
+          .catchError((Object _) {}),
+    );
   }
 
   Future<void> _refreshSpeedLimit(LatLng current) async {
@@ -572,6 +648,12 @@ class DriveEngine extends ChangeNotifier {
       cameraType: match.camera.type,
       roadName: match.camera.location,
       speedLimit: speedLimitKph?.toString(),
+      stillRelevant: () =>
+          active &&
+          voiceEnabled &&
+          upcomingCamera?.id == match.camera.id &&
+          (upcomingCameraDistanceMeters ?? 0) > 0 &&
+          (threshold != 800 || (upcomingCameraDistanceMeters ?? 0) > 300),
     );
   }
 

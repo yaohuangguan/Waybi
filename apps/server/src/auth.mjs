@@ -98,7 +98,7 @@ export async function roadReportAuthor(db, request) {
   const displayName = String(profile?.display_name || '').trim();
   return {
     id: user.id,
-    displayName: displayName || 'Tasman driver'
+    displayName: displayName || 'Kiwi Lens driver'
   };
 }
 

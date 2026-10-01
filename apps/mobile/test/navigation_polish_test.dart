@@ -84,6 +84,11 @@ void main() {
     expect(find.textContaining('推荐路线'), findsOneWidget);
     expect(find.text('路况顺畅'), findsOneWidget);
     expect(find.textContaining('2 个摄像头 · 定点测速 + 闯红灯'), findsOneWidget);
+    expect(find.text('行前摘要'), findsOneWidget);
+    expect(find.text('预计到达 '), findsOneWidget);
+    expect(find.text('交通 '), findsOneWidget);
+    expect(find.text('摄像头 '), findsOneWidget);
+    expect(find.text('停车 '), findsOneWidget);
     expect(find.text('添加途经点'), findsOneWidget);
     expect(find.text('保存'), findsOneWidget);
   });

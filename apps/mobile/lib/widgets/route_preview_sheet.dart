@@ -395,6 +395,21 @@ class RoutePreviewSheet extends StatelessWidget {
                   ],
                   if (selected != null) ...[
                     const SizedBox(height: 10),
+                    _JourneyBrief(
+                      route: selected,
+                      cameraSummary:
+                          routeCameraSummaries[selected.id] ??
+                          const RouteCameraSummary(),
+                      routeExplanationText: routeExplanation(
+                        selected,
+                        routes,
+                        isChinese: isChinese,
+                      ),
+                      parkingPlaces: parkingPlaces,
+                      selectedParkingId: selectedParkingId,
+                      parkingLoading: parkingLoading,
+                      isChinese: isChinese,
+                    ),
                     if (selected.mode == KiwiTravelMode.drive &&
                         (selected.traffic.hasIssues ||
                             selected.warnings.isNotEmpty))
@@ -402,62 +417,6 @@ class RoutePreviewSheet extends StatelessWidget {
                     if (selected.mode == KiwiTravelMode.transit &&
                         selected.transit.isNotEmpty)
                       _TransitDetails(route: selected, isChinese: isChinese),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            routeExplanation(
-                                  selected,
-                                  routes,
-                                  isChinese: isChinese,
-                                ).isNotEmpty
-                                ? routeExplanation(
-                                    selected,
-                                    routes,
-                                    isChinese: isChinese,
-                                  )
-                                : (isChinese ? '路线预览' : 'Route preview'),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                              fontSize: 11,
-                              height: 1.25,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .primaryContainer,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.speed_rounded, size: 14),
-                              const SizedBox(width: 4),
-                              Text(
-                                '$cameraCount',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
                     if (selectedMode == KiwiTravelMode.drive)
                       _ParkingChoices(
                         places: parkingPlaces,
@@ -761,6 +720,195 @@ class _RouteOptionTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _JourneyBrief extends StatelessWidget {
+  const _JourneyBrief({
+    required this.route,
+    required this.cameraSummary,
+    required this.routeExplanationText,
+    required this.parkingPlaces,
+    required this.selectedParkingId,
+    required this.parkingLoading,
+    required this.isChinese,
+  });
+
+  final RouteOption route;
+  final RouteCameraSummary cameraSummary;
+  final String routeExplanationText;
+  final List<ParkingPlace> parkingPlaces;
+  final String? selectedParkingId;
+  final bool parkingLoading;
+  final bool isChinese;
+
+  String _arrivalLabel(BuildContext context) {
+    final arrival = DateTime.now().add(
+      Duration(seconds: route.durationSeconds),
+    );
+    return TimeOfDay.fromDateTime(arrival).format(context);
+  }
+
+  String _trafficLabel() {
+    final delay = route.trafficDelaySeconds ?? 0;
+    if (delay > 60) {
+      return isChinese
+          ? '+${_duration(delay, isChinese: true)}'
+          : '+${_duration(delay)}';
+    }
+    if (route.traffic.trafficJam > 0) return isChinese ? '拥堵' : 'Heavy';
+    if (route.traffic.slow > 0) return isChinese ? '缓行' : 'Slow';
+    return isChinese ? '顺畅' : 'Clear';
+  }
+
+  String _parkingLabel() {
+    if (selectedParkingId != null) {
+      for (final place in parkingPlaces) {
+        if (place.id == selectedParkingId) {
+          return isChinese ? '已选 ${place.name}' : 'Selected';
+        }
+      }
+      return isChinese ? '已选择' : 'Selected';
+    }
+    if (parkingLoading) return isChinese ? '查找中' : 'Checking';
+    if (parkingPlaces.isEmpty) return isChinese ? '暂无数据' : 'No data';
+    final nearest = parkingPlaces.reduce(
+      (a, b) => a.distanceMeters <= b.distanceMeters ? a : b,
+    );
+    return nearest.distanceMeters < 1000
+        ? '${nearest.distanceMeters.round()} ${isChinese ? '米' : 'm'}'
+        : '${(nearest.distanceMeters / 1000).toStringAsFixed(1)} ${isChinese ? '公里' : 'km'}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final explanation = routeExplanationText.trim();
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(11, 9, 11, 9),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, size: 16, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                isChinese ? '行前摘要' : 'Journey brief',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _distance(route.distanceMeters, isChinese: isChinese),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _BriefStat(
+                icon: Icons.schedule_rounded,
+                label: isChinese ? '预计到达' : 'Arrive',
+                value: _arrivalLabel(context),
+              ),
+              _BriefStat(
+                icon: Icons.traffic_rounded,
+                label: isChinese ? '交通' : 'Traffic',
+                value: _trafficLabel(),
+              ),
+              if (route.mode == KiwiTravelMode.drive)
+                _BriefStat(
+                  icon: Icons.photo_camera_rounded,
+                  label: isChinese ? '摄像头' : 'Cameras',
+                  value: '${cameraSummary.count}',
+                ),
+              if (route.mode == KiwiTravelMode.drive)
+                _BriefStat(
+                  icon: Icons.local_parking_rounded,
+                  label: isChinese ? '停车' : 'Parking',
+                  value: _parkingLabel(),
+                ),
+            ],
+          ),
+          if (explanation.isNotEmpty) ...[
+            const SizedBox(height: 7),
+            Text(
+              explanation,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 10.5,
+                height: 1.25,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BriefStat extends StatelessWidget {
+  const _BriefStat({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 108),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: scheme.primary),
+          const SizedBox(width: 5),
+          Text(
+            '$label ',
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          Text(
+            value,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800),
+          ),
+        ],
       ),
     );
   }

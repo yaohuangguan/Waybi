@@ -4257,18 +4257,36 @@ class _MapHomePageState extends State<MapHomePage> {
       return;
     }
 
-    var route = _quickCommuteRoutes[label];
-    if (route == null) {
-      await _refreshQuickCommutes(force: true);
-      route = _quickCommuteRoutes[label];
-    }
-    final place = _quickLocations[label];
-    if (place == null) {
+    final pair = switch (label) {
+      'home-work' => ('Home', 'Work'),
+      'work-home' => ('Work', 'Home'),
+      _ => throw StateError('Unknown Route Watch'),
+    };
+    final origin = _quickLocations[pair.$1];
+    final destination = _quickLocations[pair.$2];
+    if (origin == null || destination == null) {
       throw StateError(
-        _text('Set $label before enabling Route Watch.', '请先设置$label，再开启路线监控。'),
+        _text(
+          'Set both Home and Work before enabling Route Watch.',
+          '请先同时设置“家”和“公司”，再开启路线监控。',
+        ),
       );
     }
-    if (route == null || route.points.length < 2) {
+
+    final plan = await _routeRepository.fetch(
+      origin: LatLng(
+        latitude: origin.location.latitude,
+        longitude: origin.location.longitude,
+      ),
+      destination: LatLng(
+        latitude: destination.location.latitude,
+        longitude: destination.location.longitude,
+      ),
+      mode: KiwiTravelMode.drive,
+    );
+    final driving = plan.forMode(KiwiTravelMode.drive).toList()
+      ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
+    if (driving.isEmpty || driving.first.points.length < 2) {
       throw StateError(
         _text(
           'A live driving route is required before Route Watch can start.',
@@ -4276,12 +4294,17 @@ class _MapHomePageState extends State<MapHomePage> {
         ),
       );
     }
+    final route = driving.first;
 
     await _account.saveRouteWatch(
       label: label,
-      destinationName: place.name,
-      latitude: place.location.latitude,
-      longitude: place.location.longitude,
+      originName: origin.name,
+      originLatitude: origin.location.latitude,
+      originLongitude: origin.location.longitude,
+      destinationName: destination.name,
+      latitude: destination.location.latitude,
+      longitude: destination.location.longitude,
+      routeProvider: route.provider,
       routePoints: _routeWatchPoints(route.points),
       durationSeconds: route.durationSeconds,
       distanceMeters: route.distanceMeters,

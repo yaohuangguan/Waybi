@@ -60,9 +60,9 @@ void main() {
         ],
         signedIn: true,
         routeWatches: const {
-          'Home': RouteWatchItem(
-            id: 'watch-home',
-            label: 'Home',
+          'home-work': RouteWatchItem(
+            id: 'watch-home-work',
+            label: 'home-work',
             status: 'warning',
             events: [
               RouteWatchEvent(
@@ -89,6 +89,8 @@ void main() {
       expect(find.text('15 分钟'), findsOneWidget);
       expect(find.text('路线监控'), findsOneWidget);
       expect(find.text('有警告'), findsOneWidget);
+      expect(find.text('家 → 公司'), findsOneWidget);
+      expect(find.text('公司 → 家'), findsOneWidget);
       expect(find.text('最近目的地'), findsOneWidget);
       expect(find.text('Auckland Art Gallery'), findsOneWidget);
       expect(find.text('行程记录'), findsOneWidget);

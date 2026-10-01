@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { evaluateRouteWatch, __test } from '../src/route_watch.mjs';
+import { evaluateRouteWatch, routeGeometryFresh, __test } from '../src/route_watch.mjs';
 
 const route = [
   { latitude: -36.85, longitude: 174.75 },
@@ -33,6 +33,18 @@ function event({
     }
   };
 }
+
+test('Route Watch uses a narrow corridor and 29-day route cache', () => {
+  assert.equal(__test.ROUTE_CORRIDOR_METERS, 140);
+  assert.equal(__test.ROUTE_CACHE_MS, 29 * 24 * 60 * 60 * 1000);
+});
+
+test('expired route geometry is not eligible for background monitoring', () => {
+  const now = new Date('2026-10-02T00:00:00Z');
+  assert.equal(routeGeometryFresh({ geometry_expires_at: now.getTime() + 1 }, now), true);
+  assert.equal(routeGeometryFresh({ geometry_expires_at: now.getTime() }, now), false);
+  assert.equal(routeGeometryFresh({ geometry_expires_at: null }, now), false);
+});
 
 test('Route Watch matches official events near the saved route corridor', () => {
   const result = evaluateRouteWatch(route, [

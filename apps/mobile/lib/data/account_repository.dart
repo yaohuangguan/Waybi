@@ -391,9 +391,13 @@ class AccountRepository extends ChangeNotifier {
 
   Future<void> saveRouteWatch({
     required String label,
+    required String originName,
+    required double originLatitude,
+    required double originLongitude,
     required String destinationName,
     required double latitude,
     required double longitude,
+    required String routeProvider,
     required List<Map<String, double>> routePoints,
     required int durationSeconds,
     required int distanceMeters,
@@ -405,8 +409,11 @@ class AccountRepository extends ChangeNotifier {
         method: 'POST',
         body: {
           'label': label,
+          'originName': originName,
+          'origin': {'latitude': originLatitude, 'longitude': originLongitude},
           'destinationName': destinationName,
           'destination': {'latitude': latitude, 'longitude': longitude},
+          'routeProvider': routeProvider,
           'routePoints': routePoints,
           'baselineDurationSeconds': durationSeconds,
           'baselineDistanceMeters': distanceMeters,

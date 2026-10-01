@@ -1017,19 +1017,30 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  secondary: const Icon(Icons.route_outlined),
-                  title: Text(_text('Saved-route disruption', '收藏路线异常')),
-                  subtitle: Text(
-                    _text(
-                      'Prepare for remote alerts when a saved route is disrupted',
-                      '为收藏路线发生封路或重大变化时的远程推送做准备',
-                    ),
+                  secondary: Icon(
+                    profile.isPlus ? Icons.route_outlined : Icons.lock_rounded,
                   ),
-                  value: _notifySavedRouteDisruptions,
-                  onChanged: (value) {
-                    setState(() => _notifySavedRouteDisruptions = value);
-                    widget.onNotifySavedRouteDisruptionsChanged(value);
-                  },
+                  title: Text(
+                    _text('Proactive saved-route alerts', '收藏路线主动预警'),
+                  ),
+                  subtitle: Text(
+                    profile.isPlus
+                        ? _text(
+                            'Background alerts for major disruptions on watched routes',
+                            '后台监控已关注路线上的重大异常并主动提醒',
+                          )
+                        : _text(
+                            'Plus · background alerts before you leave',
+                            'Plus · 出发前后台主动提醒',
+                          ),
+                  ),
+                  value: profile.isPlus && _notifySavedRouteDisruptions,
+                  onChanged: profile.isPlus
+                      ? (value) {
+                          setState(() => _notifySavedRouteDisruptions = value);
+                          widget.onNotifySavedRouteDisruptionsChanged(value);
+                        }
+                      : null,
                 ),
                 const SizedBox(height: 12),
                 _SectionTitle(_text('Your activity', '你的活动')),
@@ -1281,8 +1292,8 @@ class _PlusCard extends StatelessWidget {
                       isPlus
                           ? t('Plus is active', 'Plus 已启用')
                           : t(
-                              'Road intelligence, not paid navigation',
-                              '为道路情报付费，而不是为导航付费',
+                              'A proactive driving suite, not paid navigation',
+                              '一整套主动驾驶能力，而不是付费导航',
                             ),
                       style: const TextStyle(
                         color: Colors.white70,
@@ -1299,8 +1310,8 @@ class _PlusCard extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             t(
-              'Core maps, search and turn-by-turn navigation stay free. Plus is for people who want Kiwi Lens to watch the road for them.',
-              '地图、搜索和逐向导航保持免费。Plus 面向希望 Kiwi Lens 主动替你盯路况的人。',
+              'Core maps, search and turn-by-turn navigation stay free. Plus adds proactive commute intelligence, arrival help, offline resilience and deeper trip insights.',
+              '地图、搜索和逐向导航保持免费。Plus 增加主动通勤情报、到达辅助、弱网保障和更深入的行程洞察。',
             ),
             style: const TextStyle(
               color: Colors.white,
@@ -1314,20 +1325,28 @@ class _PlusCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               _PlusChip(
-                icon: Icons.route_rounded,
-                label: t('Route Watch', '路线监控'),
+                icon: Icons.flag_circle_rounded,
+                label: t('Arrival Assistant', '到达辅助'),
               ),
               _PlusChip(
-                icon: Icons.warning_amber_rounded,
-                label: t('Road alerts', '道路预警'),
+                icon: Icons.radar_rounded,
+                label: t('Smart Commute', '智能通勤'),
               ),
               _PlusChip(
-                icon: Icons.cloud_outlined,
-                label: t('Weather risk', '天气风险'),
+                icon: Icons.insights_rounded,
+                label: t('Trip Intelligence', '行程洞察'),
               ),
               _PlusChip(
-                icon: Icons.photo_camera_outlined,
-                label: t('Camera intelligence', '摄像头情报'),
+                icon: Icons.offline_bolt_rounded,
+                label: t('Poor-signal cache', '弱网缓存'),
+              ),
+              _PlusChip(
+                icon: Icons.notifications_active_rounded,
+                label: t('Proactive alerts', '主动预警'),
+              ),
+              _PlusChip(
+                icon: Icons.directions_car_filled_rounded,
+                label: t('CarPlay · next', 'CarPlay · 下一阶段'),
               ),
             ],
           ),

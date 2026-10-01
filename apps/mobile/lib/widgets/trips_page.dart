@@ -66,6 +66,8 @@ class RouteWatchItem {
     this.originName = '',
     this.destinationName = '',
     this.routeProvider = 'unknown',
+    this.baselineDurationSeconds,
+    this.baselineDistanceMeters,
     this.geometryExpiresAt,
     this.lastCheckedAt,
   });
@@ -77,6 +79,8 @@ class RouteWatchItem {
   final String originName;
   final String destinationName;
   final String routeProvider;
+  final int? baselineDurationSeconds;
+  final int? baselineDistanceMeters;
   final DateTime? geometryExpiresAt;
   final DateTime? lastCheckedAt;
 
@@ -87,6 +91,8 @@ class RouteWatchItem {
     originName: json['originName']?.toString() ?? '',
     destinationName: json['destinationName']?.toString() ?? '',
     routeProvider: json['routeProvider']?.toString() ?? 'unknown',
+    baselineDurationSeconds: (json['baselineDurationSeconds'] as num?)?.round(),
+    baselineDistanceMeters: (json['baselineDistanceMeters'] as num?)?.round(),
     geometryExpiresAt: DateTime.tryParse(
       json['geometryExpiresAt']?.toString() ?? '',
     ),
@@ -105,7 +111,9 @@ class TripsSnapshot {
     required this.recent,
     required this.history,
     this.routeWatches = const {},
+    this.smartCommuteRoutes = const {},
     this.signedIn = false,
+    this.isPlus = false,
   });
 
   final Map<String, TripDestination> quickPlaces;
@@ -113,7 +121,9 @@ class TripsSnapshot {
   final List<TripDestination> recent;
   final List<TripHistoryItem> history;
   final Map<String, RouteWatchItem> routeWatches;
+  final Map<String, RouteOption> smartCommuteRoutes;
   final bool signedIn;
+  final bool isPlus;
 }
 
 class TripsResult {
@@ -258,12 +268,35 @@ class _TripsPageState extends State<TripsPage> {
     };
   }
 
-  String _watchSummary(RouteWatchItem? watch) {
+  String _watchSummary(RouteWatchItem? watch, {RouteOption? currentRoute}) {
     if (watch == null) {
       return _text(
         'Watch official NZTA incidents along this route',
         '持续监控这条路线上的 NZTA 官方道路事件',
       );
+    }
+    final baseline = watch.baselineDurationSeconds;
+    if (currentRoute != null && baseline != null && baseline > 0) {
+      final delta = currentRoute.durationSeconds - baseline;
+      final deltaMinutes = (delta.abs() / 60).round();
+      if (delta >= 300) {
+        return _text(
+          'Current ${_duration(currentRoute.durationSeconds)} · +$deltaMinutes min vs usual · leave $deltaMinutes min earlier',
+          '当前 ${_duration(currentRoute.durationSeconds)} · 比平时多 $deltaMinutes 分钟 · 建议提前 $deltaMinutes 分钟出发',
+        );
+      }
+      if (delta <= -180) {
+        return _text(
+          'Current ${_duration(currentRoute.durationSeconds)} · $deltaMinutes min faster than usual',
+          '当前 ${_duration(currentRoute.durationSeconds)} · 比平时快 $deltaMinutes 分钟',
+        );
+      }
+      if (watch.events.isEmpty) {
+        return _text(
+          'Current ${_duration(currentRoute.durationSeconds)} · close to your usual commute',
+          '当前 ${_duration(currentRoute.durationSeconds)} · 接近平时通勤时间',
+        );
+      }
     }
     if (watch.status == 'unknown') {
       return _text(
@@ -427,8 +460,9 @@ class _TripsPageState extends State<TripsPage> {
   Widget _routeWatchTile(
     BuildContext context,
     String label,
-    RouteWatchItem? watch,
-  ) {
+    RouteWatchItem? watch, {
+    RouteOption? currentRoute,
+  }) {
     final scheme = Theme.of(context).colorScheme;
     final color = _watchColor(watch);
     final busy = _routeWatchBusy.contains(label);
@@ -487,7 +521,7 @@ class _TripsPageState extends State<TripsPage> {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  _watchSummary(watch),
+                  _watchSummary(watch, currentRoute: currentRoute),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -639,6 +673,119 @@ class _TripsPageState extends State<TripsPage> {
     );
   }
 
+  Widget _tripIntelligenceCard(TripsSnapshot snapshot) {
+    final scheme = Theme.of(context).colorScheme;
+    if (!snapshot.isPlus) {
+      return _EmptyCard(
+        icon: Icons.insights_rounded,
+        text: _text(
+          'Plus unlocks 30-day trip trends, distance, travel time and your most frequent destination.',
+          'Plus 可解锁近 30 天行程趋势、距离、出行时间和最常去目的地。',
+        ),
+      );
+    }
+
+    final cutoff = DateTime.now().subtract(const Duration(days: 30));
+    final recent = snapshot.history
+        .where(
+          (item) => item.createdAt != null && item.createdAt!.isAfter(cutoff),
+        )
+        .toList(growable: false);
+    if (recent.isEmpty) {
+      return _EmptyCard(
+        icon: Icons.insights_rounded,
+        text: _text(
+          'Finish a few trips and your 30-day intelligence will appear here.',
+          '完成几次行程后，这里会生成近 30 天的出行洞察。',
+        ),
+      );
+    }
+
+    final totalDistance = recent.fold<int>(
+      0,
+      (sum, item) => sum + item.distanceMeters,
+    );
+    final totalSeconds = recent.fold<int>(
+      0,
+      (sum, item) => sum + item.durationSeconds,
+    );
+    final counts = <String, int>{};
+    for (final item in recent) {
+      final name = item.destination.name.trim();
+      if (name.isNotEmpty) counts[name] = (counts[name] ?? 0) + 1;
+    }
+    final favorite = counts.entries.isEmpty
+        ? null
+        : (counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))
+              .first;
+    final distanceKm = totalDistance / 1000;
+    final hours = totalSeconds / 3600;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _TripInsightStat(
+                label: _text('Trips', '行程'),
+                value: '${recent.length}',
+              ),
+              _TripInsightStat(
+                label: _text('Distance', '距离'),
+                value:
+                    '${distanceKm.toStringAsFixed(distanceKm < 100 ? 1 : 0)} km',
+              ),
+              _TripInsightStat(
+                label: _text('Travel time', '出行时间'),
+                value: '${hours.toStringAsFixed(hours < 10 ? 1 : 0)} h',
+              ),
+            ],
+          ),
+          if (favorite != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer.withValues(alpha: .45),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.star_rounded, size: 17, color: scheme.primary),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      _text(
+                        'Most visited · ${favorite.key} · ${favorite.value} trips',
+                        '最常去 · ${favorite.key} · ${favorite.value} 次',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -724,14 +871,16 @@ class _TripsPageState extends State<TripsPage> {
               ],
               const SizedBox(height: 24),
               _SectionTitle(
-                title: _text('Route Watch', '路线监控'),
-                subtitle: _text('Plus preview', 'Plus 预览'),
+                title: _text('Smart Commute', '智能通勤'),
+                subtitle: snapshot?.isPlus == true
+                    ? 'Plus'
+                    : _text('Plus locked', 'Plus 专属'),
               ),
               const SizedBox(height: 5),
               Text(
                 _text(
-                  'Kiwi Lens checks official NZTA road events against your saved route every 15 minutes without repeatedly buying a new Google route.',
-                  'Kiwi Lens 每 15 分钟用 NZTA 官方道路事件检查收藏路线，不会为了监控反复购买新的 Google 路线。',
+                  'Kiwi Lens compares today’s live Home ↔ Work time with your saved baseline and keeps watching official NZTA road disruptions in the background.',
+                  'Kiwi Lens 会把今天家 ↔ 公司的实时通勤与平时基准对比，并持续后台监控 NZTA 官方道路异常。',
                 ),
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
@@ -740,12 +889,20 @@ class _TripsPageState extends State<TripsPage> {
                 ),
               ),
               const SizedBox(height: 11),
-              if (!(snapshot?.signedIn ?? false))
+              if (!(snapshot?.isPlus ?? false))
+                _EmptyCard(
+                  icon: Icons.workspace_premium_rounded,
+                  text: _text(
+                    'Plus unlocks live commute-vs-usual timing, leave-earlier advice and background Route Watch.',
+                    'Plus 可解锁“当前 vs 平时”通勤对比、提前出发建议和后台路线监控。',
+                  ),
+                )
+              else if (!(snapshot?.signedIn ?? false))
                 _EmptyCard(
                   icon: Icons.lock_outline_rounded,
                   text: _text(
-                    'Sign in from My Kiwi Lens to save Route Watch to your account.',
-                    '请先在“我的 Kiwi Lens”登录，再把路线监控保存到账号。',
+                    'Sign in from My Kiwi Lens to save Smart Commute to your account.',
+                    '请先在“我的 Kiwi Lens”登录，再把智能通勤保存到账号。',
                   ),
                 )
               else if (!(snapshot!.quickPlaces.containsKey('Home') &&
@@ -753,14 +910,28 @@ class _TripsPageState extends State<TripsPage> {
                 _EmptyCard(
                   icon: Icons.radar_rounded,
                   text: _text(
-                    'Set both Home and Work first. Route Watch monitors the stable commute in both directions.',
-                    '请先同时设置“家”和“公司”。路线监控会分别监控两个方向的固定通勤路线。',
+                    'Set both Home and Work first. Smart Commute monitors both directions.',
+                    '请先同时设置“家”和“公司”。智能通勤会分别监控两个方向。',
                   ),
                 )
               else ...[
                 for (final label in const ['home-work', 'work-home'])
-                  _routeWatchTile(context, label, snapshot.routeWatches[label]),
+                  _routeWatchTile(
+                    context,
+                    label,
+                    snapshot.routeWatches[label],
+                    currentRoute: snapshot.smartCommuteRoutes[label],
+                  ),
               ],
+              const SizedBox(height: 24),
+              _SectionTitle(
+                title: _text('Trip Intelligence', '行程洞察'),
+                subtitle: snapshot?.isPlus == true
+                    ? 'Plus · 30 days'
+                    : _text('Plus locked', 'Plus 专属'),
+              ),
+              const SizedBox(height: 10),
+              if (snapshot != null) _tripIntelligenceCard(snapshot),
               const SizedBox(height: 24),
               _SectionTitle(
                 title: _text('Recent destinations', '最近目的地'),
@@ -811,6 +982,40 @@ class _TripsPageState extends State<TripsPage> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TripInsightStat extends StatelessWidget {
+  const _TripInsightStat({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

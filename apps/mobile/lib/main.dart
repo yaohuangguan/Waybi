@@ -332,6 +332,11 @@ class _MapHomePageState extends State<MapHomePage> {
   LatLng? _gpsLocation;
   DestinationSuggestion? _manualOrigin;
   final List<DestinationSuggestion> _guestRecent = [];
+  final Map<String, RouteOption> _quickCommuteRoutes = {};
+  DateTime? _quickCommuteRefreshedAt;
+  LatLng? _quickCommuteOrigin;
+  bool _quickCommuteRefreshing = false;
+  int _quickCommuteRequest = 0;
   CameraPosition? _lastBrowseCamera;
   List<Marker> _cameraMarkers = [];
   List<Marker> _roadEventMarkers = [];
@@ -849,6 +854,7 @@ class _MapHomePageState extends State<MapHomePage> {
       _queueMapRefresh();
     }
     if (mounted) setState(() {});
+    unawaited(_refreshQuickCommutes(force: true));
   }
 
   List<DestinationSuggestion> get _recentDestinations {
@@ -978,6 +984,79 @@ class _MapHomePageState extends State<MapHomePage> {
     }
     setState(() {});
     _queueMapRefresh();
+    unawaited(_refreshQuickCommutes());
+  }
+
+  Future<void> _refreshQuickCommutes({bool force = false}) async {
+    if (!mounted || !_settingsLoaded || _driveEngine.active) return;
+    if (_quickCommuteRefreshing && !force) return;
+    final origin = _gpsLocation;
+    if (origin == null) return;
+
+    final targets = <String, PlaceSummary>{};
+    for (final action in const ['Home', 'Work']) {
+      final place = _quickLocations[action];
+      if (place != null) targets[action] = place;
+    }
+    if (targets.isEmpty) {
+      if (_quickCommuteRoutes.isNotEmpty && mounted) {
+        setState(_quickCommuteRoutes.clear);
+      }
+      return;
+    }
+
+    final now = DateTime.now();
+    final lastOrigin = _quickCommuteOrigin;
+    final movedMeters = lastOrigin == null
+        ? double.infinity
+        : distanceMeters(
+            origin.latitude,
+            origin.longitude,
+            lastOrigin.latitude,
+            lastOrigin.longitude,
+          );
+    final stillFresh =
+        _quickCommuteRefreshedAt != null &&
+        now.difference(_quickCommuteRefreshedAt!) < const Duration(minutes: 10);
+    if (!force && stillFresh && movedMeters < 800) return;
+
+    final request = ++_quickCommuteRequest;
+    _quickCommuteRefreshing = true;
+    final results = <String, RouteOption>{};
+    try {
+      await Future.wait(
+        targets.entries.map((entry) async {
+          try {
+            final plan = await _routeRepository.fetch(
+              origin: origin,
+              destination: LatLng(
+                latitude: entry.value.location.latitude,
+                longitude: entry.value.location.longitude,
+              ),
+              mode: KiwiTravelMode.drive,
+            );
+            final driving = plan.forMode(KiwiTravelMode.drive).toList()
+              ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
+            if (driving.isNotEmpty) results[entry.key] = driving.first;
+          } catch (_) {
+            // Commute ETA is a progressive enhancement. Keep shortcuts usable
+            // even when routing or traffic data is temporarily unavailable.
+          }
+        }),
+      );
+      if (!mounted || request != _quickCommuteRequest) return;
+      setState(() {
+        _quickCommuteRoutes
+          ..clear()
+          ..addAll(results);
+        _quickCommuteRefreshedAt = now;
+        _quickCommuteOrigin = origin;
+      });
+    } finally {
+      if (request == _quickCommuteRequest) {
+        _quickCommuteRefreshing = false;
+      }
+    }
   }
 
   void _queueMapRefresh() {
@@ -3603,6 +3682,7 @@ class _MapHomePageState extends State<MapHomePage> {
     if (saveAs != null) {
       _quickLocations[saveAs] = place;
       _quickLocationProviders[saveAs] = _mapProvider;
+      unawaited(_refreshQuickCommutes(force: true));
       if (_mapProvider == MapProvider.google) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(
@@ -3654,6 +3734,62 @@ class _MapHomePageState extends State<MapHomePage> {
     _ => Icons.place_rounded,
   };
 
+  String _quickCommuteEta(RouteOption route) {
+    final minutes = (route.durationSeconds / 60).ceil().clamp(1, 999);
+    if (minutes < 60) return _text('$minutes min', '$minutes 分钟');
+    final hours = minutes ~/ 60;
+    final remainder = minutes % 60;
+    if (remainder == 0) return _text('${hours}h', '$hours 小时');
+    return _text('${hours}h ${remainder}m', '$hours 小时 $remainder 分');
+  }
+
+  Color _quickCommuteColor(RouteOption route) {
+    final delay = route.trafficDelaySeconds ?? 0;
+    if (delay >= 600) return KiwiLensColors.danger;
+    if (delay >= 180 || route.traffic.trafficJam > 0) {
+      return KiwiLensColors.warning;
+    }
+    return KiwiLensColors.ocean;
+  }
+
+  Widget _quickActionLabel(String action) {
+    final route = _quickCommuteRoutes[action];
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          action,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: scheme.onSurface,
+          ),
+        ),
+        if (route != null) ...[
+          const SizedBox(width: 6),
+          Container(
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(
+              color: _quickCommuteColor(route),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            _quickCommuteEta(route),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildQuickActions() => SizedBox(
     height: 34,
     child: ListView(
@@ -3679,14 +3815,7 @@ class _MapHomePageState extends State<MapHomePage> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(13),
               ),
-              label: Text(
-                action,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
+              label: _quickActionLabel(action),
               onPressed: () => _onQuickAction(action),
             ),
           ),

@@ -17,6 +17,7 @@ class PlaceDetailsContent extends StatefulWidget {
     required this.routeBusy,
     this.quickRoute,
     this.quickRouteLoading = false,
+    this.navigationAvailable = true,
     required this.isFavorite,
     required this.onClose,
     required this.onNavigate,
@@ -33,6 +34,7 @@ class PlaceDetailsContent extends StatefulWidget {
   final bool routeBusy;
   final RouteOption? quickRoute;
   final bool quickRouteLoading;
+  final bool navigationAvailable;
   final bool isFavorite;
   final VoidCallback onClose;
   final VoidCallback onNavigate;
@@ -96,6 +98,30 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
   }
 
   Widget _quickRouteSummary(ColorScheme scheme) {
+    if (!widget.navigationAvailable) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 7, 16, 0),
+        child: Row(
+          children: [
+            Icon(Icons.public_rounded, size: 16, color: scheme.primary),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                _text(
+                  'Worldwide place found · turn-by-turn navigation is currently NZ-only',
+                  '已找到全球地点 · 逐向导航目前仅支持新西兰',
+                ),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final route = widget.quickRoute;
     if (route == null && !widget.quickRouteLoading) {
       return const SizedBox.shrink();
@@ -453,12 +479,16 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                       Expanded(
                         child: _PlaceAction(
                           icon: Icons.directions_car_filled_rounded,
-                          label: widget.routeBusy
+                          label: !widget.navigationAvailable
+                              ? _text('NZ only', '仅新西兰')
+                              : widget.routeBusy
                               ? _text('Routing', '规划中')
                               : _text('Drive', '导航'),
-                          selected: true,
-                          busy: widget.routeBusy,
-                          onTap: widget.routeBusy ? null : widget.onNavigate,
+                          selected: widget.navigationAvailable,
+                          busy: widget.navigationAvailable && widget.routeBusy,
+                          onTap: !widget.navigationAvailable || widget.routeBusy
+                              ? null
+                              : widget.onNavigate,
                         ),
                       ),
                       const SizedBox(width: 7),

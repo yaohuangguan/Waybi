@@ -208,7 +208,7 @@ async function handleApi(request, env, ctx) {
     if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
     lastSearchAt = Date.now();
     const language = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
-    const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&accept-language=${language}&limit=6&countrycodes=nz&q=${encodeURIComponent(query)}`;
+    const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&accept-language=${language}&limit=6&viewbox=166,-34,179,-48&bounded=0&q=${encodeURIComponent(query)}`;
     const results = await upstreamJson(searchUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)', 'referer': 'https://github.com/yaohuangguan/kiwi-lens', accept: 'application/json' });
     return json(results.map((place) => {
       const address = place.address || {};
@@ -222,7 +222,7 @@ async function handleApi(request, env, ctx) {
         address.suburb || address.neighbourhood,
         address.city || address.town || address.village,
         address.postcode,
-        'New Zealand'
+        address.country
       ].filter(Boolean).filter((item, index, values) => values.indexOf(item) === index).join(', ');
       const fullAddress = place.display_name || streetAddress;
       const name = isPoi

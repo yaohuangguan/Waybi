@@ -7,7 +7,11 @@ import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.mjs';
 import { loadRoadEventState } from './road_events.mjs';
 import { createRoadReport, readRoadReports } from './road_reports.mjs';
 import { recordApiUsage, readUsageSummary } from './cost_guard.mjs';
-import { handleRouteWatch, evaluateAllRouteWatches } from './route_watch.mjs';
+import {
+  evaluateAllRouteWatches,
+  handleRouteWatch,
+  handleRouteWatchAlerts,
+} from './route_watch.mjs';
 
 const CAMERA_KEY = 'cameras/current';
 const CAMERA_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
@@ -370,6 +374,7 @@ export default {
     try {
       const featureResponse =
         await handleAccount(request, env) ||
+        await handleRouteWatchAlerts(request, env) ||
         await handleRouteWatch(request, env) ||
         await handlePlaces(
           request,

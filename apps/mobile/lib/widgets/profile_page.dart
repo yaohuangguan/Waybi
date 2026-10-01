@@ -1342,11 +1342,14 @@ class _PlusCard extends StatelessWidget {
               ),
               _PlusChip(
                 icon: Icons.notifications_active_rounded,
-                label: t('Proactive alerts', '主动预警'),
+                label: t('Proactive alerts · live', '主动预警 · 已启用'),
               ),
               _PlusChip(
                 icon: Icons.directions_car_filled_rounded,
-                label: t('CarPlay · next', 'CarPlay · 下一阶段'),
+                label: t(
+                  'CarPlay · Apple entitlement',
+                  'CarPlay · 等待 Apple entitlement',
+                ),
               ),
             ],
           ),
@@ -1402,27 +1405,40 @@ class _PlusChip extends StatelessWidget {
   final String label;
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .1),
-      borderRadius: BorderRadius.circular(999),
-      border: Border.all(color: Colors.white12),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, color: KiwiLensColors.sky, size: 15),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11.5,
-            fontWeight: FontWeight.w600,
-          ),
+  Widget build(BuildContext context) {
+    final maxWidth = (MediaQuery.sizeOf(context).width - 64).clamp(
+      160.0,
+      300.0,
+    );
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: .1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white12),
         ),
-      ],
-    ),
-  );
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: KiwiLensColors.sky, size: 15),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

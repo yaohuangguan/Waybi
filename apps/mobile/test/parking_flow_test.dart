@@ -225,12 +225,14 @@ void main() {
           body: ParkingContinuationCard(
             destinationTitle: 'City Library',
             parkingTitle: 'Near car park',
+            carRemembered: true,
             onContinue: () => continued = true,
             onEnd: () {},
           ),
         ),
       ),
     );
+    expect(find.textContaining('Car location remembered'), findsOneWidget);
     await tester.tap(find.text('Continue on foot'));
     expect(continued, isTrue);
   });

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   evaluateRouteWatch,
   handleRouteWatch,
+  handleRouteWatchAlerts,
   routeGeometryFresh,
   __test
 } from '../src/route_watch.mjs';
@@ -148,4 +149,79 @@ test('Route Watch returns Plus entitlement for active Plus users', async () => {
   const body = await response.json();
   assert.equal(body.entitlement, 'plus');
   assert.deepEqual(body.watches, []);
+});
+
+
+test('Route Watch alert signatures only persist warning/disrupted event sets', () => {
+  assert.equal(
+    __test.routeAlertSignature({
+      status: 'warning',
+      events: [{ id: 'b' }, { id: 'a' }]
+    }),
+    'warning:a|b'
+  );
+  assert.equal(
+    __test.routeAlertSignature({
+      status: 'disrupted',
+      events: [{ id: 'closed' }]
+    }),
+    'disrupted:closed'
+  );
+  assert.equal(
+    __test.routeAlertSignature({ status: 'healthy', events: [] }),
+    ''
+  );
+});
+
+test('proactive alert feed rejects free users with PLUS_REQUIRED', async () => {
+  const response = await handleRouteWatchAlerts(
+    new Request('https://example.test/api/route-watch-alerts', {
+      headers: { cookie: `kiwi_session=${'c'.repeat(64)}` }
+    }),
+    { USER_DB: entitlementDb('free'), CAMERA_DATA: {} }
+  );
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).code, 'PLUS_REQUIRED');
+});
+
+test('proactive alert feed returns unread alerts for Plus users', async () => {
+  const db = entitlementDb('plus');
+  const originalPrepare = db.prepare.bind(db);
+  db.prepare = (sql) => {
+    if (sql.includes('FROM route_watch_alerts')) {
+      return {
+        bind() {
+          return {
+            async all() {
+              return {
+                results: [{
+                  id: 'alert-1',
+                  route_watch_id: 'watch-1',
+                  label: 'Work',
+                  status: 'warning',
+                  events_json: JSON.stringify([{ id: 'road-1', roadName: 'SH1' }]),
+                  created_at: Date.parse('2026-10-02T00:00:00Z'),
+                  read_at: null,
+                }]
+              };
+            }
+          };
+        }
+      };
+    }
+    return originalPrepare(sql);
+  };
+
+  const response = await handleRouteWatchAlerts(
+    new Request('https://example.test/api/route-watch-alerts', {
+      headers: { cookie: `kiwi_session=${'d'.repeat(64)}` }
+    }),
+    { USER_DB: db, CAMERA_DATA: {} }
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.entitlement, 'plus');
+  assert.equal(body.alerts.length, 1);
+  assert.equal(body.alerts[0].label, 'Work');
+  assert.equal(body.alerts[0].events[0].roadName, 'SH1');
 });

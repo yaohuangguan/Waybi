@@ -283,7 +283,7 @@ class MapHomePage extends StatefulWidget {
   State<MapHomePage> createState() => _MapHomePageState();
 }
 
-class _MapHomePageState extends State<MapHomePage> {
+class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   static const _mapId = String.fromEnvironment('MAP_ID');
   static const _mapboxToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
   static const _auckland = LatLng(latitude: -36.8485, longitude: 174.7633);
@@ -410,6 +410,8 @@ class _MapHomePageState extends State<MapHomePage> {
   PlaceSummary? _parkingOriginalPlace;
   bool _parkingLoading = false;
   bool _parkingLegFinished = false;
+  PlaceSummary? _parkedCarPlace;
+  DateTime? _parkedCarAt;
   int _parkingRequest = 0;
   PlaceSummary? _activeDestinationPlace;
   PlaceDetails? _arrivalPlaceDetails;
@@ -443,6 +445,7 @@ class _MapHomePageState extends State<MapHomePage> {
   bool _navigationSessionInitialized = false;
   bool _guidanceRunning = false;
   bool _busy = false;
+  bool _checkingRouteWatchAlerts = false;
   String? _message;
   String? _lastNotifiedCameraId;
   final Set<String> _notifiedRoadEventIds = <String>{};
@@ -450,6 +453,7 @@ class _MapHomePageState extends State<MapHomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _mapboxNavigation = MapboxNavigationEngine(
       _driveEngine,
       reroute: (origin, previous, stops) => _mapboxRoutes.reroute(
@@ -581,6 +585,17 @@ class _MapHomePageState extends State<MapHomePage> {
 
   void _onAccountChanged() {
     if (mounted) setState(() {});
+    if (_account.profile?.isPlus == true && _account.signedIn) {
+      unawaited(_deliverRouteWatchAlerts());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_deliverRouteWatchAlerts());
+      unawaited(_refreshQuickCommutes(force: true));
+    }
   }
 
   void _onMapboxNavigationChanged() {
@@ -1218,6 +1233,30 @@ class _MapHomePageState extends State<MapHomePage> {
         // Ignore an invalid old shortcut rather than blocking map startup.
       }
     }
+    final parkedCarRecord = prefs.getString('kiwi.plus.parked_car.v1');
+    if (parkedCarRecord != null) {
+      try {
+        final item = jsonDecode(parkedCarRecord) as Map<String, dynamic>;
+        final parkedAt = DateTime.tryParse(item['parkedAt']?.toString() ?? '');
+        final latitude = item['latitude'];
+        final longitude = item['longitude'];
+        if (parkedAt != null &&
+            latitude is num &&
+            longitude is num &&
+            DateTime.now().difference(parkedAt) < const Duration(hours: 72)) {
+          _parkedCarAt = parkedAt;
+          _parkedCarPlace = PlaceSummary(
+            name: item['name']?.toString() ?? 'Parked car',
+            address: item['address']?.toString() ?? '',
+            location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
+          );
+        } else {
+          await prefs.remove('kiwi.plus.parked_car.v1');
+        }
+      } catch (_) {
+        await prefs.remove('kiwi.plus.parked_car.v1');
+      }
+    }
     _appLanguage = prefs.getString('kiwi.app.language') ?? 'en';
     _voiceLanguage = prefs.getString('kiwi.voice.language') ?? 'en-NZ';
     _voiceEnabled = prefs.getBool('kiwi.voice.enabled') ?? true;
@@ -1274,6 +1313,7 @@ class _MapHomePageState extends State<MapHomePage> {
     }
     if (mounted) setState(() {});
     unawaited(_refreshQuickCommutes(force: true));
+    unawaited(_deliverRouteWatchAlerts());
   }
 
   List<DestinationSuggestion> get _recentDestinations {
@@ -1300,6 +1340,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _positionSubscription?.cancel();
     _headingSubscription?.cancel();
     _mapRefreshTimer?.cancel();
@@ -2048,6 +2089,58 @@ class _MapHomePageState extends State<MapHomePage> {
       _following = true;
     });
     _queueMapRefresh();
+  }
+
+  Future<void> _rememberParkedCar(ParkingPlace parking) async {
+    if (_account.profile?.isPlus != true) return;
+    final parkedAt = DateTime.now();
+    final place = parking.toPlaceSummary();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'kiwi.plus.parked_car.v1',
+      jsonEncode({
+        'name': place.name,
+        'address': place.address,
+        'latitude': place.location.latitude,
+        'longitude': place.location.longitude,
+        'parkedAt': parkedAt.toIso8601String(),
+      }),
+    );
+    if (!mounted) return;
+    setState(() {
+      _parkedCarPlace = place;
+      _parkedCarAt = parkedAt;
+    });
+  }
+
+  String _parkedCarAgeLabel() {
+    final parkedAt = _parkedCarAt;
+    if (parkedAt == null) return _text('Parked car', '停车位置');
+    final age = DateTime.now().difference(parkedAt);
+    if (age.inMinutes < 2) return _text('Parked just now', '刚刚停车');
+    if (age.inHours < 1) {
+      return _text('Parked ${age.inMinutes} min ago', '停车 ${age.inMinutes} 分钟');
+    }
+    if (age.inHours < 24) {
+      return _text('Parked ${age.inHours} h ago', '停车 ${age.inHours} 小时');
+    }
+    return _text('Parked ${age.inDays} d ago', '停车 ${age.inDays} 天');
+  }
+
+  void _showParkedCar() {
+    final parked = _parkedCarPlace;
+    if (parked == null) return;
+    _selectPlace(
+      PlaceSummary(
+        name: _text('Parked car · ${parked.name}', '停车位置 · ${parked.name}'),
+        address: parked.address,
+        location: parked.location,
+      ),
+      SelectionSource.frequent,
+    );
+    if (mounted) {
+      setState(() => _message = _parkedCarAgeLabel());
+    }
   }
 
   Future<void> _loadParking(PlaceSummary destination) async {
@@ -3070,6 +3163,10 @@ class _MapHomePageState extends State<MapHomePage> {
             _parkingOriginalPlace != null &&
             _selectedMode == KiwiTravelMode.drive;
       });
+      final parked = _parkingLegFinished ? _selectedParking : null;
+      if (parked != null) {
+        unawaited(_rememberParkedCar(parked));
+      }
       if (arrived) {
         unawaited(
           _driveEngine.speakMessage(
@@ -3872,6 +3969,76 @@ class _MapHomePageState extends State<MapHomePage> {
     );
   }
 
+  Future<void> _deliverRouteWatchAlerts() async {
+    if (_checkingRouteWatchAlerts ||
+        !_account.signedIn ||
+        _account.profile?.isPlus != true ||
+        !_notifySavedRouteDisruptions) {
+      return;
+    }
+    _checkingRouteWatchAlerts = true;
+    try {
+      final alerts = await _account.routeWatchAlerts();
+      if (alerts.isEmpty) return;
+
+      final latestByWatch = <String, Map<String, dynamic>>{};
+      for (final alert in alerts) {
+        final watchId = alert['routeWatchId']?.toString() ?? '';
+        if (watchId.isEmpty || latestByWatch.containsKey(watchId)) continue;
+        latestByWatch[watchId] = alert;
+      }
+
+      final selected = latestByWatch.values.take(4).toList(growable: false);
+      for (final alert in selected.reversed) {
+        final id = alert['id']?.toString() ?? '';
+        final label = alert['label']?.toString().trim();
+        final status = alert['status']?.toString() ?? 'warning';
+        final events = (alert['events'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .toList(growable: false);
+        final first = events.isEmpty ? null : events.first;
+        final road = first?['roadName']?.toString().trim();
+        final impact = first?['impact']?.toString().trim();
+        final routeName = label == null || label.isEmpty
+            ? _text('Saved commute', '已保存通勤')
+            : label;
+        final title = status == 'disrupted'
+            ? _text('$routeName route disrupted', '$routeName 路线出现严重影响')
+            : _text('$routeName route changed', '$routeName 路线出现变化');
+        final body = road != null && road.isNotEmpty
+            ? _text(
+                impact != null && impact.isNotEmpty
+                    ? '$road · $impact'
+                    : 'Road event detected on $road',
+                '检测到 $road 上的道路事件',
+              )
+            : _text(
+                '${events.length} road event${events.length == 1 ? '' : 's'} may affect this route.',
+                '${events.length} 个道路事件可能影响这条路线。',
+              );
+        if (id.isNotEmpty) {
+          await KiwiLensNotificationService.instance.showPlusCommuteAlert(
+            id: id,
+            title: title,
+            body: body,
+          );
+        }
+      }
+
+      final ids = alerts
+          .map((alert) => alert['id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList(growable: false);
+      if (ids.isNotEmpty) {
+        await _account.markRouteWatchAlertsRead(ids);
+      }
+    } catch (_) {
+      // Route Watch is additive; map and navigation remain usable offline.
+    } finally {
+      _checkingRouteWatchAlerts = false;
+    }
+  }
+
   Future<void> _setNotificationPreference(String key, bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
@@ -3891,6 +4058,9 @@ class _MapHomePageState extends State<MapHomePage> {
           _notifySavedRouteDisruptions = value;
       }
     });
+    if (value && key == 'tasman.notifications.saved_route_disruptions') {
+      unawaited(_deliverRouteWatchAlerts());
+    }
   }
 
   Future<void> _setVoiceLanguage(String language) async {
@@ -5514,6 +5684,23 @@ class _MapHomePageState extends State<MapHomePage> {
               child: PointerInterceptor(
                 child: Column(
                   children: [
+                    if (_account.profile?.isPlus == true &&
+                        _parkedCarPlace != null) ...[
+                      Material(
+                        color: Theme.of(context).colorScheme.surface,
+                        elevation: 5,
+                        borderRadius: BorderRadius.circular(14),
+                        child: IconButton(
+                          tooltip: _parkedCarAgeLabel(),
+                          icon: const Icon(
+                            Icons.directions_car_filled_rounded,
+                            color: KiwiLensColors.ocean,
+                          ),
+                          onPressed: _showParkedCar,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     Material(
                       color: Theme.of(context).colorScheme.surface,
                       elevation: 5,
@@ -5719,6 +5906,7 @@ class _MapHomePageState extends State<MapHomePage> {
                             _account.profile?.isPlus == true &&
                             _offlineCorridorReady,
                         usingOfflineGuidance: cachedGoogleGuidance != null,
+                        offlineCachedAt: _lastCorridorCacheAt,
                       )
                     : DriveHud(
                         engine: _driveEngine,
@@ -5755,6 +5943,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 arrivalPanel: arrivalPanel,
                 offlineReady:
                     _account.profile?.isPlus == true && _offlineCorridorReady,
+                offlineCachedAt: _lastCorridorCacheAt,
               ),
             ),
           if (_mapProvider == MapProvider.mapbox &&
@@ -5784,6 +5973,7 @@ class _MapHomePageState extends State<MapHomePage> {
                 destinationTitle: _parkingOriginalPlace!.name,
                 parkingTitle: _selectedParking!.name,
                 isChinese: _appLanguage == 'zh',
+                carRemembered: _account.profile?.isPlus == true,
                 onContinue: () => unawaited(_continueOnFoot()),
                 onEnd: () => setState(() {
                   _parkingLegFinished = false;

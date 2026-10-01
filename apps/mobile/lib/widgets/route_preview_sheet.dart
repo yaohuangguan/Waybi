@@ -1223,6 +1223,7 @@ class ParkingContinuationCard extends StatelessWidget {
     required this.onContinue,
     required this.onEnd,
     this.isChinese = false,
+    this.carRemembered = false,
   });
 
   final String destinationTitle;
@@ -1230,6 +1231,7 @@ class ParkingContinuationCard extends StatelessWidget {
   final VoidCallback onContinue;
   final VoidCallback onEnd;
   final bool isChinese;
+  final bool carRemembered;
 
   @override
   Widget build(BuildContext context) {
@@ -1266,6 +1268,29 @@ class ParkingContinuationCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (carRemembered) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.directions_car_filled_rounded,
+                        size: 16,
+                        color: scheme.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          isChinese ? '已记住停车位置，可从地图右侧小车按钮返回' : 'Car location remembered · use the car button on the map to return',
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Row(
                   children: [

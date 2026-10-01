@@ -34,6 +34,31 @@ class KiwiLensNotificationService {
         ?.requestNotificationsPermission();
   }
 
+  Future<void> showPlusCommuteAlert({
+    required String id,
+    required String title,
+    required String body,
+  }) async {
+    await initialize();
+    await _plugin.show(
+      id.hashCode & 0x7fffffff,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'kiwi_plus_commute_alerts',
+          'Kiwi Lens Plus commute alerts',
+          channelDescription:
+              'Proactive Route Watch alerts for Kiwi Lens Plus commutes',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
+      ),
+      payload: 'route-watch:$id',
+    );
+  }
+
   Future<void> showRoadAlert({
     required String id,
     required String title,

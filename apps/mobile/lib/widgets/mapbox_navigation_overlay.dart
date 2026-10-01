@@ -47,6 +47,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
     this.gpsAccuracy,
     this.arrivalPanel,
     this.offlineReady = false,
+    this.offlineCachedAt,
   });
   final MapboxNavigationEngine engine;
   final DriveEngine drive;
@@ -61,6 +62,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
   final bool lanesEnabled;
   final Widget? arrivalPanel;
   final bool offlineReady;
+  final DateTime? offlineCachedAt;
   final VoidCallback onEnd,
       onRecenter,
       onOverview,
@@ -152,6 +154,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
         arrivalPanel: arrivalPanel,
         offlineReady: offlineReady,
         usingOfflineGuidance: engine.error != null,
+        offlineCachedAt: offlineCachedAt,
       );
     },
   );

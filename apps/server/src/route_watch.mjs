@@ -203,7 +203,22 @@ function routeWatchJson(row) {
   };
 }
 
-async function evaluateRow(db, row, events, now = new Date()) {
+function routeAlertSignature(result) {
+  if (!['warning', 'disrupted'].includes(result?.status)) return '';
+  const ids = (result.events || [])
+    .map((event) => String(event.id || ''))
+    .filter(Boolean)
+    .sort();
+  return `${result.status}:${ids.join('|')}`;
+}
+
+async function evaluateRow(
+  db,
+  row,
+  events,
+  now = new Date(),
+  { createAlert = false } = {},
+) {
   const checkedAt = now.getTime();
   const geometryFresh = routeGeometryFresh(row, now);
   const result = geometryFresh
@@ -220,6 +235,32 @@ async function evaluateRow(db, row, events, now = new Date()) {
     JSON.stringify(result.events),
     row.id
   ).run();
+
+  if (createAlert) {
+    const signature = routeAlertSignature(result);
+    const previousSignature = String(row.last_alert_signature || '');
+    if (signature && signature !== previousSignature) {
+      await db.prepare(`
+        INSERT INTO route_watch_alerts (
+          id, user_id, route_watch_id, label, status, events_json, created_at, read_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+      `).bind(
+        crypto.randomUUID(),
+        row.user_id,
+        row.id,
+        row.label,
+        result.status,
+        JSON.stringify(result.events),
+        checkedAt,
+      ).run();
+    }
+    if (signature !== previousSignature) {
+      await db.prepare(
+        'UPDATE route_watches SET last_alert_signature = ? WHERE id = ?'
+      ).bind(signature, row.id).run();
+    }
+  }
+
   return {
     ...row,
     last_checked_at: checkedAt,
@@ -261,10 +302,93 @@ export async function evaluateAllRouteWatches(env, now = new Date()) {
     : { events: [] };
   let checked = 0;
   for (const row of rows) {
-    await evaluateRow(env.USER_DB, row, state.events || [], now);
+    await evaluateRow(env.USER_DB, row, state.events || [], now, {
+      createAlert: true,
+    });
     checked += 1;
   }
   return { checked };
+}
+
+function routeWatchAlertJson(row) {
+  return {
+    id: row.id,
+    routeWatchId: row.route_watch_id,
+    label: row.label,
+    status: row.status,
+    events: parseEvents(row.events_json),
+    createdAt: new Date(Number(row.created_at)).toISOString(),
+    readAt: row.read_at == null
+      ? null
+      : new Date(Number(row.read_at)).toISOString()
+  };
+}
+
+export async function handleRouteWatchAlerts(request, env) {
+  const url = new URL(request.url);
+  if (!url.pathname.startsWith('/api/route-watch-alerts')) return null;
+  if (!env.USER_DB) return json({ error: 'Account storage is not configured' }, 503);
+
+  const user = await userFromRequest(env.USER_DB, request);
+  if (!user) return json({ error: 'Sign in required' }, 401);
+  if (!await userHasPlus(env.USER_DB, user.id)) {
+    return json({
+      error: 'Kiwi Lens Plus is required for proactive commute alerts',
+      code: 'PLUS_REQUIRED'
+    }, 403);
+  }
+
+  if (request.method === 'GET' && url.pathname === '/api/route-watch-alerts') {
+    const includeRead = url.searchParams.get('all') === '1';
+    const result = includeRead
+      ? await env.USER_DB.prepare(`
+          SELECT * FROM route_watch_alerts
+          WHERE user_id = ?
+          ORDER BY created_at DESC
+          LIMIT 50
+        `).bind(user.id).all()
+      : await env.USER_DB.prepare(`
+          SELECT * FROM route_watch_alerts
+          WHERE user_id = ? AND read_at IS NULL
+          ORDER BY created_at DESC
+          LIMIT 50
+        `).bind(user.id).all();
+    return json({
+      entitlement: 'plus',
+      alerts: (result.results || []).map(routeWatchAlertJson)
+    });
+  }
+
+  if (
+    request.method === 'POST' &&
+    url.pathname === '/api/route-watch-alerts/read'
+  ) {
+    if (request.headers.get('x-kiwi-client') !== 'mobile') {
+      return json({ error: 'Invalid client' }, 403);
+    }
+    const body = await request.json().catch(() => null);
+    const ids = Array.isArray(body?.ids)
+      ? body.ids
+          .map((value) => String(value || '').trim())
+          .filter(Boolean)
+          .slice(0, 50)
+      : [];
+    if (!ids.length) return json({ ok: true, updated: 0 });
+
+    let updated = 0;
+    const readAt = Date.now();
+    for (const id of ids) {
+      const result = await env.USER_DB.prepare(`
+        UPDATE route_watch_alerts
+        SET read_at = COALESCE(read_at, ?)
+        WHERE id = ? AND user_id = ?
+      `).bind(readAt, id, user.id).run();
+      updated += Number(result.meta?.changes || 0);
+    }
+    return json({ ok: true, updated });
+  }
+
+  return json({ error: 'Not found' }, 404);
 }
 
 export async function handleRouteWatch(request, env) {
@@ -423,6 +547,7 @@ export const __test = {
   metresBetween,
   pointToSegmentMetres,
   distanceToRoute,
+  routeAlertSignature,
   ROUTE_CORRIDOR_METERS,
   ROUTE_CACHE_MS
 };

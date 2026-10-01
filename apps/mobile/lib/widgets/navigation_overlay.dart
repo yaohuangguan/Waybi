@@ -84,6 +84,7 @@ class NavigationOverlay extends StatefulWidget {
     this.arrivalPanel,
     this.offlineReady = false,
     this.usingOfflineGuidance = false,
+    this.offlineCachedAt,
   });
 
   final DriveEngine engine;
@@ -113,6 +114,7 @@ class NavigationOverlay extends StatefulWidget {
   final Widget? arrivalPanel;
   final bool offlineReady;
   final bool usingOfflineGuidance;
+  final DateTime? offlineCachedAt;
 
   @override
   State<NavigationOverlay> createState() => _NavigationOverlayState();
@@ -140,6 +142,18 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
   ImageDescriptor? _laneDescriptor;
   Future<Image?>? _laneImage;
   String _text(String en, String zh) => widget.language == 'zh' ? zh : en;
+
+  String _offlineAge() {
+    final cachedAt = widget.offlineCachedAt;
+    if (cachedAt == null) return '';
+    final age = DateTime.now().difference(cachedAt);
+    if (age.inSeconds < 20) return _text('updated just now', '刚刚更新');
+    if (age.inMinutes < 1) {
+      return _text('${age.inSeconds}s old', '${age.inSeconds} 秒前更新');
+    }
+    return _text('${age.inMinutes}m old', '${age.inMinutes} 分钟前更新');
+  }
+
   String _distance(num? metres) => metres == null || !metres.isFinite
       ? '—'
       : navigationMetres(metres, widget.language);
@@ -743,12 +757,12 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                           child: Text(
                                             widget.usingOfflineGuidance
                                                 ? _text(
-                                                    'Weak signal · using cached route guidance',
-                                                    '信号较弱 · 正在使用已缓存路线继续导航',
+                                                    'Weak signal · cached guidance · ${_offlineAge()}',
+                                                    '信号较弱 · 使用缓存导航 · ${_offlineAge()}',
                                                   )
                                                 : _text(
-                                                    'Next 6 km route + safety data cached',
-                                                    '前方约 6 公里路线与安全数据已缓存',
+                                                    'Next 6 km cached · ${_offlineAge()}',
+                                                    '前方约 6 公里已缓存 · ${_offlineAge()}',
                                                   ),
                                             style: TextStyle(
                                               color: scheme.onSurfaceVariant,

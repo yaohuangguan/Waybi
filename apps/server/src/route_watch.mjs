@@ -4,6 +4,7 @@ import { loadRoadEventState } from './road_events.mjs';
 const MAX_WATCHES_PER_USER = 8;
 const MAX_POINTS = 250;
 const ROUTE_CORRIDOR_METERS = 180;
+const ROUTE_CACHE_MS = 29 * 24 * 60 * 60 * 1000;
 const MAX_MATCHES = 6;
 
 function json(body, status = 200) {
@@ -152,6 +153,10 @@ function parseStoredPoints(raw) {
   }
 }
 
+export function routeGeometryFresh(row, now = new Date()) {
+  return Number(row?.geometry_expires_at || 0) > now.getTime();
+}
+
 function parseEvents(raw) {
   try {
     const parsed = JSON.parse(raw || '[]');
@@ -199,8 +204,11 @@ function routeWatchJson(row) {
 }
 
 async function evaluateRow(db, row, events, now = new Date()) {
-  const result = evaluateRouteWatch(parseStoredPoints(row.route_points_json), events, now);
   const checkedAt = now.getTime();
+  const geometryFresh = routeGeometryFresh(row, now);
+  const result = geometryFresh
+    ? evaluateRouteWatch(parseStoredPoints(row.route_points_json), events, now)
+    : { status: 'unknown', events: [] };
   await db.prepare(`
     UPDATE route_watches
     SET last_checked_at = ?, last_status = ?, last_event_count = ?, last_events_json = ?
@@ -240,7 +248,10 @@ export async function evaluateAllRouteWatches(env, now = new Date()) {
   `).all();
   const rows = result.results || [];
   if (!rows.length) return { checked: 0 };
-  const state = await loadRoadEventState(env, fetch, now);
+  const hasFreshGeometry = rows.some((row) => routeGeometryFresh(row, now));
+  const state = hasFreshGeometry
+    ? await loadRoadEventState(env, fetch, now)
+    : { events: [] };
   let checked = 0;
   for (const row of rows) {
     await evaluateRow(env.USER_DB, row, state.events || [], now);
@@ -258,8 +269,14 @@ export async function handleRouteWatch(request, env) {
   if (!user) return json({ error: 'Sign in required' }, 401);
 
   if (request.method === 'GET' && url.pathname === '/api/route-watches') {
-    const state = await loadRoadEventState(env);
     const rows = await listUserWatches(env.USER_DB, user.id);
+    const now = new Date();
+    const hasFreshGeometry = rows.some(
+      (row) => row.enabled === 1 && routeGeometryFresh(row, now)
+    );
+    const state = hasFreshGeometry
+      ? await loadRoadEventState(env)
+      : { events: [] };
     const output = [];
     for (const row of rows) {
       const evaluated = row.enabled === 1
@@ -279,17 +296,28 @@ export async function handleRouteWatch(request, env) {
     }
     const body = await request.json().catch(() => null);
     const label = typeof body?.label === 'string' ? body.label.trim().slice(0, 80) : '';
+    const originName = typeof body?.originName === 'string'
+      ? body.originName.trim().slice(0, 200)
+      : '';
+    const origin = validPoint(body?.origin);
     const destinationName = typeof body?.destinationName === 'string'
       ? body.destinationName.trim().slice(0, 200)
       : '';
     const destination = validPoint(body?.destination);
+    const routeProvider = typeof body?.routeProvider === 'string'
+      ? body.routeProvider.trim().toLowerCase().slice(0, 40)
+      : '';
     const routePoints = normalizePoints(body?.routePoints);
     const baselineDuration = finite(body?.baselineDurationSeconds);
     const baselineDistance = finite(body?.baselineDistanceMeters);
     if (
       !label ||
+      !originName ||
+      !origin ||
       !destinationName ||
       !destination ||
+      !routeProvider ||
+      !/^[a-z0-9_.-]+$/.test(routeProvider) ||
       !routePoints ||
       (baselineDuration != null && (baselineDuration < 0 || baselineDuration > 2_000_000)) ||
       (baselineDistance != null && (baselineDistance < 0 || baselineDistance > 5_000_000))
@@ -311,18 +339,27 @@ export async function handleRouteWatch(request, env) {
 
     const id = existing?.id || crypto.randomUUID();
     const now = Date.now();
+    const geometryExpiresAt = now + ROUTE_CACHE_MS;
     await env.USER_DB.prepare(`
       INSERT INTO route_watches (
-        id, user_id, label, destination_name, destination_latitude, destination_longitude,
-        route_points_json, baseline_duration_seconds, baseline_distance_meters,
+        id, user_id, label,
+        origin_name, origin_latitude, origin_longitude,
+        destination_name, destination_latitude, destination_longitude,
+        route_provider, route_points_json, geometry_expires_at,
+        baseline_duration_seconds, baseline_distance_meters,
         enabled, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       ON CONFLICT(user_id, label) DO UPDATE SET
+        origin_name = excluded.origin_name,
+        origin_latitude = excluded.origin_latitude,
+        origin_longitude = excluded.origin_longitude,
         destination_name = excluded.destination_name,
         destination_latitude = excluded.destination_latitude,
         destination_longitude = excluded.destination_longitude,
+        route_provider = excluded.route_provider,
         route_points_json = excluded.route_points_json,
+        geometry_expires_at = excluded.geometry_expires_at,
         baseline_duration_seconds = excluded.baseline_duration_seconds,
         baseline_distance_meters = excluded.baseline_distance_meters,
         enabled = 1,
@@ -331,10 +368,15 @@ export async function handleRouteWatch(request, env) {
       id,
       user.id,
       label,
+      originName,
+      origin.latitude,
+      origin.longitude,
       destinationName,
       destination.latitude,
       destination.longitude,
+      routeProvider,
       JSON.stringify(routePoints),
+      geometryExpiresAt,
       baselineDuration == null ? null : Math.round(baselineDuration),
       baselineDistance == null ? null : Math.round(baselineDistance),
       now,
@@ -368,5 +410,6 @@ export const __test = {
   metresBetween,
   pointToSegmentMetres,
   distanceToRoute,
-  ROUTE_CORRIDOR_METERS
+  ROUTE_CORRIDOR_METERS,
+  ROUTE_CACHE_MS
 };

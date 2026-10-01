@@ -63,6 +63,10 @@ class RouteWatchItem {
     required this.label,
     required this.status,
     required this.events,
+    this.originName = '',
+    this.destinationName = '',
+    this.routeProvider = 'unknown',
+    this.geometryExpiresAt,
     this.lastCheckedAt,
   });
 
@@ -70,12 +74,22 @@ class RouteWatchItem {
   final String label;
   final String status;
   final List<RouteWatchEvent> events;
+  final String originName;
+  final String destinationName;
+  final String routeProvider;
+  final DateTime? geometryExpiresAt;
   final DateTime? lastCheckedAt;
 
   factory RouteWatchItem.fromJson(Map<String, dynamic> json) => RouteWatchItem(
     id: json['id']?.toString() ?? '',
     label: json['label']?.toString() ?? '',
     status: json['status']?.toString() ?? 'unknown',
+    originName: json['originName']?.toString() ?? '',
+    destinationName: json['destinationName']?.toString() ?? '',
+    routeProvider: json['routeProvider']?.toString() ?? 'unknown',
+    geometryExpiresAt: DateTime.tryParse(
+      json['geometryExpiresAt']?.toString() ?? '',
+    ),
     events: (json['events'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(RouteWatchEvent.fromJson)
@@ -227,19 +241,34 @@ class _TripsPageState extends State<TripsPage> {
     _ => Theme.of(context).colorScheme.outline,
   };
 
-  String _watchStatus(RouteWatchItem? watch) => switch (watch?.status) {
-    'disrupted' => _text('Disrupted', '已中断'),
-    'warning' => _text('Warning', '有警告'),
-    'advisory' => _text('Advisory', '有提示'),
-    'healthy' => _text('Clear', '正常'),
-    _ => _text('Off', '未开启'),
+  String _watchRouteLabel(String label) => switch (label) {
+    'home-work' => _text('Home → Work', '家 → 公司'),
+    'work-home' => _text('Work → Home', '公司 → 家'),
+    _ => label,
   };
+
+  String _watchStatus(RouteWatchItem? watch) {
+    if (watch == null) return _text('Off', '未开启');
+    return switch (watch.status) {
+      'disrupted' => _text('Disrupted', '已中断'),
+      'warning' => _text('Warning', '有警告'),
+      'advisory' => _text('Advisory', '有提示'),
+      'healthy' => _text('Clear', '正常'),
+      _ => _text('Refresh', '需刷新'),
+    };
+  }
 
   String _watchSummary(RouteWatchItem? watch) {
     if (watch == null) {
       return _text(
         'Watch official NZTA incidents along this route',
         '持续监控这条路线上的 NZTA 官方道路事件',
+      );
+    }
+    if (watch.status == 'unknown') {
+      return _text(
+        'Saved route geometry needs refreshing before monitoring can continue.',
+        '已保存的路线需要刷新后才能继续监控。',
       );
     }
     if (watch.events.isEmpty) {
@@ -314,7 +343,7 @@ class _TripsPageState extends State<TripsPage> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      '${_text(label, label == 'Home' ? '家' : '公司')} · ${_watchStatus(watch)}',
+                      '${_watchRouteLabel(label)} · ${_watchStatus(watch)}',
                       style: const TextStyle(
                         fontSize: 19,
                         fontWeight: FontWeight.w800,
@@ -398,7 +427,6 @@ class _TripsPageState extends State<TripsPage> {
   Widget _routeWatchTile(
     BuildContext context,
     String label,
-    TripDestination place,
     RouteWatchItem? watch,
   ) {
     final scheme = Theme.of(context).colorScheme;
@@ -440,7 +468,7 @@ class _TripsPageState extends State<TripsPage> {
                   children: [
                     Flexible(
                       child: Text(
-                        '${_text(label, label == 'Home' ? '家' : '公司')} → ${place.name}',
+                        _watchRouteLabel(label),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w700),
@@ -472,7 +500,16 @@ class _TripsPageState extends State<TripsPage> {
             ),
           ),
           const SizedBox(width: 4),
-          if (watch != null)
+          if (watch?.status == 'unknown')
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: _text('Refresh saved route', '刷新已保存路线'),
+              onPressed: busy
+                  ? null
+                  : () => _toggleRouteWatch(label, watch, true),
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+            )
+          else if (watch != null)
             IconButton(
               visualDensity: VisualDensity.compact,
               tooltip: _text('Route Watch details', '路线监控详情'),
@@ -711,23 +748,18 @@ class _TripsPageState extends State<TripsPage> {
                     '请先在“我的 Kiwi Lens”登录，再把路线监控保存到账号。',
                   ),
                 )
-              else if (snapshot?.quickPlaces.isEmpty ?? true)
+              else if (!(snapshot!.quickPlaces.containsKey('Home') &&
+                  snapshot.quickPlaces.containsKey('Work')))
                 _EmptyCard(
                   icon: Icons.radar_rounded,
                   text: _text(
-                    'Set Home or Work first, then Route Watch can monitor it.',
-                    '先设置“家”或“公司”，之后就能开启路线监控。',
+                    'Set both Home and Work first. Route Watch monitors the stable commute in both directions.',
+                    '请先同时设置“家”和“公司”。路线监控会分别监控两个方向的固定通勤路线。',
                   ),
                 )
               else ...[
-                for (final label in const ['Home', 'Work'])
-                  if (snapshot!.quickPlaces[label] != null)
-                    _routeWatchTile(
-                      context,
-                      label,
-                      snapshot.quickPlaces[label]!,
-                      snapshot.routeWatches[label],
-                    ),
+                for (final label in const ['home-work', 'work-home'])
+                  _routeWatchTile(context, label, snapshot.routeWatches[label]),
               ],
               const SizedBox(height: 24),
               _SectionTitle(

@@ -148,13 +148,22 @@ components:
       required: [id, label, destinationName, enabled, status, eventCount, events]
       properties:
         id: { type: string }
-        label: { type: string }
+        label: { type: string, description: Stable route key such as home-work or work-home }
+        originName: { type: string }
+        origin:
+          type: object
+          nullable: true
+          properties:
+            latitude: { type: number }
+            longitude: { type: number }
         destinationName: { type: string }
         destination:
           type: object
           properties:
             latitude: { type: number }
             longitude: { type: number }
+        routeProvider: { type: string }
+        geometryExpiresAt: { type: string, format: date-time, nullable: true }
         baselineDurationSeconds: { type: integer, nullable: true }
         baselineDistanceMeters: { type: integer, nullable: true }
         enabled: { type: boolean }

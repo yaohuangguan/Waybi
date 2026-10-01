@@ -161,15 +161,18 @@ After applying D1 migrations, an authenticated admin can query `GET /api/admin/c
 
 ### Route Watch
 
-Route Watch is the first Plus-preview road-intelligence feature. Signed-in users can enable it for configured Home/Work routes from the Trips hub. Enabling a watch stores a sampled route geometry and baseline ETA/distance in D1; it does **not** continuously buy fresh Google routes. A Worker cron evaluates enabled routes every 15 minutes against official NZTA Traffic and Travel road events and records `healthy`, `advisory`, `warning`, or `disrupted` status plus matched event details. Opening Trips refreshes the status immediately. `migrations/0006_route_watch.sql` creates the persisted watch state.
+Route Watch is the first Plus-preview road-intelligence feature. It watches a **stable commute**, not whatever route happens to start at the phone's current GPS position. Once both Home and Work are configured, Trips exposes two independent watches: **Home → Work** and **Work → Home**.
+
+Enabling or refreshing a watch requests the current driving route once, stores its sampled corridor plus baseline ETA/distance in D1, and records the route provider. `migrations/0006_route_watch.sql` creates watch state; `migrations/0007_route_watch_route_identity.sql` adds origin identity, provider and route-geometry expiry. Cached route geometry expires after **29 days** and the UI changes to **Refresh / 需刷新** instead of monitoring indefinitely with stale geometry.
+
+A Worker cron evaluates enabled, non-expired routes every 15 minutes against official NZTA Traffic and Travel road events. It does not repeatedly call Google Routes during those background checks. Matching uses a 180 m corridor and records `healthy`, `advisory`, `warning`, or `disrupted` plus the highest-priority matching events. Opening Trips also refreshes the road-event evaluation immediately.
 
 This release intentionally does not claim background push delivery: the server-side monitoring loop is real, but APNs/FCM device-token registration and remote notification delivery remain a separate layer. Core navigation stays free and Route Watch remains a Plus preview until StoreKit entitlement handling is introduced.
 
-
-Route Watch stores up to 220 sampled mobile route points (validated to at most 250 server-side) and evaluates official events against a 180 m route corridor. It does not continuously upload the driver's live GPS position; background checks operate on the saved route rather than the user's current location.
+Route Watch stores at most 220 sampled route points from mobile (validated to at most 250 server-side). It does not continuously upload the driver's live GPS position; background checks operate on the saved Home/Work corridor rather than the user's current location.
 
 Route Watch API:
 
 - `GET /api/route-watches`: evaluate and return the signed-in user's watches
-- `POST /api/route-watches`: create or refresh a watch from current route geometry
+- `POST /api/route-watches`: create or refresh a fixed route watch and its expiring route geometry
 - `DELETE /api/route-watches/:id`: stop watching a route

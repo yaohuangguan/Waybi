@@ -1,178 +1,319 @@
+<p align="center">
+  <img src="apps/web/public/brand/kiwi-lens-lockup.svg" width="360" alt="Kiwi Lens — A clearer journey" />
+</p>
+
+<p align="center">
+  <strong>A New Zealand-first navigation and road-intelligence app.</strong><br />
+  Maps, routing, camera awareness, parking, commute monitoring and a cleaner pre-trip experience in one place.
+</p>
+
+<p align="center">
+  <a href="https://kiwi-lens.nzs.workers.dev/">Live web app</a>
+  ·
+  <a href="packages/contracts/openapi.yaml">OpenAPI contract</a>
+  ·
+  <a href="#development">Development</a>
+</p>
+
 # Kiwi Lens
 
-## About
+Kiwi Lens is a navigation companion built specifically around driving in New Zealand. It combines turn-by-turn navigation with NZTA road intelligence, safety-camera awareness, parking discovery, commute monitoring and a compact driving UI designed to keep the information that matters visible without covering the map.
 
-Kiwi Lens is a New Zealand-focused navigation and road-safety project that combines route guidance with fixed safety-camera awareness. It uses Google Maps for places and traffic-aware routing, NZTA camera data for safety alerts, and a focused navigation UI designed to keep route instructions, ETA, speed, upcoming turns, and relevant camera warnings visible without covering the map.
+The project ships as both a **Flutter mobile app** and an installable **Vite PWA**, backed by a **Cloudflare Worker**. Mobile supports both **Google Maps** and **Mapbox** as map/search/routing providers while keeping provider data boundaries explicit.
 
-The project is built as a reusable full-stack monorepo: a Vite PWA and Cloudflare Worker power the web experience, shared core packages handle route/camera matching, and a Flutter mobile client provides a path toward native background navigation on Android and iOS.
+## What Kiwi Lens does
 
-面向新西兰驾驶者的固定安全摄像头导航。第一期为可安装的 PWA，由 Cloudflare Worker 在同一域名提供网页和 API；后续 Flutter Android/iOS 客户端可复用 API 契约。
+| Area | Current experience |
+| --- | --- |
+| Navigation | Traffic-aware driving routes, rerouting, voice guidance, lane guidance, ETA, speed and compact navigation overlays |
+| Map providers | Google Maps and Mapbox on mobile, with provider-aware search, routing and content handling |
+| Journey Brief | One pre-trip summary for ETA, traffic/delay, matched cameras, parking context and route rationale |
+| Safety cameras | NZTA fixed-camera data, route matching, map visibility and high-confidence approach alerts |
+| Trips | Home / Work shortcuts, recent destinations, route history and stable commute monitoring |
+| Route Watch | Watches fixed **Home → Work** and **Work → Home** corridors against official NZTA road events |
+| Parking | Nearby parking discovery, Auckland Transport data where available, drive-to-parking and walking continuation |
+| Web / PWA | Search, routing, camera awareness and Cloudflare-hosted full-stack web experience |
+| Cost control | Provider usage telemetry and Cost Guard aggregation for Google, Mapbox and Geoapify usage |
 
-## Monorepo
+## Free navigation, paid intelligence
+
+Kiwi Lens deliberately does **not** put basic navigation behind a paywall.
+
+### Free
+
+- Maps and place search
+- Route planning and turn-by-turn navigation
+- Automatic NZTA safety-camera data updates
+- Camera display and navigation alerts
+- Journey Brief
+- Parking discovery and park-then-walk flow
+- Core Trips and destination history
+
+### Kiwi Lens Plus
+
+Plus is for proactive road intelligence and convenience rather than access to the map itself.
+
+- **Route Watch** — persistent Home → Work / Work → Home monitoring
+- **Manual NZTA camera sync** — check for the latest camera dataset immediately instead of waiting for the automatic refresh cycle
+
+Automatic camera refresh remains available to everyone.
+
+## Journey Brief
+
+Before starting a route, Kiwi Lens condenses the most useful decision information into one compact card:
+
+- expected arrival time
+- current traffic condition or traffic delay
+- route distance
+- matched safety-camera count
+- nearby / selected parking context
+- why the selected route is recommended
+
+Detailed traffic, route options and parking controls remain available underneath instead of competing for attention at the top of the sheet.
+
+## Route Watch
+
+Route Watch monitors a **stable commute**, not a route anchored to wherever the phone happened to be when monitoring was enabled.
+
+Once Home and Work are configured, Kiwi Lens can maintain two independent watches:
+
+- **Home → Work**
+- **Work → Home**
+
+When a watch is created or refreshed, Kiwi Lens stores a sampled route corridor, baseline ETA/distance and route provider. Route geometry expires after **29 days** so stale geometry is not monitored indefinitely.
+
+A Cloudflare cron evaluates active, non-expired watches every **15 minutes** against official NZTA Traffic and Travel road events. Background checks operate on the saved corridor and do not continuously upload the driver's live GPS position or repeatedly purchase fresh Google routes.
+
+Watch states are normalized to `healthy`, `advisory`, `warning`, `disrupted` and `unknown` when route geometry needs refreshing.
+
+Remote push delivery is a separate layer; the current implementation provides real server-side monitoring and in-app status without claiming APNs/FCM delivery that is not yet wired end-to-end.
+
+## NZTA camera intelligence
+
+Kiwi Lens maintains a validated snapshot of New Zealand fixed safety-camera data from the official NZTA source.
+
+The production Worker checks for camera updates every **6 hours** and writes validated snapshots to Workers KV. A new snapshot only replaces the current one when the source date and coordinates pass validation; otherwise Kiwi Lens keeps the last known-good dataset.
+
+During navigation, cameras are projected against the active route rather than treated as simple nearby points. The matcher also uses route geometry and road context to reduce false positives from adjacent roads.
+
+The source data does not include every enforcement-direction or lane attribute, so Kiwi Lens should be treated as supplementary driving information, not a substitute for road signs or traffic law.
+
+## Parking and arrival
+
+For supported New Zealand destinations, Kiwi Lens can surface parking near the destination before navigation starts.
+
+In Auckland, Auckland Transport Open GIS parking data is preferred where available. Published capacity is treated as **static capacity**, not live space availability.
+
+A parking-assisted journey can be handled as:
+
+1. drive to the selected parking location,
+2. finish the driving leg,
+3. continue with a walking route to the original destination.
+
+## Architecture
+
+```text
+┌──────────────────────────────┐
+│ Flutter mobile               │
+│ Google Maps / Mapbox         │
+│ navigation + road UI         │
+└──────────────┬───────────────┘
+               │ HTTPS
+               ▼
+┌──────────────────────────────┐
+│ Cloudflare Worker            │
+│ API + auth + orchestration   │
+├──────────────┬───────────────┤
+│ D1           │ Workers KV    │
+│ accounts     │ camera cache  │
+│ Route Watch  │ sync state    │
+│ usage data   │               │
+└──────┬───────┴───────┬───────┘
+       │               │
+       ▼               ▼
+    NZTA / AT     Google / Geoapify
+                  server-side APIs
+
+┌──────────────────────────────┐
+│ Vite PWA                     │
+│ served by the same Worker    │
+└──────────────────────────────┘
+```
+
+### Monorepo
 
 ```text
 apps/
-  web/       Vite PWA + Google Maps JavaScript / Places / Routes
-  server/    Cloudflare Worker：摄像头同步、账号、地址搜索与 lane enrichment API
-  mobile/    Flutter Android/iOS + Google Navigation SDK
+  mobile/      Flutter iOS / Android app
+  server/      Cloudflare Worker API and scheduled jobs
+  web/         Vite PWA
+
 packages/
-  core/      Web 路线投影、摄像头匹配与距离算法
-  contracts/ HTTP API 契约，供移动端复用
-scripts/     NZTA CSV 初始数据导入
+  core/        shared route / camera geometry logic
+  contracts/   HTTP API contract
+
+migrations/    Cloudflare D1 migrations
+scripts/       data import and mobile development helpers
 ```
 
-## 本地运行
+## Technology
 
-推荐在 WSL/Linux 文件系统运行，当前开发仓库位于 `~/work/kiwi-lens`。需要 Node.js 20+ 与 pnpm 12.6+；运行 `corepack enable`、`pnpm install` 和 `pnpm dev`，打开 `http://localhost:5173`。Vite 将 `/api` 代理到本地 Worker `http://localhost:8787`；Worker 也直接提供已打包的 PWA。首次使用请允许定位；没有 GPS 时可搜索起点和目的地。搜索与规划路线需要网络。
+- **Mobile:** Flutter / Dart
+- **Web:** Vite / TypeScript
+- **Backend:** Cloudflare Workers
+- **Database:** Cloudflare D1
+- **Cache / snapshots:** Workers KV
+- **Maps & navigation:** Google Maps Platform, Google Navigation SDK, Mapbox
+- **Road intelligence:** NZTA Traffic and Travel / fixed safety-camera source
+- **Parking:** Auckland Transport Open GIS where available
+- **Package management:** pnpm workspace
 
-### Flutter / Android 模拟器开发
+## Development
 
-Flutter 工程位于 `apps/mobile`。Node workspace 统一由 **pnpm** 管理；Dart/Flutter 依赖仍由 Flutter 官方的 `pub` 管理，但全部通过根目录 pnpm scripts 进入开发流程。
+### Requirements
+
+- Node.js 20+
+- pnpm 12.6+
+- Flutter SDK for mobile development
+- Xcode for iOS builds
+- Android SDK / Android Studio for Android builds
+- Cloudflare Wrangler for Worker development and deployment
+
+### Install
 
 ```bash
 corepack enable
 pnpm install
+```
+
+### Run the web app and Worker locally
+
+```bash
+pnpm db:migrate:local
+pnpm dev
+```
+
+The web app runs at `http://localhost:5173` and proxies `/api` to the local Worker.
+
+### Mobile
+
+```bash
 pnpm mobile:doctor
 pnpm mobile:dev
 ```
 
-`pnpm mobile:dev` 会依次执行 Flutter 环境检查、`flutter pub get`、查找已经运行的 Android device/emulator；如果当前没有 Android 设备，它会从 `flutter emulators --machine` 中选择模拟器启动，等待 Flutter 识别后自动执行 `flutter run -d <device>`。因此日常开发不需要再进入 `apps/mobile` 手工拼命令。
-
-其他常用命令：
+Useful mobile commands:
 
 ```bash
 pnpm mobile:devices
-pnpm mobile:emulators
 pnpm mobile:analyze
 pnpm mobile:test
 pnpm mobile:build:apk
+pnpm mobile:ios
+pnpm mobile:ios:install
+pnpm mobile:ios:ipa
 ```
 
-首次运行前仍需安装 Flutter SDK、Android SDK，并在 Android Studio Device Manager 至少创建一个 AVD。Google 地图/导航功能还需要在 `apps/mobile/android/local.properties` 配置 `MAPS_API_KEY`；没有有效 Key 时应用可以启动，但 Google 地图/导航能力不会正常工作。
+Provider keys/tokens for local mobile builds belong in local, uncommitted configuration. Do not commit API keys, Mapbox access tokens or unrestricted server credentials.
 
-Web/PWA 不再依赖任何 `VITE_GOOGLE_*` 构建变量。Google Maps 浏览器 Key 由 Cloudflare Worker 的 `GOOGLE_MAPS_BROWSER_API_KEY` runtime binding 通过同域 `/api/config` 提供；因此 GitHub Actions、本机部署和 Cloudflare 部署使用同一套运行时配置，不会再出现本机可用、CI 构建后 Key 丢失的问题。浏览器 API Key 最终仍会发送到客户端，这是 Google Maps JavaScript API 的正常工作方式，所以必须在 Google Cloud 中启用 **HTTP referrer** 限制，并只允许项目实际使用的 Maps JavaScript / Places / Routes 能力。
-
-当前生产 Worker/PWA 地址是 `https://kiwi-lens.nzs.workers.dev`。Google Maps 的 `RefererNotAllowedMapError` 不是 Worker CORS：请在 Google Cloud Console 的 **网页 API Key → Application restrictions → Websites** 添加 `https://kiwi-lens.nzs.workers.dev/*`（本地开发另加 `http://localhost:5173/*`），并启用 Maps JavaScript API、Places API、Routes API 与 Billing。不要取消 Key 限制。iOS Navigation SDK 使用独立的 iOS bundle ID 限制 Key。
-
-地址补全等公开 GET API 支持跨域读取；账号登录/资料仍要求与 Worker 同域，以维持 SameSite cookie 和 CSRF 保护。更换 Worker 域名后请从新地址安装 PWA，旧域名的 Service Worker 不会自动迁移。
-
-
-运行 `pnpm test` 执行算法、解析器和 Worker API 测试；`pnpm build` 构建 Web，`pnpm check:worker` 校验 Worker 打包。
-
-`apps/server/data/cameras.json` 已从用户提供的 NZTA CSV 导入 125 条记录，源更新时间为 2026-08-26。重新导入 CSV：
+## Testing
 
 ```bash
-pnpm data:import -- "path/to/NZTA_Fixed_Safety_Cameras.csv"
+pnpm test
+pnpm build:web
+pnpm check:worker
+pnpm mobile:analyze
+pnpm mobile:test
 ```
 
-## NZTA 数据更新
+The test suite covers route/camera matching, NZTA parsing and snapshot safety, Route Watch evaluation, Worker APIs, map-provider rules, navigation state, parking flows and Flutter UI behavior.
 
-Cloudflare Cron 每 6 小时检查 [NZTA 固定安全摄像头列表](https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations)，将验证后的快照写入 Workers KV。KV 为空时会立即提供已导入的 CSV 数据，并在首次读取时后台尝试同步。只有解析到官方更新时间、50–1000 条有效新西兰坐标，且日期不早于当前快照时，才会替换数据；否则保留原快照并记录错误。PWA 启动时及每 15 分钟重新拉取数据，也在设备上保留最近一次成功读取的缓存。
+## Cloudflare deployment
 
-NZTA 当前公开的是网页列表，不是摄像头变更推送，所以这不是秒级实时更新。在页面可访问的前提下，官方发布后通常在下一次 6 小时检查时同步；若页面被反爬验证拦截，会显示缓存状态。Workers KV 的跨地区传播也不是瞬时。若 NZTA 将来提供稳定数据 API，应将 `apps/server/src/sync.mjs` 改用该 API。
+Production uses a **full-stack Worker**: the Worker serves the PWA assets and handles `/api/*`.
 
-## Cloudflare 部署
-
-当前推荐生产架构是 **Cloudflare Workers full-stack SPA**：一次部署同时发布 `apps/web/dist` 静态资源和 `/api/*` Worker API。账号与会话使用 D1，摄像头缓存使用 Workers KV。
-
-首次部署：
+Typical deployment flow:
 
 ```bash
-corepack enable
 pnpm install
-pnpm exec wrangler login
-pnpm exec wrangler whoami
 pnpm db:migrate:remote
-pnpm exec wrangler secret put GOOGLE_MAPS_BROWSER_API_KEY
-pnpm exec wrangler secret put GOOGLE_ROUTES_API_KEY
 pnpm deploy
 ```
 
-`GOOGLE_MAPS_BROWSER_API_KEY` is the HTTP-referrer-restricted browser key returned by `/api/config` for Maps JavaScript/Places/Routes. `GOOGLE_ROUTES_API_KEY` stays server-side and is used by the Worker for multimodal route previews, live-traffic summaries, transit legs/transfers, and intermediate-stop planning. Do not reuse the unrestricted server key in the browser.
+Required runtime secrets and provider credentials should be configured through Cloudflare / local environment configuration rather than committed to the repository.
 
-本地开发首次使用账号功能前执行：
+Current production web endpoint:
 
-```bash
-pnpm db:migrate:local
-```
+**https://kiwi-lens.nzs.workers.dev**
 
-部署完成后测试：
+Scheduled jobs:
 
-```bash
-curl https://<your-worker>.workers.dev/api/health
-```
-
-应返回 `ok: true` 和摄像头数量。Cron 使用 UTC 时间，每 6 小时触发一次。可在 Cloudflare Dashboard → Workers & Pages → kiwi-lens 查看 Logs、Triggers、Bindings 和 D1 数据库。
-
-如果 Wrangler 没有自动创建 `CAMERA_DATA` KV，手动执行：
-
-```bash
-pnpm exec wrangler kv namespace create CAMERA_DATA
-```
-
-然后把返回的 namespace ID 填入 `wrangler.jsonc`。本地 `wrangler dev` 使用本地 KV/D1，与线上数据分离。
-
-### 终点附近停车
-
-PWA 的驾车路线预览会查询终点 1.5 km 内的停车点。奥克兰优先使用 Auckland Transport Open GIS 的 Car Parking 图层（`GET /api/parking?at=longitude,latitude`），显示已发布的地点、总车位、无障碍车位和限高；AT 无结果或暂时不可用时使用 Google Places Nearby Search。选择停车点后驾车导航到该点，抵达后可继续按步行路线到原目的地。距离标签为直线距离，停车费、开放时间和实时余位需在现场或官方渠道核实。AT 的 `AVAILABLESPACES` 字段未被当作实时空位使用。
-
-Flutter 路线预览同样支持选择终点附近停车场、驾车到停车点，并在结束驾车导航后继续规划步行路线。Flutter 直接读取 AT Car Parking 图层；在 Google 地图模式下，AT 无结果时使用现有附近地点服务补充停车点。Flutter 的“我的设置”、地图首页浮层和路线预览会跟随系统深色主题。
-
-## 导航能力与限制
-
-- 浏览器前台 Geolocation 实时跟随位置，使用 Screen Wake Lock 尽可能保持屏幕唤醒。
-- PWA 底图与可点击 POI 使用 Google Maps JavaScript API；点击 Google POI 会读取 Place ID、名称、地址并显示 Kiwi Lens 地点卡片，可直接设为导航目的地。
-- PWA 主路线使用 Google Maps JavaScript Routes library 的 traffic-aware driving route；Kiwi Lens 自己负责路线进度、转弯 HUD、ETA、实时车速、reroute 和语音。现有 Worker/OSRM 路线仅作为可选 lane enrichment：能匹配到同一转弯时补充推荐车道，没有可靠 lane 数据就不显示。
-- 地址文字搜索目前仍通过 Worker/Nominatim，并可选使用 Geoapify 实时补全；地图 POI 与路线已经由 Google 提供，后续可再将搜索统一切到 Google Places Autocomplete。
-- 摄像头沿 Google 路线投影，并结合道路名和路线中心线距离筛选。路线上的摄像头高亮；仅对高可信匹配自动语音提示 800 米和 300 米，持续更新距离。GPS 的 `coords.speed` 直接驱动 Kiwi Lens 时速 HUD。
-- NZTA CSV 没有车道或执法朝向字段。相邻道路误报可降低，但同一路面反方向摄像头不能可靠区分；驾驶者始终应以现场标志和法规为准。
-- PWA 进入后台或锁屏后，浏览器可能停止 GPS 与语音。持续后台导航需要 `apps/mobile` 的 Flutter 客户端配合 iOS/Android 原生后台定位能力。
-- Nominatim/Geoapify 与 OSRM 目前只承担搜索 fallback / lane enrichment；正式运营前仍需确认容量与服务条款。Google Maps Platform 需要启用计费并对 Web 与原生 API Key 分别做平台和 API 限制。
+- every **15 minutes** — Route Watch road-event evaluation
+- every **6 hours** — NZTA camera dataset refresh
 
 ## API
 
-本地 Worker 默认监听 `http://localhost:8787`，生产环境同域提供 PWA 与 API。字段见 [OpenAPI 契约](packages/contracts/openapi.yaml)。
+The shared API contract lives in [`packages/contracts/openapi.yaml`](packages/contracts/openapi.yaml).
 
-- `GET /api/config`：PWA 运行时 Google Maps 浏览器配置
-- `GET /api/health`：服务状态与摄像头数量
-- `GET /api/cameras`：完整摄像头数据、更新时间和同步状态
-- `GET /api/search?q=Auckland`：新西兰地址搜索
-- `GET /api/route?from=174.76,-36.85&to=174.78,-36.90`：驾车路线几何线及逐向步骤
+Key endpoints include:
 
-## 隐私
+- `GET /api/health`
+- `GET /api/cameras`
+- `GET /api/search`
+- `GET /api/parking`
+- `GET /api/route`
+- `GET /api/route-watches`
+- `POST /api/route-watches`
+- `DELETE /api/route-watches/:id`
 
-GPS 在设备浏览器中用于导航与匹配提醒。路线起终点会发给本项目 Worker 和路线服务；搜索文字会发给地址服务。Worker 不记录用户位置历史。浏览器仅缓存摄像头数据和语言/语音偏好。
+Authenticated account, Plus and administrative endpoints are intentionally kept server-side rather than documented as public client contracts.
 
-## Cost Guard and Kiwi Lens Plus
+## Cost Guard
 
-Kiwi Lens deliberately keeps the core map, place search and turn-by-turn navigation outside the paid tier. The planned **Kiwi Lens Plus** tier is for proactive New Zealand road intelligence such as Route Watch, disruption alerts, weather-risk context and richer camera intelligence. The initial product target shown in the mobile UI is **NZ$39.99/year or NZ$4.99/month**; it is currently presented as coming soon and does not lock any existing feature.
+Kiwi Lens records aggregate provider usage so product growth can be evaluated against real API cost instead of estimates.
 
-`migrations/0005_cost_guard.sql` adds daily API-usage aggregation so growth can be evaluated against real provider consumption before paid entitlements are enforced. Cost Guard currently records:
+Current tracking includes:
 
-- Google Routes compute requests
-- Google Places text / nearby search, place details and place photos
-- Google Navigation destination units reported by the mobile app after a route is accepted
-- Mapbox navigation trips reported by the mobile app
-- Geoapify autocomplete calls
+- Google Routes
+- Google Places search/details/photos
+- Google Navigation destination units
+- Mapbox navigation trips
+- Geoapify autocomplete
 
-Usage telemetry is best-effort: a failed write must never block search, route planning or active navigation. The server keeps counts and billable-style units rather than hard-coding provider prices, because provider pricing and free tiers change independently of the app release.
+Usage tracking is best-effort and must never interrupt search or active navigation.
 
-After applying D1 migrations, an authenticated admin can query `GET /api/admin/costs?days=31`. Access is restricted to emails listed in the Worker `ADMIN_EMAILS` binding (comma-separated); do not commit personal admin addresses to the repository. The response exposes daily provider/SKU rows plus aggregate calls and units, which can be combined with the current Google/Mapbox/Geoapify price sheet when reviewing unit economics.
+## Provider boundaries
 
-### Route Watch
+Kiwi Lens keeps provider-specific content rules explicit.
 
-Route Watch is the first Plus-preview road-intelligence feature. It watches a **stable commute**, not whatever route happens to start at the phone's current GPS position. Once both Home and Work are configured, Trips exposes two independent watches: **Home → Work** and **Work → Home**.
+For example, changing the map renderer does not automatically relabel Google content as Mapbox content, and Mapbox-sourced content is not persisted where the current storage licence does not permit it.
 
-Enabling or refreshing a watch requests the current driving route once, stores its sampled corridor plus baseline ETA/distance in D1, and records the route provider. `migrations/0006_route_watch.sql` creates watch state; `migrations/0007_route_watch_route_identity.sql` adds origin identity, provider and route-geometry expiry. Cached route geometry expires after **29 days** and the UI changes to **Refresh / 需刷新** instead of monitoring indefinitely with stale geometry.
+This separation is intentional: map switching is a UI choice, not a licence bypass.
 
-A Worker cron evaluates enabled, non-expired routes every 15 minutes against official NZTA Traffic and Travel road events. It does not repeatedly call Google Routes during those background checks. Matching uses a 180 m corridor and records `healthy`, `advisory`, `warning`, or `disrupted` plus the highest-priority matching events. Opening Trips also refreshes the road-event evaluation immediately.
+## Privacy
 
-This release intentionally does not claim background push delivery: the server-side monitoring loop is real, but APNs/FCM device-token registration and remote notification delivery remain a separate layer. Core navigation stays free and Route Watch remains a Plus preview until StoreKit entitlement handling is introduced.
+Kiwi Lens uses location on the device for navigation, route progress and road-intelligence matching.
 
-Route Watch stores at most 220 sampled route points from mobile (validated to at most 250 server-side). It does not continuously upload the driver's live GPS position; background checks operate on the saved Home/Work corridor rather than the user's current location.
+- live GPS is not continuously stored by Route Watch
+- Route Watch background checks use the saved route corridor
+- route/search requests are sent only to the services required to perform those operations
+- account data and Route Watch state are stored in D1
+- validated camera snapshots are stored in Workers KV
+- API keys and privileged provider credentials must not be committed to the repository
 
-Route Watch API:
+## Current limitations
 
-- `GET /api/route-watches`: evaluate and return the signed-in user's watches
-- `POST /api/route-watches`: create or refresh a fixed route watch and its expiring route geometry
-- `DELETE /api/route-watches/:id`: stop watching a route
+- Browser/PWA background navigation is constrained by mobile browser GPS and audio lifecycle rules; the Flutter app is the primary path for sustained native navigation.
+- NZTA camera data does not expose every enforcement direction or lane attribute.
+- Parking capacity is not equivalent to live availability unless an upstream source explicitly provides live data.
+- Route Watch currently provides server-side monitoring and in-app state; remote push delivery is a separate feature.
+- Third-party APIs remain subject to their own quotas, licences, availability and billing.
+
+---
+
+<p align="center">
+  <img src="apps/web/public/brand/kiwi-lens-icon.png" width="88" alt="Kiwi Lens icon" />
+  <br />
+  <strong>Kiwi Lens</strong><br />
+  A clearer journey through New Zealand.
+</p>

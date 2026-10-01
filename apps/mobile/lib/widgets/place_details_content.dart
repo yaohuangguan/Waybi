@@ -6,7 +6,7 @@ import '../domain/coordinate_formatter.dart';
 import '../domain/map_provider.dart';
 import '../theme/kiwi_lens_theme.dart';
 
-class PlaceDetailsContent extends StatelessWidget {
+class PlaceDetailsContent extends StatefulWidget {
   const PlaceDetailsContent({
     super.key,
     required this.selectedPlace,
@@ -19,6 +19,7 @@ class PlaceDetailsContent extends StatelessWidget {
     required this.onNavigate,
     required this.onFavorite,
     required this.onReview,
+    this.language = 'en',
   });
 
   final PlaceSummary selectedPlace;
@@ -31,12 +32,88 @@ class PlaceDetailsContent extends StatelessWidget {
   final VoidCallback onNavigate;
   final VoidCallback onFavorite;
   final VoidCallback onReview;
+  final String language;
+
+  @override
+  State<PlaceDetailsContent> createState() => _PlaceDetailsContentState();
+}
+
+class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
+  bool _expanded = false;
+  double _dragDelta = 0;
+
+  String _text(String en, String zh) => widget.language == 'zh' ? zh : en;
+
+  bool _samePlace(PlaceSummary a, PlaceSummary b) {
+    final aRef = a.reference;
+    final bRef = b.reference;
+    if (aRef != null && bRef != null) {
+      return aRef.provider == bRef.provider && aRef.id == bRef.id;
+    }
+    return a.name == b.name && a.location == b.location;
+  }
+
+  @override
+  void didUpdateWidget(covariant PlaceDetailsContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_samePlace(oldWidget.selectedPlace, widget.selectedPlace)) {
+      _expanded = false;
+      _dragDelta = 0;
+    }
+  }
+
+  void _toggleExpanded() => setState(() => _expanded = !_expanded);
+
+  void _settleDrag(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final movement = _dragDelta.abs() >= 18 ? _dragDelta : velocity / 12;
+    _dragDelta = 0;
+    if (movement.abs() < 18) return;
+    setState(() => _expanded = movement < 0);
+  }
+
+  Widget _compactThumbnail(
+    ColorScheme scheme,
+    String title,
+    PlaceDetails? place,
+  ) {
+    final photo = place?.photos.isNotEmpty == true ? place!.photos.first : null;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: SizedBox(
+        width: 70,
+        height: 70,
+        child: photo == null
+            ? ColoredBox(
+                color: scheme.primaryContainer,
+                child: Icon(
+                  Icons.place_rounded,
+                  color: scheme.primary,
+                  size: 30,
+                ),
+              )
+            : Image.network(
+                photo.url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => ColoredBox(
+                  color: scheme.primaryContainer,
+                  child: Icon(
+                    Icons.place_rounded,
+                    color: scheme.primary,
+                    size: 30,
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final place = details;
+    final selectedPlace = widget.selectedPlace;
+    final place = widget.details;
     final address = place?.address.isNotEmpty == true
         ? place!.address
         : selectedPlace.address.isNotEmpty
@@ -52,242 +129,310 @@ class PlaceDetailsContent extends StatelessWidget {
                 : selectedPlace.category)
             .replaceAll('_', ' ')
             .trim();
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final maxHeight = _expanded
+        ? (screenHeight * .72).clamp(430.0, 660.0)
+        : (screenHeight * .36).clamp(245.0, 310.0);
 
-    return Material(
-      color: scheme.surface,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(28),
-        side: BorderSide(color: theme.dividerColor),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: (MediaQuery.sizeOf(context).height * .66).clamp(
-            430.0,
-            620.0,
-          ),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.bottomCenter,
+      child: Material(
+        color: scheme.surface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(28),
+          side: BorderSide(color: theme.dividerColor),
         ),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (place?.photos.isNotEmpty == true)
-                _PhotoStrip(photos: place!.photos)
-              else
-                _PhotoFallback(title: title),
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  margin: const EdgeInsets.only(top: 8),
-                  decoration: BoxDecoration(
-                    color: theme.dividerColor,
-                    borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: SingleChildScrollView(
+            physics: _expanded
+                ? const BouncingScrollPhysics()
+                : const NeverScrollableScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  key: const Key('placeDeckHandle'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _toggleExpanded,
+                  onVerticalDragStart: (_) => _dragDelta = 0,
+                  onVerticalDragUpdate: (details) =>
+                      _dragDelta += details.delta.dy,
+                  onVerticalDragEnd: _settleDrag,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Center(
+                      child: Container(
+                        width: 42,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: theme.dividerColor,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 8, 2),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              height: 1.05,
-                              fontWeight: FontWeight.w700,
+                if (_expanded && place?.photos.isNotEmpty == true)
+                  _PhotoStrip(photos: place!.photos)
+                else if (_expanded)
+                  _PhotoFallback(title: title),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(16, _expanded ? 10 : 2, 8, 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!_expanded) ...[
+                        _compactThumbnail(scheme, title, place),
+                        const SizedBox(width: 12),
+                      ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: _expanded ? 2 : 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: _expanded ? 22 : 18,
+                                height: 1.05,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                          if (type.isNotEmpty) ...[
+                            if (type.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                type,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: scheme.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 4),
                             Text(
-                              type,
+                              address,
+                              maxLines: _expanded ? 2 : 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: scheme.primary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 4),
-                          Text(
-                            address,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: scheme.onSurfaceVariant,
-                              fontSize: 12,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onClose,
-                      icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Close',
-                    ),
-                  ],
-                ),
-              ),
-              if (place?.rating != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.star_rounded,
-                            color: KiwiLensColors.warning,
-                            size: 17,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            place!.rating!.toStringAsFixed(1),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const SizedBox(width: 5),
-                          Text(
-                            '${place.userRatingCount ?? 0} ratings',
-                            style: TextStyle(
-                              color: scheme.onSurfaceVariant,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (place.businessStatus != null)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 4,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: scheme.outline,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              place.businessStatus == 'OPERATIONAL'
-                                  ? 'Open / operational'
-                                  : place.businessStatus!.replaceAll('_', ' '),
-                              style: TextStyle(
-                                color: place.businessStatus == 'OPERATIONAL'
-                                    ? KiwiLensColors.success
-                                    : scheme.onSurfaceVariant,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 12,
+                                height: 1.3,
                               ),
                             ),
                           ],
                         ),
+                      ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        onPressed: widget.onClose,
+                        icon: const Icon(Icons.close_rounded),
+                        tooltip: _text('Close', '关闭'),
+                      ),
                     ],
                   ),
                 ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _PlaceAction(
-                        icon: Icons.directions_car_filled_rounded,
-                        label: routeBusy ? 'Routing' : 'Drive',
-                        selected: true,
-                        busy: routeBusy,
-                        onTap: routeBusy ? null : onNavigate,
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: _PlaceAction(
-                        icon: isFavorite
-                            ? Icons.favorite_rounded
-                            : Icons.favorite_border_rounded,
-                        label: 'Save',
-                        selected: false,
-                        onTap: onFavorite,
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: _PlaceAction(
-                        icon: Icons.ios_share_rounded,
-                        label: 'Share',
-                        selected: false,
-                        onTap: () async {
-                          await Clipboard.setData(
-                            ClipboardData(
-                              text:
-                                  '${selectedPlace.name}\n$address\n'
-                                  '${selectedPlace.location.latitude},'
-                                  '${selectedPlace.location.longitude}',
+                if (place?.rating != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 2),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              color: KiwiLensColors.warning,
+                              size: 17,
                             ),
-                          );
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Place copied to clipboard'),
+                            const SizedBox(width: 4),
+                            Text(
+                              place!.rating!.toStringAsFixed(1),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
                               ),
-                            );
-                          }
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    Expanded(
-                      child: _PlaceAction(
-                        icon: Icons.more_horiz_rounded,
-                        label: 'More',
-                        selected: false,
-                        onTap: onReview,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (detailsLoading)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: LinearProgressIndicator(minHeight: 2),
-                ),
-              if (detailsError != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
-                  child: Text(
-                    detailsError!,
-                    style: TextStyle(
-                      color: scheme.error,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              _text(
+                                '${place.userRatingCount ?? 0} ratings',
+                                '${place.userRatingCount ?? 0} 条评价',
+                              ),
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (place.businessStatus != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 4,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: scheme.outline,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                place.businessStatus == 'OPERATIONAL'
+                                    ? _text('Open / operational', '营业中')
+                                    : place.businessStatus!.replaceAll(
+                                        '_',
+                                        ' ',
+                                      ),
+                                style: TextStyle(
+                                  color: place.businessStatus == 'OPERATIONAL'
+                                      ? KiwiLensColors.success
+                                      : scheme.onSurfaceVariant,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
                     ),
                   ),
-                ),
-              if (place != null)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 18),
-                  child: _DetailsBody(place: place),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _PlaceAction(
+                          icon: Icons.directions_car_filled_rounded,
+                          label: widget.routeBusy
+                              ? _text('Routing', '规划中')
+                              : _text('Drive', '导航'),
+                          selected: true,
+                          busy: widget.routeBusy,
+                          onTap: widget.routeBusy ? null : widget.onNavigate,
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: _PlaceAction(
+                          icon: widget.isFavorite
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          label: widget.isFavorite
+                              ? _text('Saved', '已收藏')
+                              : _text('Save', '收藏'),
+                          selected: false,
+                          onTap: widget.onFavorite,
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: _PlaceAction(
+                          icon: Icons.ios_share_rounded,
+                          label: _text('Share', '分享'),
+                          selected: false,
+                          onTap: () async {
+                            await Clipboard.setData(
+                              ClipboardData(
+                                text:
+                                    '${selectedPlace.name}\n$address\n'
+                                    '${selectedPlace.location.latitude},'
+                                    '${selectedPlace.location.longitude}',
+                              ),
+                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    _text(
+                                      'Place copied to clipboard',
+                                      '地点信息已复制',
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: _PlaceAction(
+                          icon: Icons.more_horiz_rounded,
+                          label: _text('More', '更多'),
+                          selected: false,
+                          onTap: widget.onReview,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-            ],
+                if (widget.detailsLoading)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
+                if (widget.detailsError != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+                    child: Text(
+                      widget.detailsError!,
+                      style: TextStyle(
+                        color: scheme.error,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                if (!_expanded && place != null)
+                  InkWell(
+                    onTap: _toggleExpanded,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.keyboard_arrow_up_rounded,
+                            size: 17,
+                            color: scheme.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _text('Swipe up for details', '上拉查看更多'),
+                            style: TextStyle(
+                              color: scheme.primary,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (_expanded && place != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 18),
+                    child: _DetailsBody(
+                      place: place,
+                      language: widget.language,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -453,8 +598,11 @@ class _PhotoFallback extends StatelessWidget {
 }
 
 class _DetailsBody extends StatelessWidget {
-  const _DetailsBody({required this.place});
+  const _DetailsBody({required this.place, required this.language});
   final PlaceDetails place;
+  final String language;
+
+  String _text(String en, String zh) => language == 'zh' ? zh : en;
 
   @override
   Widget build(BuildContext context) {
@@ -513,9 +661,9 @@ class _DetailsBody extends StatelessWidget {
             dense: true,
             shape: const Border(),
             collapsedShape: const Border(),
-            title: const Text(
-              'Opening hours',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            title: Text(
+              _text('Opening hours', '营业时间'),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             children: [
               for (final line in place.openingHours)
@@ -539,13 +687,19 @@ class _DetailsBody extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              const Text(
-                'Google reviews',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+              Text(
+                _text('Google reviews', 'Google 评价'),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const Spacer(),
               Text(
-                '${place.reviews.length} shown',
+                _text(
+                  '${place.reviews.length} shown',
+                  '显示 ${place.reviews.length} 条',
+                ),
                 style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10),
               ),
             ],

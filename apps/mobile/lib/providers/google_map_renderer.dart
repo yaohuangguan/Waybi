@@ -6,6 +6,35 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import '../domain/map_provider.dart';
 import 'provider_contracts.dart';
 
+/// Arbitrates Google Maps POI taps against the generic map-tap callback.
+///
+/// On iOS the native SDK can emit both callbacks for one physical POI tap.
+/// Delaying the destructive blank-map action lets a POI callback win without
+/// making ordinary blank taps feel sluggish.
+class MapTapArbiter {
+  MapTapArbiter({this.poiProtection = const Duration(milliseconds: 350)});
+
+  final Duration poiProtection;
+  int _revision = 0;
+  DateTime? _lastPlaceTapAt;
+
+  int markBlankCandidate() => ++_revision;
+
+  void markPlaceTap(DateTime at) {
+    _lastPlaceTapAt = at;
+    ++_revision;
+  }
+
+  bool shouldCommitBlank(int revision, DateTime now) {
+    if (revision != _revision) return false;
+    final lastPlaceTapAt = _lastPlaceTapAt;
+    return lastPlaceTapAt == null ||
+        now.difference(lastPlaceTapAt) >= poiProtection;
+  }
+
+  void invalidate() => ++_revision;
+}
+
 /// Google browse-map adapter. The controller callback remains an intentional
 /// bridge for the existing Google Navigation SDK overlays during migration.
 class GoogleMapRenderer extends StatefulWidget {
@@ -41,6 +70,7 @@ class _GoogleMapRendererState extends State<GoogleMapRenderer>
   GoogleMapViewController? _controller;
   late MapViewportState _viewport = widget.initialViewport;
   bool _userPanning = false;
+  final MapTapArbiter _tapArbiter = MapTapArbiter();
 
   @override
   MapProvider get provider => MapProvider.google;
@@ -70,6 +100,22 @@ class _GoogleMapRendererState extends State<GoogleMapRenderer>
     _controller = controller;
     widget.onReady(this);
     await widget.onControllerCreated(controller);
+  }
+
+  void _handlePlaceTap(PlaceSummary place) {
+    _tapArbiter.markPlaceTap(DateTime.now());
+    widget.onMapPlace(place);
+  }
+
+  void _handleBlankTap() {
+    final revision = _tapArbiter.markBlankCandidate();
+    Future<void>.delayed(const Duration(milliseconds: 140), () {
+      if (!mounted ||
+          !_tapArbiter.shouldCommitBlank(revision, DateTime.now())) {
+        return;
+      }
+      widget.onBlankTap();
+    });
   }
 
   void _cameraMoved(CameraPosition camera) {
@@ -106,7 +152,7 @@ class _GoogleMapRendererState extends State<GoogleMapRenderer>
         widget.onUserPan();
       }
     },
-    onPoiClicked: (poi) => widget.onMapPlace(
+    onPoiClicked: (poi) => _handlePlaceTap(
       PlaceSummary(
         name: poi.name,
         location: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
@@ -116,8 +162,8 @@ class _GoogleMapRendererState extends State<GoogleMapRenderer>
       ),
     ),
     onMarkerClicked: widget.onExploreMarker,
-    onMapClicked: (_) => widget.onBlankTap(),
-    onMapLongClicked: (point) => widget.onMapPlace(
+    onMapClicked: (_) => _handleBlankTap(),
+    onMapLongClicked: (point) => _handlePlaceTap(
       PlaceSummary(
         name:
             '${point.latitude.toStringAsFixed(5)}, '
@@ -127,4 +173,10 @@ class _GoogleMapRendererState extends State<GoogleMapRenderer>
       ),
     ),
   );
+
+  @override
+  void dispose() {
+    _tapArbiter.invalidate();
+    super.dispose();
+  }
 }

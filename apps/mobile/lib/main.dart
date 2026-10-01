@@ -5115,6 +5115,7 @@ class _MapHomePageState extends State<MapHomePage> {
                     isFavorite: _isFavorite(_selectedPoi!),
                     onFavorite: () => unawaited(_toggleFavorite(_selectedPoi!)),
                     onReview: () => unawaited(_reviewPlace(_selectedPoi!)),
+                    language: _appLanguage,
                   ),
                 ),
               ),
@@ -5226,6 +5227,7 @@ class _PlaceCard extends StatelessWidget {
     required this.isFavorite,
     required this.onFavorite,
     required this.onReview,
+    required this.language,
   });
 
   final PlaceSummary selectedPlace;
@@ -5238,6 +5240,7 @@ class _PlaceCard extends StatelessWidget {
   final bool isFavorite;
   final VoidCallback onFavorite;
   final VoidCallback onReview;
+  final String language;
 
   @override
   Widget build(BuildContext context) {
@@ -5252,6 +5255,7 @@ class _PlaceCard extends StatelessWidget {
       onNavigate: onNavigate,
       onFavorite: onFavorite,
       onReview: onReview,
+      language: language,
     );
   }
 }

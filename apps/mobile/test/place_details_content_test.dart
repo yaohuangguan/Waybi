@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kiwi_lens_mobile/data/place_details_repository.dart';
 import 'package:kiwi_lens_mobile/domain/map_provider.dart';
+import 'package:kiwi_lens_mobile/domain/route_option.dart';
 import 'package:kiwi_lens_mobile/widgets/place_details_content.dart';
 
 void main() {
@@ -20,6 +21,18 @@ void main() {
       location: GeoPoint(-36.8514, 174.7663),
       address: 'Wellesley Street East',
       category: 'art gallery',
+    );
+    const quickRoute = RouteOption(
+      id: 'drive-fast',
+      mode: KiwiTravelMode.drive,
+      durationSeconds: 720,
+      staticDurationSeconds: 480,
+      trafficDelaySeconds: 240,
+      distanceMeters: 8400,
+      points: [GeoPoint(-36.8514, 174.7663), GeoPoint(-36.86, 174.78)],
+      provider: 'google',
+      traffic: TrafficSummary(normal: 10, slow: 3, trafficJam: 0),
+      trafficIntervals: [],
     );
     const details = PlaceDetails(
       placeId: 'gallery',
@@ -61,6 +74,7 @@ void main() {
               detailsLoading: false,
               detailsError: null,
               routeBusy: false,
+              quickRoute: quickRoute,
               isFavorite: false,
               onClose: () {},
               onNavigate: () {},
@@ -78,6 +92,9 @@ void main() {
     expect(find.text('收藏'), findsOneWidget);
     expect(find.text('分享'), findsOneWidget);
     expect(find.text('更多'), findsOneWidget);
+    expect(find.text('12 分钟'), findsOneWidget);
+    expect(find.text('· 8.4 公里'), findsOneWidget);
+    expect(find.text('拥堵 +4 分钟'), findsOneWidget);
     expect(find.text('上拉查看更多'), findsOneWidget);
     expect(find.text('营业时间'), findsNothing);
 

@@ -71,6 +71,7 @@ class NavigationOverlay extends StatefulWidget {
     this.following = true,
     this.overviewMode = false,
     required this.northUp,
+    this.perspectiveTilted = false,
     required this.onCompassToggle,
     required this.onReport,
     required this.onSearchAlongRoute,
@@ -99,6 +100,7 @@ class NavigationOverlay extends StatefulWidget {
   final bool following;
   final bool overviewMode;
   final bool northUp;
+  final bool perspectiveTilted;
   final VoidCallback onCompassToggle;
   final VoidCallback onReport;
   final VoidCallback onSearchAlongRoute;
@@ -556,6 +558,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             following: widget.following,
                             overviewMode: widget.overviewMode,
                             northUp: widget.northUp,
+                            perspectiveTilted: widget.perspectiveTilted,
                             onCompassToggle: widget.onCompassToggle,
                             onRecenter: widget.onRecenter,
                             onLayers: widget.onLayers,
@@ -958,6 +961,7 @@ class _NavigationControlRail extends StatelessWidget {
     required this.following,
     required this.overviewMode,
     required this.northUp,
+    required this.perspectiveTilted,
     required this.onCompassToggle,
     required this.onRecenter,
     required this.onLayers,
@@ -967,6 +971,7 @@ class _NavigationControlRail extends StatelessWidget {
   final bool following;
   final bool overviewMode;
   final bool northUp;
+  final bool perspectiveTilted;
   final String language;
   String _text(String en, String zh) => language == 'zh' ? zh : en;
   final VoidCallback onCompassToggle;
@@ -985,10 +990,22 @@ class _NavigationControlRail extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _RailButton(
-            icon: northUp ? Icons.explore_rounded : Icons.navigation_rounded,
+            icon: northUp
+                ? Icons.explore_rounded
+                : perspectiveTilted
+                ? Icons.threed_rotation
+                : Icons.navigation_rounded,
             tooltip: northUp
-                ? _text('North up · tap for follow view', '北向朝上 · 点击跟随')
-                : _text('Follow view · tap for north up', '跟随视角 · 点击北向朝上'),
+                ? _text('North up · tap for heading-up', '北向俯视 · 点击车头朝上')
+                : perspectiveTilted
+                ? _text(
+                    'Perspective follow · tap for north up',
+                    '透视跟车 · 点击北向俯视',
+                  )
+                : _text(
+                    'Heading-up flat · tap for perspective',
+                    '车头朝上俯视 · 点击透视跟车',
+                  ),
             onTap: onCompassToggle,
           ),
           const _RailDivider(),

@@ -8,6 +8,7 @@ import '../domain/map_layer_settings.dart';
 import '../domain/map_provider.dart';
 import '../domain/safety_camera.dart';
 import '../domain/road_event.dart';
+import 'destination_marker_art.dart';
 import 'location_marker_art.dart';
 import 'provider_contracts.dart';
 
@@ -70,6 +71,7 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
   mb.CircleAnnotationManager? _selectedManager;
   mb.CircleAnnotationManager? _exploreManager;
   mb.CircleAnnotationManager? _roadEventManager;
+  mb.PointAnnotationManager? _destinationManager;
   final Map<String, RoadEvent> _roadEventAnnotations = {};
   final Map<String, PlaceSummary> _exploreAnnotations = {};
   mb.PolylineAnnotationManager? _routeManager;
@@ -210,6 +212,7 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
     _selectedManager = await map.annotations.createCircleAnnotationManager();
     _exploreManager = await map.annotations.createCircleAnnotationManager();
     _roadEventManager = await map.annotations.createCircleAnnotationManager();
+    _destinationManager = await map.annotations.createPointAnnotationManager();
     _roadEventManager!.tapEvents(
       onTap: (annotation) {
         final event = _roadEventAnnotations[annotation.id];
@@ -273,11 +276,13 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
     final routes = _routeManager;
     final explore = _exploreManager;
     final roadEvents = _roadEventManager;
+    final destination = _destinationManager;
     if (cameras == null ||
         selected == null ||
         routes == null ||
         explore == null ||
-        roadEvents == null) {
+        roadEvents == null ||
+        destination == null) {
       return;
     }
     final cameraItems = widget.cameras;
@@ -355,8 +360,10 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
     }
     if (!mounted || version != _syncVersion) return;
 
-    if (!listEquals(_renderedRoute, routeItems)) {
+    final routeChanged = !listEquals(_renderedRoute, routeItems);
+    if (routeChanged) {
       await routes.deleteAll();
+      await destination.deleteAll();
       if (routeItems.length >= 2) {
         await routes.create(
           mb.PolylineAnnotationOptions(
@@ -370,14 +377,25 @@ class _MapboxMapRendererState extends State<MapboxMapRenderer>
             lineOpacity: 0.9,
           ),
         );
+        final finishFlag = await DestinationMarkerArt.png();
+        if (!mounted || version != _syncVersion) return;
+        await destination.create(
+          mb.PointAnnotationOptions(
+            geometry: _point(routeItems.last),
+            image: finishFlag,
+            iconAnchor: mb.IconAnchor.BOTTOM,
+            iconSize: 0.58,
+            symbolSortKey: 100,
+          ),
+        );
       }
       if (!mounted || version != _syncVersion) return;
       _renderedRoute = List.of(routeItems);
     }
-    if (_renderedPlace != selectedPlace) {
+    if (_renderedPlace != selectedPlace || routeChanged) {
       await selected.deleteAll();
       final place = selectedPlace;
-      if (place != null) {
+      if (place != null && routeItems.isEmpty) {
         await selected.create(
           mb.CircleAnnotationOptions(
             geometry: _point(place.location),

@@ -509,13 +509,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.12.0"
-  kiwi_map:
+  kiwi_lens_map:
     dependency: "direct main"
     description:
-      path: "../../packages/kiwi_map"
+      path: "../../packages/kiwi_lens_map"
       relative: true
     source: path
-    version: "0.1.0"
+    version: "0.2.0"
   leak_tracker:
     dependency: transitive
     description:

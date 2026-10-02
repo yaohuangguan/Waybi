@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
 import 'data/account_repository.dart';
+import 'data/app_store_billing.dart';
 import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
 import 'data/parking_repository.dart';
@@ -291,6 +292,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final DriveEngine _driveEngine = DriveEngine();
   late final MapboxNavigationEngine _mapboxNavigation;
   final AccountRepository _account = AccountRepository();
+  late final _plusBilling = AppStoreBillingGateway(_account);
   final PlaceDetailsRepository _placeDetailsRepository =
       PlaceDetailsRepository();
   final RouteRepository _routeRepository = RouteRepository();
@@ -469,6 +471,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     initializeMapboxMaps(_mapboxToken);
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
+    _plusBilling.initialize();
     unawaited(_account.restore());
     unawaited(_driveEngine.loadCameras());
     unawaited(_restoreMapSettings().then((_) => _maybeShowCoreOnboarding()));
@@ -1352,6 +1355,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _mapCompatibleSearch.dispose();
     _mapboxSearch.dispose();
     _mapboxRoutes.dispose();
+    _plusBilling.dispose();
     _account.dispose();
     _usageTelemetry.dispose();
     _placeDetailsRepository.dispose();
@@ -2355,6 +2359,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       MaterialPageRoute<void>(
         builder: (_) => ProfilePage(
           account: _account,
+          plusBilling: _plusBilling,
           voiceEnabled: _voiceEnabled,
           lanesEnabled: _lanesEnabled,
           keepScreenAwake: _keepScreenAwake,

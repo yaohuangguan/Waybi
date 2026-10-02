@@ -17,6 +17,9 @@ class AccountProfile {
     required this.reviews,
     required this.recentDestinations,
     required this.plan,
+    this.id = '',
+    this.subscriptionSource,
+    this.subscriptionExpiresAt,
   });
 
   final String email;
@@ -27,6 +30,9 @@ class AccountProfile {
   final List<Map<String, dynamic>> reviews;
   final List<Map<String, dynamic>> recentDestinations;
   final String plan;
+  final String id;
+  final String? subscriptionSource;
+  final DateTime? subscriptionExpiresAt;
 
   bool get isPlus => plan == 'plus';
 
@@ -50,6 +56,17 @@ class AccountProfile {
       places: list('savedPlaces'),
       reviews: list('reviews'),
       recentDestinations: list('recentDestinations'),
+      id: (json['user'] as Map<String, dynamic>?)?['id'] as String? ?? '',
+      subscriptionSource:
+          (json['subscription'] as Map<String, dynamic>?)?['source'] as String?,
+      subscriptionExpiresAt:
+          (json['subscription'] as Map<String, dynamic>?)?['expiresAt'] is num
+          ? DateTime.fromMillisecondsSinceEpoch(
+              ((json['subscription'] as Map<String, dynamic>)['expiresAt']
+                      as num)
+                  .toInt(),
+            )
+          : null,
       plan:
           (json['subscription'] as Map<String, dynamic>?)?['plan'] as String? ??
           'free',
@@ -277,6 +294,19 @@ class AccountRepository extends ChangeNotifier {
     await _storage.delete(key: _storageKey);
     notifyListeners();
   }
+
+  Future<Map<String, dynamic>> appleBillingConfig() async =>
+      _body(await _request('/api/billing/apple/config'));
+
+  Future<Map<String, dynamic>> verifyApplePurchase(
+    String transactionId,
+  ) async => _body(
+    await _request(
+      '/api/billing/apple/verify',
+      method: 'POST',
+      body: {'transactionId': transactionId},
+    ),
+  );
 
   Future<void> refresh() async {
     if (_session == null) return;

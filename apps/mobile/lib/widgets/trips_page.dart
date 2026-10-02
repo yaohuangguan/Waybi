@@ -159,6 +159,9 @@ class _TripsPageState extends State<TripsPage> {
   TripsSnapshot? _snapshot;
   bool _loading = true;
   String? _error;
+  final _historySearch = TextEditingController();
+  String _historyMode = 'all';
+  String _historyQuery = '';
   final Set<String> _routeWatchBusy = <String>{};
 
   bool get _isChinese => widget.language == 'zh';
@@ -168,6 +171,12 @@ class _TripsPageState extends State<TripsPage> {
   void initState() {
     super.initState();
     _refresh();
+  }
+
+  @override
+  void dispose() {
+    _historySearch.dispose();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -866,11 +875,148 @@ class _TripsPageState extends State<TripsPage> {
     );
   }
 
+  Widget _commuteSetup(TripsSnapshot snapshot) {
+    final saved = [
+      'Home',
+      'Work',
+    ].where(snapshot.quickPlaces.containsKey).length;
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer.withValues(alpha: .45),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _text('Set up your commute · $saved/2', '设置你的通勤 · $saved/2'),
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _text(
+              'Save Home and Work to watch both directions before you leave.',
+              '保存家和公司，出发前就能了解两个方向的路况。',
+            ),
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.4,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final label in const ['Home', 'Work'])
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: ValueKey('commute-setup-$label'),
+                  onPressed: () =>
+                      Navigator.of(context).pop(TripsResult.configure(label)),
+                  icon: Icon(
+                    snapshot.quickPlaces.containsKey(label)
+                        ? Icons.check_circle_outline_rounded
+                        : label == 'Home'
+                        ? Icons.home_outlined
+                        : Icons.work_outline_rounded,
+                    size: 19,
+                  ),
+                  label: Text(
+                    snapshot.quickPlaces.containsKey(label)
+                        ? _text(
+                            '$label saved · edit',
+                            '${label == 'Home' ? '家' : '公司'}已保存 · 修改',
+                          )
+                        : _text(
+                            'Set $label',
+                            '设置${label == 'Home' ? '家' : '公司'}',
+                          ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  List<TripHistoryItem> _filteredHistory(TripsSnapshot? snapshot) {
+    final query = _historyQuery.trim().toLowerCase();
+    return (snapshot?.history ?? const <TripHistoryItem>[])
+        .where((item) {
+          final mode = switch (item.mode) {
+            'walk' || 'walking' => 'walk',
+            'bike' || 'bicycle' || 'cycling' => 'bike',
+            'transit' => 'transit',
+            _ => 'drive',
+          };
+          return (_historyMode == 'all' || mode == _historyMode) &&
+              (query.isEmpty ||
+                  '${item.destination.name} ${item.destination.address}'
+                      .toLowerCase()
+                      .contains(query));
+        })
+        .toList(growable: false);
+  }
+
+  Widget _historyFilters() => Column(
+    children: [
+      TextField(
+        key: const ValueKey('trip-history-search'),
+        controller: _historySearch,
+        textInputAction: TextInputAction.search,
+        onChanged: (value) => setState(() => _historyQuery = value),
+        decoration: InputDecoration(
+          hintText: _text('Find a destination in your trips', '在行程中查找目的地'),
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: _historyQuery.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: _text('Clear search', '清空搜索'),
+                  onPressed: () {
+                    _historySearch.clear();
+                    setState(() => _historyQuery = '');
+                  },
+                  icon: const Icon(Icons.close_rounded),
+                ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final entry in {
+              'all': _text('All', '全部'),
+              'drive': _text('Drive', '驾车'),
+              'walk': _text('Walk', '步行'),
+              'bike': _text('Cycle', '骑行'),
+              'transit': _text('Transit', '公共交通'),
+            }.entries)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  key: ValueKey('trip-mode-${entry.key}'),
+                  label: Text(entry.value),
+                  selected: _historyMode == entry.key,
+                  onSelected: (_) => setState(() => _historyMode = entry.key),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final snapshot = _snapshot;
+    final filteredHistory = _filteredHistory(snapshot);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -987,13 +1133,7 @@ class _TripsPageState extends State<TripsPage> {
                 )
               else if (!(snapshot!.quickPlaces.containsKey('Home') &&
                   snapshot.quickPlaces.containsKey('Work')))
-                _EmptyCard(
-                  icon: Icons.radar_rounded,
-                  text: _text(
-                    'Set both Home and Work first. Smart Commute monitors both directions.',
-                    '请先同时设置“家”和“公司”。智能通勤会分别监控两个方向。',
-                  ),
-                )
+                _commuteSetup(snapshot)
               else ...[
                 for (final label in const ['home-work', 'work-home'])
                   _routeWatchTile(
@@ -1047,8 +1187,29 @@ class _TripsPageState extends State<TripsPage> {
                     '完成导航后，这里会逐步形成你的出行记录。',
                   ),
                 )
-              else
-                for (final item in snapshot!.history.take(10))
+              else ...[
+                _historyFilters(),
+                const SizedBox(height: 10),
+                Text(
+                  _text(
+                    '${filteredHistory.length} trips',
+                    '${filteredHistory.length} 段行程',
+                  ),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (filteredHistory.isEmpty)
+                  _EmptyCard(
+                    icon: Icons.search_off_rounded,
+                    text: _text(
+                      'No matching trips. Try another destination or travel mode.',
+                      '没有找到匹配的行程，试试其他目的地或出行方式。',
+                    ),
+                  ),
+                for (final item in filteredHistory)
                   _HistoryTile(
                     item: item,
                     modeIcon: _modeIcon(item.mode),
@@ -1059,6 +1220,7 @@ class _TripsPageState extends State<TripsPage> {
                         Navigator.of(context)
                             .pop(TripsResult.select(item.destination)),
                   ),
+              ],
             ],
           ],
         ),

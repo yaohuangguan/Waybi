@@ -206,6 +206,9 @@ importers:
       cheerio:
         specifier: ^1.0.0
         version: 1.2.0
+      stripe:
+        specifier: ^23.0.0
+        version: 23.0.0
 
   apps/web:
     dependencies:
@@ -2405,6 +2408,15 @@ packages:
   strip-comments@2.0.1:
     resolution: {integrity: sha512-ZprKx+bBLXv067WTCALv8SSz5l2+XhpYCsVtSqlMnkAXMWDq+/ekVbl1ghqP9rUHTzv6sm/DwCOiYutU/yp1fw==}
     engines: {node: '>=10'}
+
+  stripe@23.0.0:
+    resolution: {integrity: sha512-MDE2A5ZVVluYURORaZEVghSmnLJc3w6aHAlZSxDQMsOjOb3V0O6ro/CiaeFlJS4N7uIVmsg98ocRsPmUK6YfyA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@types/node': '>=20'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
 
   supports-color@10.2.2:
     resolution: {integrity: sha512-SS+jx45GF1QjgEXQx4NJZV9ImqmO2NPz5FNsIHrsDjh2YsHnawpan7SNQ1o8NuhrbHZy9AZhIoCUiCeaW/C80g==}
@@ -4965,6 +4977,8 @@ snapshots:
       ansi-regex: 5.0.1
 
   strip-comments@2.0.1: {}
+
+  stripe@23.0.0: {}
 
   supports-color@10.2.2: {}
 

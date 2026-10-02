@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../data/account_repository.dart';
+import '../data/app_store_billing.dart';
+import '../data/plus_billing.dart';
+import 'plus_page.dart';
 import '../data/camera_repository.dart';
 import '../domain/map_provider.dart';
 
@@ -11,6 +14,7 @@ class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
     required this.account,
+    this.plusBilling,
     required this.voiceEnabled,
     required this.lanesEnabled,
     this.keepScreenAwake = true,
@@ -43,6 +47,7 @@ class ProfilePage extends StatefulWidget {
   });
 
   final AccountRepository account;
+  final PlusBillingGateway? plusBilling;
   final bool voiceEnabled;
   final bool lanesEnabled;
   final bool keepScreenAwake;
@@ -547,6 +552,22 @@ class _ProfilePageState extends State<ProfilePage> {
               _PlusCard(
                 isPlus: profile?.isPlus ?? false,
                 chinese: _appLanguage == 'zh',
+                onOpen: () async {
+                  final billing =
+                      widget.plusBilling ??
+                      AppStoreBillingGateway(widget.account);
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PlusPage(
+                        account: widget.account,
+                        voiceEnabled: _voice,
+                        language: _appLanguage,
+                        billing: billing,
+                      ),
+                    ),
+                  );
+                  if (widget.plusBilling == null) billing.dispose();
+                },
               ),
               if (profile == null) ...[
                 const SizedBox(height: 19),
@@ -1227,16 +1248,20 @@ class _ActivitySection extends StatelessWidget {
 }
 
 class _PlusCard extends StatelessWidget {
-  const _PlusCard({required this.isPlus, required this.chinese});
+  const _PlusCard({
+    required this.isPlus,
+    required this.chinese,
+    required this.onOpen,
+  });
 
   final bool isPlus;
   final bool chinese;
+  final VoidCallback onOpen;
 
   String t(String en, String zh) => chinese ? zh : en;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
@@ -1353,45 +1378,23 @@ class _PlusCard extends StatelessWidget {
               ),
             ],
           ),
-          if (!isPlus) ...[
-            const SizedBox(height: 15),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    t(
-                      r'Planned: NZ$39.99/year · NZ$4.99/month',
-                      r'计划价格：NZ$39.99/年 · NZ$4.99/月',
-                    ),
-                    style: const TextStyle(
-                      color: KiwiLensColors.sky,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.surface.withValues(alpha: .12),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  child: Text(
-                    t('Coming soon', '即将推出'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onOpen,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xffd0f58a),
+                foregroundColor: const Color(0xff152510),
+              ),
+              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: Text(
+                isPlus
+                    ? t('Explore your Plus benefits', '查看你的 Plus 权益')
+                    : t('Meet Kiwi Lens Plus', '了解 Kiwi Lens Plus'),
+              ),
             ),
-          ],
+          ),
         ],
       ),
     );

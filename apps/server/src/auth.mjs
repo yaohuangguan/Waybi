@@ -1,4 +1,5 @@
 import { pbkdf2, scrypt } from 'node:crypto';
+import { syncAppleForUser } from './apple_billing.mjs';
 import { verifyGoogleIdToken } from './google_token.mjs';
 
 const encoder = new TextEncoder();
@@ -117,7 +118,8 @@ export async function roadReportAuthor(db, request) {
   };
 }
 
-async function userProfile(db, user) {
+async function userProfile(db, user, env) {
+  try { await syncAppleForUser(db, env || {}, user.id); } catch { /* retain last verified expiry */ }
   const profile = await db.prepare('SELECT language, voice_enabled, display_name FROM profiles WHERE user_id = ?').bind(user.id).first();
   const googleIdentity = await db.prepare('SELECT google_sub FROM google_identities WHERE user_id = ?').bind(user.id).first();
   const passwordUser = await db.prepare('SELECT password_hash FROM users WHERE id = ?').bind(user.id).first();
@@ -153,11 +155,11 @@ async function userProfile(db, user) {
   };
 }
 
-async function issueSession(db, user, request) {
+async function issueSession(db, user, request, env) {
   const token = hex(crypto.getRandomValues(new Uint8Array(32)));
   await db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
     .bind(await digest(token), user.id, Date.now() + SESSION_SECONDS * 1000).run();
-  return response(await userProfile(db, user), 200, { 'set-cookie': cookieHeader(token, request) });
+  return response(await userProfile(db, user, env), 200, { 'set-cookie': cookieHeader(token, request) });
 }
 
 async function readBody(request) {
@@ -218,7 +220,7 @@ export async function handleAccount(request, env) {
       if (/UNIQUE/i.test(String(error))) return response({ error: 'This email is already registered' }, 409);
       throw error;
     }
-    return issueSession(db, user, request);
+    return issueSession(db, user, request, env);
   }
 
   if (path === '/api/auth/login' && request.method === 'POST') {
@@ -232,7 +234,7 @@ export async function handleAccount(request, env) {
       return response({ error: 'Invalid credentials' }, 401);
     }
     await db.prepare('DELETE FROM login_attempts WHERE email = ?').bind(email).run();
-    return issueSession(db, user, request);
+    return issueSession(db, user, request, env);
   }
 
   if (path === '/api/auth/google' && request.method === 'POST') {
@@ -247,7 +249,7 @@ export async function handleAccount(request, env) {
     if (!validEmail(identity.email)) return response({ error: 'Google email is unavailable' }, 401);
     const linked = await db.prepare(`SELECT users.id, users.email FROM google_identities
       JOIN users ON users.id = google_identities.user_id WHERE google_sub = ?`).bind(identity.sub).first();
-    if (linked) return issueSession(db, linked, request);
+    if (linked) return issueSession(db, linked, request, env);
     // Never take over a password account based solely on an email claim.
     const existing = await db.prepare('SELECT id FROM users WHERE email = ?').bind(identity.email).first();
     if (existing) return response({ error: 'This email already has an account. Sign in with email first, then link Google in My Account.' }, 409);
@@ -265,7 +267,7 @@ export async function handleAccount(request, env) {
       if (/UNIQUE/i.test(String(error))) return response({ error: 'Google account is already linked. Try signing in again.' }, 409);
       throw error;
     }
-    return issueSession(db, user, request);
+    return issueSession(db, user, request, env);
   }
 
   if (path === '/api/auth/logout' && request.method === 'POST') {
@@ -277,7 +279,7 @@ export async function handleAccount(request, env) {
   const user = await userFromRequest(db, request);
   if (!user) return response({ error: 'Not signed in' }, 401);
   if ((path === '/api/auth/me' || path === '/api/profile') && request.method === 'GET') {
-    return response(await userProfile(db, user));
+    return response(await userProfile(db, user, env));
   }
   if (path === '/api/auth/google/link' && request.method === 'POST') {
     if (!env.GOOGLE_OAUTH_CLIENT_IDS) return response({ error: 'Google sign-in is not configured' }, 503);
@@ -295,14 +297,14 @@ export async function handleAccount(request, env) {
     if (already && already.google_sub !== identity.sub) return response({ error: 'A different Google account is already linked' }, 409);
     if (!already) await db.prepare('INSERT INTO google_identities (google_sub, user_id, created_at) VALUES (?, ?, ?)')
       .bind(identity.sub, user.id, Date.now()).run();
-    return response(await userProfile(db, user));
+    return response(await userProfile(db, user, env));
   }
   if (path === '/api/profile/details' && request.method === 'PATCH') {
     const body = await readBody(request);
     const displayName = typeof body?.displayName === 'string' ? body.displayName.trim() : null;
     if (displayName === null || displayName.length > 100) return response({ error: 'Display name must be at most 100 characters' }, 400);
     await db.prepare('UPDATE profiles SET display_name = ? WHERE user_id = ?').bind(displayName, user.id).run();
-    return response(await userProfile(db, user));
+    return response(await userProfile(db, user, env));
   }
   if (path === '/api/profile' && request.method === 'PATCH') {
     const body = await readBody(request);
@@ -311,7 +313,7 @@ export async function handleAccount(request, env) {
     }
     await db.prepare('UPDATE profiles SET language = ?, voice_enabled = ? WHERE user_id = ?')
       .bind(body.language, body.voiceEnabled ? 1 : 0, user.id).run();
-    return response(await userProfile(db, user));
+    return response(await userProfile(db, user, env));
   }
   if (path === '/api/profile/destinations' && request.method === 'POST') {
     const body = await readBody(request);
@@ -326,7 +328,7 @@ export async function handleAccount(request, env) {
     await db.prepare(`DELETE FROM recent_destinations WHERE user_id = ? AND (latitude, longitude) NOT IN
       (SELECT latitude, longitude FROM recent_destinations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20)`)
       .bind(user.id, user.id).run();
-    return response(await userProfile(db, user));
+    return response(await userProfile(db, user, env));
   }
   if (path === '/api/profile/places' && request.method === 'POST') {
     const body = await readBody(request);
@@ -358,7 +360,7 @@ export async function handleAccount(request, env) {
       await db.prepare('DELETE FROM place_bookmarks WHERE user_id = ? AND place_id = ?')
         .bind(user.id, placeId).run();
     }
-    return response(await userProfile(db, user));
+    return response(await userProfile(db, user, env));
   }
   if (path === '/api/profile/routes' && request.method === 'POST') {
     const body = await readBody(request);
@@ -380,7 +382,7 @@ export async function handleAccount(request, env) {
     await db.prepare(`DELETE FROM route_history WHERE user_id = ? AND id NOT IN
       (SELECT id FROM route_history WHERE user_id = ? ORDER BY started_at DESC LIMIT 100)`)
       .bind(user.id, user.id).run();
-    return response(await userProfile(db, user));
+    return response(await userProfile(db, user, env));
   }
   if (path === '/api/profile/reviews' && request.method === 'POST') {
     const body = await readBody(request);
@@ -398,7 +400,7 @@ export async function handleAccount(request, env) {
         place_name = excluded.place_name, rating = excluded.rating,
         comment = excluded.comment, updated_at = excluded.updated_at`)
       .bind(user.id, placeId, placeName, rating, comment, Date.now()).run();
-    return response(await userProfile(db, user));
+    return response(await userProfile(db, user, env));
   }
   return response({ error: 'Not found' }, 404);
 }

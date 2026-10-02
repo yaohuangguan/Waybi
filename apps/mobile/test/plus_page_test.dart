@@ -210,4 +210,38 @@ void main() {
       expect(find.text('回到地图，出发吧'), findsOneWidget);
     },
   );
+  testWidgets(
+    'active manual member can return from Plus through Account to the map',
+    (tester) async {
+      final navigator = GlobalKey<NavigatorState>();
+      final account = TestAccount()..setPlan('plus');
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigator,
+          home: const Scaffold(body: Text('Free map')),
+        ),
+      );
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Text('Account')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(
+          builder: (_) => PlusPage(
+            account: account,
+            language: 'zh',
+            billing: TestBilling(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('plus-subscribe')));
+      await tester.pumpAndSettle();
+      expect(find.text('Free map'), findsOneWidget);
+      expect(find.text('Account'), findsNothing);
+      expect(find.text('Kiwi Lens Plus'), findsNothing);
+    },
+  );
 }

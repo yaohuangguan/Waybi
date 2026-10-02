@@ -665,7 +665,9 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                       : isPlus
                       ? (canManage
                             ? () => _action(widget.billing.manage)
-                            : () => Navigator.pop(context))
+                            : () =>
+                                  Navigator.of(context)
+                                      .popUntil((route) => route.isFirst))
                       : !widget.account.signedIn
                       ? (widget.onSignIn ?? _signIn)
                       : canBuy

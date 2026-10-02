@@ -560,7 +560,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     MaterialPageRoute<void>(
                       builder: (_) => PlusPage(
                         account: widget.account,
-                        voiceEnabled: _voiceEnabled,
+                        voiceEnabled: _voice,
                         language: _appLanguage,
                         billing: billing,
                       ),

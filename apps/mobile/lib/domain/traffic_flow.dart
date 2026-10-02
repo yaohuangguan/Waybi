@@ -1,2 +1,2 @@
-export 'package:kiwi_map/kiwi_map.dart'
+export 'package:kiwi_lens_map/kiwi_lens_map.dart'
     show TrafficFlowLevel, TrafficFlowSegment, TrafficFlowSnapshot;

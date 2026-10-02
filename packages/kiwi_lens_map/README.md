@@ -1,94 +1,86 @@
-# kiwi_map
+# Kiwi Lens Map
 
-Reusable, provider-neutral map SDK core extracted from Kiwi Lens.
+Reusable map and road-intelligence abstraction extracted from Kiwi Lens.
 
-The package is intentionally **not** tied to Google Maps, MapLibre, NZTA, a
-particular HTTP client, authentication scheme, or Kiwi Lens account state.
+`kiwi_lens_map` is the shared product boundary for the consumer app and future
+B2B integrations. The public models and layer contracts are renderer-neutral;
+Kiwi Lens currently uses MapLibre through an app adapter.
 
-Kiwi Lens currently uses MapLibre for the Practice renderer. The app owns the
-MapLibre adapter and the Photon / OSRM / NZTA adapters; `kiwi_map` owns the
-stable contracts those adapters speak.
+## Defaults
 
-## Why this exists
+A standalone `KiwiLensMapStack` includes the Kiwi Lens safety-camera source by
+default. Camera positions come from the Kiwi Lens public camera endpoint and are
+clipped to the requested viewport.
 
-Kiwi Lens should be able to evolve in three directions without rewriting the
-map:
+Traffic and Road Intelligence are separate replaceable layers:
 
-1. keep shipping the consumer navigation app;
-2. publish the map stack as a reusable Flutter/Dart library;
-3. offer B2B customers optional Road Intelligence overlays on top of that map.
+- **Safety cameras** — enabled by default.
+- **Traffic** — attach Kiwi Lens/NZTA traffic or a customer traffic source.
+- **Road Intelligence** — attach Kiwi Lens Road Intelligence API or a private
+  incident/operations source.
 
-Those are separate products. A customer should be able to use the base map
-without buying Road Intelligence, or bring their own renderer / traffic source
-while still consuming Kiwi Lens intelligence.
+The host can replace every source. The map does not require Kiwi Lens account,
+subscription or UI state.
 
 ## Package boundary
 
-`kiwi_map` owns:
+`kiwi_lens_map` owns:
 
 - coordinates, bounds and viewport state
 - places and provider references
 - renderer-neutral controller capabilities
 - generic async layer/source contracts
+- safety-camera models and default Kiwi Lens camera source
 - live traffic-flow models and source interface
 - Road Intelligence feature models and source interface
-- `KiwiMapStack`, a composition root for optional overlays
+- `KiwiLensMapStack`, the composition root for the whole map stack
 
-Kiwi Lens app adapters own:
+Kiwi Lens app adapters currently own:
 
 - MapLibre rendering and visual style
 - Photon place search
 - OSRM routing
 - GPS filtering / navigation lifecycle
 - NZTA traffic ingestion
-- API keys, billing, quotas and HTTP clients
+- API keys, billing and B2B Road Intelligence transport
 
-This dependency direction is intentional:
+The intended dependency direction is:
 
 ```
-Kiwi Lens App
+Kiwi Lens App / B2B Host
    │
-   ├── MapLibre adapter ───────┐
-   ├── Photon / OSRM adapters  │
-   └── NZTA / Road API adapters│
-                              ▼
-                         kiwi_map
-                     (pure SDK contracts)
+   ├── renderer adapter
+   ├── search/routing adapters
+   ├── optional traffic source
+   └── optional Road Intelligence source
+                    │
+                    ▼
+              kiwi_lens_map
+          (stable map contracts)
 ```
 
-## B2B Road Intelligence
-
-Road Intelligence is an **optional overlay**, not a hard dependency of the map.
-
-A B2B integration can provide a `RoadIntelligenceLayerSource` backed by:
-
-- Kiwi Lens Road Intelligence API
-- the customer's own incident feed
-- a private fleet/road-operations source
-
-and compose it with a traffic source:
+## Example
 
 ```dart
-final stack = KiwiMapStack(
+final map = KiwiLensMapStack(
+  // safety cameras are already present by default
   traffic: myTrafficSource,
   roadIntelligence: myKiwiRoadIntelligenceSource,
 );
 ```
 
-Transport and credentials remain outside the map core. That prevents an SDK
-consumer from inheriting Kiwi Lens authentication, subscription, or backend
-assumptions.
+A B2B customer may use only the map + cameras, add live traffic, buy the Road
+Intelligence overlay, or replace any layer with their own implementation.
 
 ## Extraction path
 
-The current extraction is deliberately incremental:
-
 - **0.1** — shared geometry, places, traffic and Road Intelligence models
-- **0.2** — generic layer + renderer contracts and B2B composition root
-- next — move the MapLibre renderer behind a standalone adapter package
-- later — publish the adapter as a separate Flutter package once the public API
-  is stable
+- **0.2** — generic layer/renderer contracts, default camera source and B2B
+  composition root
+- next — move the current MapLibre renderer/style into a standalone Flutter
+  adapter package
+- later — stabilize and publish the adapter independently from the Kiwi Lens app
 
-The app continues using the same contracts during the extraction, so turning
-this into a standalone library does not require a rewrite or a risky big-bang
-migration.
+The migration stays incremental so improvements to GPS, search, traffic and
+navigation continue shipping in Kiwi Lens while the reusable map package grows
+underneath it.

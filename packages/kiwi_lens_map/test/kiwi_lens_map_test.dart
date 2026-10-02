@@ -1,4 +1,8 @@
-import 'package:kiwi_map/kiwi_map.dart';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:kiwi_lens_map/kiwi_lens_map.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -25,10 +29,12 @@ void main() {
   });
 
   test('map core composes optional B2B layers without renderer coupling', () {
-    final stack = KiwiMapStack(
+    final stack = KiwiLensMapStack(
+      safetyCameras: _FakeCameraSource(),
       traffic: _FakeTrafficSource(),
       roadIntelligence: _FakeRoadIntelligenceSource(),
     );
+    expect(stack.safetyCameras, isNotNull);
     expect(stack.traffic, isNotNull);
     expect(stack.roadIntelligence, isNotNull);
     expect(
@@ -38,6 +44,57 @@ void main() {
       'road-intelligence',
     );
   });
+
+  test(
+    'default camera source loads and clips Kiwi Lens camera positions',
+    () async {
+      final source = KiwiLensSafetyCameraSource(
+        baseUrl: 'https://example.test',
+        client: MockClient((request) async {
+          expect(request.url.path, '/api/cameras');
+          return http.Response(
+            jsonEncode({
+              'syncStatus': 'live',
+              'sourceUpdatedAt': '2026-10-03T10:00:00+13:00',
+              'cameras': [
+                {
+                  'id': 'akl',
+                  'name': 'Auckland camera',
+                  'region': 'Auckland',
+                  'suburb': 'Newmarket',
+                  'location': 'SH1',
+                  'type': 'Spot speed',
+                  'latitude': -36.87,
+                  'longitude': 174.78,
+                },
+                {
+                  'id': 'wlg',
+                  'name': 'Wellington camera',
+                  'region': 'Wellington',
+                  'suburb': 'Ngauranga',
+                  'location': 'SH1',
+                  'type': 'Spot speed',
+                  'latitude': -41.24,
+                  'longitude': 174.81,
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      const bounds = MapBounds(
+        southWest: GeoPoint(-37.2, 174.4),
+        northEast: GeoPoint(-36.5, 175.2),
+      );
+
+      final snapshot = await source.load(bounds);
+
+      expect(snapshot.syncStatus, 'live');
+      expect(snapshot.cameras.map((camera) => camera.id), ['akl']);
+      source.dispose();
+    },
+  );
 
   test('Road Intelligence API payload decodes as an optional map overlay', () {
     final snapshot = RoadIntelligenceLayerSnapshot.fromApiJson({
@@ -65,6 +122,12 @@ void main() {
     );
     expect(snapshot.features.single.location, const GeoPoint(-36.85, 174.76));
   });
+}
+
+class _FakeCameraSource implements SafetyCameraLayerSource {
+  @override
+  Future<SafetyCameraSnapshot> load(MapBounds bounds) async =>
+      const SafetyCameraSnapshot(cameras: [], syncStatus: 'live');
 }
 
 class _FakeTrafficSource implements TrafficFlowLayerSource {

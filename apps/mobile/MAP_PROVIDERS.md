@@ -17,7 +17,7 @@ Existing `mapbox` preferences migrate to Practice. The Mapbox SDK and token requ
 
 Practice has no satellite layer, guaranteed offline routing or commercial routing SLA. MapLibre GL Flutter 0.27.1 and native iOS SDK 6.28.0 are pinned. WebGL preview uses the same style; production work remains Flutter/iOS. Explore does not invent reviews, opening hours, photos or detour estimates.
 
-The provider-neutral map contracts now live in `packages/kiwi_map` (geometry, viewport, places, traffic flow and Road Intelligence overlay contracts). The app remains an adapter around Photon/OSRM/NZTA/Google. This is the extraction seam for a standalone map library: a future B2B client can use the renderer with its own data, or attach Kiwi Lens Road Intelligence as an optional overlay rather than making the API a hard dependency of the map.
+The provider-neutral map contracts now live in `packages/kiwi_lens_map` (geometry, viewport, places, traffic flow and Road Intelligence overlay contracts). The app remains an adapter around Photon/OSRM/NZTA/Google. This is the extraction seam for a standalone map library: a future B2B client can use the renderer with its own data, or attach Kiwi Lens Road Intelligence as an optional overlay rather than making the API a hard dependency of the map.
 
 OpenFreeMap requires no access fee or API key. Public OSRM/Photon instances have shared capacity and no SLA. Keep Practice free, avoid bulk requests, and self-host services for a production navigation offering. Open-source software is free; running servers still costs resources. See [OpenFreeMap](https://openfreemap.org/quick_start/), [OSRM policy](https://routing.openstreetmap.de/about.html) and [Photon](https://github.com/komoot/photon).
 

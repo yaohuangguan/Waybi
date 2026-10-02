@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import '../domain/map_provider.dart';
+import '../providers/place_search_providers.dart';
 
 class ExplorePlace {
   const ExplorePlace({
@@ -71,12 +73,45 @@ class ExploreRepository {
     String query = '',
     bool mapCompatible = false,
   }) async {
+    if (mapCompatible) {
+      final categoryQuery = switch (category) {
+        'coffee' => 'cafe',
+        'food' => 'restaurant',
+        'parks' => 'park',
+        'shopping' => 'shop',
+        'activities' => 'museum',
+        _ => 'cafe',
+      };
+      final places = await IndependentSearchProvider(client: _client).search(
+        query.trim().isEmpty ? categoryQuery : query.trim(),
+        proximity: GeoPoint(latitude, longitude),
+        language: language,
+      );
+      return places
+          .map(
+            (p) => ExplorePlace(
+              placeId: p.reference!.id,
+              provider: 'osm',
+              name: p.name,
+              address: p.address,
+              primaryType: p.category,
+              latitude: p.location!.latitude,
+              longitude: p.location!.longitude,
+              rating: null,
+              userRatingCount: null,
+              priceLevel: null,
+              openNow: null,
+              photoName: '',
+              photoAttribution: '',
+            ),
+          )
+          .toList(growable: false);
+    }
     final uri = Uri.parse('$workerBaseUrl/api/explore').replace(
       queryParameters: {
         'at': '$longitude,$latitude',
         'category': category,
         'lang': language,
-        if (mapCompatible) 'provider': 'geoapify',
         if (query.trim().isNotEmpty) 'q': query.trim(),
       },
     );
@@ -93,7 +128,6 @@ class ExploreRepository {
         .map(ExplorePlace.fromJson)
         .where(
           (place) =>
-              (!mapCompatible || place.provider == 'geoapify') &&
               place.placeId.isNotEmpty &&
               place.latitude != 0 &&
               place.longitude != 0,

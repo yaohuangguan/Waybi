@@ -1,15 +1,17 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import 'provider_contracts.dart';
 
-class MapboxRoutingProvider implements RoutingProvider<RoutePlan> {
-  MapboxRoutingProvider(this.accessToken, {http.Client? client})
+class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
+  IndependentRoutingProvider({http.Client? client})
     : _client = client ?? http.Client();
-  final String accessToken;
+  DateTime? _lastRequest;
+  Future<void> _queue = Future<void>.value();
   final http.Client _client;
 
   @override
@@ -20,17 +22,17 @@ class MapboxRoutingProvider implements RoutingProvider<RoutePlan> {
     required String language,
   }) async {
     final points = _validatedPoints(origin, destination, stops);
-    final responses = await Future.wait([
-      _fetchMode(points, mode: KiwiTravelMode.drive, language: language),
-      _optionalMode(points, KiwiTravelMode.walk, language),
-      _optionalMode(points, KiwiTravelMode.bicycle, language),
-    ]);
+    final responses = [
+      await _fetchMode(points, mode: KiwiTravelMode.drive, language: language),
+      await _optionalMode(points, KiwiTravelMode.walk, language),
+      await _optionalMode(points, KiwiTravelMode.bicycle, language),
+    ];
     final options = responses.expand((item) => item).toList(growable: false);
-    if (options.isEmpty) throw StateError('No Mapbox routes available');
+    if (options.isEmpty) throw StateError('No Independent routes available');
     return RoutePlan(
       options: options,
       trafficAvailable: false,
-      provider: 'mapbox',
+      provider: 'independent',
       stopsApplied: stops.length,
     );
   }
@@ -69,7 +71,6 @@ class MapboxRoutingProvider implements RoutingProvider<RoutePlan> {
     GeoPoint destination,
     List<GeoPoint> stops,
   ) {
-    if (accessToken.isEmpty) throw StateError('Mapbox token is not configured');
     final points = [origin, ...stops, destination];
     if (points.length > 25 || points.any((point) => !point.isValid)) {
       throw ArgumentError('Routes require 2–25 valid coordinates');
@@ -86,38 +87,41 @@ class MapboxRoutingProvider implements RoutingProvider<RoutePlan> {
     final path = points
         .map((point) => '${point.longitude},${point.latitude}')
         .join(';');
-    // NZ is outside documented driving-traffic coverage.
-    final profile = switch (mode) {
-      KiwiTravelMode.drive => 'driving',
-      KiwiTravelMode.walk => 'walking',
-      KiwiTravelMode.bicycle => 'cycling',
+    final base = switch (mode) {
+      KiwiTravelMode.drive => const String.fromEnvironment(
+        'KIWI_OSRM_CAR_URL',
+        defaultValue: 'https://routing.openstreetmap.de/routed-car',
+      ),
+      KiwiTravelMode.walk => const String.fromEnvironment(
+        'KIWI_OSRM_FOOT_URL',
+        defaultValue: 'https://routing.openstreetmap.de/routed-foot',
+      ),
+      KiwiTravelMode.bicycle => const String.fromEnvironment(
+        'KIWI_OSRM_BIKE_URL',
+        defaultValue: 'https://routing.openstreetmap.de/routed-bike',
+      ),
       KiwiTravelMode.transit => throw ArgumentError(
-        'Mapbox has no transit profile',
+        'Practice has no transit profile',
       ),
     };
-    final response = await _client
-        .get(
-          Uri.https('api.mapbox.com', '/directions/v5/mapbox/$profile/$path', {
-            'access_token': accessToken,
-            'geometries': 'geojson',
-            'overview': 'full',
-            'alternatives': alternatives && points.length == 2
-                ? 'true'
-                : 'false',
-            'steps': 'true',
-            'language': language == 'zh' ? 'zh' : 'en',
-            'banner_instructions': 'true',
-            'voice_instructions': 'true',
-            'voice_units': 'metric',
-          }),
-        )
-        .timeout(const Duration(seconds: 12));
+    // These endpoints each use a separate graph, with the same OSRM profile name.
+    final uri = Uri.parse('$base/route/v1/driving/$path').replace(
+      queryParameters: {
+        'geometries': 'geojson',
+        'overview': 'full',
+        'steps': 'true',
+        'alternatives': alternatives && points.length == 2 ? 'true' : 'false',
+      },
+    );
+    final response = await _limitedGet(uri);
     if (response.statusCode != 200) {
-      throw StateError('Mapbox directions unavailable: ${response.statusCode}');
+      throw StateError(
+        'Independent directions unavailable: ${response.statusCode}',
+      );
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     if (body['code'] != null && body['code'] != 'Ok') {
-      throw StateError('Mapbox could not find a route');
+      throw StateError('Independent could not find a route');
     }
     final routes = body['routes'] as List<dynamic>? ?? const [];
     return routes
@@ -201,13 +205,13 @@ class MapboxRoutingProvider implements RoutingProvider<RoutePlan> {
               .where((summary) => summary.isNotEmpty)
               .join(' · ');
           return RouteOption(
-            id: 'mapbox-${mode.name}-${entry.$1}',
+            id: 'independent-${mode.name}-${entry.$1}',
             mode: mode,
             durationSeconds: (route['duration'] as num?)?.round() ?? 0,
             distanceMeters: (route['distance'] as num?)?.round() ?? 0,
             points: routePoints,
             waypoints: List.unmodifiable(points),
-            provider: 'mapbox',
+            provider: 'independent',
             traffic: const TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
             trafficIntervals: const [],
             steps: steps,
@@ -222,6 +226,29 @@ class MapboxRoutingProvider implements RoutingProvider<RoutePlan> {
           (option) => option.points.length >= 2 && option.distanceMeters > 0,
         )
         .toList(growable: false);
+  }
+
+  Future<http.Response> _limitedGet(Uri uri) {
+    final task = _queue.then((_) async {
+      final previous = _lastRequest;
+      if (previous != null) {
+        final wait = 1100 - DateTime.now().difference(previous).inMilliseconds;
+        if (wait > 0) await Future<void>.delayed(Duration(milliseconds: wait));
+      }
+      _lastRequest = DateTime.now();
+      return _client
+          .get(
+            uri,
+            headers: {
+              if (!kIsWeb)
+                'User-Agent':
+                    'KiwiLens/1.0 (+https://github.com/yaohuangguan/kiwi-lens)',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+    });
+    _queue = task.then<void>((_) {}, onError: (Object _) {});
+    return task;
   }
 
   void dispose() => _client.close();

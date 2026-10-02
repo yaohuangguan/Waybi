@@ -1,6 +1,7 @@
 import Flutter
 import CoreLocation
 import GoogleMaps
+import GoogleNavigation
 import UIKit
 import UserNotifications
 
@@ -23,6 +24,26 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    FlutterMethodChannel(
+      name: "kiwi_lens/navigation_camera",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    ).setMethodCallHandler { [weak self] call, result in
+      guard call.method == "pauseFollowing" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      DispatchQueue.main.async {
+        func pause(_ view: UIView) {
+          if let map = view as? GMSMapView { map.cameraMode = .free }
+          view.subviews.forEach(pause)
+        }
+        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap { $0.windows }
+        if let view = self?.window?.rootViewController?.view ?? windows.first(where: { $0.isKeyWindow })?.rootViewController?.view {
+          pause(view)
+        }
+        result(nil)
+      }
+    }
     FlutterMethodChannel(
       name: "kiwi_lens/map_language",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()

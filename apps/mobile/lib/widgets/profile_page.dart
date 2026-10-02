@@ -33,7 +33,6 @@ class ProfilePage extends StatefulWidget {
     required this.locationMarker,
     required this.onMapProviderChanged,
     required this.onLocationMarkerChanged,
-    required this.mapboxAvailable,
     required this.notifySafetyCameras,
     required this.notifyRoadIncidents,
     required this.notifyCommunityReports,
@@ -66,7 +65,6 @@ class ProfilePage extends StatefulWidget {
   final LocationMarkerStyle locationMarker;
   final Future<MapProvider> Function(MapProvider) onMapProviderChanged;
   final ValueChanged<LocationMarkerStyle> onLocationMarkerChanged;
-  final bool mapboxAvailable;
   final bool notifySafetyCameras;
   final bool notifyRoadIncidents;
   final bool notifyCommunityReports;
@@ -838,32 +836,18 @@ class _ProfilePageState extends State<ProfilePage> {
                 title: Text(_text('Map provider', '地图提供商')),
                 trailing: DropdownButton<MapProvider>(
                   value: _mapProvider,
-                  items: const [
-                    DropdownMenuItem(
+                  items: [
+                    const DropdownMenuItem(
                       value: MapProvider.google,
                       child: Text('Google Maps'),
                     ),
                     DropdownMenuItem(
-                      value: MapProvider.mapbox,
-                      child: Text('Mapbox'),
+                      value: MapProvider.independent,
+                      child: Text(_text('Kiwi Practice', 'Kiwi 实践版')),
                     ),
                   ],
                   onChanged: (value) async {
                     if (value == null) return;
-                    if (value == MapProvider.mapbox &&
-                        !widget.mapboxAvailable) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            _text(
-                              'Mapbox access token is not configured for this build.',
-                              '此版本尚未配置 Mapbox 访问令牌。',
-                            ),
-                          ),
-                        ),
-                      );
-                      return;
-                    }
                     final actual = await widget.onMapProviderChanged(value);
                     if (mounted) setState(() => _mapProvider = actual);
                   },
@@ -874,10 +858,15 @@ class _ProfilePageState extends State<ProfilePage> {
                 leading: const Icon(Icons.layers_outlined),
                 title: Text(_text('Map style', '地图样式')),
                 subtitle: Text(
-                  _text(
-                    'Default, satellite, terrain and hybrid',
-                    '标准、卫星、地形和混合',
-                  ),
+                  _mapProvider == MapProvider.independent
+                      ? _text(
+                          'Kiwi vector map · day and night colours',
+                          'Kiwi 矢量地图 · 日夜配色',
+                        )
+                      : _text(
+                          'Default, satellite, terrain and hybrid',
+                          '标准、卫星、地形和混合',
+                        ),
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: widget.onMapLayers,
@@ -914,6 +903,17 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 8),
+              if (_mapProvider == MapProvider.google)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _text(
+                      'Google navigation uses its navigation arrow. Custom markers appear while browsing and in Kiwi Practice.',
+                      'Google 导航使用导航箭头。浏览地图与 Kiwi 实践版可使用自定义位置标记。',
+                    ),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
               _SectionTitle(_text('Navigation & voice', '导航与语音')),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

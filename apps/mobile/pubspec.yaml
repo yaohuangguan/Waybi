@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+3
+version: 1.0.0+4
 
 environment:
   sdk: ^3.13.4
@@ -37,7 +37,10 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   google_navigation_flutter: 0.11.1
-  mapbox_maps_flutter: ^2.31.0
+  flutter_map: ^8.3.2
+  vector_map_tiles: 9.0.0-beta.8
+  vector_tile_renderer: ^6.1.0
+  latlong2: ^0.9.1
   permission_handler: ^12.0.3
   http: ^1.6.0
   pointer_interceptor: ^0.10.1+3
@@ -75,6 +78,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icon/app_icon.png
+    - assets/maps/positron_base.json
+    - assets/maps/LICENSES.txt
 
   # To add assets to your application, add an assets section, like this:
   # assets:

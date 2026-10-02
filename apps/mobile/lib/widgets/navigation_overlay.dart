@@ -60,6 +60,7 @@ class NavigationOverlay extends StatefulWidget {
     required this.engine,
     this.guidance,
     this.onTopInsetChanged,
+    this.onBottomInsetChanged,
     this.language = 'en',
     required this.destinationTitle,
     required this.gpsAccuracy,
@@ -72,6 +73,7 @@ class NavigationOverlay extends StatefulWidget {
     this.overviewMode = false,
     required this.northUp,
     this.perspectiveTilted = false,
+    this.perspectiveAvailable = true,
     required this.onCompassToggle,
     required this.onReport,
     required this.onSearchAlongRoute,
@@ -90,6 +92,7 @@ class NavigationOverlay extends StatefulWidget {
   final DriveEngine engine;
   final NavigationGuidance? guidance;
   final ValueChanged<double>? onTopInsetChanged;
+  final ValueChanged<double>? onBottomInsetChanged;
   final String language;
   final String destinationTitle;
   final double? gpsAccuracy;
@@ -102,6 +105,7 @@ class NavigationOverlay extends StatefulWidget {
   final bool overviewMode;
   final bool northUp;
   final bool perspectiveTilted;
+  final bool perspectiveAvailable;
   final VoidCallback onCompassToggle;
   final VoidCallback onReport;
   final VoidCallback onSearchAlongRoute;
@@ -123,6 +127,8 @@ class NavigationOverlay extends StatefulWidget {
 class _NavigationOverlayState extends State<NavigationOverlay> {
   bool expanded = false;
   final _headerKey = GlobalKey();
+  final _deckKey = GlobalKey();
+  double? _reportedBottom;
   double? _reportedInset;
   double _headerHeight = 0;
 
@@ -135,6 +141,17 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
       _reportedInset = inset;
       setState(() => _headerHeight = box.size.height);
       widget.onTopInsetChanged?.call(inset);
+    }
+  }
+
+  void _reportBottomInset() {
+    if (!mounted) return;
+    final box = _deckKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final inset = box.size.height + 14;
+    if (_reportedBottom == null || (inset - _reportedBottom!).abs() >= 1) {
+      _reportedBottom = inset;
+      widget.onBottomInsetChanged?.call(inset);
     }
   }
 
@@ -167,7 +184,10 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) => _reportTopInset());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reportTopInset();
+      _reportBottomInset();
+    });
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
@@ -573,6 +593,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             overviewMode: widget.overviewMode,
                             northUp: widget.northUp,
                             perspectiveTilted: widget.perspectiveTilted,
+                            perspectiveAvailable: widget.perspectiveAvailable,
                             onCompassToggle: widget.onCompassToggle,
                             onRecenter: widget.onRecenter,
                             onLayers: widget.onLayers,
@@ -602,9 +623,10 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                     curve: Curves.easeOutCubic,
                     alignment: Alignment.bottomCenter,
                     child: ConstrainedBox(
+                      key: _deckKey,
                       constraints: BoxConstraints(
-                        maxHeight: (constraints.maxHeight - _headerHeight - 22)
-                            .clamp(120.0, constraints.maxHeight),
+                        maxHeight: (constraints.maxHeight - _headerHeight - 170)
+                            .clamp(100.0, constraints.maxHeight * .45),
                       ),
                       child: Material(
                         color: dark ? KiwiLensColors.darkOcean : scheme.surface,
@@ -624,20 +646,28 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                InkWell(
-                                  key: const Key('navigationSheetHandle'),
-                                  onTap: () =>
-                                      setState(() => expanded = !expanded),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 10,
-                                    ),
-                                    child: Container(
-                                      width: 44,
-                                      height: 4,
-                                      decoration: BoxDecoration(
-                                        color: theme.dividerColor,
-                                        borderRadius: BorderRadius.circular(5),
+                                GestureDetector(
+                                  onVerticalDragStart: (_) => _sheetDrag = 0,
+                                  onVerticalDragUpdate: (details) =>
+                                      _sheetDrag += details.delta.dy,
+                                  onVerticalDragEnd: _settleSheet,
+                                  child: InkWell(
+                                    key: const Key('navigationSheetHandle'),
+                                    onTap: () =>
+                                        setState(() => expanded = !expanded),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 10,
+                                      ),
+                                      child: Container(
+                                        width: 44,
+                                        height: 4,
+                                        decoration: BoxDecoration(
+                                          color: theme.dividerColor,
+                                          borderRadius: BorderRadius.circular(
+                                            5,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -678,7 +708,45 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                 ),
                                 if (widget.arrivalPanel != null) ...[
                                   const SizedBox(height: 10),
-                                  widget.arrivalPanel!,
+                                  if (expanded)
+                                    widget.arrivalPanel!
+                                  else
+                                    InkWell(
+                                      key: const Key('arrivalSummary'),
+                                      onTap: () =>
+                                          setState(() => expanded = true),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 6,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.flag_rounded,
+                                              size: 19,
+                                              color: KiwiLensColors.ocean,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Text(
+                                                _text(
+                                                  'Almost there · arrival & parking',
+                                                  '快到了 · 查看到达与停车信息',
+                                                ),
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                            const Icon(
+                                              Icons.expand_less_rounded,
+                                              size: 18,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
                                 ],
                                 const SizedBox(height: 8),
                                 const Divider(height: 1),
@@ -721,7 +789,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                     dark: dark,
                                   ),
                                 ],
-                                if (widget.offlineReady) ...[
+                                if (expanded && widget.offlineReady) ...[
                                   const SizedBox(height: 8),
                                   Container(
                                     width: double.infinity,
@@ -976,6 +1044,7 @@ class _NavigationControlRail extends StatelessWidget {
     required this.overviewMode,
     required this.northUp,
     required this.perspectiveTilted,
+    required this.perspectiveAvailable,
     required this.onCompassToggle,
     required this.onRecenter,
     required this.onLayers,
@@ -986,6 +1055,7 @@ class _NavigationControlRail extends StatelessWidget {
   final bool overviewMode;
   final bool northUp;
   final bool perspectiveTilted;
+  final bool perspectiveAvailable;
   final String language;
   String _text(String en, String zh) => language == 'zh' ? zh : en;
   final VoidCallback onCompassToggle;
@@ -1016,6 +1086,8 @@ class _NavigationControlRail extends StatelessWidget {
                     'Perspective follow · tap for north up',
                     '透视跟车 · 点击北向俯视',
                   )
+                : !perspectiveAvailable
+                ? _text('Heading up · tap for north up', '车头朝上 · 点击北向俯视')
                 : _text(
                     'Heading-up flat · tap for perspective',
                     '车头朝上俯视 · 点击透视跟车',
@@ -1031,7 +1103,7 @@ class _NavigationControlRail extends StatelessWidget {
                 ? _text('Follow my location', '进入跟车视角')
                 : following
                 ? _text('Route overview', '路线全览')
-                : _text('Show route overview', '先回到路线全览'),
+                : _text('Follow my location', '回到我的位置'),
             onTap: onRecenter,
           ),
           const _RailDivider(),

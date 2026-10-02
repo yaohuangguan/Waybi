@@ -7,7 +7,7 @@ import 'package:kiwi_lens_mobile/domain/route_option.dart';
 import 'package:kiwi_lens_mobile/drive/drive_engine.dart';
 import 'package:kiwi_lens_mobile/drive/voice_engine.dart';
 import 'package:kiwi_lens_mobile/drive/route_progress_tracker.dart';
-import 'package:kiwi_lens_mobile/providers/mapbox_navigation_engine.dart';
+import 'package:kiwi_lens_mobile/providers/independent_navigation_engine.dart';
 
 class SilentVoice extends VoiceEngine {
   @override
@@ -72,7 +72,7 @@ RouteOption makeRoute({List<GeoPoint> waypoints = const []}) => RouteOption(
   durationSeconds: 1000,
   distanceMeters: 1000,
   points: const [origin, middle, destination],
-  provider: 'mapbox',
+  provider: 'independent',
   traffic: const TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
   trafficIntervals: const [],
   waypoints: waypoints,
@@ -109,7 +109,7 @@ void main() {
 
   test('near turn speaks once and ETA uses remaining step durations', () async {
     final drive = FakeDrive();
-    final nav = MapboxNavigationEngine(drive);
+    final nav = IndependentNavigationEngine(drive);
     addTearDown(() {
       nav.dispose();
       drive.dispose();
@@ -129,7 +129,7 @@ void main() {
 
   test('arrival requires two close, slow accurate fixes', () async {
     final drive = FakeDrive();
-    final nav = MapboxNavigationEngine(drive);
+    final nav = IndependentNavigationEngine(drive);
     addTearDown(() {
       nav.dispose();
       drive.dispose();
@@ -160,7 +160,7 @@ void main() {
       final pending = Completer<RouteOption>();
       var requests = 0;
       List<GeoPoint>? stops;
-      final nav = MapboxNavigationEngine(
+      final nav = IndependentNavigationEngine(
         drive,
         clock: () => now,
         reroute: (point, previous, remaining) {
@@ -196,7 +196,7 @@ void main() {
     final drive = FakeDrive();
     var now = DateTime(2026, 9, 30);
     final pending = Completer<RouteOption>();
-    final nav = MapboxNavigationEngine(
+    final nav = IndependentNavigationEngine(
       drive,
       clock: () => now,
       reroute: (_, _, _) => pending.future,
@@ -225,7 +225,7 @@ void main() {
       final drive = FakeDrive();
       var now = DateTime(2026, 9, 30);
       var attempts = 0;
-      final nav = MapboxNavigationEngine(
+      final nav = IndependentNavigationEngine(
         drive,
         clock: () => now,
         reroute: (_, _, _) async {

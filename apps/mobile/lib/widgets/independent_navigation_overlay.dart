@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../domain/route_option.dart';
 import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
-import '../providers/mapbox_navigation_engine.dart';
+import '../providers/independent_navigation_engine.dart';
 import 'navigation_overlay.dart';
 
-IconData mapboxManeuverIcon(RouteStepInfo? step) {
+IconData independentManeuverIcon(RouteStepInfo? step) {
   final type = step?.maneuverType ?? '';
   final modifier = step?.maneuverModifier ?? '';
   if (type == 'arrive') return Icons.flag_rounded;
@@ -19,8 +19,8 @@ IconData mapboxManeuverIcon(RouteStepInfo? step) {
   return Icons.straight_rounded;
 }
 
-class MapboxNavigationOverlay extends StatelessWidget {
-  const MapboxNavigationOverlay({
+class IndependentNavigationOverlay extends StatelessWidget {
+  const IndependentNavigationOverlay({
     super.key,
     required this.engine,
     required this.drive,
@@ -48,8 +48,10 @@ class MapboxNavigationOverlay extends StatelessWidget {
     this.arrivalPanel,
     this.offlineReady = false,
     this.offlineCachedAt,
+    this.onTopInsetChanged,
+    this.onBottomInsetChanged,
   });
-  final MapboxNavigationEngine engine;
+  final IndependentNavigationEngine engine;
   final DriveEngine drive;
   final String destination;
   final String language;
@@ -63,6 +65,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
   final Widget? arrivalPanel;
   final bool offlineReady;
   final DateTime? offlineCachedAt;
+  final ValueChanged<double>? onTopInsetChanged, onBottomInsetChanged;
   final VoidCallback onEnd,
       onRecenter,
       onOverview,
@@ -95,6 +98,8 @@ class MapboxNavigationOverlay extends StatelessWidget {
           ? _text('Waiting for accurate GPS', '正在等待准确定位')
           : null;
       return NavigationOverlay(
+        onTopInsetChanged: onTopInsetChanged,
+        onBottomInsetChanged: onBottomInsetChanged,
         engine: drive,
         language: language,
         guidance: NavigationGuidance(
@@ -103,7 +108,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
               ? Icons.flag_rounded
               : engine.rerouting || engine.offRoute
               ? Icons.alt_route_rounded
-              : mapboxManeuverIcon(next),
+              : independentManeuverIcon(next),
           stepMeters: engine.offRoute ? null : engine.distanceToStepMeters,
           remainingMeters: engine.remainingDistanceMeters,
           remainingSeconds: engine.remainingSeconds,
@@ -142,6 +147,7 @@ class MapboxNavigationOverlay extends StatelessWidget {
         overviewMode: overviewMode,
         northUp: northUp,
         perspectiveTilted: perspectiveTilted,
+        perspectiveAvailable: false,
         onCompassToggle: onCompassToggle,
         onReport: onReport,
         onSearchAlongRoute: onSearchAlongRoute,

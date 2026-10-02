@@ -41,3 +41,27 @@ List<LatLng> radarSector(
       pointAtDistance(origin, headingDegrees + offset, rangeMeters),
   ];
 }
+
+/// Overlapping translucent contours make a soft light falloff without an edge.
+/// All layers use the same snapped fix as the navigation location indicator.
+List<(List<LatLng>, double)> headingLightLayers(
+  LatLng origin,
+  double heading,
+) => [
+  for (var layer = 12; layer >= 1; layer--)
+    (
+      [
+        origin,
+        for (var angle = -42; angle <= 42; angle += 3)
+          pointAtDistance(
+            origin,
+            heading + angle,
+            radarRangeMeters *
+                layer /
+                12 *
+                math.pow(math.cos(angle * math.pi / 100), .7),
+          ),
+      ],
+      .012 + .014 * (1 - layer / 12),
+    ),
+];

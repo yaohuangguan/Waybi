@@ -151,6 +151,7 @@ export async function fetchNztaRoadEvents(fetcher = fetch, now = new Date()) {
     events,
     source: ROAD_EVENTS_SOURCE_PAGE,
     checkedAt: now.toISOString(),
+    retrievedAt: now.toISOString(),
     syncStatus: 'live',
     syncError: null
   };
@@ -174,6 +175,7 @@ export async function loadRoadEventState(env, fetcher = fetch, now = new Date())
     if (Array.isArray(stored?.events) && stored.events.length) {
       const stale = {
         ...stored,
+        retrievedAt: stored.retrievedAt ?? (stored.syncStatus === 'live' ? stored.checkedAt : null),
         checkedAt: now.toISOString(),
         syncStatus: 'stale',
         syncError: String(error.message || error)

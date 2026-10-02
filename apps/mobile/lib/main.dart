@@ -815,7 +815,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       final along = matcher.project(step.location, route.points)?.alongMeters;
       if (along == null || along < start - 50 || along > end) continue;
       steps.add({
-        'instruction': step.instruction,
+        'instruction': routeStepInstruction(step, _appLanguage),
         'roadName': step.roadName,
         'maneuverType': step.maneuverType,
         'maneuverModifier': step.maneuverModifier,
@@ -1664,10 +1664,27 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _queueMapRefresh() {
     if (_mapRefreshTimer?.isActive ?? false) return;
+    final smoothNavigation =
+        _mapProvider == MapProvider.independent &&
+        _independentNavigation.active;
     _mapRefreshTimer = Timer(
-      const Duration(milliseconds: 350),
+      Duration(milliseconds: smoothNavigation ? 750 : 350),
       () => unawaited(_refreshMap()),
     );
+  }
+
+  double _independentFollowZoom() {
+    final step = _independentNavigation.distanceToStepMeters;
+    final speed = _driveEngine.speedKph;
+    // Google-like framing: get close for junction detail, then open the view
+    // progressively as road speed increases.
+    if (step <= 80) return 17.4;
+    if (step <= 220) return 16.9;
+    if (step <= 450) return 16.4;
+    if (speed >= 90) return 14.7;
+    if (speed >= 70) return 15.1;
+    if (speed >= 45) return 15.7;
+    return 16.2;
   }
 
   Future<void> _refreshMap() async {
@@ -1683,14 +1700,27 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           !placeDeckOwnsCamera &&
           location != null &&
           _browseRenderer != null) {
+        final navigating = _independentNavigation.active;
+        final heading = _driveEngine.active
+            ? _driveEngine.snappedHeadingDegrees ??
+                  _travelHeading ??
+                  _deviceHeading ??
+                  0
+            : _travelHeading ?? _deviceHeading ?? 0;
+        final desiredZoom = navigating
+            ? _independentFollowZoom()
+            : _viewport.zoom;
+        final smoothZoom = navigating
+            ? _viewport.zoom + (desiredZoom - _viewport.zoom) * .55
+            : desiredZoom;
         await _browseRenderer!.moveTo(
           _viewport.copyWith(
             center: GeoPoint(location.latitude, location.longitude),
-            zoom: _viewport.zoom,
-            bearing: _cameraMode.northUp
-                ? 0
-                : (_travelHeading ?? _deviceHeading ?? 0),
-            pitch: _cameraMode.tilted ? 50 : 0,
+            zoom: smoothZoom,
+            bearing: _cameraMode.northUp ? 0 : heading,
+            pitch: navigating && !_cameraMode.northUp
+                ? (_cameraMode.tilted ? 48 : 32)
+                : (_cameraMode.tilted ? 42 : 0),
           ),
         );
       }
@@ -2009,13 +2039,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   void _toggleCompass() {
-    setState(() {
-      _cameraMode = _mapProvider == MapProvider.independent
-          ? (_cameraMode.northUp
-                ? NavigationCameraMode.headingUpFlat
-                : NavigationCameraMode.northUpFlat)
-          : _cameraMode.next;
-    });
+    setState(() => _cameraMode = _cameraMode.next);
     _recenter();
   }
 
@@ -2930,6 +2954,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           _routeStops.clear();
           _following = true;
           _routeOverviewActive = false;
+          _cameraMode = NavigationCameraMode.headingUpPerspective;
           _activeDestinationPlace = destinationPlace;
           _arrivalMode = false;
           _arrivalPrefetching = false;
@@ -3781,9 +3806,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     setState(() {
       _mapProvider = provider;
-      if (provider == MapProvider.independent && _cameraMode.tilted) {
-        _cameraMode = NavigationCameraMode.headingUpFlat;
-      }
       _journeyPhase = selected == null
           ? JourneyPhase.idle
           : JourneyPhase.placeSelected;
@@ -4205,7 +4227,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                               ),
                             ),
                             title: Text(
-                              step.instruction,
+                              routeStepInstruction(step, _appLanguage),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -4749,7 +4771,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             );
           },
           language: _appLanguage,
-          currentLocation: _gpsLocation == null
+          currentLocation: !_following || _showSearchArea
+              ? _viewport.center
+              : _gpsLocation == null
               ? _viewport.center
               : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude),
           recent: _recentDestinations

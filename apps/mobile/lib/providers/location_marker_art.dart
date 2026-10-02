@@ -17,6 +17,7 @@ class LocationMarkerArt {
 
   static Future<Uint8List>? _glow;
   static Future<Uint8List>? _mascot;
+  static Future<Uint8List>? _camera;
 
   static Future<Uint8List> practicePng(LocationMarkerStyle style) =>
       style == LocationMarkerStyle.kiwi
@@ -31,6 +32,43 @@ class LocationMarkerArt {
 
   /// Rasterize the soft light once. Native GPU transforms it with the puck;
   /// Flutter no longer repaints a blurred 240px path on every animation frame.
+  static Future<Uint8List> cameraPng() => _camera ??= _drawCamera();
+
+  static Future<Uint8List> _drawCamera() async {
+    const size = 96.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final paint = Paint()..isAntiAlias = true;
+    paint.color = const Color(0xFFD9473F);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(8, 8, 80, 80),
+        const Radius.circular(24),
+      ),
+      paint,
+    );
+    paint.color = Colors.white;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(21, 31, 54, 38),
+        const Radius.circular(8),
+      ),
+      paint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(31, 24, 22, 13),
+        const Radius.circular(5),
+      ),
+      paint,
+    );
+    paint.color = const Color(0xFFD9473F);
+    canvas.drawCircle(const Offset(48, 50), 12, paint);
+    paint.color = Colors.white;
+    canvas.drawCircle(const Offset(48, 50), 6, paint);
+    return _export(recorder, size.toInt());
+  }
+
   static Future<Uint8List> glowPng() => _glow ??= _drawGlow();
   static Future<Uint8List> _drawGlow() async {
     final recorder = ui.PictureRecorder();

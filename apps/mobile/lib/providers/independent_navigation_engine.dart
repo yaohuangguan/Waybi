@@ -111,6 +111,15 @@ class IndependentNavigationEngine extends ChangeNotifier
     try {
       await drive.startLocal();
       drive.addListener(_onLocation);
+      if (drive.voiceEnabled) {
+        final opening = routeStepInstruction(
+          route.steps.firstOrNull,
+          drive.navigationLanguage,
+        );
+        if (opening.trim().isNotEmpty) {
+          unawaited(drive.speakMessage(opening));
+        }
+      }
       _onLocation();
     } catch (_) {
       _route = null;
@@ -215,23 +224,33 @@ class IndependentNavigationEngine extends ChangeNotifier
         _nextStep != null &&
         _nextStep!.maneuverType != 'arrive' &&
         drive.voiceEnabled) {
-      final approach = math.max(150, drive.speedKph / 3.6 * 15);
-      // When already close, say only the imminent instruction.
-      final stage = _distanceToStep < 55
+      final farThreshold = drive.speedKph >= 80 ? 1200.0 : 800.0;
+      final stage = _distanceToStep <= 55
           ? 'turn'
-          : _distanceToStep < approach
-          ? 'approach'
+          : _distanceToStep <= 300
+          ? 'near'
+          : _distanceToStep <= farThreshold
+          ? 'far'
           : null;
       if (stage != null &&
           _spokenSteps.add('$nextIndex:$stage:${drive.navigationLanguage}')) {
         if (stage == 'turn') {
-          _spokenSteps.add('$nextIndex:approach:${drive.navigationLanguage}');
+          _spokenSteps
+            ..add('$nextIndex:near:${drive.navigationLanguage}')
+            ..add('$nextIndex:far:${drive.navigationLanguage}');
+        } else if (stage == 'near') {
+          _spokenSteps.add('$nextIndex:far:${drive.navigationLanguage}');
         }
-        unawaited(
-          drive.speakMessage(
-            routeStepInstruction(_nextStep, drive.navigationLanguage),
-          ),
+        final instruction = routeStepInstruction(
+          _nextStep,
+          drive.navigationLanguage,
         );
+        final message = stage == 'turn'
+            ? instruction
+            : drive.navigationLanguage == 'zh'
+            ? '${navigationMetres(_distanceToStep, drive.navigationLanguage)}后，$instruction'
+            : 'In ${navigationMetres(_distanceToStep, drive.navigationLanguage)}, $instruction';
+        unawaited(drive.speakMessage(message));
       }
     }
     notifyListeners();

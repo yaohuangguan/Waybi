@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
-import 'package:url_launcher/url_launcher.dart';
 
 import '../domain/map_layer_settings.dart';
 import '../domain/map_provider.dart';
@@ -138,7 +137,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     if (!_ready) return;
     _viewport = viewport;
     await _applyPadding();
-    await _controller!.moveCamera(
+    await _controller!.easeCamera(
       ml.CameraUpdate.newCameraPosition(
         ml.CameraPosition(
           target: _point(viewport.center),
@@ -147,6 +146,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           tilt: viewport.pitch,
         ),
       ),
+      duration: const Duration(milliseconds: 650),
+      interpolation: ml.CameraAnimationInterpolation.linear,
     );
   }
 
@@ -180,7 +181,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     // Bounds padding is explicit, so avoid counting the deck twice.
     await _controller!.updateContentInsets(EdgeInsets.zero);
     _appliedPadding = EdgeInsets.zero;
-    await _controller!.moveCamera(
+    await _controller!.easeCamera(
       ml.CameraUpdate.newLatLngBounds(
         ml.LatLngBounds(
           southwest: ml.LatLng(south, west),
@@ -191,6 +192,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         right: 36,
         bottom: bottomInset,
       ),
+      duration: const Duration(milliseconds: 700),
+      interpolation: ml.CameraAnimationInterpolation.linear,
     );
   }
 
@@ -225,6 +228,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         );
       }
       await c.addImage('kiwi-light', await LocationMarkerArt.glowPng());
+      await c.addImage('kiwi-camera', await LocationMarkerArt.cameraPng());
       for (final source in ['kiwi-route', 'kiwi-pins', 'kiwi-driver']) {
         await c.addGeoJsonSource(source, _collection(const []));
       }
@@ -273,6 +277,28 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           circleStrokeColor: '#ffffff',
           circleStrokeWidth: 2,
         ),
+        filter: [
+          '!=',
+          ['get', 'kind'],
+          'camera',
+        ],
+        enableInteraction: false,
+      );
+      await c.addSymbolLayer(
+        'kiwi-pins',
+        'kiwi-camera-icon',
+        ml.SymbolLayerProperties(
+          iconImage: 'kiwi-camera',
+          iconSize: 30 / 96 * imageScale,
+          iconAllowOverlap: true,
+          iconIgnorePlacement: true,
+          iconAnchor: 'center',
+        ),
+        filter: [
+          '==',
+          ['get', 'kind'],
+          'camera',
+        ],
         enableInteraction: false,
       );
       await c.addSymbolLayer(
@@ -288,6 +314,11 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           textHaloWidth: 1.5,
           textColor: '#3f612c',
         ),
+        filter: [
+          '!=',
+          ['get', 'kind'],
+          'camera',
+        ],
         enableInteraction: false,
       );
       await c.addSymbolLayer(
@@ -462,7 +493,13 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           width: 24,
           height: 24,
         ),
-        ['kiwi-pins-dot', 'kiwi-pins-label', 'kiwi-poi-dot', 'kiwi-poi-label'],
+        [
+          'kiwi-camera-icon',
+          'kiwi-pins-dot',
+          'kiwi-pins-label',
+          'kiwi-poi-dot',
+          'kiwi-poi-label',
+        ],
         null,
       );
       if (!mounted) return;
@@ -596,42 +633,14 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                     location: GeoPoint(p.latitude, p.longitude),
                   ),
                 ),
-                attributionButtonMargins: math.Point(6, _padding.bottom + 24),
+                attributionButtonPosition:
+                    ml.AttributionButtonPosition.bottomRight,
+                attributionButtonMargins: const math.Point(8, 8),
               ),
             );
           },
         ),
       ),
-      Positioned(
-        right: 28,
-        bottom: _padding.bottom + 24,
-        child: Material(
-          color: Colors.white.withValues(alpha: .92),
-          borderRadius: BorderRadius.circular(6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _credit('© OpenMapTiles', 'https://openmaptiles.org/'),
-              _credit(
-                '© OpenStreetMap',
-                'https://www.openstreetmap.org/copyright',
-              ),
-              if (widget.route.isNotEmpty)
-                _credit('OSRM', 'https://routing.openstreetmap.de/about.html'),
-            ],
-          ),
-        ),
-      ),
     ],
-  );
-  Widget _credit(String text, String url) => InkWell(
-    onTap: () => launchUrl(Uri.parse(url)),
-    child: Padding(
-      padding: const EdgeInsets.all(3),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 10, color: Colors.black87),
-      ),
-    ),
   );
 }

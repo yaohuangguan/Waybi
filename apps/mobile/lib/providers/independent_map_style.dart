@@ -11,6 +11,14 @@ Map<String, dynamic> kiwiMapStyle(
 }) {
   final result = jsonDecode(jsonEncode(base)) as Map<String, dynamic>;
   result['id'] = 'kiwi-${dark ? "night" : "day"}-$language';
+  final sources = result['sources'] as Map<String, dynamic>?;
+  final openMapTiles = sources?['openmaptiles'] as Map<String, dynamic>?;
+  if (openMapTiles != null) {
+    // Keep attribution in the native MapLibre info control instead of a large
+    // custom badge that floats over navigation content.
+    openMapTiles['attribution'] =
+        '© OpenStreetMap contributors · © OpenMapTiles · Routing: OSRM';
+  }
   final paper = dark ? '#192329' : '#f7f7f2';
   final park = dark ? '#294333' : '#cfe8c1';
   final water = dark ? '#204557' : '#add5ed';

@@ -256,6 +256,93 @@ class IndependentSearchProvider
         (name.contains(wanted) || wanted.contains(name));
   }
 
+  static const _regionalSearchAnchors = <(String, GeoPoint)>[
+    ('Auckland', GeoPoint(-36.8485, 174.7633)),
+    ('Hamilton', GeoPoint(-37.7870, 175.2793)),
+    ('Tauranga', GeoPoint(-37.6878, 176.1651)),
+    ('Wellington', GeoPoint(-41.2866, 174.7756)),
+    ('Christchurch', GeoPoint(-43.5321, 172.6362)),
+    ('Dunedin', GeoPoint(-45.8788, 170.5028)),
+    ('Queenstown', GeoPoint(-45.0312, 168.6626)),
+  ];
+
+  static const _regionalIntents = {
+    'airport': 'Airport',
+    'international airport': 'Airport',
+    '机场': 'Airport',
+    'zoo': 'Zoo',
+    '动物园': 'Zoo',
+    'museum': 'Museum',
+    '博物馆': 'Museum',
+    'stadium': 'Stadium',
+    '体育场': 'Stadium',
+    'university': 'University',
+    '大学': 'University',
+    'hospital': 'Hospital',
+    '医院': 'Hospital',
+    'ferry terminal': 'Ferry Terminal',
+    '渡轮': 'Ferry Terminal',
+  };
+
+  String? _regionalIntentQuery(String query, GeoPoint? proximity) {
+    if (proximity == null) return null;
+    final intent = _regionalIntents[query.toLowerCase().trim()];
+    if (intent == null) return null;
+    (String, GeoPoint)? nearest;
+    var nearestMeters = double.infinity;
+    for (final region in _regionalSearchAnchors) {
+      final metres = distanceMeters(
+        proximity.latitude,
+        proximity.longitude,
+        region.$2.latitude,
+        region.$2.longitude,
+      );
+      if (metres < nearestMeters) {
+        nearest = region;
+        nearestMeters = metres;
+      }
+    }
+    // Use city intent expansion only when the map/search origin is genuinely
+    // in that metro area. Outside those regions Photon keeps its normal ranking.
+    if (nearest == null || nearestMeters > 160000) return null;
+    return '${nearest.$1} $intent';
+  }
+
+  double _resultRank(
+    PlaceSummary place, {
+    required GeoPoint? proximity,
+    String? preferredName,
+    String? coreName,
+  }) {
+    var rank = 0.0;
+    final name = _compactSearchText(place.name);
+    if (preferredName != null) {
+      final preferred = _compactSearchText(preferredName);
+      if (name == preferred) {
+        rank -= 100000;
+      } else if (name.contains(preferred) || preferred.contains(name)) {
+        rank -= 50000;
+      }
+    }
+    if (coreName != null && _nameMatchesCore(place, coreName)) {
+      rank -= 25000;
+    }
+    final category = place.category.toLowerCase();
+    if (preferredName?.toLowerCase().contains('airport') == true) {
+      if (category == 'aerodrome') rank -= 5000;
+      if (category.contains('terminal')) rank -= 3000;
+    }
+    if (proximity != null) {
+      rank += distanceMeters(
+        proximity.latitude,
+        proximity.longitude,
+        place.location.latitude,
+        place.location.longitude,
+      );
+    }
+    return rank;
+  }
+
   Map<String, String> _photonParameters(String query, GeoPoint? proximity) => {
     'q': query,
     'limit': '8',
@@ -289,24 +376,44 @@ class IndependentSearchProvider
       '基督城': 'Christchurch',
       '皇后镇': 'Queenstown',
     };
-    final primaryQuery = aliases[trimmed] ?? trimmed;
+    final plainQuery = aliases[trimmed] ?? trimmed;
+    final regionalQuery = _regionalIntentQuery(trimmed, proximity);
+    final primaryQuery = regionalQuery ?? plainQuery;
     var results = await _load(
       'api/',
       _photonParameters(primaryQuery, proximity),
     );
 
-    // Photon can over-weight generic category words. For a branded query such
-    // as "taiping asian supermarket", retry the brand portion only when the
-    // first response does not contain a matching place name.
+    // Photon can over-weight generic category words. Branded searches retry
+    // the brand portion. Common local intents are expanded before the first
+    // request so "airport" near Auckland is both smarter and faster.
     final coreQuery = _coreBrandQuery(trimmed);
-    if (coreQuery != null &&
-        !results.any((place) => _nameMatchesCore(place, coreQuery))) {
-      final fallback = await _load(
-        'api/',
-        _photonParameters(coreQuery, proximity),
-      );
+    final fallbacks = <String>[
+      if (regionalQuery != null &&
+          plainQuery != primaryQuery &&
+          results.isEmpty)
+        plainQuery,
+      if (coreQuery != null &&
+          coreQuery != primaryQuery &&
+          !results.any((place) => _nameMatchesCore(place, coreQuery)))
+        coreQuery,
+    ];
+    if (fallbacks.isNotEmpty) {
       final merged = <String, PlaceSummary>{};
-      for (final place in [...fallback, ...results]) {
+      for (final query in fallbacks) {
+        final fallback = await _load(
+          'api/',
+          _photonParameters(query, proximity),
+        );
+        for (final place in fallback) {
+          final ref = place.reference;
+          final key = ref == null
+              ? '${place.name}|${place.location.latitude}|${place.location.longitude}'
+              : '${ref.provider}:${ref.id}';
+          merged.putIfAbsent(key, () => place);
+        }
+      }
+      for (final place in results) {
         final ref = place.reference;
         final key = ref == null
             ? '${place.name}|${place.location.latitude}|${place.location.longitude}'
@@ -315,23 +422,37 @@ class IndependentSearchProvider
       }
       results = merged.values.toList(growable: false)
         ..sort((a, b) {
-          final aMatch = _nameMatchesCore(a, coreQuery);
-          final bMatch = _nameMatchesCore(b, coreQuery);
-          if (aMatch != bMatch) return aMatch ? -1 : 1;
-          if (proximity == null) return 0;
-          final aDistance = distanceMeters(
-            proximity.latitude,
-            proximity.longitude,
-            a.location.latitude,
-            a.location.longitude,
+          final aRank = _resultRank(
+            a,
+            proximity: proximity,
+            preferredName: regionalQuery,
+            coreName: coreQuery,
           );
-          final bDistance = distanceMeters(
-            proximity.latitude,
-            proximity.longitude,
-            b.location.latitude,
-            b.location.longitude,
+          final bRank = _resultRank(
+            b,
+            proximity: proximity,
+            preferredName: regionalQuery,
+            coreName: coreQuery,
           );
-          return aDistance.compareTo(bDistance);
+          return aRank.compareTo(bRank);
+        });
+    }
+    if (regionalQuery != null || coreQuery != null) {
+      results = results.toList(growable: false)
+        ..sort((a, b) {
+          final aRank = _resultRank(
+            a,
+            proximity: proximity,
+            preferredName: regionalQuery,
+            coreName: coreQuery,
+          );
+          final bRank = _resultRank(
+            b,
+            proximity: proximity,
+            preferredName: regionalQuery,
+            coreName: coreQuery,
+          );
+          return aRank.compareTo(bRank);
         });
     }
 

@@ -5,6 +5,7 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:kiwi_lens_mobile/domain/map_provider.dart';
 import 'package:kiwi_lens_mobile/domain/route_option.dart';
 import 'package:kiwi_lens_mobile/drive/drive_engine.dart';
+import 'package:kiwi_lens_mobile/drive/navigation_language.dart';
 import 'package:kiwi_lens_mobile/drive/voice_engine.dart';
 import 'package:kiwi_lens_mobile/drive/route_progress_tracker.dart';
 import 'package:kiwi_lens_mobile/providers/independent_navigation_engine.dart';
@@ -107,6 +108,18 @@ RouteOption makeRoute({List<GeoPoint> waypoints = const []}) => RouteOption(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test('empty OSRM instruction still produces an English road prompt', () {
+    const step = RouteStepInfo(
+      instruction: '',
+      distanceMeters: 120,
+      location: GeoPoint(-36.85, 174.76),
+      maneuverType: 'turn',
+      maneuverModifier: 'right',
+      roadName: 'Queen Street',
+    );
+    expect(routeStepInstruction(step, 'en'), 'Turn right onto Queen Street');
+  });
+
   test('near turn speaks once and ETA uses remaining step durations', () async {
     final drive = FakeDrive();
     final nav = IndependentNavigationEngine(drive);
@@ -119,9 +132,9 @@ void main() {
     drive.emit(const GeoPoint(-36.8552, 174.76), now);
     expect(nav.nextStep?.instruction, 'Turn right');
     expect(nav.distanceToStepMeters, lessThan(55));
-    expect(drive.spoken, ['Turn right']);
+    expect(drive.spoken, ['Head north', 'Turn right']);
     drive.notifyListeners();
-    expect(drive.spoken, ['Turn right']);
+    expect(drive.spoken, ['Head north', 'Turn right']);
     drive.emit(middle, now.add(const Duration(seconds: 1)));
     expect(nav.remainingDistanceMeters, closeTo(500, 1));
     expect(nav.remainingSeconds, closeTo(990, 1));

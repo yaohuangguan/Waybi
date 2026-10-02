@@ -3,33 +3,59 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import '../domain/route_option.dart';
 
 String routeStepInstruction(RouteStepInfo? step, String language) {
-  if (step == null) return language == 'zh' ? '沿路线继续行驶' : 'Continue on route';
-  if (language != 'zh' ||
-      RegExp(r'[\u3400-\u9fff]').hasMatch(step.instruction)) {
-    return step.instruction;
+  final chinese = language == 'zh';
+  if (step == null) return chinese ? '沿路线继续行驶' : 'Continue on route';
+  final supplied = step.instruction.trim();
+  if (supplied.isNotEmpty &&
+      (!chinese || RegExp(r'[\u3400-\u9fff]').hasMatch(supplied))) {
+    return supplied;
   }
-  final type = step.maneuverType;
-  final modifier = step.maneuverModifier;
-  final action = type == 'arrive'
-      ? '到达目的地'
-      : type.contains('roundabout') || type == 'rotary'
-      ? '驶入环岛'
-      : modifier == 'uturn'
-      ? '掉头'
-      : type == 'merge'
-      ? '汇入前方道路'
-      : type == 'off ramp'
-      ? '从${modifier.contains('left') ? '左侧' : '右侧'}出口驶出'
-      : type == 'fork'
-      ? (modifier.contains('left') ? '靠左行驶' : '靠右行驶')
-      : modifier.contains('left')
-      ? '左转'
-      : modifier.contains('right')
-      ? '右转'
-      : '继续直行';
-  return step.roadName.isEmpty || type == 'arrive'
-      ? action
-      : '$action，驶向 ${step.roadName}';
+
+  // OSRM exposes structured maneuver type/modifier/name rather than a ready
+  // human sentence. Always synthesize a useful prompt when instruction is
+  // empty; otherwise English Practice navigation ends up with a blank card
+  // and silent TTS.
+  final type = step.maneuverType.toLowerCase();
+  final modifier = step.maneuverModifier.toLowerCase();
+  final road = step.roadName.trim();
+  String action;
+  if (type == 'arrive') {
+    action = chinese ? '到达目的地' : 'Arrive at destination';
+  } else if (type.contains('roundabout') || type == 'rotary') {
+    action = chinese ? '驶入环岛' : 'Enter the roundabout';
+  } else if (modifier == 'uturn') {
+    action = chinese ? '掉头' : 'Make a U-turn';
+  } else if (type == 'merge') {
+    action = chinese ? '汇入前方道路' : 'Merge ahead';
+  } else if (type == 'off ramp' || type == 'offramp') {
+    final left = modifier.contains('left');
+    action = chinese
+        ? '从${left ? '左侧' : '右侧'}出口驶出'
+        : 'Take the ${left ? 'left' : 'right'} exit';
+  } else if (type == 'on ramp' || type == 'onramp') {
+    action = chinese ? '驶入匝道' : 'Take the ramp';
+  } else if (type == 'fork') {
+    final left = modifier.contains('left');
+    action = chinese
+        ? (left ? '靠左行驶' : '靠右行驶')
+        : (left ? 'Keep left' : 'Keep right');
+  } else if (modifier.contains('slight left')) {
+    action = chinese ? '向左前方行驶' : 'Bear left';
+  } else if (modifier.contains('slight right')) {
+    action = chinese ? '向右前方行驶' : 'Bear right';
+  } else if (modifier.contains('sharp left')) {
+    action = chinese ? '向左急转' : 'Turn sharp left';
+  } else if (modifier.contains('sharp right')) {
+    action = chinese ? '向右急转' : 'Turn sharp right';
+  } else if (modifier.contains('left')) {
+    action = chinese ? '左转' : 'Turn left';
+  } else if (modifier.contains('right')) {
+    action = chinese ? '右转' : 'Turn right';
+  } else {
+    action = chinese ? '继续直行' : 'Continue straight';
+  }
+  if (road.isEmpty || type == 'arrive') return action;
+  return chinese ? '$action，驶向 $road' : '$action onto $road';
 }
 
 /// Localize structured maneuvers immediately, even when native map labels

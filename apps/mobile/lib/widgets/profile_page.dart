@@ -33,7 +33,6 @@ class ProfilePage extends StatefulWidget {
     required this.locationMarker,
     required this.onMapProviderChanged,
     required this.onLocationMarkerChanged,
-    required this.mapboxAvailable,
     required this.notifySafetyCameras,
     required this.notifyRoadIncidents,
     required this.notifyCommunityReports,
@@ -66,7 +65,6 @@ class ProfilePage extends StatefulWidget {
   final LocationMarkerStyle locationMarker;
   final Future<MapProvider> Function(MapProvider) onMapProviderChanged;
   final ValueChanged<LocationMarkerStyle> onLocationMarkerChanged;
-  final bool mapboxAvailable;
   final bool notifySafetyCameras;
   final bool notifyRoadIncidents;
   final bool notifyCommunityReports;
@@ -838,32 +836,18 @@ class _ProfilePageState extends State<ProfilePage> {
                 title: Text(_text('Map provider', '地图提供商')),
                 trailing: DropdownButton<MapProvider>(
                   value: _mapProvider,
-                  items: const [
-                    DropdownMenuItem(
+                  items: [
+                    const DropdownMenuItem(
                       value: MapProvider.google,
                       child: Text('Google Maps'),
                     ),
                     DropdownMenuItem(
-                      value: MapProvider.mapbox,
-                      child: Text('Mapbox'),
+                      value: MapProvider.independent,
+                      child: Text(_text('Kiwi Practice', 'Kiwi 实践版')),
                     ),
                   ],
                   onChanged: (value) async {
                     if (value == null) return;
-                    if (value == MapProvider.mapbox &&
-                        !widget.mapboxAvailable) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            _text(
-                              'Mapbox access token is not configured for this build.',
-                              '此版本尚未配置 Mapbox 访问令牌。',
-                            ),
-                          ),
-                        ),
-                      );
-                      return;
-                    }
                     final actual = await widget.onMapProviderChanged(value);
                     if (mounted) setState(() => _mapProvider = actual);
                   },

@@ -21,21 +21,21 @@
 
 Kiwi Lens is a navigation companion built specifically around driving in New Zealand. It combines turn-by-turn navigation with NZTA road intelligence, safety-camera awareness, parking discovery, commute monitoring and a compact driving UI designed to keep the information that matters visible without covering the map.
 
-The project ships as both a **Flutter mobile app** and an installable **Vite PWA**, backed by a **Cloudflare Worker**. Mobile supports both **Google Maps** and **Mapbox** as map/search/routing providers while keeping provider data boundaries explicit.
+The project ships as both a **Flutter mobile app** and an installable **Vite PWA**, backed by a **Cloudflare Worker**. Mobile supports both **Google Maps** and **Kiwi Practice (OpenFreeMap/OSM)** as map/search/routing providers while keeping provider data boundaries explicit.
 
 ## What Kiwi Lens does
 
 | Area | Current experience |
 | --- | --- |
 | Navigation | Traffic-aware driving routes, rerouting, voice guidance, lane guidance, ETA, speed and compact navigation overlays |
-| Map providers | Google Maps and Mapbox on mobile, with provider-aware search, routing and content handling |
+| Map providers | Google Maps and free Kiwi Practice on mobile, with provider-aware search, routing and content handling |
 | Journey Brief | One pre-trip summary for ETA, traffic/delay, matched cameras, parking context and route rationale |
 | Safety cameras | NZTA fixed-camera data, route matching, map visibility and high-confidence approach alerts |
 | Trips | Home / Work shortcuts, recent destinations, route history and stable commute monitoring |
 | Route Watch | Watches fixed **Home → Work** and **Work → Home** corridors against official NZTA road events |
 | Parking | Nearby parking discovery, Auckland Transport data where available, drive-to-parking and walking continuation |
 | Web / PWA | Search, routing, camera awareness and Cloudflare-hosted full-stack web experience |
-| Cost control | Provider usage telemetry and Cost Guard aggregation for Google, Mapbox and Geoapify usage |
+| Cost control | Provider usage telemetry and Cost Guard aggregation for Google usage and legacy provider records |
 
 ## Free navigation, paid intelligence
 
@@ -121,7 +121,7 @@ A parking-assisted journey can be handled as:
 ```text
 ┌──────────────────────────────┐
 │ Flutter mobile               │
-│ Google Maps / Mapbox         │
+│ Google Maps / Kiwi Practice         │
 │ navigation + road UI         │
 └──────────────┬───────────────┘
                │ HTTPS
@@ -169,7 +169,7 @@ scripts/       data import and mobile development helpers
 - **Backend:** Cloudflare Workers
 - **Database:** Cloudflare D1
 - **Cache / snapshots:** Workers KV
-- **Maps & navigation:** Google Maps Platform, Google Navigation SDK, Mapbox
+- **Maps & navigation:** Google Maps Platform, Google Navigation SDK, Flutter Map, OpenFreeMap, OSRM and Photon
 - **Road intelligence:** NZTA Traffic and Travel / fixed safety-camera source
 - **Parking:** Auckland Transport Open GIS where available
 - **Package management:** pnpm workspace
@@ -220,7 +220,7 @@ pnpm mobile:ios:install
 pnpm mobile:ios:ipa
 ```
 
-Provider keys/tokens for local mobile builds belong in local, uncommitted configuration. Do not commit API keys, Mapbox access tokens or unrestricted server credentials.
+Provider keys/tokens for local mobile builds belong in local, uncommitted configuration. Do not commit API keys, retired provider tokens or unrestricted server credentials.
 
 ## Testing
 
@@ -283,7 +283,6 @@ Current tracking includes:
 - Google Routes
 - Google Places search/details/photos
 - Google Navigation destination units
-- Mapbox navigation trips
 - Geoapify autocomplete
 
 Usage tracking is best-effort and must never interrupt search or active navigation.
@@ -292,7 +291,7 @@ Usage tracking is best-effort and must never interrupt search or active navigati
 
 Kiwi Lens keeps provider-specific content rules explicit.
 
-For example, changing the map renderer does not automatically relabel Google content as Mapbox content, and Mapbox-sourced content is not persisted where the current storage licence does not permit it.
+Google Places and Routes content stays on Google Maps. Kiwi Practice uses independently sourced OSM data and its own navigation engine; switching maps does not relabel provider content.
 
 This separation is intentional: map switching is a UI choice, not a licence bypass.
 
@@ -332,3 +331,7 @@ This repository is therefore **not licensed under a permissive open-source licen
   <strong>Kiwi Lens</strong><br />
   A clearer journey through New Zealand.
 </p>
+
+## Road Intelligence API preview
+
+Versioned, key-authenticated area/nearby and route-corridor queries are available at `/api/v1/road-intelligence`. See [API usage, quotas and source permissions](apps/server/ROAD_INTELLIGENCE.md).

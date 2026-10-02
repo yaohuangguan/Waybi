@@ -7,6 +7,7 @@ import { handlePlaces } from './places.mjs';
 import { routeOptions } from './routes.mjs';
 import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.mjs';
 import { loadRoadEventState } from './road_events.mjs';
+import { handleRoadIntelligence } from './road_intelligence_api.mjs';
 import { createRoadReport, readRoadReports } from './road_reports.mjs';
 import { recordApiUsage, readUsageSummary } from './cost_guard.mjs';
 import {
@@ -375,6 +376,7 @@ export default {
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     try {
       const featureResponse =
+        await handleRoadIntelligence(request, env, ctx, readCameraState) ||
         await handleBilling(request, env) ||
         await handleAccount(request, env) ||
         await handleRouteWatchAlerts(request, env) ||

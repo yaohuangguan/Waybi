@@ -1,127 +1,42 @@
 # Map providers and navigation
 
-Kiwi Lens retains Google native Navigation SDK guidance and adds Mapbox Maps with
-Directions API routes and Kiwi Lens's own GPS guidance engine. Users select the
-map in Settings. Each provider feeds the same navigation HUD and camera alerts.
+Settings offers Google Maps and **Kiwi Practice**, an independent experiment.
+Existing `mapbox` preferences migrate to Practice. The Mapbox SDK and token requirement have been removed; old usage records remain readable.
 
-## Mapbox flow
+## Kiwi Practice
 
-- Browse, tap a POI, long-press a coordinate, search NZ places or open Explore.
-- Preview driving, walking and cycling routes; optional modes may be unavailable.
-- Fit the whole preview/active route, start guidance, pan freely and recenter.
-- Follow continuous route progress, upcoming maneuvers, per-step ETA and available
-  lane recommendations. GPS accuracy and off-route status are visible.
-- After at least three accurate off-route fixes over three seconds, request a
-  replacement for the active mode, retaining unvisited stops. Requests are
-  limited to one at a time with a 15-second cooldown. Failed requests retain the
-  previous route; late responses cannot restart an ended session.
-- Search for an extra stop during navigation and route through that stop.
-- Arrive only near the destination at low speed over two location fixes.
-- Enter Drive Mode without a destination for speed, NZ limits and camera alerts.
-- Keep the display awake while driving. Android uses a foreground location
-  notification; iOS requests automotive background location updates.
+- Flutter Map owns the camera, projection, route and single location marker.
+- OpenFreeMap supplies free OpenMapTiles vector tiles. The bundled Positron-derived style uses quiet day/night colours, clear road labels and Kiwi Lime guidance. Chinese names are preferred when present; untranslated proper names remain. Style licences are bundled in `assets/maps/LICENSES.txt` and Flutter's licence registry.
+- Photon supplies independent OSM search, reverse lookup and Explore without a key.
+- FOSSGIS OSRM supplies car, foot and bike routes on separate public engines. Requests are serialized at least 1.1 seconds apart and identify Kiwi Lens. The API profile string is `driving` for all three separately built engines.
+- Kiwi's own guidance tracks route progress, maneuvers, ETA, available lanes, unvisited stops, accuracy-aware deviation and online rerouting. Failed reroutes retain the previous route; late responses cannot restart an ended session.
+- Arrival requires proximity within 10 metres, low speed and two accurate fixes. Camera alerts and turn speech share the existing voice queue.
+- The puck and animated spreading light share one map marker and one projection. Navigation reserves measured space above the deck, including on expansion. Manual pan/pinch pauses follow; GPS updates preserve zoom and recenter resumes follow.
 
-Camera matching uses route distance and direction, a narrow road corridor and
-road names across the full step. Free Drive uses direction-aware nearby matches.
-The existing 800/300-metre alerts and passed-camera lifecycle remain shared.
-Camera speech interrupts turn guidance; the latest turn waits until the alert
-finishes. Mute/End stop pending speech. Reroutes retain spoken-camera memory.
+Practice is 2D. Satellite, live traffic, guaranteed offline routing and production navigation coverage are unavailable. Vector renderer `9.0.0-beta.8` is pinned to the author's recommended Flutter Map 8 version, avoiding the experimental GPU rewrite. Explore does not invent reviews, opening hours, photos or detour estimates.
 
-Mapbox Standard rendering follows the user's top-down follow preference. Route,
-camera, Explore and selection annotations update independently; unchanged
-groups are not deleted and recreated on every compass/GPS update.
+OpenFreeMap requires no access fee or API key. Public OSRM/Photon instances have shared capacity and no SLA. Keep Practice free, avoid bulk requests, and self-host services for a production navigation offering. Open-source software is free; running servers still costs resources. See [OpenFreeMap](https://openfreemap.org/quick_start/), [OSRM policy](https://routing.openstreetmap.de/about.html) and [Photon](https://github.com/komoot/photon).
 
-## NZ search and provider boundaries
+## Configuration
 
-Mapbox Search Box's documented coverage excludes New Zealand. Kiwi Lens therefore
-uses Worker requests with `provider=geoapify` for Mapbox search and Explore.
-The Worker explicitly bypasses Google Places for these requests, even when a
-Google key is configured, and labels results with their actual source.
-Geoapify/OSM attribution is displayed in search and Explore.
+No map token is needed. Optional `--dart-define` overrides:
 
-Deploy the updated Worker with its existing `GEOAPIFY_API_KEY` secret before
-using these flows on a device. An old backend's Google results are rejected on
-Mapbox; a missing independent-search key reports an unavailable service.
-Google searches/Explore continue to use their existing provider.
+| Setting | Default |
+| --- | --- |
+| `KIWI_VECTOR_STYLE_URL` | `https://tiles.openfreemap.org/styles/positron` |
+| `KIWI_PHOTON_URL` | `https://photon.komoot.io` |
+| `KIWI_OSRM_CAR_URL` | `https://routing.openstreetmap.de/routed-car` |
+| `KIWI_OSRM_FOOT_URL` | `https://routing.openstreetmap.de/routed-foot` |
+| `KIWI_OSRM_BIKE_URL` | `https://routing.openstreetmap.de/routed-bike` |
 
-Mapbox map taps use the feature's actual POI coordinates. Reverse address
-enrichment uses Mapbox Geocoding v6, including Chinese. Mapbox-derived content
-remains session-scoped under the existing storage policy. Google Places content
-cannot be displayed on Mapbox, or Mapbox content on Google. Independent
-Geoapify/OSM/AT data may be displayed on either map.
+The ignored `.dart-defines.local.json` is supported by existing launch scripts. Google platform keys remain configured separately. Google Places content is never requested or displayed in Practice; independent OSM/AT data retains its provenance.
 
-## Configure and build
+## Google navigation
 
-Provide a public Mapbox token at build time. Never embed a private `sk.` token.
+Native SDK guidance retains one native location indicator. Flutter's extra Kiwi marker and radar polygons are restricted to browsing: the SDK has no public API to replace its navigation vehicle indicator. This removes projection races during junction zoom. Native junction zoom is retained without repeated forced zoom levels. On iOS, a platform channel explicitly releases the SDK follow camera after a user gesture. The shared HUD reports top and bottom insets to the native map.
 
-```bash
-cd apps/mobile
-flutter run --dart-define=MAPBOX_ACCESS_TOKEN=YOUR_PUBLIC_TOKEN
-flutter build apk --dart-define=MAPBOX_ACCESS_TOKEN=YOUR_PUBLIC_TOKEN
-```
+## Verification
 
-For development, create the ignored `apps/mobile/.dart-defines.local.json`:
+Run `flutter analyze`, `flutter test` and Node 24 `pnpm test`. The separate `tool/practice_navigation_preview.dart` renders the real map/HUD with a labelled sample trip for visual checks; it does not simulate a real road test.
 
-```json
-{"MAPBOX_ACCESS_TOKEN":"pk..."}
-```
-
-The repository's `pnpm mobile:dev`/`mobile:run` and iOS build/install launchers
-automatically include this file when present. Direct Flutter commands need:
-
-```bash
-flutter run --dart-define-from-file=.dart-defines.local.json
-flutter build apk --debug --dart-define-from-file=.dart-defines.local.json
-```
-
-Release CI must supply the public token explicitly. Without it, Mapbox cannot
-be selected and a saved Mapbox selection falls back to Google. Google platform
-keys remain configured separately. Android API 24+ and iOS 16+ are required.
-
-## Capabilities and release verification
-
-This is **Maps SDK + Directions API + Kiwi Lens GPS guidance**, not the native
-Mapbox Navigation SDK. It does not provide native road snapping, offline route
-calculation, voice assets or guaranteed background behavior. Lane information
-appears only when returned by Directions. NZ routing uses `driving`; live Mapbox
-traffic coverage is not assumed. Explore does not invent ratings, photos,
-opening hours or along-route detour times.
-
-Verification includes Flutter analysis, unit/widget tests, all Worker/shared
-tests, Worker bundle validation, an Android debug build and successful live
-Auckland Directions/Chinese reverse-geocoding requests. Simulated tests cover
-progress across route crossings, jitter/backward travel, poor GPS, ETA,
-sustained deviation, stop-preserving reroutes, failures, late responses, arrival,
-voice priority/mute, independent-source searches and a 375×667 dark HUD.
-
-Before calling this App Store/Play Store ready, run on physical Android and
-iPhone devices with production credentials:
-
-1. Search/Explore in English and Chinese; choose a POI or long-pressed coordinate,
-   preview alternatives, start, pan, recenter and view the whole route.
-2. Drive past same-road and adjacent-road cameras, cross the 800/300-metre
-   thresholds, confirm speech priority, mute and the passed-camera lifecycle.
-3. Deviate, lose network, regain network and add stops; confirm old geometry
-   stays usable and unvisited stops survive rerouting.
-4. Test destination-free Drive, lock screen, background/resume, calls/audio
-   interruption, location permission removal and End. Verify background service,
-   speech and display wake lock stop when driving ends.
-5. Approach/drive past/stop at the destination and check single arrival speech.
-6. Switch providers in browsing and verify Google native navigation still works.
-
-No physical device was connected in this workspace. Native iOS build/signing and
-actual GPS/background/audio/performance behavior remain unverified here.
-
-## Code boundaries
-
-- `domain/map_provider.dart`, `domain/route_option.dart`: neutral places,
-  geometry, maneuver/lanes and source policy.
-- `providers/mapbox_map_renderer.dart`: map events, annotation groups, follow
-  camera and route fitting.
-- `providers/mapbox_routing_provider.dart`: online route preview and rerouting.
-- `drive/route_progress_tracker.dart`: GPS continuity and accuracy-aware progress.
-- `providers/mapbox_navigation_engine.dart`: maneuver/ETA, deviation and arrival.
-- `drive/drive_engine.dart`: location, NZ road intelligence, limits and alerts.
-- `drive/voice_engine.dart`: speech priority and cancellation.
-- `widgets/navigation_overlay.dart`: shared navigation HUD.
-- `apps/server/src/compatible_places.mjs`: independent NZ Explore endpoint.
+Physical iPhone/Android checks remain necessary for GPS continuity, junction zoom, network recovery, background audio/location, wake lock and arrival behavior.

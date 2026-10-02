@@ -1,24 +1,24 @@
 # Kiwi Lens Mobile
 
-Kiwi Lens 的原生移动端使用 Flutter，支持在设置中切换 Google Maps 与 Mapbox 地图。Google 原生导航流程保留，Mapbox 浏览、路线、偏航重算与驾驶模式使用独立适配器；详细边界和剩余验证见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
+Kiwi Lens 的原生移动端使用 Flutter，支持在设置中切换 Google Maps 与 Kiwi 实践版 地图。Google 原生导航流程保留，Kiwi 实践版 浏览、路线、偏航重算与驾驶模式使用独立适配器；详细边界和剩余验证见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
 
 - `google_navigation_flutter`：地图浏览、POI 点击、路线与 turn-by-turn 导航
-- `mapbox_maps_flutter`：第二地图渲染器、地点选择与 Kiwi Lens 覆盖物
+- `flutter_map` / `vector_map_tiles`：OpenFreeMap 矢量底图、Kiwi 配色与共享定位光晕
 - Cloudflare Worker `https://kiwi-lens.nzs.workers.dev`：地址自动补全、摄像头及限速 API
-- iOS Core Location：手机顶部罗盘朝向；地图与 500 米雷达扇区跟随该方向，GPS course 仅为无罗盘时的行驶中回退
+- iOS Core Location：手机顶部罗盘朝向；地图与柔和前方光晕跟随该方向，GPS course 仅为无罗盘时的行驶中回退
 - 自定义 Flutter 导航顶栏、速度/摄像头浮层和紧凑行程卡；Google Navigation SDK 保留真实路线与转弯数据
 
 ## 当前里程碑
 
 第一版先把地图最核心的交互做实：
 
-1. 浏览 Google 或 Mapbox 地图
+1. 浏览 Google 或 Kiwi 实践版 地图
 2. 通过搜索、Explore、收藏、最近地点、快捷地点、地图 POI 或长按坐标选择目的地
 3. 显示统一 Kiwi Lens 地点预览；点击 Directions 才进入路线预览
 4. 在路线预览中选择模式/备选路线；点击 Start 才开始导航
-5. Google 路线继续使用 Google Navigation SDK；Mapbox 使用连续 GPS 路线进度、步骤 ETA、偏航重算、途经点和共享摄像头提醒
+5. Google 路线继续使用 Google Navigation SDK；Kiwi 实践版 使用连续 GPS 路线进度、步骤 ETA、偏航重算、途经点和共享摄像头提醒
 
-搜索页支持自动补全、地址完整展示与最近搜索；Explore 以新西兰道路出行相关地点为主。Google POI 的照片、评分、营业时间尚未接入原生地点卡；路线摄像头总数也尚未从原生导航路线中取得，因此显示 `—`。Mapbox 已实现在线偏航重算，并展示 Directions 实际返回的车道数据；当前使用自有 GPS 引导，尚未接入原生 Mapbox Navigation SDK、离线路由与实测沿途绕行时间。Mapbox 的新西兰搜索与 Explore 使用 Geoapify，需要部署更新后的 Worker 并配置 GEOAPIFY_API_KEY。iOS 真机的罗盘与地图叠加层仍需用 Xcode 实测；iOS Simulator 没有磁力计。
+搜索页支持自动补全、完整地址与最近搜索。实践版使用 Photon/OSM 搜索及 Explore、OSRM 在线路线，自有 GPS 引导负责步骤、ETA、偏航重算、途经点与接近终点的低速到达判断。车道只显示路由服务实际返回的信息。地图使用 OpenFreeMap 免费矢量瓦片和 Kiwi 自定义日夜样式，不需要付费 API key；公共搜索/路由实例适用于免费实践，生产流量需要自建或独立服务。
 
 ## 本地 Flutter
 
@@ -31,7 +31,7 @@ pnpm mobile:doctor
 pnpm mobile:dev
 ```
 
-在忽略的 `apps/mobile/.dart-defines.local.json` 中配置公开的 `MAPBOX_ACCESS_TOKEN` 后，移动端与 iOS 启动/构建脚本会自动读取该文件。详细 Mapbox 设置见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
+实践版无需配置地图 token。可在忽略的 `apps/mobile/.dart-defines.local.json` 覆盖 `KIWI_VECTOR_STYLE_URL`、`KIWI_PHOTON_URL`、`KIWI_OSRM_CAR_URL`、`KIWI_OSRM_FOOT_URL` 和 `KIWI_OSRM_BIKE_URL` 以切换到自建服务。详细说明见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
 
 `pnpm mobile:dev` 和 `pnpm mobile:run` 都会自动执行 `flutter pub get` 并选择可用的移动设备。在 macOS 上会自动启用 Flutter Swift Package Manager，优先使用已连接的 iPhone 或已启动的 iOS Simulator；如果没有运行中的 iOS 设备，会尝试自动启动可用的 iPhone Simulator。其他平台优先使用 Android 设备/模拟器，没有运行中的 Android 设备时会从 `flutter emulators` 列表中启动 AVD。
 
@@ -195,7 +195,7 @@ DriveEngine
 Kiwi Lens Drive HUD
 ```
 
-Google 和 Mapbox 的 Drive Mode 即使没有设置目的地也可以启动；Mapbox 使用系统高精度 GPS、Android 前台定位通知 / iOS 后台定位设置，并在驾驶期间保持屏幕常亮。它会加载 Cloudflare `/api/cameras`，根据 road-snapped 行驶轨迹推导前进方向，筛选前方安全摄像头，并在约 800 m 和 300 m 触发 Kiwi Lens 自己的 UI + TTS 提醒。设置目的地后，同一套 DriveEngine 继续提供摄像头提醒；Google 消费原生 NavInfo，Mapbox 消费 Directions 路线与连续 GPS 进度，显示转弯、剩余距离、ETA 和可用的推荐车道。转弯和摄像头提醒使用同一个等待播放完成的 TTS 队列；摄像头提醒会等当前转弯播报结束，静音与退出会取消待播报内容。
+Google 和 Kiwi 实践版 的 Drive Mode 即使没有设置目的地也可以启动；Kiwi 实践版 使用系统高精度 GPS、Android 前台定位通知 / iOS 后台定位设置，并在驾驶期间保持屏幕常亮。它会加载 Cloudflare `/api/cameras`，根据 road-snapped 行驶轨迹推导前进方向，筛选前方安全摄像头，并在约 800 m 和 300 m 触发 Kiwi Lens 自己的 UI + TTS 提醒。设置目的地后，同一套 DriveEngine 继续提供摄像头提醒；Google 消费原生 NavInfo，Kiwi 实践版消费 OSRM 路线与连续 GPS 进度，显示转弯、剩余距离、ETA 和可用的推荐车道。转弯和摄像头提醒使用同一个等待播放完成的 TTS 队列；摄像头提醒会等当前转弯播报结束，静音与退出会取消待播报内容。
 
 摄像头数据目前没有执法方向，因此 Free Drive 的匹配策略刻意保守：优先前进方向锥形范围内的摄像头，避免侧路或身后的明显误报。真实驾驶测试后再调提醒距离与 heading 阈值。
 

@@ -12,18 +12,21 @@ import '../drive/route_camera_matcher.dart';
 import '../drive/route_progress_tracker.dart';
 import 'provider_contracts.dart';
 
-typedef MapboxReroute = Future<RouteOption> Function(
+typedef IndependentReroute = Future<RouteOption> Function(
   GeoPoint origin,
   RouteOption previous,
   List<GeoPoint> remainingStops,
 );
 
-class MapboxNavigationEngine extends ChangeNotifier
+class IndependentNavigationEngine extends ChangeNotifier
     implements NavigationEngine<RouteOption> {
-  MapboxNavigationEngine(this.drive, {this.reroute, DateTime Function()? clock})
-    : _clock = clock ?? DateTime.now;
+  IndependentNavigationEngine(
+    this.drive, {
+    this.reroute,
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now;
   final DriveEngine drive;
-  final MapboxReroute? reroute;
+  final IndependentReroute? reroute;
   final DateTime Function() _clock;
   final RouteCameraMatcher _matcher = const RouteCameraMatcher();
   RouteOption? _route;
@@ -93,8 +96,10 @@ class MapboxNavigationEngine extends ChangeNotifier
 
   @override
   Future<void> start(RouteOption route) async {
-    if (route.provider != 'mapbox' || route.points.length < 2) {
-      throw StateError('Mapbox navigation requires a valid Mapbox route');
+    if (route.provider != 'independent' || route.points.length < 2) {
+      throw StateError(
+        'Independent navigation requires a valid Independent route',
+      );
     }
     ++_session;
     drive.removeListener(_onLocation);
@@ -243,7 +248,7 @@ class MapboxNavigationEngine extends ChangeNotifier
     try {
       final replacement = await reroute!(point, previous, stops);
       if (session != _session || _route == null) return;
-      if (replacement.provider != 'mapbox' ||
+      if (replacement.provider != 'independent' ||
           replacement.mode != previous.mode ||
           replacement.points.length < 2) {
         throw StateError('Invalid reroute');

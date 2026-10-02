@@ -126,7 +126,7 @@ void main() {
           locationMarker: LocationMarkerStyle.kiwi,
           onMapProviderChanged: (value) async => value,
           onLocationMarkerChanged: (_) {},
-          mapboxAvailable: false,
+
           notifySafetyCameras: false,
           notifyRoadIncidents: false,
           notifyCommunityReports: false,

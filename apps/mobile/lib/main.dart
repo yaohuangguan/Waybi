@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -37,16 +38,16 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'drive/drive_engine.dart';
 import 'drive/route_camera_matcher.dart';
 import 'providers/google_map_renderer.dart';
-import 'providers/mapbox_map_renderer.dart';
-import 'providers/mapbox_navigation_engine.dart';
-import 'providers/mapbox_routing_provider.dart';
+import 'providers/independent_map_renderer.dart';
+import 'providers/independent_navigation_engine.dart';
+import 'providers/independent_routing_provider.dart';
 import 'providers/place_search_providers.dart';
 import 'providers/provider_contracts.dart';
 import 'services/notification_service.dart';
 import 'theme/kiwi_lens_theme.dart';
 import 'widgets/arrival_experience_panel.dart';
 import 'widgets/map_symbols.dart';
-import 'widgets/mapbox_navigation_overlay.dart';
+import 'widgets/independent_navigation_overlay.dart';
 import 'widgets/drive_hud.dart';
 import 'widgets/explore_search.dart';
 import 'widgets/explore_page.dart';
@@ -286,11 +287,10 @@ class MapHomePage extends StatefulWidget {
 
 class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   static const _mapId = String.fromEnvironment('MAP_ID');
-  static const _mapboxToken = String.fromEnvironment('MAPBOX_ACCESS_TOKEN');
   static const _auckland = LatLng(latitude: -36.8485, longitude: 174.7633);
 
   final DriveEngine _driveEngine = DriveEngine();
-  late final MapboxNavigationEngine _mapboxNavigation;
+  late final IndependentNavigationEngine _independentNavigation;
   final AccountRepository _account = AccountRepository();
   late final _plusBilling = AppStoreBillingGateway(_account);
   final PlaceDetailsRepository _placeDetailsRepository =
@@ -299,15 +299,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final UsageTelemetryRepository _usageTelemetry = UsageTelemetryRepository();
   final ParkingRepository _parkingRepository = ParkingRepository();
   final WorkerSearchProvider _workerSearch = WorkerSearchProvider();
-  final WorkerSearchProvider _mapCompatibleSearch = WorkerSearchProvider(
-    mapCompatible: true,
-  );
-  late final MapboxSearchProvider _mapboxSearch = MapboxSearchProvider(
-    _mapboxToken,
-  );
-  late final MapboxRoutingProvider _mapboxRoutes = MapboxRoutingProvider(
-    _mapboxToken,
-  );
+  final IndependentSearchProvider _independentSearch =
+      IndependentSearchProvider();
+  final IndependentRoutingProvider _independentRoutes =
+      IndependentRoutingProvider();
   MapProvider _mapProvider = MapProvider.google;
   MapProvider? _requestedMapProvider;
   Future<void> _providerSwitchQueue = Future<void>.value();
@@ -337,6 +332,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   GoogleNavigationViewController? _navigationController;
   Brightness? _lastMapBrightness;
   double _navigationTopInset = 125;
+  double _navigationBottomInset = 215;
   StreamSubscription<Position>? _positionSubscription;
   StreamSubscription<double>? _headingSubscription;
   Timer? _mapRefreshTimer;
@@ -364,24 +360,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Marker? _destinationMarker;
   Marker? _carMarker;
   Circle? _accuracyCircle;
-  bool _navigationMarkerSyncing = false;
-  LatLng? _pendingNavigationMarkerLocation;
-  double? _pendingNavigationMarkerHeading;
-  LatLng? _lastNavigationMarkerLocation;
-  double? _lastNavigationMarkerHeading;
   String _markerSignature = '';
   bool _markerSyncing = false;
   bool _useCarMarker = false;
   MapLayerSettings _layers = const MapLayerSettings();
   NavigationCameraMode _cameraMode = NavigationCameraMode.headingUpFlat;
-  bool _junctionZoomed = false;
   String _appLanguage = 'en';
   String _voiceLanguage = 'en-NZ';
   double? _gpsAccuracy;
   double? _deviceHeading;
   double? _travelHeading;
   double? _smoothedLocationHeading;
-  Polygon? _radarPolygon;
+  List<Polygon> _radarPolygons = [];
   bool _mapRefreshing = false;
   bool _refreshAgain = false;
   bool _following = true;
@@ -456,9 +446,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _mapboxNavigation = MapboxNavigationEngine(
+    _independentNavigation = IndependentNavigationEngine(
       _driveEngine,
-      reroute: (origin, previous, stops) => _mapboxRoutes.reroute(
+      reroute: (origin, previous, stops) => _independentRoutes.reroute(
         origin: origin,
         destination: previous.points.last,
         mode: previous.mode,
@@ -466,9 +456,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         language: _appLanguage,
       ),
     );
-    _mapboxNavigation.addListener(_onMapboxNavigationChanged);
+    _independentNavigation.addListener(_onIndependentNavigationChanged);
     unawaited(KiwiLensNotificationService.instance.initialize());
-    initializeMapboxMaps(_mapboxToken);
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
     _plusBilling.initialize();
@@ -601,10 +590,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  void _onMapboxNavigationChanged() {
+  void _onIndependentNavigationChanged() {
     if (!mounted) return;
-    if (_mapboxNavigation.route != null) {
-      _activeNavigationRoute = _mapboxNavigation.route;
+    if (_independentNavigation.route != null) {
+      _activeNavigationRoute = _independentNavigation.route;
     }
     setState(() {});
     _updateArrivalExperience();
@@ -615,31 +604,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   void _onEngineChanged() {
     if (!mounted) return;
     _journey?.cameraPassed(_driveEngine.passedCamera?.id);
-    final distance = _driveEngine.navInfo?.distanceToCurrentStepMeters;
-    final shouldZoom =
-        _guidanceRunning && _following && distance != null && distance < 200;
-    if (shouldZoom != _junctionZoomed) {
-      _junctionZoomed = shouldZoom;
-      final controller = _navigationController;
-      if (controller != null && _following) {
-        unawaited(
-          _followNavigationCamera(
-            controller,
-            zoomLevel: shouldZoom ? 18.5 : 16.0,
-          ),
-        );
-      }
-    }
     unawaited(_notifyRoadIntelligence());
-    if (_useCarMarker && _driveEngine.active && _navigationController != null) {
-      _queueNavigationMarkerSync();
-    }
     final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
     final signature =
         '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}';
     if (signature != _markerSignature) {
       unawaited(_syncCameraMarkers());
-      if (_routePlan != null || _mapProvider == MapProvider.mapbox) {
+      if (_routePlan != null || _mapProvider == MapProvider.independent) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) setState(() {});
         });
@@ -650,8 +621,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   double? get _navigationRemainingMeters {
-    if (_mapboxNavigation.active) {
-      return _mapboxNavigation.remainingDistanceMeters;
+    if (_independentNavigation.active) {
+      return _independentNavigation.remainingDistanceMeters;
     }
     final native = _driveEngine.navInfo?.distanceToFinalDestinationMeters;
     if (native != null && native.isFinite) return native.toDouble();
@@ -669,7 +640,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   NavigationGuidance? _offlineGoogleGuidance() {
     if (_account.profile?.isPlus != true) return null;
     if (!_guidanceRunning ||
-        _mapboxNavigation.active ||
+        _independentNavigation.active ||
         !_driveEngine.nativeGuidanceStale) {
       return null;
     }
@@ -697,7 +668,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final remainingSeconds = (route.durationSeconds * (1 - fraction)).round();
     return NavigationGuidance(
       instruction: routeStepInstruction(next, _appLanguage),
-      maneuverIcon: mapboxManeuverIcon(next),
+      maneuverIcon: independentManeuverIcon(next),
       stepMeters: distanceToStep.isFinite ? distanceToStep : remainingMeters,
       remainingMeters: remainingMeters,
       remainingSeconds: remainingSeconds,
@@ -1208,8 +1179,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       (value) => value.name == prefs.getString('kiwi.map.provider'),
       orElse: () => MapProvider.google,
     );
-    if (_mapProvider == MapProvider.mapbox && _mapboxToken.isEmpty) {
-      _mapProvider = MapProvider.google;
+    if (prefs.getString('kiwi.map.provider') == 'mapbox') {
+      _mapProvider = MapProvider.independent;
     }
     _locationMarker = LocationMarkerStyle.values.firstWhere(
       (value) => value.name == prefs.getString('kiwi.map.location_marker'),
@@ -1309,7 +1280,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         : _browseController;
     if (controller != null) {
       await _applyMapLayers(controller);
-      await controller.setMyLocationEnabled(!_useCarMarker);
+      await controller.setMyLocationEnabled(
+        _driveEngine.active || !_useCarMarker,
+      );
       _markerSignature = '';
       unawaited(_syncCameraMarkers());
       _queueMapRefresh();
@@ -1321,7 +1294,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   List<DestinationSuggestion> get _recentDestinations {
     final profile = _account.profile;
-    if (profile == null || _mapProvider == MapProvider.mapbox) {
+    if (profile == null || _mapProvider == MapProvider.independent) {
       return _guestRecent;
     }
     return profile.recentDestinations
@@ -1349,12 +1322,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _mapRefreshTimer?.cancel();
     _account.removeListener(_onAccountChanged);
     _driveEngine.removeListener(_onEngineChanged);
-    _mapboxNavigation.dispose();
+    _independentNavigation.dispose();
     _exploreMarkerFocus.dispose();
     _workerSearch.dispose();
-    _mapCompatibleSearch.dispose();
-    _mapboxSearch.dispose();
-    _mapboxRoutes.dispose();
+    _independentSearch.dispose();
+    _independentRoutes.dispose();
     _plusBilling.dispose();
     _account.dispose();
     _usageTelemetry.dispose();
@@ -1699,7 +1671,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _refreshMap() async {
-    if (_mapProvider == MapProvider.mapbox) {
+    if (_mapProvider == MapProvider.independent) {
       final location = _driveEngine.active
           ? _driveEngine.snappedLocation ?? _gpsLocation
           : _gpsLocation;
@@ -1714,9 +1686,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         await _browseRenderer!.moveTo(
           _viewport.copyWith(
             center: GeoPoint(location.latitude, location.longitude),
-            zoom: _mapboxNavigation.active
-                ? (_cameraMode.northUp ? 16 : 17.2)
-                : (_cameraMode.northUp ? 16 : 17),
+            zoom: _viewport.zoom,
             bearing: _cameraMode.northUp
                 ? 0
                 : (_travelHeading ?? _deviceHeading ?? 0),
@@ -1733,42 +1703,44 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final controller = _driveEngine.active
         ? _navigationController
         : _browseController;
-    final location = _gpsLocation;
-    final heading = _deviceHeading ?? _travelHeading;
+    final location = _driveEngine.active
+        ? _driveEngine.snappedLocation ?? _gpsLocation
+        : _gpsLocation;
+    final heading = _driveEngine.active
+        ? _driveEngine.snappedHeadingDegrees ?? _travelHeading
+        : _deviceHeading ?? _travelHeading;
     if (controller == null || location == null) return;
     _mapRefreshing = true;
     try {
-      if (heading != null) {
-        final options = PolygonOptions(
-          points: radarSector(location, heading),
-          fillColor: const Color(0x33AAD85F),
-          strokeColor: const Color(0xAA486B29),
-          strokeWidth: 1.4,
-          geodesic: true,
-          zIndex: 5,
-        );
-        if (_radarPolygon == null) {
-          final polygon = (await controller.addPolygons([options])).first;
-          if (controller ==
-              (_driveEngine.active
-                  ? _navigationController
-                  : _browseController)) {
-            _radarPolygon = polygon;
+      if (heading != null && !_driveEngine.active) {
+        final layers = headingLightLayers(location, heading);
+        final options = [
+          for (final layer in layers)
+            PolygonOptions(
+              points: layer.$1,
+              fillColor: KiwiLensColors.sky.withValues(alpha: layer.$2),
+              strokeColor: Colors.transparent,
+              strokeWidth: 0,
+              geodesic: true,
+              zIndex: 5,
+            ),
+        ];
+        if (_radarPolygons.length != options.length) {
+          if (_radarPolygons.isNotEmpty) {
+            await controller.removePolygons(_radarPolygons);
           }
+          _radarPolygons = (await controller.addPolygons(options))
+              .whereType<Polygon>()
+              .toList();
         } else {
-          final polygon = (await controller.updatePolygons([
-            _radarPolygon!.copyWith(options: options),
-          ])).first;
-          if (controller ==
-              (_driveEngine.active
-                  ? _navigationController
-                  : _browseController)) {
-            _radarPolygon = polygon;
-          }
+          _radarPolygons = (await controller.updatePolygons([
+            for (var i = 0; i < options.length; i++)
+              _radarPolygons[i].copyWith(options: options[i]),
+          ])).whereType<Polygon>().toList();
         }
-      } else if (_radarPolygon != null) {
-        await controller.removePolygons([_radarPolygon!]);
-        _radarPolygon = null;
+      } else if (_radarPolygons.isNotEmpty) {
+        await controller.removePolygons(_radarPolygons);
+        _radarPolygons = [];
       }
       if (_useCarMarker && !_driveEngine.active) {
         await _syncCarMarker(controller, location);
@@ -1790,7 +1762,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   ? 0
                   : (_travelHeading ?? _deviceHeading ?? 0),
               tilt: _cameraMode.tilted ? 45 : 0,
-              zoom: _cameraMode.northUp ? 16 : 17,
+              zoom: _viewport.zoom,
             ),
           ),
         );
@@ -1820,20 +1792,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _navigationFollowPerspective,
       zoomLevel: zoomLevel,
     );
-    if (_useCarMarker) {
-      // followMyLocation can recreate native location chrome on iOS. Kiwi Lens
-      // owns the visible vehicle marker, so suppress Google's indicator after
-      // every follow/recenter/automatic junction zoom.
-      await controller.setMyLocationEnabled(false);
-      await controller.settings.setMyLocationButtonEnabled(false);
-    }
+    await controller.setMyLocationEnabled(true);
     await controller.setRecenterButtonEnabled(false);
   }
 
   void _recenter() {
-    _following = true;
-    _routeOverviewActive = false;
-    if (_mapProvider == MapProvider.mapbox) {
+    setState(() {
+      _following = true;
+      _routeOverviewActive = false;
+    });
+    if (_mapProvider == MapProvider.independent) {
       _queueMapRefresh();
       return;
     }
@@ -1852,6 +1820,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   String get _locationControlTooltip {
     if (!_following) return _text('Return to my location', '回到我的位置');
+    if (_mapProvider == MapProvider.independent && !_cameraMode.northUp) {
+      return _text('Switch to north-up', '切换到北向俯视');
+    }
     return switch (_cameraMode) {
       NavigationCameraMode.headingUpFlat => _text(
         'Switch to perspective view',
@@ -1868,7 +1839,22 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     };
   }
 
+  LatLng? get _displayLocation => _driveEngine.active
+      ? _driveEngine.snappedLocation ?? _gpsLocation
+      : _gpsLocation;
+
   void _markMapManuallyMoved({bool searchArea = false}) {
+    if (_following &&
+        _navigationController != null &&
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      unawaited(
+        const MethodChannel('kiwi_lens/navigation_camera')
+            .invokeMethod<void>('pauseFollowing')
+            .catchError((Object e) {
+              debugPrint('Pause follow: $e');
+            }),
+      );
+    }
     if (mounted) {
       setState(() {
         _following = false;
@@ -1888,7 +1874,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _cameraMode = NavigationCameraMode.headingUpFlat;
       });
     } else {
-      setState(() => _cameraMode = _cameraMode.next);
+      _toggleCompass();
+      return;
     }
     _recenter();
   }
@@ -1993,11 +1980,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _routeOverviewActive = true;
     });
     final renderer = _browseRenderer;
-    final route = _mapboxNavigation.route;
-    if (_mapProvider == MapProvider.mapbox &&
+    final route = _independentNavigation.route;
+    if (_mapProvider == MapProvider.independent &&
         renderer is RouteMapRenderer &&
         route != null) {
-      unawaited(renderer.fitRoute(route.points, bottomInset: 240));
+      unawaited(
+        renderer.fitRoute(
+          route.points,
+          bottomInset: _navigationBottomInset + 30,
+        ),
+      );
       return;
     }
     final controller = _navigationController;
@@ -2006,7 +1998,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _cycleNavigationCameraMode() {
     if (!_following && !_routeOverviewActive) {
-      _showRouteOverview();
+      _recenter();
       return;
     }
     if (_routeOverviewActive) {
@@ -2017,7 +2009,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   void _toggleCompass() {
-    setState(() => _cameraMode = _cameraMode.next);
+    setState(() {
+      _cameraMode = _mapProvider == MapProvider.independent
+          ? (_cameraMode.northUp
+                ? NavigationCameraMode.headingUpFlat
+                : NavigationCameraMode.northUpFlat)
+          : _cameraMode.next;
+    });
     _recenter();
   }
 
@@ -2257,8 +2255,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     final camerasReady = _driveEngine.loadCameras();
     try {
-      final plan = _mapProvider == MapProvider.mapbox
-          ? await _mapboxRoutes.route(
+      final plan = _mapProvider == MapProvider.independent
+          ? await _independentRoutes.route(
               origin: GeoPoint(origin.latitude, origin.longitude),
               destination: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
               stops: _routeStops
@@ -2344,7 +2342,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   String _placeKey(PointOfInterest poi) => poi.placeID.isNotEmpty
-      ? poi.placeID
+      ? (_selectedPlace?.place.reference?.provider == 'osm'
+            ? 'osm:${poi.placeID}'
+            : poi.placeID)
       : 'coords:${poi.latLng.latitude.toStringAsFixed(5)},${poi.latLng.longitude.toStringAsFixed(5)}';
 
   bool _isFavorite(PointOfInterest poi) =>
@@ -2378,7 +2378,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           onMapLayers: _showMapLayers,
           mapProvider: _mapProvider,
           locationMarker: _locationMarker,
-          mapboxAvailable: _mapboxToken.isNotEmpty,
           notifySafetyCameras: _notifySafetyCameras,
           notifyRoadIncidents: _notifyRoadIncidents,
           notifyCommunityReports: _notifyCommunityReports,
@@ -2436,15 +2435,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _toggleFavorite(PointOfInterest poi) async {
-    if (_mapProvider == MapProvider.mapbox &&
-        _selectedPlace?.source != SelectionSource.longPress) {
-      setState(
-        () => _message =
-            'Saving Mapbox search/map content needs a storage licence. '
-            'You can still use saved personal coordinates.',
-      );
-      return;
-    }
     if (_account.profile == null) {
       _showProfile();
       return;
@@ -2463,15 +2453,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _reviewPlace(PointOfInterest poi) async {
-    if (_mapProvider == MapProvider.mapbox &&
-        _selectedPlace?.source != SelectionSource.longPress) {
-      setState(
-        () => _message =
-            'Reviews for Mapbox-sourced places are unavailable until '
-            'persistent storage is licensed.',
-      );
-      return;
-    }
     if (_account.profile == null) {
       _showProfile();
       return;
@@ -2555,7 +2536,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _renderRoutePreview() async {
     _following = false;
-    if (_mapProvider == MapProvider.mapbox) {
+    if (_mapProvider == MapProvider.independent) {
       final renderer = _browseRenderer;
       final route = _selectedRoute;
       if (renderer is RouteMapRenderer && route != null) {
@@ -2705,13 +2686,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final poi = _selectedPoi;
     final selected = _selectedRoute;
     if (poi == null || selected == null) return;
-    if (_mapProvider == MapProvider.mapbox) {
-      setState(
-        () => _message =
-            'Saving Mapbox route content requires a storage licence.',
-      );
-      return;
-    }
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getStringList('kiwi.saved.routes') ?? <String>[];
     final record = jsonEncode({
@@ -2778,7 +2752,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         (prefs) => prefs.setBool('kiwi.voice.enabled', value),
       ),
     );
-    if (_mapProvider == MapProvider.mapbox || !_navigationSessionInitialized) {
+    if (_mapProvider == MapProvider.independent ||
+        !_navigationSessionInitialized) {
       return;
     }
     unawaited(
@@ -2939,10 +2914,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     });
 
     try {
-      if (_mapProvider == MapProvider.mapbox) {
+      if (_mapProvider == MapProvider.independent) {
         if (!await _ensureLocationPermission()) return;
-        await _mapboxNavigation.start(selectedRoute);
-        unawaited(_usageTelemetry.record('mapbox_navigation_trip'));
+        await _independentNavigation.start(selectedRoute);
+        // Independent guidance has no paid navigation SKU.
         if (!mounted) return;
         setState(() {
           _guidanceRunning = true;
@@ -3060,10 +3035,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         await _followNavigationCamera(navigationController);
         await navigationController.setReportIncidentButtonEnabled(false);
       }
-      if (_useCarMarker && _navigationController != null) {
-        await _navigationController!.setMyLocationEnabled(false);
-        await _navigationController!.settings.setMyLocationButtonEnabled(false);
-      }
       if (!mounted) return;
       setState(() {
         _guidanceRunning = true;
@@ -3090,7 +3061,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       if (activeNavigationController != null) {
         unawaited(_syncDestinationMarker(activeNavigationController));
       }
-      _queueNavigationMarkerSync();
       _queueMapRefresh();
     } catch (error) {
       if (!mounted) return;
@@ -3110,8 +3080,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final summary = _journey?.finish(arrived: arrived);
     _journey = null;
     try {
-      if (_mapboxNavigation.active) {
-        await _mapboxNavigation.stop();
+      if (_independentNavigation.active) {
+        await _independentNavigation.stop();
       } else {
         await GoogleMapsNavigator.stopGuidance();
         await GoogleMapsNavigator.clearDestinations();
@@ -3126,7 +3096,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         await navigationController?.setNavigationUIEnabled(false);
       }
       if (_account.profile != null &&
-          route?.provider != 'mapbox' &&
+          route?.provider != 'independent' &&
           route != null &&
           route.points.isNotEmpty) {
         final destination = route.points.last;
@@ -3149,7 +3119,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ++_arrivalRequest;
       setState(() {
         _guidanceRunning = false;
-        _junctionZoomed = false;
+
         _activeNavigationRoute = null;
         _activeDestinationPlace = null;
         _lastCorridorCacheAt = null;
@@ -3214,7 +3184,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         }
         return;
       }
-      if (_mapProvider == MapProvider.mapbox) {
+      if (_mapProvider == MapProvider.independent) {
         await _driveEngine.startLocal();
         if (mounted) setState(() => _following = true);
         _queueMapRefresh();
@@ -3316,8 +3286,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       setState(() => _message = 'This place cannot be shown on Google Maps.');
       return;
     }
-    if (_mapProvider == MapProvider.mapbox &&
-        !const ProviderPolicy(MapProvider.mapbox).canDisplay(place.reference)) {
+    if (_mapProvider == MapProvider.independent &&
+        !const ProviderPolicy(MapProvider.independent)
+            .canDisplay(place.reference)) {
       setState(() => _message = 'This place belongs to another map provider.');
       return;
     }
@@ -3350,20 +3321,20 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _placeDetailsLoading = false;
       _placeDetailsError = null;
     }
-    if (_mapProvider == MapProvider.mapbox &&
+    if (_mapProvider == MapProvider.independent &&
         (source == SelectionSource.map ||
             source == SelectionSource.longPress) &&
         place.address.isEmpty) {
-      unawaited(_enrichMapboxSelection(place, source));
+      unawaited(_enrichIndependentSelection(place, source));
     }
   }
 
-  Future<void> _enrichMapboxSelection(
+  Future<void> _enrichIndependentSelection(
     PlaceSummary original,
     SelectionSource source,
   ) async {
     try {
-      final resolved = await _mapboxSearch.reverseNear(
+      final resolved = await _independentSearch.reverseNear(
         original.location,
         language: _appLanguage,
         preferredName:
@@ -3374,7 +3345,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       );
       if (!mounted ||
           resolved == null ||
-          _mapProvider != MapProvider.mapbox ||
+          _mapProvider != MapProvider.independent ||
           !identical(_selectedPlace?.place, original)) {
         return;
       }
@@ -3608,72 +3579,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  void _queueNavigationMarkerSync() {
-    if (!_useCarMarker || !_driveEngine.active) return;
-    final controller = _navigationController;
-    final location = _driveEngine.snappedLocation;
-    if (controller == null || location == null) return;
-
-    final heading =
-        _driveEngine.snappedHeadingDegrees ?? _travelHeading ?? _deviceHeading;
-    final previousLocation = _lastNavigationMarkerLocation;
-    final previousHeading = _lastNavigationMarkerHeading;
-    final moved =
-        previousLocation == null ||
-        distanceMeters(
-              previousLocation.latitude,
-              previousLocation.longitude,
-              location.latitude,
-              location.longitude,
-            ) >
-            0.25;
-    final headingChanged =
-        heading != null &&
-        (previousHeading == null ||
-            ((heading - previousHeading + 540) % 360 - 180).abs() > 1.0);
-    if (_carMarker != null && !moved && !headingChanged) return;
-
-    _pendingNavigationMarkerLocation = location;
-    _pendingNavigationMarkerHeading = heading;
-
-    if (_navigationMarkerSyncing) return;
-    unawaited(_drainNavigationMarkerSync());
-  }
-
-  Future<void> _drainNavigationMarkerSync() async {
-    if (_navigationMarkerSyncing) return;
-    _navigationMarkerSyncing = true;
-    try {
-      while (mounted && _useCarMarker && _driveEngine.active) {
-        final location = _pendingNavigationMarkerLocation;
-        final heading = _pendingNavigationMarkerHeading;
-        _pendingNavigationMarkerLocation = null;
-        _pendingNavigationMarkerHeading = null;
-        if (location == null) break;
-
-        final controller = _navigationController;
-        if (controller == null) break;
-        await controller.setMyLocationEnabled(false);
-        await _syncCarMarker(controller, location, headingOverride: heading);
-        _lastNavigationMarkerLocation = location;
-        _lastNavigationMarkerHeading = heading;
-      }
-    } finally {
-      _navigationMarkerSyncing = false;
-      if (_pendingNavigationMarkerLocation != null &&
-          mounted &&
-          _useCarMarker &&
-          _driveEngine.active) {
-        unawaited(_drainNavigationMarkerSync());
-      }
-    }
-  }
-
   Future<void> _syncCarMarker(
     GoogleMapViewController controller,
     LatLng location, {
     double? headingOverride,
   }) async {
+    if (_driveEngine.active) return;
     try {
       await MapSymbols.ensureRegistered();
       final heading = headingOverride ?? _travelHeading ?? _deviceHeading ?? 0;
@@ -3737,13 +3648,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ? _navigationController
         : _browseController;
     if (controller != null) {
-      await controller.setMyLocationEnabled(!value);
-      if (!value && _carMarker != null) {
+      await controller.setMyLocationEnabled(_driveEngine.active || !value);
+      if ((!value || _driveEngine.active) && _carMarker != null) {
         try {
           await controller.removeMarkers([_carMarker!]);
         } catch (_) {}
         _carMarker = null;
-      } else if (value && _gpsLocation != null) {
+      } else if (value && !_driveEngine.active && _gpsLocation != null) {
         final markerLocation =
             (_driveEngine.active ? _driveEngine.snappedLocation : null) ??
             _gpsLocation!;
@@ -3754,7 +3665,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               ? _driveEngine.snappedHeadingDegrees
               : null,
         );
-        if (_driveEngine.active) _queueNavigationMarkerSync();
       }
       if ((!value || _guidanceRunning) && _accuracyCircle != null) {
         try {
@@ -3784,7 +3694,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _carMarker = null;
       }
     }
-    if (_driveEngine.active) _queueNavigationMarkerSync();
     _queueMapRefresh();
   }
 
@@ -3805,7 +3714,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _applyMapProvider(MapProvider provider) async {
     if (provider == _mapProvider) return;
-    if (provider == MapProvider.mapbox && _mapboxToken.isEmpty) return;
     if (_guidanceRunning || _driveEngine.active || _transitTripRunning) {
       setState(
         () =>
@@ -3842,7 +3750,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _guestRecent.clear();
     _showSearchArea = false;
     _areaSearchAnchor = _viewport.center;
-    _radarPolygon = null;
+    _radarPolygons = [];
     _markerSignature = '';
     final wasPreviewing = _journeyPhase == JourneyPhase.routePreview;
     final selected = _selectedPlace;
@@ -3873,6 +3781,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     setState(() {
       _mapProvider = provider;
+      if (provider == MapProvider.independent && _cameraMode.tilted) {
+        _cameraMode = NavigationCameraMode.headingUpFlat;
+      }
       _journeyPhase = selected == null
           ? JourneyPhase.idle
           : JourneyPhase.placeSelected;
@@ -3883,8 +3794,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (wasPreviewing && _selectedPoi != null) {
       unawaited(_loadRoutePreview(_selectedPoi!));
     }
-    if (provider == MapProvider.mapbox && needsNewPlaceContent) {
-      unawaited(_enrichMapboxSelection(_selectedPlace!.place, selected.source));
+    if (provider == MapProvider.independent && needsNewPlaceContent) {
+      unawaited(
+        _enrichIndependentSelection(_selectedPlace!.place, selected.source),
+      );
     }
   }
 
@@ -4124,7 +4037,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final sheetHeight = (size.height * .40).clamp(300.0, 390.0);
     final bottomInset = sheetHeight - 14;
 
-    if (_mapProvider == MapProvider.mapbox &&
+    if (_mapProvider == MapProvider.independent &&
         _browseRenderer is RouteMapRenderer) {
       _following = false;
       await (_browseRenderer as RouteMapRenderer).fitRoute(
@@ -4328,11 +4241,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _shareTripSnapshot() async {
     final nav = _driveEngine.navInfo;
-    final remaining = _mapboxNavigation.active
-        ? _mapboxNavigation.remainingDistanceMeters
+    final remaining = _independentNavigation.active
+        ? _independentNavigation.remainingDistanceMeters
         : nav?.distanceToFinalDestinationMeters;
-    final arrival = _mapboxNavigation.active
-        ? _mapboxNavigation.remainingSeconds
+    final arrival = _independentNavigation.active
+        ? _independentNavigation.remainingSeconds
         : nav?.timeToFinalDestinationSeconds;
     final details =
         'Kiwi Lens trip to $_destinationTitle. '
@@ -4354,8 +4267,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   void _showAlongRouteSearch() {
-    if (_mapboxNavigation.active) {
-      unawaited(_searchMapboxStop());
+    if (_independentNavigation.active) {
+      unawaited(_searchIndependentStop());
       return;
     }
     showModalBottomSheet<void>(
@@ -4381,12 +4294,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _searchMapboxStop() async {
+  Future<void> _searchIndependentStop() async {
     final current = _driveEngine.snappedLocation ?? _gpsLocation;
     final selected = await Navigator.of(context).push<PlaceSummary>(
       MaterialPageRoute(
         builder: (_) => FullScreenSearch(
-          provider: _mapCompatibleSearch,
+          provider: _independentSearch,
           resolve: (candidate) async {
             if (candidate.location == null) {
               throw StateError('Place has no location');
@@ -4401,26 +4314,26 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ),
       ),
     );
-    if (!mounted || selected == null || !_mapboxNavigation.active) {
+    if (!mounted || selected == null || !_independentNavigation.active) {
       return;
     }
-    final route = _mapboxNavigation.route!;
+    final route = _independentNavigation.route!;
     final location = _driveEngine.snappedLocation ?? _gpsLocation;
     if (location == null) return;
     try {
-      final updated = await _mapboxRoutes.reroute(
+      final updated = await _independentRoutes.reroute(
         origin: GeoPoint(location.latitude, location.longitude),
         destination: route.points.last,
         mode: route.mode,
-        stops: [selected.location, ..._mapboxNavigation.remainingStops],
+        stops: [selected.location, ..._independentNavigation.remainingStops],
         language: _appLanguage,
       );
       if (!mounted ||
-          !_mapboxNavigation.active ||
-          !identical(route, _mapboxNavigation.route)) {
+          !_independentNavigation.active ||
+          !identical(route, _independentNavigation.route)) {
         return;
       }
-      await _mapboxNavigation.start(updated);
+      await _independentNavigation.start(updated);
       _recenter();
     } catch (_) {
       if (mounted) {
@@ -4729,9 +4642,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                       longitude = place['longitude'];
                   if (latitude is! num || longitude is! num) return;
                   final id = place['placeId']?.toString() ?? '';
-                  if (_mapProvider == MapProvider.mapbox &&
+                  if (_mapProvider == MapProvider.independent &&
                       id.isNotEmpty &&
-                      !id.startsWith('coords:')) {
+                      !id.startsWith('coords:') &&
+                      !id.startsWith('osm:')) {
                     Navigator.of(sheetContext).pop();
                     setState(
                       () => _message = 'This saved Google place is available on Google Maps.',
@@ -4765,8 +4679,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                       leading: const Icon(Icons.route_rounded),
                       title: Text(place['name']?.toString() ?? 'Saved route'),
                       onTap: () {
-                        if (_mapProvider == MapProvider.mapbox &&
-                            data['provider'] != 'mapbox') {
+                        if (_mapProvider == MapProvider.independent &&
+                            data['provider'] != 'independent') {
                           Navigator.of(sheetContext).pop();
                           setState(
                             () => _message =
@@ -4812,8 +4726,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _openSearch({String query = '', String? saveAs}) async {
     setState(() => _journeyPhase = JourneyPhase.searching);
-    final SearchProvider provider = _mapProvider == MapProvider.mapbox
-        ? _mapCompatibleSearch
+    final SearchProvider provider = _mapProvider == MapProvider.independent
+        ? _independentSearch
         : _workerSearch;
     final place = await Navigator.of(context).push<PlaceSummary>(
       PageRouteBuilder<PlaceSummary>(
@@ -4829,7 +4743,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             if (reference == null) {
               throw StateError('Place has no location');
             }
-            return _mapboxSearch.resolve(reference, language: _appLanguage);
+            return _independentSearch.resolve(
+              reference,
+              language: _appLanguage,
+            );
           },
           language: _appLanguage,
           currentLocation: _gpsLocation == null
@@ -5232,7 +5149,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         builder: (_) => ExplorePage(
           currentLocation: current,
           language: _appLanguage,
-          mapCompatible: _mapProvider == MapProvider.mapbox,
+          mapCompatible: _mapProvider == MapProvider.independent,
         ),
       ),
     );
@@ -5382,19 +5299,19 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _roadEventMarkers = [];
     _destinationMarker = null;
     _carMarker = null;
-    _lastNavigationMarkerLocation = null;
-    _lastNavigationMarkerHeading = null;
     _accuracyCircle = null;
     _markerSignature = '';
     _navigationController = null;
-    _radarPolygon = null;
+    _radarPolygons = [];
     await _applyMapLayers(controller);
     await controller.settings.setCompassEnabled(true);
     await controller.settings.setRotateGesturesEnabled(true);
     await controller.settings.setTiltGesturesEnabled(true);
     await controller.settings.setScrollGesturesDuringRotateOrZoomEnabled(true);
     if (await Permission.locationWhenInUse.isGranted) {
-      await controller.setMyLocationEnabled(!_useCarMarker);
+      await controller.setMyLocationEnabled(
+        _driveEngine.active || !_useCarMarker,
+      );
     }
     await controller.settings.setMyLocationButtonEnabled(false);
     await controller.setRecenterButtonEnabled(false);
@@ -5405,11 +5322,31 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _updateNavigationTopInset(double inset) {
     _navigationTopInset = inset;
+    _applyNavigationPadding();
+  }
+
+  void _updateNavigationBottomInset(double inset) {
+    _navigationBottomInset = inset;
+    _applyNavigationPadding();
+  }
+
+  void _applyNavigationPadding() {
+    if (_mapProvider == MapProvider.independent && mounted) {
+      setState(() {});
+      if (_following) _queueMapRefresh();
+    }
     final controller = _navigationController;
     if (controller != null && _guidanceRunning) {
       unawaited(
         controller
-            .setPadding(EdgeInsets.fromLTRB(16, inset, 16, 215))
+            .setPadding(
+              EdgeInsets.fromLTRB(
+                16,
+                _navigationTopInset,
+                16,
+                _navigationBottomInset,
+              ),
+            )
             .catchError((Object error) {
               debugPrint('Navigation layout update: $error');
             }),
@@ -5420,7 +5357,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _applyKiwiLensNavigationChrome(
     GoogleNavigationViewController controller,
   ) async {
-    await controller.setMyLocationEnabled(!_useCarMarker);
+    await controller.setMyLocationEnabled(
+      _driveEngine.active || !_useCarMarker,
+    );
     await controller.setNavigationHeaderEnabled(false);
     await controller.setNavigationFooterEnabled(false);
     await controller.settings.setMyLocationButtonEnabled(false);
@@ -5435,7 +5374,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _onNavigationViewCreated(
     GoogleNavigationViewController controller,
   ) async {
-    await controller.setMyLocationEnabled(!_useCarMarker);
+    await controller.setMyLocationEnabled(
+      _driveEngine.active || !_useCarMarker,
+    );
     await _applyMapLayers(controller);
     await controller.settings.setCompassEnabled(false);
     await controller.settings.setRotateGesturesEnabled(true);
@@ -5447,11 +5388,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _roadEventMarkers = [];
     _destinationMarker = null;
     _carMarker = null;
-    _lastNavigationMarkerLocation = null;
-    _lastNavigationMarkerHeading = null;
     _accuracyCircle = null;
     _markerSignature = '';
-    _radarPolygon = null;
+    _radarPolygons = [];
     await controller.setNavigationUIEnabled(_guidanceRunning);
     await _applyKiwiLensNavigationChrome(controller);
     if (_driveEngine.snappedLocation != null) {
@@ -5465,7 +5404,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         16,
         _guidanceRunning ? _navigationTopInset : 125,
         16,
-        215,
+        _navigationBottomInset,
       ),
     );
     final activeRoute = _activeNavigationRoute;
@@ -5573,13 +5512,37 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                         : NavigationForceNightMode.forceDay,
                     onPoiClicked: _onPoiClicked,
                   )
-                : _mapProvider == MapProvider.mapbox
-                ? MapboxMapRenderer(
-                    key: const ValueKey('mapbox-browse-view'),
+                : _mapProvider == MapProvider.independent
+                ? IndependentMapRenderer(
+                    key: const ValueKey('independent-browse-view'),
                     initialViewport: _viewport,
                     layers: _layers,
                     locationMarker: _locationMarker,
                     locationEnabled: _gpsLocation != null,
+                    following: _following,
+                    location: _displayLocation == null
+                        ? null
+                        : GeoPoint(
+                            _displayLocation!.latitude,
+                            _displayLocation!.longitude,
+                          ),
+                    heading:
+                        _driveEngine.snappedHeadingDegrees ??
+                        _travelHeading ??
+                        _deviceHeading ??
+                        0,
+                    contentPadding: _guidanceRunning
+                        ? EdgeInsets.fromLTRB(
+                            16,
+                            _navigationTopInset,
+                            16,
+                            _navigationBottomInset,
+                          )
+                        : EdgeInsets.only(
+                            bottom: _selectedPlace == null
+                                ? 96
+                                : _placeDeckInset(expanded: false),
+                          ),
                     moving: _travelHeading != null,
                     language: _appLanguage,
                     cameras: _driveEngine.cameras,
@@ -5588,7 +5551,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     onRoadEvent: (event) =>
                         unawaited(_showRoadEventDetails(event)),
                     route:
-                        (_mapboxNavigation.route ?? _selectedRoute)?.points
+                        (_independentNavigation.route ?? _selectedRoute)?.points
                             .map(
                               (point) =>
                                   GeoPoint(point.latitude, point.longitude),
@@ -5919,10 +5882,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                       ),
               ),
             ),
-          if (_mapboxNavigation.active)
+          if (_independentNavigation.active)
             Positioned.fill(
-              child: MapboxNavigationOverlay(
-                engine: _mapboxNavigation,
+              child: IndependentNavigationOverlay(
+                onTopInsetChanged: _updateNavigationTopInset,
+                onBottomInsetChanged: _updateNavigationBottomInset,
+                engine: _independentNavigation,
                 drive: _driveEngine,
                 destination: _destinationTitle,
                 language: _appLanguage,
@@ -5951,7 +5916,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 offlineCachedAt: _lastCorridorCacheAt,
               ),
             ),
-          if (_mapProvider == MapProvider.mapbox &&
+          if (_mapProvider == MapProvider.independent &&
               _driveEngine.active &&
               !_guidanceRunning)
             Positioned.fill(

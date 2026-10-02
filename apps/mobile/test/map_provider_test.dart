@@ -29,11 +29,20 @@ class _DelayedSearch implements SearchProvider {
 void main() {
   test('provider references do not silently cross map policies', () {
     const google = ProviderPolicy(MapProvider.google);
-    const mapbox = ProviderPolicy(MapProvider.mapbox);
+    const independent = ProviderPolicy(MapProvider.independent);
     expect(google.canDisplay(const ProviderReference('google', 'g1')), isTrue);
-    expect(google.canDisplay(const ProviderReference('mapbox', 'm1')), isFalse);
-    expect(mapbox.canDisplay(const ProviderReference('mapbox', 'm1')), isTrue);
-    expect(mapbox.canDisplay(const ProviderReference('google', 'g1')), isFalse);
+    expect(
+      google.canDisplay(const ProviderReference('independent', 'm1')),
+      isFalse,
+    );
+    expect(
+      independent.canDisplay(const ProviderReference('osm', 'm1')),
+      isTrue,
+    );
+    expect(
+      independent.canDisplay(const ProviderReference('google', 'g1')),
+      isFalse,
+    );
   });
 
   test('street addresses retain their exact first line', () {
@@ -92,31 +101,34 @@ void main() {
     expect(find.text('83 Symonds Street, Grafton, Auckland'), findsOneWidget);
   });
 
-  test('Mapbox search falls back globally when NZ has no match', () async {
-    final requests = <Uri>[];
-    final client = MockClient((request) async {
-      requests.add(request.url);
-      final local = request.url.queryParameters['country'] == 'NZ';
-      return http.Response(
-        local ? '{"suggestions":[]}' : '{"suggestions":[{"mapbox_id":"cn-shijiazhuang","name":"石家庄市","place_formatted":"河北省，中国","feature_type":"place"}]}',
-        200,
-        headers: {'content-type': 'application/json'},
+  test(
+    'Practice search uses a global OSM geocoder without paid keys',
+    () async {
+      final requests = <Uri>[];
+      final provider = IndependentSearchProvider(
+        client: MockClient((request) async {
+          requests.add(request.url);
+          return http.Response(
+            '{"features":[{"geometry":{"coordinates":[114.51,38.04]},"properties":{"name":"石家庄市","osm_type":"R","osm_id":912940,"city":"石家庄市"}}]}',
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
       );
-    });
-    final provider = MapboxSearchProvider('token', client: client);
-    addTearDown(provider.dispose);
-
-    final results = await provider.search(
-      '石家庄',
-      proximity: const GeoPoint(-36.8485, 174.7633),
-      language: 'zh',
-    );
-
-    expect(results.single.name, '石家庄市');
-    expect(requests, hasLength(2));
-    expect(requests.first.queryParameters['country'], 'NZ');
-    expect(requests.first.queryParameters['proximity'], '174.7633,-36.8485');
-    expect(requests.last.queryParameters.containsKey('country'), isFalse);
-    expect(requests.last.queryParameters.containsKey('proximity'), isFalse);
-  });
+      addTearDown(provider.dispose);
+      final results = await provider.search(
+        '石家庄',
+        proximity: const GeoPoint(-36.8485, 174.7633),
+        language: 'zh',
+      );
+      expect(results.single.name, '石家庄市');
+      expect(results.single.location, const GeoPoint(38.04, 114.51));
+      expect(results.single.reference?.provider, 'osm');
+      expect(requests.single.host, 'photon.komoot.io');
+      expect(
+        requests.single.queryParameters.containsKey('access_token'),
+        isFalse,
+      );
+    },
+  );
 }

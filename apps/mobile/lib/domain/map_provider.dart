@@ -1,4 +1,4 @@
-enum MapProvider { google, mapbox }
+enum MapProvider { google, independent }
 
 enum LocationMarkerStyle { kiwi, arrow, car, classic }
 
@@ -140,7 +140,7 @@ class SelectedPlace {
 enum JourneyPhase { idle, searching, placeSelected, routePreview, navigating }
 
 /// Provider choices are explicit. Google Places/Routes content is never
-/// displayed on Mapbox merely because the renderer changed.
+/// displayed on Independent merely because the renderer changed.
 class ProviderPolicy {
   const ProviderPolicy(this.map);
 
@@ -153,29 +153,29 @@ class ProviderPolicy {
       nativeTurnGuidance: true,
       persistProviderPlaces: true,
     ),
-    MapProvider.mapbox => const ProviderCapabilities(
+    MapProvider.independent => const ProviderCapabilities(
       trafficAwareRouting: false,
       transitRouting: false,
       nativeTurnGuidance: false,
-      persistProviderPlaces: false,
+      persistProviderPlaces: true,
     ),
   };
 
   String get searchProvider => switch (map) {
     MapProvider.google => 'geoapify',
-    MapProvider.mapbox => 'mapbox',
+    MapProvider.independent => 'osm',
   };
   String get placeProvider => switch (map) {
     MapProvider.google => 'google',
-    MapProvider.mapbox => 'mapbox',
+    MapProvider.independent => 'osm',
   };
   String get routingProvider => switch (map) {
     MapProvider.google => 'google',
-    MapProvider.mapbox => 'mapbox',
+    MapProvider.independent => 'independent',
   };
   String get navigationEngine => switch (map) {
     MapProvider.google => 'google',
-    MapProvider.mapbox => 'mapbox',
+    MapProvider.independent => 'independent',
   };
 
   bool canDisplay(ProviderReference? reference) =>

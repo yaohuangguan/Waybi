@@ -253,32 +253,45 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 14),
-                    SegmentedButton<BaseMapStyle>(
-                      segments: [
-                        ButtonSegment(
-                          value: BaseMapStyle.standard,
-                          icon: const Icon(Icons.map_outlined),
-                          label: Text(_text('Map', '地图')),
+                    if (widget.mapProvider == MapProvider.google)
+                      SegmentedButton<BaseMapStyle>(
+                        segments: [
+                          ButtonSegment(
+                            value: BaseMapStyle.standard,
+                            icon: const Icon(Icons.map_outlined),
+                            label: Text(_text('Map', '地图')),
+                          ),
+                          ButtonSegment(
+                            value: BaseMapStyle.satellite,
+                            icon: const Icon(Icons.satellite_alt_outlined),
+                            label: Text(_text('Satellite', '卫星')),
+                          ),
+                          ButtonSegment(
+                            value: BaseMapStyle.terrain,
+                            icon: const Icon(Icons.terrain_outlined),
+                            label: Text(_text('Terrain', '地形')),
+                          ),
+                        ],
+                        selected: {
+                          current.style == BaseMapStyle.hybrid
+                              ? BaseMapStyle.satellite
+                              : current.style,
+                        },
+                        onSelectionChanged: (value) =>
+                            update(current.copyWith(style: value.first)),
+                      ),
+                    if (widget.mapProvider == MapProvider.independent)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.map_outlined),
+                        title: Text(_text('Kiwi vector map', 'Kiwi 矢量地图')),
+                        subtitle: Text(
+                          _text(
+                            'A calm map with automatic day and night colours.',
+                            '清爽底图，随主题切换日夜配色。',
+                          ),
                         ),
-                        ButtonSegment(
-                          value: BaseMapStyle.satellite,
-                          icon: const Icon(Icons.satellite_alt_outlined),
-                          label: Text(_text('Satellite', '卫星')),
-                        ),
-                        ButtonSegment(
-                          value: BaseMapStyle.terrain,
-                          icon: const Icon(Icons.terrain_outlined),
-                          label: Text(_text('Terrain', '地形')),
-                        ),
-                      ],
-                      selected: {
-                        current.style == BaseMapStyle.hybrid
-                            ? BaseMapStyle.satellite
-                            : current.style,
-                      },
-                      onSelectionChanged: (value) =>
-                          update(current.copyWith(style: value.first)),
-                    ),
+                      ),
                     Theme(
                       data: Theme.of(
                         context,

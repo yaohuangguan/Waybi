@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kiwi_lens_mobile/domain/route_option.dart';
 import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
-import 'package:kiwi_lens_mobile/providers/mapbox_navigation_engine.dart';
-import 'package:kiwi_lens_mobile/widgets/mapbox_navigation_overlay.dart';
+import 'package:kiwi_lens_mobile/providers/independent_navigation_engine.dart';
+import 'package:kiwi_lens_mobile/widgets/independent_navigation_overlay.dart';
 import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
 
-import 'mapbox_navigation_engine_test.dart' show FakeDrive, makeRoute, origin;
+import 'independent_navigation_engine_test.dart' show FakeDrive, makeRoute, origin;
 
 void main() {
   testWidgets(
-    'Mapbox has full compact HUD, camera alert and driving controls in dark mode',
+    'Independent has full compact HUD, camera alert and driving controls in dark mode',
     (tester) async {
       tester.view.physicalSize = const Size(375, 667);
       tester.view.devicePixelRatio = 1;
@@ -19,7 +19,7 @@ void main() {
         tester.view.resetDevicePixelRatio();
       });
       final drive = FakeDrive();
-      final nav = MapboxNavigationEngine(drive);
+      final nav = IndependentNavigationEngine(drive);
       addTearDown(() {
         nav.dispose();
         drive.dispose();
@@ -43,7 +43,7 @@ void main() {
         MaterialApp(
           theme: KiwiLensTheme.dark,
           home: Scaffold(
-            body: MapboxNavigationOverlay(
+            body: IndependentNavigationOverlay(
               engine: nav,
               drive: drive,
               destination: 'Auckland',
@@ -95,9 +95,9 @@ void main() {
     },
   );
   test('maneuver icon follows real maneuver metadata', () {
-    expect(mapboxManeuverIcon(null), Icons.straight_rounded);
+    expect(independentManeuverIcon(null), Icons.straight_rounded);
     expect(
-      mapboxManeuverIcon(
+      independentManeuverIcon(
         RouteStepInfo(
           instruction: '',
           distanceMeters: 0,

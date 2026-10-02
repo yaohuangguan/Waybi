@@ -9,4 +9,6 @@ dist/
 coverage/
 apps/mobile/.dart_tool/
 apps/mobile/build/
+packages/kiwi_map/.dart_tool/
+packages/kiwi_map/pubspec.lock
 apps/mobile/.dart-defines.local.json

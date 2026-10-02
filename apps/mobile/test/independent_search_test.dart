@@ -110,6 +110,126 @@ void main() {
     provider.dispose();
   });
 
+  test('short local brand search is bounded and ranks the nearby POI over a global place', () async {
+    final provider = IndependentSearchProvider(
+      requestSpacing: Duration.zero,
+      client: MockClient((request) async {
+        expect(request.url.queryParameters['q'], 'taiping');
+        expect(request.url.queryParameters['bbox'], isNotNull);
+        return http.Response.bytes(
+          utf8.encode(
+            jsonEncode({
+              'features': [
+                {
+                  'properties': {
+                    'osm_id': 1,
+                    'osm_type': 'N',
+                    'name': 'Taiping',
+                    'osm_value': 'city',
+                    'city': 'Taiping',
+                    'country': 'Malaysia',
+                  },
+                  'geometry': {
+                    'coordinates': [100.7439, 4.8547],
+                  },
+                },
+                {
+                  'properties': {
+                    'osm_id': 2,
+                    'osm_type': 'N',
+                    'name': 'Tai Ping',
+                    'osm_value': 'supermarket',
+                    'district': 'Mount Wellington',
+                    'city': 'Maungakiekie-Tāmaki',
+                    'state': 'Auckland',
+                    'country': 'New Zealand',
+                  },
+                  'geometry': {
+                    'coordinates': [174.84335, -36.89950],
+                  },
+                },
+              ],
+            }),
+          ),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+
+    final results = await provider.search(
+      'taiping',
+      proximity: const GeoPoint(-36.8485, 174.7633),
+      language: 'en',
+    );
+
+    expect(results.first.name, 'Tai Ping');
+    expect(results.first.category, 'supermarket');
+    expect(results.first.address, contains('Mount Wellington'));
+    provider.dispose();
+  });
+
+  test(
+    'bounded local search still finds an exact destination elsewhere in NZ',
+    () async {
+      final boundedFlags = <bool>[];
+      final provider = IndependentSearchProvider(
+        requestSpacing: Duration.zero,
+        client: MockClient((request) async {
+          final bounded = request.url.queryParameters.containsKey('bbox');
+          boundedFlags.add(bounded);
+          return http.Response(
+            jsonEncode({
+              'features': bounded
+                  ? [
+                      {
+                        'properties': {
+                          'osm_id': 31,
+                          'osm_type': 'W',
+                          'name': 'Rotorua Road',
+                          'osm_value': 'residential',
+                          'city': 'Auckland',
+                          'country': 'New Zealand',
+                        },
+                        'geometry': {
+                          'coordinates': [174.75, -36.85],
+                        },
+                      },
+                    ]
+                  : [
+                      {
+                        'properties': {
+                          'osm_id': 32,
+                          'osm_type': 'R',
+                          'name': 'Rotorua',
+                          'osm_value': 'city',
+                          'state': 'Bay of Plenty',
+                          'country': 'New Zealand',
+                        },
+                        'geometry': {
+                          'coordinates': [176.2497, -38.1368],
+                        },
+                      },
+                    ],
+            }),
+            200,
+          );
+        }),
+      );
+
+      final results = await provider.search(
+        'Rotorua',
+        proximity: const GeoPoint(-36.8485, 174.7633),
+        language: 'en',
+      );
+
+      expect(boundedFlags, [true, false]);
+      expect(results.first.name, 'Rotorua');
+      expect(results.first.category, 'city');
+      provider.dispose();
+    },
+  );
+
   test(
     'generic airport search expands to the nearest major NZ airport',
     () async {

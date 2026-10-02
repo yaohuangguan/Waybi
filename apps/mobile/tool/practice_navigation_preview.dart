@@ -149,6 +149,7 @@ class _PreviewState extends State<_Preview> {
                   onCamera: (_) {},
                   roadEvents: const [],
                   onRoadEvent: (_) {},
+                  trafficSegments: const [],
                   route: _browse
                       ? const []
                       : const [

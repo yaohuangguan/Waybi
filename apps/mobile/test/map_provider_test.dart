@@ -124,10 +124,18 @@ void main() {
       expect(results.single.name, '石家庄市');
       expect(results.single.location, const GeoPoint(38.04, 114.51));
       expect(results.single.reference?.provider, 'osm');
-      expect(requests.single.host, 'photon.komoot.io');
+      expect(requests, hasLength(2));
       expect(
-        requests.single.queryParameters.containsKey('access_token'),
-        isFalse,
+        requests.every((request) => request.host == 'photon.komoot.io'),
+        isTrue,
+      );
+      expect(requests.first.queryParameters.containsKey('bbox'), isTrue);
+      expect(requests.last.queryParameters.containsKey('bbox'), isFalse);
+      expect(
+        requests.every(
+          (request) => !request.queryParameters.containsKey('access_token'),
+        ),
+        isTrue,
       );
     },
   );

@@ -197,19 +197,27 @@ class IndependentSearchProvider
           final street = [
             props['housenumber'],
             props['street'],
-          ].whereType<String>().join(' ');
+          ].whereType<String>().where((v) => v.trim().isNotEmpty).join(' ');
           final name =
               props['name']?.toString() ??
               (street.isNotEmpty ? street : 'Selected location');
+          final addressParts = <String>[
+            street,
+            props['district']?.toString() ?? '',
+            props['locality']?.toString() ?? '',
+            props['city']?.toString() ?? '',
+            props['state']?.toString() ?? '',
+            props['country']?.toString() ?? '',
+          ];
+          final seenAddressParts = <String>{};
+          final address = addressParts
+              .where((v) => v.trim().isNotEmpty)
+              .where((v) => seenAddressParts.add(v.trim().toLowerCase()))
+              .join(', ');
           return PlaceSummary(
             name: name,
             location: location,
-            address: [
-              street,
-              props['city'],
-              props['state'],
-              props['country'],
-            ].whereType<String>().where((v) => v.isNotEmpty).join(', '),
+            address: address,
             category: props['osm_value']?.toString() ?? '',
             reference: ProviderReference(
               'osm',
@@ -308,14 +316,104 @@ class IndependentSearchProvider
     return '${nearest.$1} $intent';
   }
 
+  static const _poiCategories = {
+    'supermarket',
+    'convenience',
+    'mall',
+    'restaurant',
+    'cafe',
+    'fast_food',
+    'hotel',
+    'motel',
+    'hospital',
+    'pharmacy',
+    'fuel',
+    'museum',
+    'attraction',
+    'zoo',
+    'stadium',
+    'university',
+    'school',
+    'parking',
+    'aerodrome',
+    'terminal',
+    'station',
+  };
+
+  static const _administrativeCategories = {
+    'country',
+    'state',
+    'county',
+    'district',
+    'city',
+    'town',
+    'village',
+    'suburb',
+    'quarter',
+    'locality',
+  };
+
+  bool _queryNamesAnotherRegion(String query) {
+    final lower = query.toLowerCase();
+    if (lower.contains('new zealand') || RegExp(r'\bnz\b').hasMatch(lower)) {
+      return true;
+    }
+    return _regionalSearchAnchors.any(
+      (region) => lower.contains(region.$1.toLowerCase()),
+    );
+  }
+
+  bool _shouldBoundLocally(String query, GeoPoint? proximity) =>
+      proximity != null &&
+      proximity.latitude > -48 &&
+      proximity.latitude < -34 &&
+      proximity.longitude > 166 &&
+      proximity.longitude < 179 &&
+      !_queryNamesAnotherRegion(query);
+
+  bool _isCategoryIntent(String query) {
+    final normalized = query.toLowerCase().trim().replaceAll(' ', '_');
+    return _poiCategories.contains(normalized) ||
+        _genericSearchWords.contains(query.toLowerCase().trim()) ||
+        _regionalIntents.containsKey(query.toLowerCase().trim());
+  }
+
+  bool _strongNameMatch(PlaceSummary place, String query) {
+    final name = _compactSearchText(place.name);
+    final wanted = _compactSearchText(query);
+    return wanted.isNotEmpty && name == wanted;
+  }
+
+  String _localBbox(GeoPoint center) {
+    const latRadius = .40;
+    const lonRadius = .58;
+    return [
+      (center.longitude - lonRadius).toStringAsFixed(4),
+      (center.latitude - latRadius).toStringAsFixed(4),
+      (center.longitude + lonRadius).toStringAsFixed(4),
+      (center.latitude + latRadius).toStringAsFixed(4),
+    ].join(',');
+  }
+
   double _resultRank(
     PlaceSummary place, {
+    required String query,
     required GeoPoint? proximity,
     String? preferredName,
     String? coreName,
   }) {
     var rank = 0.0;
     final name = _compactSearchText(place.name);
+    final wanted = _compactSearchText(query);
+    if (wanted.isNotEmpty) {
+      if (name == wanted) {
+        rank -= 100000;
+      } else if (name.startsWith(wanted)) {
+        rank -= 45000;
+      } else if (name.contains(wanted) || wanted.contains(name)) {
+        rank -= 30000;
+      }
+    }
     if (preferredName != null) {
       final preferred = _compactSearchText(preferredName);
       if (name == preferred) {
@@ -328,27 +426,44 @@ class IndependentSearchProvider
       rank -= 25000;
     }
     final category = place.category.toLowerCase();
+    if (_poiCategories.contains(category)) rank -= 9000;
+    if (_administrativeCategories.contains(category) &&
+        !_queryNamesAnotherRegion(query) &&
+        name != wanted) {
+      rank += 12000;
+    }
     if (preferredName?.toLowerCase().contains('airport') == true) {
-      if (category == 'aerodrome') rank -= 5000;
-      if (category.contains('terminal')) rank -= 3000;
+      if (category == 'aerodrome') rank -= 12000;
+      if (category.contains('terminal')) rank -= 6000;
     }
     if (proximity != null) {
-      rank += distanceMeters(
-        proximity.latitude,
-        proximity.longitude,
-        place.location.latitude,
-        place.location.longitude,
-      );
+      // Proximity is a tie-breaker, not the whole relevance model. Raw metres
+      // made a famous exact destination 150 km away lose to an unrelated local
+      // name. Cap and scale it so semantic/type confidence remains dominant.
+      rank +=
+          distanceMeters(
+            proximity.latitude,
+            proximity.longitude,
+            place.location.latitude,
+            place.location.longitude,
+          ).clamp(0, 200000) *
+          .12;
     }
     return rank;
   }
 
-  Map<String, String> _photonParameters(String query, GeoPoint? proximity) => {
+  Map<String, String> _photonParameters(
+    String query,
+    GeoPoint? proximity, {
+    bool localBias = true,
+  }) => {
     'q': query,
-    'limit': '8',
+    'limit': localBias ? '16' : '8',
     'lang': 'en',
     if (proximity != null) 'lat': proximity.latitude.toStringAsFixed(3),
     if (proximity != null) 'lon': proximity.longitude.toStringAsFixed(3),
+    if (localBias && _shouldBoundLocally(query, proximity))
+      'bbox': _localBbox(proximity!),
   };
 
   @override
@@ -378,16 +493,43 @@ class IndependentSearchProvider
     };
     final plainQuery = aliases[trimmed] ?? trimmed;
     final regionalQuery = _regionalIntentQuery(trimmed, proximity);
+    final coreQuery = _coreBrandQuery(trimmed);
     final primaryQuery = regionalQuery ?? plainQuery;
+    final bounded = _shouldBoundLocally(primaryQuery, proximity);
     var results = await _load(
       'api/',
       _photonParameters(primaryQuery, proximity),
     );
 
+    // A bounded local query keeps short brands local, but must not make long
+    // distance destination search impossible. When the local box has no strong
+    // name match (for example searching a city elsewhere in NZ), merge a global
+    // response and let semantic relevance outrank proximity.
+    if (bounded &&
+        (results.isEmpty ||
+            (coreQuery == null &&
+                !_isCategoryIntent(plainQuery) &&
+                !results.any(
+                  (place) => _strongNameMatch(place, plainQuery),
+                )))) {
+      final global = await _load(
+        'api/',
+        _photonParameters(primaryQuery, proximity, localBias: false),
+      );
+      final merged = <String, PlaceSummary>{};
+      for (final place in [...results, ...global]) {
+        final ref = place.reference;
+        final key = ref == null
+            ? '${place.name}|${place.location.latitude}|${place.location.longitude}'
+            : '${ref.provider}:${ref.id}';
+        merged.putIfAbsent(key, () => place);
+      }
+      results = merged.values.toList(growable: false);
+    }
+
     // Photon can over-weight generic category words. Branded searches retry
     // the brand portion. Common local intents are expanded before the first
     // request so "airport" near Auckland is both smarter and faster.
-    final coreQuery = _coreBrandQuery(trimmed);
     final fallbacks = <String>[
       if (regionalQuery != null &&
           plainQuery != primaryQuery &&
@@ -400,10 +542,10 @@ class IndependentSearchProvider
     ];
     if (fallbacks.isNotEmpty) {
       final merged = <String, PlaceSummary>{};
-      for (final query in fallbacks) {
+      for (final fallbackQuery in fallbacks) {
         final fallback = await _load(
           'api/',
-          _photonParameters(query, proximity),
+          _photonParameters(fallbackQuery, proximity),
         );
         for (final place in fallback) {
           final ref = place.reference;
@@ -420,41 +562,27 @@ class IndependentSearchProvider
             : '${ref.provider}:${ref.id}';
         merged.putIfAbsent(key, () => place);
       }
-      results = merged.values.toList(growable: false)
-        ..sort((a, b) {
-          final aRank = _resultRank(
-            a,
-            proximity: proximity,
-            preferredName: regionalQuery,
-            coreName: coreQuery,
-          );
-          final bRank = _resultRank(
-            b,
-            proximity: proximity,
-            preferredName: regionalQuery,
-            coreName: coreQuery,
-          );
-          return aRank.compareTo(bRank);
-        });
+      results = merged.values.toList(growable: false);
     }
-    if (regionalQuery != null || coreQuery != null) {
-      results = results.toList(growable: false)
-        ..sort((a, b) {
-          final aRank = _resultRank(
-            a,
-            proximity: proximity,
-            preferredName: regionalQuery,
-            coreName: coreQuery,
-          );
-          final bRank = _resultRank(
-            b,
-            proximity: proximity,
-            preferredName: regionalQuery,
-            coreName: coreQuery,
-          );
-          return aRank.compareTo(bRank);
-        });
-    }
+
+    results = results.toList(growable: false)
+      ..sort((a, b) {
+        final aRank = _resultRank(
+          a,
+          query: trimmed,
+          proximity: proximity,
+          preferredName: regionalQuery,
+          coreName: coreQuery,
+        );
+        final bRank = _resultRank(
+          b,
+          query: trimmed,
+          proximity: proximity,
+          preferredName: regionalQuery,
+          coreName: coreQuery,
+        );
+        return aRank.compareTo(bRank);
+      });
 
     return results
         .take(8)

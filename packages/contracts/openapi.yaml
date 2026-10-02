@@ -40,6 +40,45 @@ paths:
                   syncStatus: { type: string, enum: [seed, live, stale] }
                   syncError: { type: string, nullable: true }
                   source: { type: string, format: uri }
+  /traffic-flow:
+    get:
+      summary: Live Auckland motorway congestion from NZTA Traffic Conditions
+      description: Returns directional motorway segments with current congestion labels. Coverage follows the official NZTA traffic-conditions feed and is not a claim of traffic coverage on every local street.
+      responses:
+        '200':
+          description: Live or retained motorway traffic segments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [segments, syncStatus]
+                properties:
+                  syncStatus: { type: string, enum: [live, stale] }
+                  sourceUpdatedAt: { type: string, format: date-time, nullable: true }
+                  checkedAt: { type: string, format: date-time }
+                  source: { type: string, format: uri }
+                  segments:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, congestion, level, start, end]
+                      properties:
+                        id: { type: string }
+                        motorway: { type: string }
+                        name: { type: string }
+                        direction: { type: string }
+                        congestion: { type: string }
+                        level: { type: string, enum: [free, moderate, heavy, unknown] }
+                        start:
+                          type: object
+                          properties:
+                            latitude: { type: number }
+                            longitude: { type: number }
+                        end:
+                          type: object
+                          properties:
+                            latitude: { type: number }
+                            longitude: { type: number }
   /parking:
     get:
       summary: AT Open GIS car parks within 1.5 km of a New Zealand coordinate

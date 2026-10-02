@@ -9,6 +9,7 @@ import '../data/camera_repository.dart';
 import '../data/nzta_road_event_provider.dart';
 import '../data/nzta_traffic_road_event_provider.dart';
 import '../data/speed_limit_repository.dart';
+import '../data/traffic_flow_repository.dart';
 import '../domain/country_profile.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
@@ -16,12 +17,14 @@ import '../domain/road_event.dart';
 import '../domain/road_intelligence.dart';
 import '../domain/route_option.dart';
 import '../domain/safety_camera.dart';
+import '../domain/traffic_flow.dart';
 import 'camera_alert_lifecycle.dart';
 import 'camera_matcher.dart';
 import 'route_camera_matcher.dart';
 import 'route_progress_tracker.dart';
 import 'voice_engine.dart';
 import 'navigation_language.dart';
+import 'navigation_location_filter.dart';
 
 class DriveEngine extends ChangeNotifier {
   DriveEngine({
@@ -29,11 +32,14 @@ class DriveEngine extends ChangeNotifier {
     CameraMatcher? cameraMatcher,
     VoiceEngine? voiceEngine,
     SpeedLimitRepository? speedLimitRepository,
+    TrafficFlowRepository? trafficFlowRepository,
     RoadIntelligenceEngine? roadIntelligence,
     CameraAlertLifecycle? cameraLifecycle,
   }) : _cameraMatcher = cameraMatcher ?? const CameraMatcher(),
        _voiceEngine = voiceEngine ?? VoiceEngine(),
        _speedLimitRepository = speedLimitRepository ?? SpeedLimitRepository(),
+       _trafficFlowRepository =
+           trafficFlowRepository ?? TrafficFlowRepository(),
        _roadIntelligence = roadIntelligence ?? RoadIntelligenceEngine(),
        _cameraLifecycle = cameraLifecycle ?? CameraAlertLifecycle() {
     _nztaProvider = NztaRoadEventProvider(
@@ -49,6 +55,7 @@ class DriveEngine extends ChangeNotifier {
   final CameraMatcher _cameraMatcher;
   final VoiceEngine _voiceEngine;
   final SpeedLimitRepository _speedLimitRepository;
+  final TrafficFlowRepository _trafficFlowRepository;
   final RoadIntelligenceEngine _roadIntelligence;
   final CameraAlertLifecycle _cameraLifecycle;
   late final NztaRoadEventProvider _nztaProvider;
@@ -65,8 +72,11 @@ class DriveEngine extends ChangeNotifier {
   }
 
   Timer? _roadIntelligenceRefreshTimer;
+  Timer? _trafficFlowRefreshTimer;
   final Set<String> _spokenAlerts = <String>{};
   final RouteCameraMatcher _routeMatcher = const RouteCameraMatcher();
+  final NavigationLocationFilter _localLocationFilter =
+      NavigationLocationFilter();
 
   List<SafetyCamera> _cameras = const [];
   RouteOption? _route;
@@ -80,6 +90,10 @@ class DriveEngine extends ChangeNotifier {
   CameraSnapshot? get cameraSnapshot => _nztaProvider.lastSnapshot;
   List<RoadEvent> roadEvents = const [];
   List<RoadEvent> upcomingRoadEvents = const [];
+  List<TrafficFlowSegment> trafficFlowSegments = const [];
+  DateTime? trafficFlowUpdatedAt;
+  String trafficFlowStatus = 'not_loaded';
+  int trafficFlowRevision = 0;
   String roadIntelligenceStatus = 'not_loaded';
   bool get roadIntelligenceStale => roadIntelligenceStatus == 'stale';
   int get routeCameraCount => routeCameras.length;
@@ -227,6 +241,24 @@ class DriveEngine extends ChangeNotifier {
     _roadSnappedFixCompleter = Completer<void>();
     error = null;
     await _voiceEngine.initialize();
+
+    final routeStart = _route != null && _route!.points.isNotEmpty
+        ? _route!.points.first
+        : null;
+    _localLocationFilter.reset(anchor: routeStart);
+    active = true;
+    guidanceRunning = _route != null;
+
+    // Keep the puck on the freshly-calculated route origin until iOS provides
+    // a trustworthy fix. This prevents an indoor 50–100 m GPS jump from
+    // instantly moving the Kiwi onto a nearby motorway.
+    if (routeStart != null) {
+      locationAccuracyMeters = 20;
+      _onLocation(
+        LatLng(latitude: routeStart.latitude, longitude: routeStart.longitude),
+      );
+    }
+
     final settings = switch (defaultTargetPlatform) {
       TargetPlatform.android => AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
@@ -257,25 +289,38 @@ class DriveEngine extends ChangeNotifier {
       Geolocator.getPositionStream(locationSettings: settings).listen(
         (position) {
           if (!active || _disposed) return;
-          if (!position.accuracy.isFinite || position.accuracy > 65) {
-            error = 'Waiting for an accurate GPS fix';
+          final metresPerSecond = position.speed.isFinite && position.speed > 0
+              ? position.speed
+              : 0.0;
+          final accepted = _localLocationFilter.accept(
+            NavigationLocationFix(
+              point: GeoPoint(position.latitude, position.longitude),
+              accuracyMeters: position.accuracy,
+              speedMetresPerSecond: metresPerSecond,
+              timestamp: position.timestamp,
+            ),
+          );
+          if (accepted == null) {
+            error = !position.accuracy.isFinite || position.accuracy > 35
+                ? 'Waiting for an accurate GPS fix'
+                : 'GPS unstable — holding the last reliable position';
             notifyListeners();
             return;
           }
+
           error = null;
-          locationAccuracyMeters = position.accuracy;
-          speedKph =
-              (position.speed.isFinite && position.speed > 0
-                  ? position.speed
-                  : 0) *
-              3.6;
+          locationAccuracyMeters = accepted.accuracyMeters;
+          speedKph = metresPerSecond * 3.6;
           if (speedKph > 5 &&
               position.heading.isFinite &&
               position.heading >= 0) {
             _headingDegrees = position.heading;
           }
           _onLocation(
-            LatLng(latitude: position.latitude, longitude: position.longitude),
+            LatLng(
+              latitude: accepted.point.latitude,
+              longitude: accepted.point.longitude,
+            ),
           );
           speedSeverity = speedLimitKph != null && speedKph > speedLimitKph!
               ? SpeedAlertSeverity.minor
@@ -288,13 +333,41 @@ class DriveEngine extends ChangeNotifier {
         },
       ),
     );
-    active = true;
     await _updateWakeLock();
-    guidanceRunning = _route != null;
     _startRoadIntelligenceRefreshTimer();
     notifyListeners();
-    // Start GPS immediately; provider refresh must not delay entering Drive.
+    // Provider refreshes must not delay entering Drive.
     unawaited(loadCameras(force: true));
+    unawaited(loadTrafficFlow(force: true));
+  }
+
+  Future<void> loadTrafficFlow({bool force = false}) async {
+    if (!force &&
+        trafficFlowUpdatedAt != null &&
+        DateTime.now().difference(trafficFlowUpdatedAt!) <
+            const Duration(seconds: 45)) {
+      return;
+    }
+    try {
+      final snapshot = await _trafficFlowRepository.load();
+      trafficFlowSegments = snapshot.segments;
+      trafficFlowUpdatedAt =
+          snapshot.sourceUpdatedAt ?? snapshot.checkedAt ?? DateTime.now();
+      trafficFlowStatus = snapshot.syncStatus;
+      trafficFlowRevision++;
+      notifyListeners();
+    } catch (_) {
+      if (trafficFlowSegments.isEmpty) {
+        trafficFlowStatus = 'unavailable';
+        notifyListeners();
+      } else {
+        trafficFlowStatus = 'stale';
+      }
+    }
+    _trafficFlowRefreshTimer ??= Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => unawaited(loadTrafficFlow(force: true)),
+    );
   }
 
   Future<CameraSnapshot?> syncCameraData({required String sessionToken}) async {
@@ -684,6 +757,7 @@ class DriveEngine extends ChangeNotifier {
     routeProgress = null;
     _roadIntelligenceRefreshTimer?.cancel();
     _roadIntelligenceRefreshTimer = null;
+    _localLocationFilter.reset();
     for (final subscription in _subscriptions) {
       await subscription.cancel();
     }
@@ -719,6 +793,8 @@ class DriveEngine extends ChangeNotifier {
     ++_locationSession;
     unawaited(WakelockPlus.disable().catchError((Object _) {}));
     _roadIntelligenceRefreshTimer?.cancel();
+    _trafficFlowRefreshTimer?.cancel();
+    _trafficFlowRepository.dispose();
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
     }

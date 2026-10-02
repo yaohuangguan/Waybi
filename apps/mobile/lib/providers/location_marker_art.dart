@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../domain/map_layer_settings.dart';
 import '../domain/map_provider.dart';
 import '../theme/kiwi_lens_theme.dart';
 import '../widgets/kiwi_mascot.dart';
@@ -17,7 +18,8 @@ class LocationMarkerArt {
 
   static Future<Uint8List>? _glow;
   static Future<Uint8List>? _mascot;
-  static Future<Uint8List>? _camera;
+  static final Map<CameraKind, Future<Uint8List>> _cameras = {};
+  static Future<Uint8List>? _finishFlag;
 
   static Future<Uint8List> practicePng(LocationMarkerStyle style) =>
       style == LocationMarkerStyle.kiwi
@@ -30,16 +32,23 @@ class LocationMarkerArt {
     return _export(recorder, 96);
   }
 
-  /// Rasterize the soft light once. Native GPU transforms it with the puck;
-  /// Flutter no longer repaints a blurred 240px path on every animation frame.
-  static Future<Uint8List> cameraPng() => _camera ??= _drawCamera();
+  static Future<Uint8List> cameraPng(CameraKind kind) =>
+      _cameras.putIfAbsent(kind, () => _drawCamera(kind));
 
-  static Future<Uint8List> _drawCamera() async {
+  static Future<Uint8List> _drawCamera(CameraKind kind) async {
     const size = 96.0;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final paint = Paint()..isAntiAlias = true;
-    paint.color = const Color(0xFFD9473F);
+    final background = switch (kind) {
+      CameraKind.spotSpeed => const Color(0xFFD93025),
+      CameraKind.averageSpeed => const Color(0xFFF29900),
+      CameraKind.redLight => const Color(0xFFB3261E),
+      CameraKind.dualRedLightSpeed => const Color(0xFF7E57C2),
+      CameraKind.busLane => const Color(0xFF1976D2),
+      CameraKind.other => const Color(0xFF687076),
+    };
+    paint.color = background;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         const Rect.fromLTWH(8, 8, 80, 80),
@@ -47,28 +56,103 @@ class LocationMarkerArt {
       ),
       paint,
     );
+
     paint.color = Colors.white;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTWH(21, 31, 54, 38),
-        const Radius.circular(8),
-      ),
-      paint,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTWH(31, 24, 22, 13),
-        const Radius.circular(5),
-      ),
-      paint,
-    );
-    paint.color = const Color(0xFFD9473F);
-    canvas.drawCircle(const Offset(48, 50), 12, paint);
-    paint.color = Colors.white;
-    canvas.drawCircle(const Offset(48, 50), 6, paint);
+    if (kind == CameraKind.busLane) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(24, 25, 48, 44),
+          const Radius.circular(7),
+        ),
+        paint,
+      );
+      paint.color = background;
+      canvas.drawRect(const Rect.fromLTWH(31, 32, 34, 15), paint);
+      canvas.drawCircle(const Offset(34, 68), 5, paint);
+      canvas.drawCircle(const Offset(62, 68), 5, paint);
+    } else {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(20, 32, 56, 37),
+          const Radius.circular(8),
+        ),
+        paint,
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(31, 25, 23, 12),
+          const Radius.circular(5),
+        ),
+        paint,
+      );
+      paint.color = background;
+      if (kind == CameraKind.averageSpeed) {
+        canvas.drawCircle(const Offset(40, 51), 8, paint);
+        canvas.drawCircle(const Offset(58, 51), 8, paint);
+      } else {
+        canvas.drawCircle(const Offset(48, 51), 12, paint);
+        paint.color = Colors.white;
+        canvas.drawCircle(const Offset(48, 51), 6, paint);
+      }
+    }
+
+    if (kind == CameraKind.redLight || kind == CameraKind.dualRedLightSpeed) {
+      paint.color = const Color(0xFF202124);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(66, 18, 15, 31),
+          const Radius.circular(5),
+        ),
+        paint,
+      );
+      for (final entry in const [
+        (Offset(73.5, 25), Color(0xFFFF4D4D)),
+        (Offset(73.5, 33.5), Color(0xFFFFC107)),
+        (Offset(73.5, 42), Color(0xFF3DDC84)),
+      ]) {
+        paint.color = entry.$2;
+        canvas.drawCircle(entry.$1, 3, paint);
+      }
+    }
     return _export(recorder, size.toInt());
   }
 
+  static Future<Uint8List> finishFlagPng() => _finishFlag ??= _drawFinishFlag();
+
+  static Future<Uint8List> _drawFinishFlag() async {
+    const size = 96.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final paint = Paint()..isAntiAlias = true;
+
+    paint.color = const Color(0xFF202124);
+    paint.strokeWidth = 7;
+    paint.strokeCap = StrokeCap.round;
+    canvas.drawLine(const Offset(24, 14), const Offset(24, 83), paint);
+    canvas.drawCircle(const Offset(24, 15), 5, paint);
+
+    const left = 27.0;
+    const top = 18.0;
+    const cell = 12.0;
+    for (var row = 0; row < 4; row++) {
+      for (var col = 0; col < 4; col++) {
+        paint.color = (row + col).isEven ? Colors.white : Colors.black;
+        canvas.drawRect(
+          Rect.fromLTWH(left + col * cell, top + row * cell, cell, cell),
+          paint,
+        );
+      }
+    }
+    paint
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = const Color(0xFF202124);
+    canvas.drawRect(const Rect.fromLTWH(left, top, cell * 4, cell * 4), paint);
+    return _export(recorder, size.toInt());
+  }
+
+  /// Rasterize the soft light once. Native GPU transforms it with the puck;
+  /// Flutter no longer repaints a blurred 240px path on every animation frame.
   static Future<Uint8List> glowPng() => _glow ??= _drawGlow();
   static Future<Uint8List> _drawGlow() async {
     final recorder = ui.PictureRecorder();

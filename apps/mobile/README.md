@@ -3,7 +3,7 @@
 Kiwi Lens 的原生移动端使用 Flutter，支持在设置中切换 Google Maps 与 Kiwi 实践版 地图。Google 原生导航流程保留，Kiwi 实践版 浏览、路线、偏航重算与驾驶模式使用独立适配器；详细边界和剩余验证见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
 
 - `google_navigation_flutter`：地图浏览、POI 点击、路线与 turn-by-turn 导航
-- `flutter_map` / `vector_map_tiles`：OpenFreeMap 矢量底图、Kiwi 配色与共享定位光晕
+- `maplibre_gl`：原生 GPU 矢量底图、地点标注、Kiwi 分区配色与共享定位光晕
 - Cloudflare Worker `https://kiwi-lens.nzs.workers.dev`：地址自动补全、摄像头及限速 API
 - iOS Core Location：手机顶部罗盘朝向；地图与柔和前方光晕跟随该方向，GPS course 仅为无罗盘时的行驶中回退
 - 自定义 Flutter 导航顶栏、速度/摄像头浮层和紧凑行程卡；Google Navigation SDK 保留真实路线与转弯数据

@@ -1855,7 +1855,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             }),
       );
     }
-    if (mounted) {
+    if (mounted && (_following || _routeOverviewActive)) {
       setState(() {
         _following = false;
         _routeOverviewActive = false;
@@ -4750,7 +4750,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           },
           language: _appLanguage,
           currentLocation: _gpsLocation == null
-              ? null
+              ? _viewport.center
               : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude),
           recent: _recentDestinations
               .map(

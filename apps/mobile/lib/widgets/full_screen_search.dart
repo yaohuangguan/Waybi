@@ -62,11 +62,11 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
     super.dispose();
   }
 
-  void _search(String input) {
+  void _search(String input, {bool immediate = false}) {
     _debounce?.cancel();
     final request = ++_request;
     final query = input.trim();
-    if (query.length < 2) {
+    if (query.runes.length < 2) {
       setState(() {
         _results = const [];
         _loading = false;
@@ -78,27 +78,30 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
       _loading = true;
       _error = null;
     });
-    _debounce = Timer(const Duration(milliseconds: 280), () async {
-      try {
-        final results = await widget.provider.search(
-          query,
-          proximity: widget.currentLocation,
-          language: widget.language,
-        );
-        if (!mounted || request != _request) return;
-        setState(() {
-          _results = results;
-          _loading = false;
-        });
-      } catch (_) {
-        if (!mounted || request != _request) return;
-        setState(() {
-          _results = const [];
-          _loading = false;
-          _error = _text('Search is temporarily unavailable', '搜索暂不可用');
-        });
-      }
-    });
+    _debounce = Timer(
+      immediate ? Duration.zero : const Duration(milliseconds: 280),
+      () async {
+        try {
+          final results = await widget.provider.search(
+            query,
+            proximity: widget.currentLocation,
+            language: widget.language,
+          );
+          if (!mounted || request != _request) return;
+          setState(() {
+            _results = results;
+            _loading = false;
+          });
+        } catch (_) {
+          if (!mounted || request != _request) return;
+          setState(() {
+            _results = const [];
+            _loading = false;
+            _error = _text('Search is temporarily unavailable', '搜索暂不可用');
+          });
+        }
+      },
+    );
   }
 
   Future<void> _choose(PlaceCandidate candidate) async {
@@ -194,6 +197,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               hintText: _text('Where to?', '去哪儿？'),
             ),
             onChanged: _search,
+            onSubmitted: (value) => _search(value, immediate: true),
           ),
         ),
         actions: [
@@ -226,7 +230,17 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.all(18),
-              child: Text(_error!, style: TextStyle(color: scheme.error)),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(_error!, style: TextStyle(color: scheme.error)),
+                  ),
+                  TextButton(
+                    onPressed: () => _search(_controller.text, immediate: true),
+                    child: Text(_text('Retry', '重试')),
+                  ),
+                ],
+              ),
             ),
           if (recent && widget.onDriveMode != null)
             ListTile(
@@ -242,6 +256,22 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                 Navigator.of(context).pop();
                 widget.onDriveMode?.call();
               },
+            ),
+          if (!recent &&
+              !_loading &&
+              !_resolving &&
+              _error == null &&
+              items.isEmpty &&
+              _controller.text.trim().runes.length >= 2)
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Text(
+                _text(
+                  'No places found. Try a street, address or local place name.',
+                  '没有找到地点，试试街道、地址或当地地点名称。',
+                ),
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
             ),
           Expanded(
             child: ListView.separated(
@@ -288,6 +318,20 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               },
             ),
           ),
+          if (items.any((item) => item.reference?.provider == 'osm'))
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+                child: Text(
+                  'Photon · © OpenStreetMap contributors',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
           if (items.any((item) => item.reference?.provider == 'geoapify'))
             SafeArea(
               top: false,

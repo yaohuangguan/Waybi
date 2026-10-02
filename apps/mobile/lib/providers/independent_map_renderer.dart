@@ -1,22 +1,21 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:vector_map_tiles/vector_map_tiles.dart';
-import 'package:latlong2/latlong.dart' as ll;
+import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../domain/map_layer_settings.dart';
 import '../domain/map_provider.dart';
 import '../domain/safety_camera.dart';
 import '../domain/road_event.dart';
-import '../theme/kiwi_lens_theme.dart';
-import '../widgets/kiwi_mascot.dart';
 import 'location_marker_art.dart';
 import 'independent_map_style.dart';
 import 'provider_contracts.dart';
 
-/// Flutter owns both projection and the single location marker in Practice.
+/// Native GPU projection for tiles, POIs, route, puck and its light together.
 class IndependentMapRenderer extends StatefulWidget {
   const IndependentMapRenderer({
     super.key,
@@ -66,7 +65,7 @@ class IndependentMapRenderer extends StatefulWidget {
   final double heading;
   final EdgeInsets contentPadding;
   final bool following;
-  final Future<Style> Function({required bool dark, required String language})
+  final Future<String> Function({required bool dark, required String language})
   styleLoader;
   @override
   State<IndependentMapRenderer> createState() => _IndependentMapRendererState();
@@ -74,14 +73,30 @@ class IndependentMapRenderer extends StatefulWidget {
 
 class _IndependentMapRendererState extends State<IndependentMapRenderer>
     implements RouteMapRenderer, PlaceFocusMapRenderer {
-  final _controller = MapController();
+  ml.MapLibreMapController? _controller;
   late MapViewportState _viewport = widget.initialViewport;
   EdgeInsets? _placePadding;
-  bool _ready = false;
-  Future<Style>? _style;
+  EdgeInsets? _appliedPadding;
+  Future<String>? _style;
   bool? _dark;
+  bool _ready = false, _syncing = false, _dirty = false;
+  int _generation = 0;
+  final _signatures = <String, int>{};
+  final _pointers = <int, Offset>{};
+  bool _gestureReported = false;
+  EdgeInsets get _padding => _placePadding ?? widget.contentPadding;
+  @override
+  MapProvider get provider => MapProvider.independent;
+  @override
+  MapViewportState get viewport => _viewport;
+  ml.LatLng _point(GeoPoint p) => ml.LatLng(p.latitude, p.longitude);
+
   void _loadStyle() {
     _dark = Theme.of(context).brightness == Brightness.dark;
+    _ready = false;
+    _generation++;
+    _signatures.clear();
+    _appliedPadding = null;
     _style = widget.styleLoader(dark: _dark!, language: widget.language);
   }
 
@@ -95,37 +110,42 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   }
 
   @override
-  MapProvider get provider => MapProvider.independent;
-  @override
-  MapViewportState get viewport => _viewport;
-  ll.LatLng _point(GeoPoint p) => ll.LatLng(p.latitude, p.longitude);
-  EdgeInsets get _padding => _placePadding ?? widget.contentPadding;
-  @override
   void didUpdateWidget(covariant IndependentMapRenderer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.language != widget.language) _loadStyle();
-    if (oldWidget.contentPadding != widget.contentPadding &&
-        widget.following &&
-        widget.location != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && widget.following) {
-          moveTo(_viewport.copyWith(center: widget.location));
-        }
-      });
+    _queueSync();
+    if (oldWidget.contentPadding != widget.contentPadding) {
+      unawaited(_updatePadding());
     }
+  }
+
+  Future<void> _updatePadding() async {
+    if (!_ready) return;
+    await _applyPadding();
+    if (mounted && widget.following && widget.location != null) {
+      await moveTo(_viewport.copyWith(center: widget.location));
+    }
+  }
+
+  Future<void> _applyPadding() async {
+    if (_appliedPadding == _padding) return;
+    await _controller!.updateContentInsets(_padding);
+    _appliedPadding = _padding;
   }
 
   @override
   Future<void> moveTo(MapViewportState viewport) async {
     if (!_ready) return;
     _viewport = viewport;
-    _controller.rotate(-viewport.bearing);
-    _controller.move(
-      _point(viewport.center),
-      viewport.zoom,
-      offset: Offset(
-        (_padding.left - _padding.right) / 2,
-        (_padding.top - _padding.bottom) / 2,
+    await _applyPadding();
+    await _controller!.moveCamera(
+      ml.CameraUpdate.newCameraPosition(
+        ml.CameraPosition(
+          target: _point(viewport.center),
+          zoom: viewport.zoom,
+          bearing: viewport.bearing,
+          tilt: viewport.pitch,
+        ),
       ),
     );
   }
@@ -134,6 +154,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   Future<void> focusPlace(GeoPoint point, {required double bottomInset}) async {
     _placePadding = EdgeInsets.fromLTRB(18, 104, 18, bottomInset);
     setState(() {});
+    await _updatePadding();
     await moveTo(
       _viewport.copyWith(center: point, zoom: math.max(15, _viewport.zoom)),
     );
@@ -143,6 +164,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   Future<void> clearContentPadding() async {
     _placePadding = null;
     setState(() {});
+    await _updatePadding();
   }
 
   @override
@@ -151,94 +173,368 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     required double bottomInset,
   }) async {
     if (!_ready || points.length < 2) return;
-    _controller.rotate(0);
-    _controller.fitCamera(
-      CameraFit.bounds(
-        bounds: LatLngBounds.fromPoints(points.map(_point).toList()),
-        padding: EdgeInsets.fromLTRB(
-          36,
-          widget.contentPadding.top > 0 ? widget.contentPadding.top : 150,
-          36,
-          bottomInset,
+    final south = points.map((p) => p.latitude).reduce(math.min);
+    final north = points.map((p) => p.latitude).reduce(math.max);
+    final west = points.map((p) => p.longitude).reduce(math.min);
+    final east = points.map((p) => p.longitude).reduce(math.max);
+    // Bounds padding is explicit, so avoid counting the deck twice.
+    await _controller!.updateContentInsets(EdgeInsets.zero);
+    _appliedPadding = EdgeInsets.zero;
+    await _controller!.moveCamera(
+      ml.CameraUpdate.newLatLngBounds(
+        ml.LatLngBounds(
+          southwest: ml.LatLng(south, west),
+          northeast: ml.LatLng(north, east),
         ),
-        maxZoom: 17,
+        left: 36,
+        top: math.max(150, widget.contentPadding.top),
+        right: 36,
+        bottom: bottomInset,
       ),
     );
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  void _cameraMoved(ml.CameraPosition camera) {
+    _viewport = MapViewportState(
+      center: GeoPoint(camera.target.latitude, camera.target.longitude),
+      zoom: camera.zoom,
+      bearing: camera.bearing,
+      pitch: camera.tilt,
+    );
+    // No setState here: native map movement must not rebuild the Flutter HUD.
+    widget.onViewportChanged(_viewport);
   }
 
-  Marker _pin(GeoPoint p, Widget child) =>
-      Marker(point: _point(p), width: 40, height: 40, child: child);
-  Widget _button(
-    IconData icon,
-    VoidCallback onTap, {
-    Color color = KiwiLensColors.ocean,
-  }) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: const [BoxShadow(color: Color(0x22000000), blurRadius: 6)],
-      ),
-      child: Icon(icon, color: color, size: 24),
-    ),
-  );
+  void _pan() {
+    if (_gestureReported) return;
+    _gestureReported = true;
+    widget.onUserPan();
+  }
+
+  Future<void> _styleLoaded() async {
+    final generation = _generation;
+    final c = _controller!;
+    final imageScale = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS
+        ? View.of(context).devicePixelRatio
+        : 1.0;
+    try {
+      for (final style in LocationMarkerStyle.values) {
+        await c.addImage(
+          'kiwi-puck-${style.name}',
+          await LocationMarkerArt.practicePng(style),
+        );
+      }
+      await c.addImage('kiwi-light', await LocationMarkerArt.glowPng());
+      for (final source in ['kiwi-route', 'kiwi-pins', 'kiwi-driver']) {
+        await c.addGeoJsonSource(source, _collection(const []));
+      }
+      await c.addLineLayer(
+        'kiwi-route',
+        'kiwi-route-edge',
+        const ml.LineLayerProperties(
+          lineColor: '#ffffff',
+          lineWidth: 9,
+          lineCap: 'round',
+          lineJoin: 'round',
+        ),
+        belowLayerId: 'kiwi-poi-dot',
+        enableInteraction: false,
+      );
+      await c.addLineLayer(
+        'kiwi-route',
+        'kiwi-route-line',
+        const ml.LineLayerProperties(
+          lineColor: '#6f9637',
+          lineWidth: 6,
+          lineCap: 'round',
+          lineJoin: 'round',
+        ),
+        belowLayerId: 'kiwi-poi-dot',
+        enableInteraction: false,
+      );
+      await c.addCircleLayer(
+        'kiwi-pins',
+        'kiwi-pins-dot',
+        ml.CircleLayerProperties(
+          circleRadius: [
+            'match',
+            ['get', 'kind'],
+            ['selected', 'destination'],
+            9,
+            6,
+          ],
+          circleColor: [
+            'match',
+            ['get', 'kind'],
+            'event',
+            '#d88b38',
+            '#608b32',
+          ],
+          circleStrokeColor: '#ffffff',
+          circleStrokeWidth: 2,
+        ),
+        enableInteraction: false,
+      );
+      await c.addSymbolLayer(
+        'kiwi-pins',
+        'kiwi-pins-label',
+        const ml.SymbolLayerProperties(
+          textField: ['get', 'name'],
+          textFont: ['Noto Sans Regular'],
+          textSize: 12,
+          textAnchor: 'top',
+          textOffset: [0, .9],
+          textHaloColor: '#ffffff',
+          textHaloWidth: 1.5,
+          textColor: '#3f612c',
+        ),
+        enableInteraction: false,
+      );
+      await c.addSymbolLayer(
+        'kiwi-driver',
+        'kiwi-driver-light',
+        ml.SymbolLayerProperties(
+          iconImage: 'kiwi-light',
+          iconSize: .5 * imageScale,
+          iconAllowOverlap: true,
+          iconIgnorePlacement: true,
+          iconRotationAlignment: 'map',
+          iconRotate: ['get', 'heading'],
+        ),
+        enableInteraction: false,
+      );
+      await c.addSymbolLayer(
+        'kiwi-driver',
+        'kiwi-driver-puck',
+        ml.SymbolLayerProperties(
+          iconImage: ['get', 'icon'],
+          iconSize: 44 / 96 * imageScale,
+          iconAllowOverlap: true,
+          iconIgnorePlacement: true,
+          iconRotationAlignment: 'map',
+          iconRotate: ['get', 'heading'],
+        ),
+        enableInteraction: false,
+      );
+      if (!mounted || generation != _generation) return;
+      _ready = true;
+      _signatures.clear();
+      await _updatePadding();
+      _queueSync();
+      widget.onReady(this);
+    } catch (e) {
+      if (mounted) debugPrint('Practice map initialization failed: $e');
+    }
+  }
+
+  Map<String, dynamic> _collection(List<Map<String, dynamic>> features) => {
+    'type': 'FeatureCollection',
+    'features': features,
+  };
+  Map<String, dynamic> _pin(String id, GeoPoint p, String kind, String name) =>
+      {
+        'type': 'Feature',
+        'id': id,
+        'geometry': {
+          'type': 'Point',
+          'coordinates': [p.longitude, p.latitude],
+        },
+        'properties': {'kind': kind, 'name': name},
+      };
+
+  void _queueSync() {
+    _dirty = true;
+    if (_ready && !_syncing) unawaited(_sync());
+  }
+
+  Future<void> _sync() async {
+    _syncing = true;
+    final generation = _generation;
+    try {
+      while (mounted && _ready && _dirty && generation == _generation) {
+        _dirty = false;
+        final routeHash = Object.hashAll(widget.route);
+        await _setSource(
+          'kiwi-route',
+          routeHash,
+          () => _collection([
+            if (widget.route.length > 1)
+              {
+                'type': 'Feature',
+                'geometry': {
+                  'type': 'LineString',
+                  'coordinates': [
+                    for (final p in widget.route) [p.longitude, p.latitude],
+                  ],
+                },
+                'properties': <String, dynamic>{},
+              },
+          ]),
+        );
+        final cameras = widget.cameras
+            .where(widget.layers.shows)
+            .toList(growable: false);
+        final pinsHash = Object.hash(
+          Object.hashAll(cameras),
+          Object.hashAll(widget.roadEvents),
+          Object.hashAll(widget.explorePlaces),
+          widget.selectedPlace,
+          widget.route.lastOrNull,
+        );
+        await _setSource(
+          'kiwi-pins',
+          pinsHash,
+          () => _collection([
+            for (final c in cameras)
+              _pin(
+                'camera:${c.id}',
+                GeoPoint(c.latitude, c.longitude),
+                'camera',
+                c.name,
+              ),
+            for (final e in widget.roadEvents)
+              _pin('event:${e.id}', e.location, 'event', e.roadName ?? ''),
+            for (var i = 0; i < widget.explorePlaces.length; i++)
+              _pin(
+                'explore:$i',
+                widget.explorePlaces[i].location,
+                'explore',
+                widget.explorePlaces[i].name,
+              ),
+            if (widget.selectedPlace case final p?)
+              _pin('selected', p.location, 'selected', p.name),
+            if (widget.route.isNotEmpty)
+              _pin('destination', widget.route.last, 'destination', ''),
+          ]),
+        );
+        final driverHash = Object.hash(
+          widget.locationEnabled,
+          widget.location,
+          widget.heading,
+          widget.locationMarker,
+        );
+        await _setSource(
+          'kiwi-driver',
+          driverHash,
+          () => _collection([
+            if (widget.locationEnabled && widget.location != null)
+              {
+                'type': 'Feature',
+                'geometry': {
+                  'type': 'Point',
+                  'coordinates': [
+                    widget.location!.longitude,
+                    widget.location!.latitude,
+                  ],
+                },
+                'properties': {
+                  'heading': widget.heading,
+                  'icon': 'kiwi-puck-${widget.locationMarker.name}',
+                },
+              },
+          ]),
+        );
+      }
+    } catch (e) {
+      if (mounted) debugPrint('Practice map update failed: $e');
+    } finally {
+      _syncing = false;
+      if (mounted && _ready && _dirty) _queueSync();
+    }
+  }
+
+  Future<void> _setSource(
+    String id,
+    int signature,
+    Map<String, dynamic> Function() data,
+  ) async {
+    if (_signatures[id] == signature || !_ready) return;
+    await _controller!.setGeoJsonSource(id, data());
+    _signatures[id] = signature;
+  }
+
+  Future<void> _tap(math.Point<double> screen, ml.LatLng coordinate) async {
+    if (!_ready) return;
+    try {
+      final features = await _controller!.queryRenderedFeaturesInRect(
+        Rect.fromCenter(
+          center: Offset(screen.x, screen.y),
+          width: 24,
+          height: 24,
+        ),
+        ['kiwi-pins-dot', 'kiwi-pins-label', 'kiwi-poi-dot', 'kiwi-poi-label'],
+        null,
+      );
+      if (!mounted) return;
+      for (final raw in features) {
+        final feature = raw is String ? jsonDecode(raw) as Map : raw as Map;
+        final id = feature['id']?.toString() ?? '';
+        if (id.startsWith('camera:')) {
+          final c = widget.cameras
+              .where((c) => 'camera:${c.id}' == id)
+              .firstOrNull;
+          if (c != null) {
+            widget.onCamera(c);
+            return;
+          }
+        }
+        if (id.startsWith('event:')) {
+          final e = widget.roadEvents
+              .where((e) => 'event:${e.id}' == id)
+              .firstOrNull;
+          if (e != null) {
+            widget.onRoadEvent(e);
+            return;
+          }
+        }
+        if (id.startsWith('explore:')) {
+          final index = int.tryParse(id.substring(8));
+          if (index != null && index < widget.explorePlaces.length) {
+            widget.onExplorePlace(widget.explorePlaces[index]);
+            return;
+          }
+        }
+        final props = (feature['properties'] as Map?) ?? const {};
+        if (props['kind'] != null) continue;
+        final geometry = feature['geometry'] as Map?;
+        final coords = geometry?['coordinates'];
+        final name =
+            (widget.language == 'zh' ? props['name:zh'] : null) ??
+            props['name'] ??
+            props['name:en'];
+        if (name != null &&
+            coords is List &&
+            coords.length >= 2 &&
+            coords[0] is num &&
+            coords[1] is num) {
+          widget.onMapPlace(
+            PlaceSummary(
+              name: name.toString(),
+              category: (props['subclass'] ?? props['class'] ?? '').toString(),
+              location: GeoPoint(
+                (coords[1] as num).toDouble(),
+                (coords[0] as num).toDouble(),
+              ),
+              reference: ProviderReference('osm', 'tile:$id'),
+            ),
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Practice place selection failed: $e');
+    }
+    if (mounted) widget.onBlankTap();
+  }
+
   @override
   Widget build(BuildContext context) => Stack(
     children: [
-      FlutterMap(
-        mapController: _controller,
-        options: MapOptions(
-          initialCenter: _point(widget.initialViewport.center),
-          initialZoom: widget.initialViewport.zoom,
-          maxZoom: 19,
-          initialRotation: -widget.initialViewport.bearing,
-          onMapReady: () {
-            _ready = true;
-            widget.onReady(this);
-          },
-          onPositionChanged: (camera, gesture) {
-            _viewport = MapViewportState(
-              center: GeoPoint(camera.center.latitude, camera.center.longitude),
-              zoom: camera.zoom,
-              bearing: -camera.rotation,
-            );
-            setState(() {});
-            widget.onViewportChanged(_viewport);
-            if (gesture) widget.onUserPan();
-          },
-          onTap: (_, _) => widget.onBlankTap(),
-          onLongPress: (_, point) => widget.onMapPlace(
-            PlaceSummary(
-              name: widget.language == 'zh' ? '选定位置' : 'Dropped pin',
-              kind: PlaceKind.coordinate,
-              location: GeoPoint(point.latitude, point.longitude),
-            ),
-          ),
-        ),
-        children: [
-          FutureBuilder<Style>(
-            future: _style,
-            builder: (_, snapshot) {
-              final style = snapshot.data;
-              if (style != null) {
-                return VectorTileLayer(
-                  key: ValueKey('kiwi-map-$_dark-${widget.language}'),
-                  theme: style.theme,
-                  sprites: style.sprites,
-                  tileProviders: style.providers,
-                  layerMode: VectorTileLayerMode.vector,
-                  fileCacheTtl: const Duration(days: 7),
-                  fileCacheMaximumSizeInBytes: 80 * 1024 * 1024,
-                  concurrency: 2,
-                );
-              }
+      Positioned.fill(
+        child: FutureBuilder<String>(
+          future: _style,
+          builder: (_, snapshot) {
+            if (!snapshot.hasData) {
               return ColoredBox(
                 color: Theme.of(context).scaffoldBackgroundColor,
                 child: Center(
@@ -250,103 +546,64 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                             widget.language == 'zh' ? '重新加载地图' : 'Reload map',
                           ),
                         )
-                      : const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+                      : const CircularProgressIndicator(strokeWidth: 2),
                 ),
               );
-            },
-          ),
-          if (widget.route.length > 1)
-            PolylineLayer(
-              polylines: [
-                Polyline(
-                  points: widget.route.map(_point).toList(),
-                  color: KiwiLensColors.ocean,
-                  strokeWidth: 6,
-                  borderStrokeWidth: 2,
-                  borderColor: Colors.white,
+            }
+            return Listener(
+              onPointerDown: (event) {
+                _pointers[event.pointer] = event.position;
+                if (_pointers.length > 1) _pan();
+              },
+              onPointerMove: (event) {
+                final start = _pointers[event.pointer];
+                if (start != null && (event.position - start).distance > 6) {
+                  _pan();
+                }
+              },
+              onPointerUp: (event) {
+                _pointers.remove(event.pointer);
+                if (_pointers.isEmpty) _gestureReported = false;
+              },
+              onPointerCancel: (event) {
+                _pointers.remove(event.pointer);
+                if (_pointers.isEmpty) _gestureReported = false;
+              },
+              onPointerSignal: (_) {
+                widget.onUserPan();
+              },
+              child: ml.MapLibreMap(
+                styleString: snapshot.data!,
+                initialCameraPosition: ml.CameraPosition(
+                  target: _point(widget.initialViewport.center),
+                  zoom: widget.initialViewport.zoom,
+                  bearing: widget.initialViewport.bearing,
                 ),
-              ],
-            ),
-          MarkerLayer(
-            markers: [
-              for (final c in widget.cameras.where(widget.layers.shows))
-                _pin(
-                  GeoPoint(c.latitude, c.longitude),
-                  _button(Icons.speed_rounded, () => widget.onCamera(c)),
-                ),
-              for (final e in widget.roadEvents)
-                _pin(
-                  e.location,
-                  _button(
-                    Icons.warning_amber_rounded,
-                    () => widget.onRoadEvent(e),
-                    color: Colors.orange.shade800,
+                minMaxZoomPreference: const ml.MinMaxZoomPreference(3, 20),
+                trackCameraPosition: true,
+                compassEnabled: false,
+                tiltGesturesEnabled: false,
+                dragEnabled: false,
+                annotationOrder: const [],
+                onMapCreated: (c) => _controller = c,
+                onStyleLoadedCallback: () => unawaited(_styleLoaded()),
+                onCameraMove: _cameraMoved,
+                onMapClick: (p, ll) => unawaited(_tap(p, ll)),
+                onMapLongClick: (_, p) => widget.onMapPlace(
+                  PlaceSummary(
+                    name: widget.language == 'zh' ? '选定位置' : 'Dropped pin',
+                    kind: PlaceKind.coordinate,
+                    location: GeoPoint(p.latitude, p.longitude),
                   ),
                 ),
-              for (final p in widget.explorePlaces)
-                _pin(
-                  p.location,
-                  _button(Icons.place_rounded, () => widget.onExplorePlace(p)),
-                ),
-              if (widget.selectedPlace != null)
-                _pin(
-                  widget.selectedPlace!.location,
-                  const Icon(
-                    Icons.location_on_rounded,
-                    size: 40,
-                    color: KiwiLensColors.ocean,
-                  ),
-                ),
-              if (widget.route.isNotEmpty)
-                _pin(
-                  widget.route.last,
-                  const Icon(
-                    Icons.flag_circle_rounded,
-                    size: 38,
-                    color: KiwiLensColors.ocean,
-                  ),
-                ),
-              if (widget.locationEnabled && widget.location != null)
-                Marker(
-                  point: _point(widget.location!),
-                  width: 240,
-                  height: 240,
-                  child: Transform.rotate(
-                    angle: (widget.heading - _viewport.bearing) * math.pi / 180,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        const HeadingGlow(),
-                        if (widget.locationMarker == LocationMarkerStyle.kiwi)
-                          const KiwiMascot(size: 44)
-                        else
-                          FutureBuilder(
-                            future: LocationMarkerArt.png(
-                              widget.locationMarker,
-                            ),
-                            builder: (_, image) => image.data == null
-                                ? const SizedBox(width: 44, height: 44)
-                                : Image.memory(
-                                    image.data!,
-                                    width: 44,
-                                    height: 44,
-                                  ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
+                attributionButtonMargins: math.Point(6, _padding.bottom + 24),
+              ),
+            );
+          },
+        ),
       ),
-      // Always visible above decks, rather than hidden inside an attribution popup.
       Positioned(
-        right: 6,
+        right: 28,
         bottom: _padding.bottom + 24,
         child: Material(
           color: Colors.white.withValues(alpha: .92),
@@ -365,97 +622,16 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           ),
         ),
       ),
-      Positioned(
-        left: 6,
-        bottom: _padding.bottom + 24,
-        child: Material(
-          color: Colors.white.withValues(alpha: .92),
-          child: InkWell(
-            onTap: () =>
-                launchUrl(Uri.parse('https://www.openstreetmap.org/fixthemap')),
-            child: Padding(
-              padding: const EdgeInsets.all(3),
-              child: Text(
-                widget.language == 'zh' ? '纠正地图' : 'Fix the map',
-                style: const TextStyle(fontSize: 10, color: Colors.black87),
-              ),
-            ),
-          ),
-        ),
-      ),
     ],
   );
-
   Widget _credit(String text, String url) => InkWell(
     onTap: () => launchUrl(Uri.parse(url)),
     child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+      padding: const EdgeInsets.all(3),
       child: Text(
         text,
         style: const TextStyle(fontSize: 10, color: Colors.black87),
       ),
     ),
   );
-}
-
-/// The light and puck share one map marker, so their origin cannot diverge.
-class HeadingGlow extends StatefulWidget {
-  const HeadingGlow({super.key});
-  @override
-  State<HeadingGlow> createState() => _HeadingGlowState();
-}
-
-class _HeadingGlowState extends State<HeadingGlow>
-    with SingleTickerProviderStateMixin {
-  late final _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 3),
-  )..repeat(reverse: true);
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _pulse,
-    builder: (_, _) => CustomPaint(
-      size: const Size(240, 240),
-      painter: _LightPainter(.8 + .2 * _pulse.value),
-    ),
-  );
-}
-
-class _LightPainter extends CustomPainter {
-  _LightPainter(this.strength);
-  final double strength;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final path = Path()
-      ..moveTo(center.dx, center.dy)
-      ..cubicTo(86, 89, 42, 37, 56, 24)
-      ..quadraticBezierTo(120, -5, 184, 24)
-      ..cubicTo(198, 37, 154, 89, center.dx, center.dy)
-      ..close();
-    canvas.drawPath(
-      path,
-      Paint()
-        ..shader = RadialGradient(
-          center: Alignment.center,
-          radius: .9,
-          colors: [
-            KiwiLensColors.sky.withValues(alpha: .42 * strength),
-            KiwiLensColors.sky.withValues(alpha: .12),
-            Colors.transparent,
-          ],
-          stops: const [0, .5, 1],
-        ).createShader(Rect.fromCircle(center: center, radius: 118))
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_LightPainter old) => old.strength != strength;
 }

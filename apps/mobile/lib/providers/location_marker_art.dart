@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../domain/map_provider.dart';
+import '../theme/kiwi_lens_theme.dart';
+import '../widgets/kiwi_mascot.dart';
 
 /// A small north-facing bird silhouette for the location puck. This is
 /// separate from the Kiwi Lens brand mark; map-location art stays independent.
@@ -12,6 +14,62 @@ class LocationMarkerArt {
 
   static Future<Uint8List> png(LocationMarkerStyle style) =>
       _cache.putIfAbsent(style, () => _draw(style));
+
+  static Future<Uint8List>? _glow;
+  static Future<Uint8List>? _mascot;
+
+  static Future<Uint8List> practicePng(LocationMarkerStyle style) =>
+      style == LocationMarkerStyle.kiwi
+      ? (_mascot ??= _drawMascot())
+      : png(style);
+
+  static Future<Uint8List> _drawMascot() async {
+    final recorder = ui.PictureRecorder();
+    KiwiMascotPainter().paint(Canvas(recorder), const Size(96, 96));
+    return _export(recorder, 96);
+  }
+
+  /// Rasterize the soft light once. Native GPU transforms it with the puck;
+  /// Flutter no longer repaints a blurred 240px path on every animation frame.
+  static Future<Uint8List> glowPng() => _glow ??= _drawGlow();
+  static Future<Uint8List> _drawGlow() async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)..scale(2);
+    const center = Offset(120, 120);
+    final path = Path()
+      ..moveTo(120, 120)
+      ..cubicTo(86, 89, 42, 37, 56, 24)
+      ..quadraticBezierTo(120, -5, 184, 24)
+      ..cubicTo(198, 37, 154, 89, 120, 120)
+      ..close();
+    canvas.drawPath(
+      path,
+      Paint()
+        ..shader = RadialGradient(
+          radius: .9,
+          colors: [
+            KiwiLensColors.sky.withValues(alpha: .35),
+            KiwiLensColors.sky.withValues(alpha: .1),
+            Colors.transparent,
+          ],
+          stops: const [0, .5, 1],
+        ).createShader(Rect.fromCircle(center: center, radius: 118))
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+    );
+    return _export(recorder, 480);
+  }
+
+  static Future<Uint8List> _export(
+    ui.PictureRecorder recorder,
+    int size,
+  ) async {
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size, size);
+    picture.dispose();
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    return data!.buffer.asUint8List();
+  }
 
   static Future<Uint8List> _draw(LocationMarkerStyle style) async {
     const size = 96.0;

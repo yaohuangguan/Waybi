@@ -230,7 +230,7 @@ async function handleApi(request, env, ctx) {
       params.toString();
     const result = await upstreamJson(nslrUrl, {
       accept: 'application/json',
-      'user-agent': 'KiwiLens/0.1 (https://github.com/Kiwi-Lens/kiwi-lens)'
+      'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)'
     });
     const now = Date.now();
     const current = (result.features || [])
@@ -300,7 +300,7 @@ async function handleApi(request, env, ctx) {
     lastSearchAt = Date.now();
     const language = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
     const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&accept-language=${language}&limit=6&viewbox=166,-34,179,-48&bounded=0&q=${encodeURIComponent(query)}`;
-    const results = await upstreamJson(searchUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/Kiwi-Lens/kiwi-lens)', 'referer': 'https://github.com/Kiwi-Lens/kiwi-lens', accept: 'application/json' });
+    const results = await upstreamJson(searchUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)', 'referer': 'https://github.com/yaohuangguan/kiwi-lens', accept: 'application/json' });
     return json(results.map((place) => {
       const address = place.address || {};
       const poiClasses = new Set([
@@ -342,7 +342,7 @@ async function handleApi(request, env, ctx) {
     if (stops.length > 23) return json({ error: 'At most 23 intermediate stops are supported' }, 400);
     const points = [from, ...stops, to];
     const routeUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${points.map((point) => point.join(',')).join(';')}?overview=full&geometries=geojson&steps=true`;
-    const result = await upstreamJson(routeUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/Kiwi-Lens/kiwi-lens)', referer: 'https://routing.openstreetmap.de/', accept: 'application/json' });
+    const result = await upstreamJson(routeUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)', referer: 'https://routing.openstreetmap.de/', accept: 'application/json' });
     if (result.code !== 'Ok' || !result.routes?.length) return json({ error: 'No driving route found' }, 422);
     const selected = result.routes[0];
     const steps = selected.legs.flatMap((leg) => leg.steps.map((step) => {

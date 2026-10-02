@@ -159,7 +159,7 @@ export async function fetchNztaCameras(fetcher = fetch) {
   try {
     const response = await fetcher(SOURCE_URL, {
       headers: {
-        'user-agent': 'Kiwi Lens/1.0 (+https://github.com/Kiwi-Lens/kiwi-lens)',
+        'user-agent': 'Kiwi Lens/1.0 (+https://github.com/yaohuangguan/kiwi-lens)',
         accept: 'text/html'
       },
       signal: AbortSignal.timeout(15000)

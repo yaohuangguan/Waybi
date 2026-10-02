@@ -176,7 +176,7 @@ async function fallbackDrivingRoutes(from, to, stops = []) {
     `?overview=full&geometries=geojson&steps=false&alternatives=${stops.length ? 'false' : '3'}`;
   const response = await fetch(routeUrl, {
     headers: {
-      'user-agent': 'KiwiLens/0.1 (https://github.com/Kiwi-Lens/kiwi-lens)',
+      'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)',
       referer: 'https://routing.openstreetmap.de/',
       accept: 'application/json'
     },

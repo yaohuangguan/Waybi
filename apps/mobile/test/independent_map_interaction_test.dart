@@ -1,14 +1,74 @@
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:kiwi_lens_mobile/domain/map_provider.dart';
 import 'package:kiwi_lens_mobile/domain/map_layer_settings.dart';
 import 'package:kiwi_lens_mobile/providers/independent_map_renderer.dart';
 import 'package:kiwi_lens_mobile/providers/provider_contracts.dart';
-import 'package:kiwi_lens_mobile/widgets/kiwi_mascot.dart';
+import 'package:kiwi_lens_mobile/providers/location_marker_art.dart';
+
+class RecordingMapPlatform extends ml.MapLibrePlatform {
+  int builds = 0;
+  bool initialized = false;
+  EdgeInsets padding = EdgeInsets.zero;
+  final updates = <String>[];
+  final sources = <String, Map<String, dynamic>>{};
+  final moves = <ml.CameraUpdate>[];
+  List<Map<String, dynamic>> features = [];
+  @override
+  Widget buildView(
+    Map<String, dynamic> creationParams,
+    void Function(int) onCreated,
+    Set<Factory<OneSequenceGestureRecognizer>>? gestures,
+  ) {
+    builds++;
+    if (!initialized) {
+      initialized = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => onCreated(0));
+    }
+    return const ColoredBox(color: Colors.grey);
+  }
+
+  @override
+  Future<void> initPlatform(int id) async {}
+  @override
+  Future<ml.CameraPosition?> updateMapOptions(
+    Map<String, dynamic> options,
+  ) async => null;
+  @override
+  Future<bool?> moveCamera(ml.CameraUpdate cameraUpdate) async {
+    moves.add(cameraUpdate);
+    return true;
+  }
+
+  @override
+  Future<void> updateContentInsets(EdgeInsets insets, bool animated) async {
+    padding = insets;
+  }
+
+  @override
+  Future<void> setGeoJsonSource(String id, Map<String, dynamic> data) async {
+    updates.add(id);
+    sources[id] = data;
+  }
+
+  @override
+  Future<List> queryRenderedFeaturesInRect(
+    Rect rect,
+    List<String> layers,
+    String? filter,
+  ) async => features;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => Future<void>.value();
+}
 
 void main() {
   testWidgets(
-    'pinch pauses following and preserves zoom across GPS ticks; deck padding keeps the puck visible',
+    'native camera frames do not rebuild map; pinch pauses follow; GPS only updates the puck',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -16,11 +76,17 @@ void main() {
         tester.view.resetPhysicalSize();
         tester.view.resetDevicePixelRatio();
       });
+      final platform = RecordingMapPlatform();
+      final original = ml.MapLibrePlatform.createInstance;
+      ml.MapLibrePlatform.createInstance = () => platform;
+      addTearDown(() => ml.MapLibrePlatform.createInstance = original);
       var following = true;
       var bottom = 215.0;
+      var location = const GeoPoint(-36.8485, 174.7633);
+      var panCalls = 0;
       MapRenderer? renderer;
       StateSetter? update;
-      const location = GeoPoint(-36.8485, 174.7633);
+      PlaceSummary? selected;
       await tester.pumpWidget(
         MaterialApp(
           home: StatefulBuilder(
@@ -28,10 +94,7 @@ void main() {
               update = state;
               return Scaffold(
                 body: IndependentMapRenderer(
-                  initialViewport: const MapViewportState(
-                    center: location,
-                    zoom: 17,
-                  ),
+                  initialViewport: MapViewportState(center: location, zoom: 17),
                   layers: const MapLayerSettings(),
                   locationMarker: LocationMarkerStyle.kiwi,
                   locationEnabled: true,
@@ -45,57 +108,101 @@ void main() {
                   onCamera: (_) {},
                   roadEvents: const [],
                   onRoadEvent: (_) {},
-                  route: const [],
+                  route: const [
+                    GeoPoint(-36.8485, 174.7633),
+                    GeoPoint(-36.8518, 174.7634),
+                  ],
                   selectedPlace: null,
                   explorePlaces: const [],
                   onExplorePlace: (_) {},
-                  onReady: (map) {
-                    renderer = map;
-                    map.moveTo(map.viewport);
-                  },
+                  onReady: (map) => renderer = map,
                   onViewportChanged: (_) {},
-                  onMapPlace: (_) {},
+                  onMapPlace: (place) => selected = place,
                   onBlankTap: () {},
-                  onUserPan: () => state(() => following = false),
+                  onUserPan: () {
+                    panCalls++;
+                    state(() => following = false);
+                  },
                   styleLoader: ({required dark, required language}) async =>
-                      throw StateError('Offline map style'),
+                      '{"version":8,"sources":{},"layers":[]}',
                 ),
               );
             },
           ),
         ),
       );
-      await tester.pump(const Duration(milliseconds: 150));
-      expect(tester.takeException(), isNull);
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async {
+        for (final style in LocationMarkerStyle.values) {
+          await LocationMarkerArt.practicePng(style);
+        }
+        await LocationMarkerArt.glowPng();
+      });
+      await tester.runAsync(() async {
+        platform.onMapStyleLoadedPlatform.call(null);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
+      await tester.pumpAndSettle();
+      expect(renderer, isNotNull);
+      final builds = platform.builds;
+      platform.updates.clear();
+      for (var i = 0; i < 120; i++) {
+        platform.onCameraMovePlatform.call(
+          const ml.CameraPosition(target: ml.LatLng(-36.85, 174.76), zoom: 15),
+        );
+        await tester.pump(const Duration(milliseconds: 8));
+      }
+      expect(platform.builds, builds);
+      expect(platform.updates, isEmpty);
       final a = await tester.startGesture(const Offset(60, 340), pointer: 1);
       final b = await tester.startGesture(const Offset(320, 500), pointer: 2);
       await a.moveTo(const Offset(140, 380));
       await b.moveTo(const Offset(240, 450));
-      await tester.pump(const Duration(milliseconds: 100));
       await a.up();
       await b.up();
-      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
       expect(following, false);
-      final zoom = renderer!.viewport.zoom;
-      expect(zoom, lessThan(17));
-      // The application only moves the map on a GPS tick when following is on.
-      for (var i = 0; i < 3; i++) {
-        if (following) {
-          await renderer!.moveTo(renderer!.viewport.copyWith(center: location));
-        }
-        await tester.pump(const Duration(seconds: 1));
-      }
-      expect(renderer!.viewport.zoom, zoom);
+      expect(panCalls, 1);
+      expect(renderer!.viewport.zoom, 15);
+      platform.moves.clear();
+      platform.updates.clear();
+      update!(() => location = const GeoPoint(-36.8486, 174.7634));
+      await tester.pumpAndSettle();
+      expect(platform.moves, isEmpty);
+      expect(platform.updates, ['kiwi-driver']);
+      expect(renderer!.viewport.zoom, 15);
       update!(() {
         following = true;
         bottom = 370;
       });
-      await tester.pump();
-      await tester.pump();
-      final puck = tester.getCenter(find.byType(KiwiMascot));
-      expect(puck.dy, greaterThan(180 + 22));
-      expect(puck.dy, lessThan(844 - bottom - 22));
-      expect(renderer!.viewport.zoom, zoom);
+      await tester.pumpAndSettle();
+      expect(platform.padding.bottom, 370);
+      expect(platform.moves, isNotEmpty);
+      final features = platform.sources['kiwi-driver']!['features'] as List;
+      expect(features.single['geometry']['coordinates'], [174.7634, -36.8486]);
+      expect(features.single['properties']['heading'], 45);
+      // The renderer queries visible tile POIs, not an external geocoder per tap.
+      platform.features = [
+        {
+          'id': 123,
+          'properties': {'name': 'Aotea Square', 'class': 'park'},
+          'geometry': {
+            'type': 'Point',
+            'coordinates': [174.7634, -36.8518],
+          },
+        },
+      ];
+      final map = tester.widget<ml.MapLibreMap>(find.byType(ml.MapLibreMap));
+      map.onMapClick!(
+        const Point(150, 300),
+        const ml.LatLng(-36.8518, 174.7634),
+      );
+      await tester.pumpAndSettle();
+      expect(selected!.name, 'Aotea Square');
+      expect(selected!.reference!.provider, 'osm');
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },

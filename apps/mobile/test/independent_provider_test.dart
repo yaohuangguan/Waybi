@@ -214,7 +214,7 @@ void main() {
     final client = MockClient((request) async {
       expect(request.url.host, 'photon.komoot.io');
       expect(request.url.queryParameters['q'], 'cafe');
-      expect(request.url.queryParameters['lat'], '-36.85');
+      expect(double.parse(request.url.queryParameters['lat']!), -36.85);
       expect(request.url.queryParameters.containsKey('key'), false);
       return http.Response(
         jsonEncode({

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:kiwi_lens_mobile/domain/map_provider.dart';
 import 'package:kiwi_lens_mobile/domain/map_layer_settings.dart';
+import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
 import 'package:kiwi_lens_mobile/providers/independent_map_renderer.dart';
 import 'package:kiwi_lens_mobile/providers/provider_contracts.dart';
 import 'package:kiwi_lens_mobile/providers/location_marker_art.dart';
@@ -41,6 +42,16 @@ class RecordingMapPlatform extends ml.MapLibrePlatform {
   ) async => null;
   @override
   Future<bool?> moveCamera(ml.CameraUpdate cameraUpdate) async {
+    moves.add(cameraUpdate);
+    return true;
+  }
+
+  @override
+  Future<bool> easeCamera(
+    ml.CameraUpdate cameraUpdate, {
+    Duration? duration,
+    ml.CameraAnimationInterpolation? interpolation,
+  }) async {
     moves.add(cameraUpdate);
     return true;
   }
@@ -104,7 +115,18 @@ void main() {
                   location: location,
                   heading: 45,
                   contentPadding: EdgeInsets.fromLTRB(16, 180, 16, bottom),
-                  cameras: const [],
+                  cameras: const [
+                    SafetyCamera(
+                      id: 'cam-1',
+                      name: 'Queen Street camera',
+                      region: 'Auckland',
+                      suburb: 'City Centre',
+                      location: 'Queen Street',
+                      type: 'Fixed speed camera',
+                      latitude: -36.849,
+                      longitude: 174.764,
+                    ),
+                  ],
                   onCamera: (_) {},
                   roadEvents: const [],
                   onRoadEvent: (_) {},
@@ -137,6 +159,7 @@ void main() {
           await LocationMarkerArt.practicePng(style);
         }
         await LocationMarkerArt.glowPng();
+        await LocationMarkerArt.cameraPng();
       });
       await tester.runAsync(() async {
         platform.onMapStyleLoadedPlatform.call(null);
@@ -147,6 +170,17 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(renderer, isNotNull);
+      final map = tester.widget<ml.MapLibreMap>(find.byType(ml.MapLibreMap));
+      expect(map.attributionButtonMargins, const Point(8, 8));
+      final pins = platform.sources['kiwi-pins']!['features'] as List;
+      expect(
+        pins.any(
+          (feature) =>
+              feature['id'] == 'camera:cam-1' &&
+              feature['properties']['kind'] == 'camera',
+        ),
+        isTrue,
+      );
       final builds = platform.builds;
       platform.updates.clear();
       for (var i = 0; i < 120; i++) {
@@ -195,7 +229,6 @@ void main() {
           },
         },
       ];
-      final map = tester.widget<ml.MapLibreMap>(find.byType(ml.MapLibreMap));
       map.onMapClick!(
         const Point(150, 300),
         const ml.LatLng(-36.8518, 174.7634),

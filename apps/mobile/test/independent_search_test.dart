@@ -110,6 +110,70 @@ void main() {
     provider.dispose();
   });
 
+  test(
+    'generic airport search expands to the nearest major NZ airport',
+    () async {
+      final queries = <String>[];
+      final provider = IndependentSearchProvider(
+        requestSpacing: Duration.zero,
+        client: MockClient((request) async {
+          final query = request.url.queryParameters['q']!;
+          queries.add(query);
+          final features = query == 'Auckland Airport'
+              ? [
+                  {
+                    'properties': {
+                      'osm_id': 9,
+                      'osm_type': 'N',
+                      'name': 'Auckland Airport',
+                      'osm_value': 'quarter',
+                    },
+                    'geometry': {
+                      'coordinates': [174.7918, -37.0003],
+                    },
+                  },
+                  {
+                    'properties': {
+                      'osm_id': 10,
+                      'osm_type': 'N',
+                      'name': 'Auckland Airport',
+                      'osm_value': 'aerodrome',
+                    },
+                    'geometry': {
+                      'coordinates': [174.7903, -37.0066],
+                    },
+                  },
+                ]
+              : [
+                  {
+                    'properties': {
+                      'osm_id': 11,
+                      'osm_type': 'N',
+                      'name': 'Airport Oaks',
+                      'osm_value': 'quarter',
+                    },
+                    'geometry': {
+                      'coordinates': [174.7756, -36.9887],
+                    },
+                  },
+                ];
+          return http.Response(jsonEncode({'features': features}), 200);
+        }),
+      );
+
+      final results = await provider.search(
+        'airport',
+        proximity: const GeoPoint(-36.8485, 174.7633),
+        language: 'en',
+      );
+
+      expect(queries, ['Auckland Airport']);
+      expect(results.first.name, 'Auckland Airport');
+      expect(results.first.category, 'aerodrome');
+      provider.dispose();
+    },
+  );
+
   testWidgets(
     'keyboard submit searches immediately and an error can be retried',
     (tester) async {

@@ -147,7 +147,7 @@ class IndependentNavigationOverlay extends StatelessWidget {
         overviewMode: overviewMode,
         northUp: northUp,
         perspectiveTilted: perspectiveTilted,
-        perspectiveAvailable: false,
+        perspectiveAvailable: true,
         onCompassToggle: onCompassToggle,
         onReport: onReport,
         onSearchAlongRoute: onSearchAlongRoute,

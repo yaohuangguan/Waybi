@@ -14,7 +14,15 @@ void main() {
     final english = kiwiMapStyle(base, dark: false, language: 'en');
     expect(day['id'], isNot(night['id']));
     expect(day['id'], isNot(english['id']));
-    expect(day['sources'], base['sources']);
+    final daySource =
+        (day['sources'] as Map<String, dynamic>)['openmaptiles']
+            as Map<String, dynamic>;
+    final baseSource =
+        (base['sources'] as Map<String, dynamic>)['openmaptiles']
+            as Map<String, dynamic>;
+    expect(daySource['url'], baseSource['url']);
+    expect(daySource['attribution'], contains('OpenStreetMap'));
+    expect(daySource['attribution'], contains('OpenMapTiles'));
     expect(night['layers'], isNot(day['layers']));
     expect(base['id'], isNot(day['id']));
   });

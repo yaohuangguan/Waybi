@@ -146,6 +146,51 @@ void main() {
       provider.dispose();
     },
   );
+  test(
+    'Independent preview exposes drive, walk and bike route modes',
+    () async {
+      final paths = <String>[];
+      final provider = IndependentRoutingProvider(
+        client: MockClient((request) async {
+          paths.add(request.url.path);
+          return http.Response(
+            jsonEncode({
+              'code': 'Ok',
+              'routes': [
+                {
+                  'distance': 1000,
+                  'duration': 100,
+                  'geometry': {
+                    'coordinates': [
+                      [174.76, -36.85],
+                      [174.78, -36.86],
+                    ],
+                  },
+                  'legs': const [],
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+
+      final plan = await provider.route(
+        origin: const GeoPoint(-36.85, 174.76),
+        destination: const GeoPoint(-36.86, 174.78),
+        language: 'en',
+      );
+
+      expect(plan.forMode(KiwiTravelMode.drive), isNotEmpty);
+      expect(plan.forMode(KiwiTravelMode.walk), isNotEmpty);
+      expect(plan.forMode(KiwiTravelMode.bicycle), isNotEmpty);
+      expect(paths.any((path) => path.startsWith('/routed-car/')), isTrue);
+      expect(paths.any((path) => path.startsWith('/routed-foot/')), isTrue);
+      expect(paths.any((path) => path.startsWith('/routed-bike/')), isTrue);
+      provider.dispose();
+    },
+  );
+
   test('optional transport failure does not hide the driving route', () async {
     final provider = IndependentRoutingProvider(
       client: MockClient((request) async {

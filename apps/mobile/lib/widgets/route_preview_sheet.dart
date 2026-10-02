@@ -75,6 +75,14 @@ IconData _icon(KiwiTravelMode mode) => switch (mode) {
   KiwiTravelMode.bicycle => Icons.pedal_bike_rounded,
 };
 
+String _modeLabel(KiwiTravelMode mode, {required bool isChinese}) =>
+    switch (mode) {
+      KiwiTravelMode.drive => isChinese ? '驾车' : 'Drive',
+      KiwiTravelMode.transit => isChinese ? '公交' : 'Transit',
+      KiwiTravelMode.walk => isChinese ? '步行' : 'Walk',
+      KiwiTravelMode.bicycle => isChinese ? '骑行' : 'Bike',
+    };
+
 String _cameraTypeLabel(String value, {required bool isChinese}) {
   if (!isChinese) return value;
   return switch (value.toLowerCase()) {
@@ -344,6 +352,15 @@ class RoutePreviewSheet extends StatelessWidget {
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
+                                      _modeLabel(mode, isChinese: isChinese),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
                                       plan.forMode(mode).isEmpty
                                           ? '—'
                                           : _duration(
@@ -354,7 +371,7 @@ class RoutePreviewSheet extends StatelessWidget {
                                               isChinese: isChinese,
                                             ),
                                       style: const TextStyle(
-                                        fontSize: 11,
+                                        fontSize: 10,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),

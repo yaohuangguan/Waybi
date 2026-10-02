@@ -29,6 +29,7 @@ import 'domain/safety_camera.dart';
 import 'drive/device_heading.dart';
 import 'drive/journey_tracker.dart';
 import 'drive/navigation_language.dart';
+import 'drive/navigation_location_filter.dart';
 import 'drive/route_progress_tracker.dart';
 import 'services/native_map_language.dart';
 import 'widgets/journey_summary_sheet.dart';
@@ -368,6 +369,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   String _appLanguage = 'en';
   String _voiceLanguage = 'en-NZ';
   double? _gpsAccuracy;
+  final NavigationLocationFilter _browseLocationFilter =
+      NavigationLocationFilter();
   double? _deviceHeading;
   double? _travelHeading;
   double? _smoothedLocationHeading;
@@ -463,6 +466,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _plusBilling.initialize();
     unawaited(_account.restore());
     unawaited(_driveEngine.loadCameras());
+    unawaited(_driveEngine.loadTrafficFlow());
     unawaited(_restoreMapSettings().then((_) => _maybeShowCoreOnboarding()));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_startTracking());
@@ -607,7 +611,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     unawaited(_notifyRoadIntelligence());
     final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
     final signature =
-        '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}';
+        '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}:${_driveEngine.trafficFlowRevision}';
     if (signature != _markerSignature) {
       unawaited(_syncCameraMarkers());
       if (_routePlan != null || _mapProvider == MapProvider.independent) {
@@ -1394,12 +1398,31 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _onPosition(Position position) {
     if (!mounted) return;
-    _gpsLocation = LatLng(
-      latitude: position.latitude,
-      longitude: position.longitude,
-    );
     _gpsAccuracy = position.accuracy.isFinite ? position.accuracy : null;
-    if (position.speed >= 1.5 &&
+    final speedMetresPerSecond = position.speed.isFinite && position.speed > 0
+        ? position.speed
+        : 0.0;
+    final accepted = _browseLocationFilter.accept(
+      NavigationLocationFix(
+        point: GeoPoint(position.latitude, position.longitude),
+        accuracyMeters: position.accuracy,
+        speedMetresPerSecond: speedMetresPerSecond,
+        timestamp: position.timestamp,
+      ),
+    );
+
+    // Keep the last reliable browse fix instead of letting a single indoor
+    // GPS jump move route origins, arrival checks and the map by 50–100 m.
+    if (accepted == null) {
+      setState(() {});
+      return;
+    }
+
+    _gpsLocation = LatLng(
+      latitude: accepted.point.latitude,
+      longitude: accepted.point.longitude,
+    );
+    if (speedMetresPerSecond >= 1.5 &&
         position.heading.isFinite &&
         position.heading >= 0) {
       _travelHeading = position.heading % 360;
@@ -1412,9 +1435,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             const Duration(seconds: 10)) {
       final arrived =
           _journey?.update(
-            GeoPoint(position.latitude, position.longitude),
-            accuracyMeters: position.accuracy,
-            time: position.timestamp,
+            accepted.point,
+            accuracyMeters: accepted.accuracyMeters,
+            time: accepted.timestamp,
           ) ??
           false;
       if (arrived) unawaited(_stopNavigation(arrived: true));
@@ -1718,9 +1741,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             center: GeoPoint(location.latitude, location.longitude),
             zoom: smoothZoom,
             bearing: _cameraMode.northUp ? 0 : heading,
-            pitch: navigating && !_cameraMode.northUp
-                ? (_cameraMode.tilted ? 48 : 32)
-                : (_cameraMode.tilted ? 42 : 0),
+            pitch: _cameraMode.tilted ? 48 : 0,
           ),
         );
       }
@@ -2668,10 +2689,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _selectMode(KiwiTravelMode mode) {
     final plan = _routePlan;
-    if (plan == null || plan.forMode(mode).isEmpty) return;
+    if (plan == null) return;
+    final routes = plan.forMode(mode).toList(growable: false);
+    if (routes.isEmpty) return;
     setState(() {
       _selectedMode = mode;
-      _selectedRouteId = plan.forMode(mode).first.id;
+      _selectedRouteId = routes.first.id;
     });
     _driveEngine.setRoute(mode == KiwiTravelMode.drive ? _selectedRoute : null);
     unawaited(_renderRoutePreview());
@@ -2935,6 +2958,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() {
       _busy = true;
       _message = null;
+      // Navigation always starts in a flat heading-up view. Users can switch
+      // to perspective or north-up after the trip begins.
+      _cameraMode = NavigationCameraMode.headingUpFlat;
     });
 
     try {
@@ -2954,7 +2980,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           _routeStops.clear();
           _following = true;
           _routeOverviewActive = false;
-          _cameraMode = NavigationCameraMode.headingUpPerspective;
+          _cameraMode = NavigationCameraMode.headingUpFlat;
           _activeDestinationPlace = destinationPlace;
           _arrivalMode = false;
           _arrivalPrefetching = false;
@@ -3511,7 +3537,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _markerSyncing = true;
     final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
     final signature =
-        '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}';
+        '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}:${_driveEngine.trafficFlowRevision}';
     try {
       try {
         await MapSymbols.ensureRegistered();
@@ -5574,6 +5600,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     roadEvents: _communityRoadEvents,
                     onRoadEvent: (event) =>
                         unawaited(_showRoadEventDetails(event)),
+                    trafficSegments: _driveEngine.trafficFlowSegments,
                     route:
                         (_independentNavigation.route ?? _selectedRoute)?.points
                             .map(

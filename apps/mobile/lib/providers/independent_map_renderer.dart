@@ -9,6 +9,7 @@ import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import '../domain/map_layer_settings.dart';
 import '../domain/map_provider.dart';
 import '../domain/safety_camera.dart';
+import '../domain/traffic_flow.dart';
 import '../domain/road_event.dart';
 import 'location_marker_art.dart';
 import 'independent_map_style.dart';
@@ -28,6 +29,7 @@ class IndependentMapRenderer extends StatefulWidget {
     required this.onCamera,
     required this.roadEvents,
     required this.onRoadEvent,
+    required this.trafficSegments,
     required this.route,
     required this.selectedPlace,
     required this.explorePlaces,
@@ -52,6 +54,7 @@ class IndependentMapRenderer extends StatefulWidget {
   final ValueChanged<SafetyCamera> onCamera;
   final List<RoadEvent> roadEvents;
   final ValueChanged<RoadEvent> onRoadEvent;
+  final List<TrafficFlowSegment> trafficSegments;
   final List<GeoPoint> route;
   final PlaceSummary? selectedPlace;
   final List<PlaceSummary> explorePlaces;
@@ -228,8 +231,22 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         );
       }
       await c.addImage('kiwi-light', await LocationMarkerArt.glowPng());
-      await c.addImage('kiwi-camera', await LocationMarkerArt.cameraPng());
-      for (final source in ['kiwi-route', 'kiwi-pins', 'kiwi-driver']) {
+      for (final kind in CameraKind.values) {
+        await c.addImage(
+          'kiwi-camera-${kind.name}',
+          await LocationMarkerArt.cameraPng(kind),
+        );
+      }
+      await c.addImage(
+        'kiwi-finish-flag',
+        await LocationMarkerArt.finishFlagPng(),
+      );
+      for (final source in [
+        'kiwi-traffic',
+        'kiwi-route',
+        'kiwi-pins',
+        'kiwi-driver',
+      ]) {
         await c.addGeoJsonSource(source, _collection(const []));
       }
       await c.addLineLayer(
@@ -256,6 +273,42 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         belowLayerId: 'kiwi-poi-dot',
         enableInteraction: false,
       );
+      await c.addLineLayer(
+        'kiwi-traffic',
+        'kiwi-traffic-casing',
+        const ml.LineLayerProperties(
+          lineColor: '#ffffff',
+          lineWidth: 7,
+          lineOpacity: .72,
+          lineCap: 'round',
+          lineJoin: 'round',
+        ),
+        belowLayerId: 'kiwi-route-edge',
+        enableInteraction: false,
+      );
+      await c.addLineLayer(
+        'kiwi-traffic',
+        'kiwi-traffic-flow',
+        ml.LineLayerProperties(
+          lineColor: [
+            'match',
+            ['get', 'level'],
+            'free',
+            '#2EA44F',
+            'moderate',
+            '#F2A900',
+            'heavy',
+            '#D93025',
+            '#8A8F98',
+          ],
+          lineWidth: 4.5,
+          lineOpacity: .92,
+          lineCap: 'round',
+          lineJoin: 'round',
+        ),
+        belowLayerId: 'kiwi-route-edge',
+        enableInteraction: false,
+      );
       await c.addCircleLayer(
         'kiwi-pins',
         'kiwi-pins-dot',
@@ -278,9 +331,17 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           circleStrokeWidth: 2,
         ),
         filter: [
-          '!=',
-          ['get', 'kind'],
-          'camera',
+          'all',
+          [
+            '!=',
+            ['get', 'kind'],
+            'camera',
+          ],
+          [
+            '!=',
+            ['get', 'kind'],
+            'destination',
+          ],
         ],
         enableInteraction: false,
       );
@@ -288,7 +349,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         'kiwi-pins',
         'kiwi-camera-icon',
         ml.SymbolLayerProperties(
-          iconImage: 'kiwi-camera',
+          iconImage: ['get', 'icon'],
           iconSize: 30 / 96 * imageScale,
           iconAllowOverlap: true,
           iconIgnorePlacement: true,
@@ -298,6 +359,23 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           '==',
           ['get', 'kind'],
           'camera',
+        ],
+        enableInteraction: false,
+      );
+      await c.addSymbolLayer(
+        'kiwi-pins',
+        'kiwi-destination-flag',
+        ml.SymbolLayerProperties(
+          iconImage: 'kiwi-finish-flag',
+          iconSize: 42 / 96 * imageScale,
+          iconAllowOverlap: true,
+          iconIgnorePlacement: true,
+          iconAnchor: 'bottom-left',
+        ),
+        filter: [
+          '==',
+          ['get', 'kind'],
+          'destination',
         ],
         enableInteraction: false,
       );
@@ -315,9 +393,17 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           textColor: '#3f612c',
         ),
         filter: [
-          '!=',
-          ['get', 'kind'],
-          'camera',
+          'all',
+          [
+            '!=',
+            ['get', 'kind'],
+            'camera',
+          ],
+          [
+            '!=',
+            ['get', 'kind'],
+            'destination',
+          ],
         ],
         enableInteraction: false,
       );
@@ -373,6 +459,24 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         'properties': {'kind': kind, 'name': name},
       };
 
+  Map<String, dynamic> _cameraPin(SafetyCamera camera) {
+    final kind = CameraKindLabel.fromCamera(camera);
+    return {
+      'type': 'Feature',
+      'id': 'camera:${camera.id}',
+      'geometry': {
+        'type': 'Point',
+        'coordinates': [camera.longitude, camera.latitude],
+      },
+      'properties': {
+        'kind': 'camera',
+        'name': camera.name,
+        'cameraKind': kind.name,
+        'icon': 'kiwi-camera-${kind.name}',
+      },
+    };
+  }
+
   void _queueSync() {
     _dirty = true;
     if (_ready && !_syncing) unawaited(_sync());
@@ -384,6 +488,46 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     try {
       while (mounted && _ready && _dirty && generation == _generation) {
         _dirty = false;
+        final traffic = widget.layers.traffic
+            ? widget.trafficSegments
+            : const <TrafficFlowSegment>[];
+        final trafficHash = Object.hash(
+          widget.layers.traffic,
+          Object.hashAll(
+            traffic.map(
+              (segment) => Object.hash(
+                segment.id,
+                segment.level,
+                segment.start,
+                segment.end,
+              ),
+            ),
+          ),
+        );
+        await _setSource(
+          'kiwi-traffic',
+          trafficHash,
+          () => _collection([
+            for (final segment in traffic)
+              {
+                'type': 'Feature',
+                'id': segment.id,
+                'geometry': {
+                  'type': 'LineString',
+                  'coordinates': [
+                    [segment.start.longitude, segment.start.latitude],
+                    [segment.end.longitude, segment.end.latitude],
+                  ],
+                },
+                'properties': {
+                  'level': segment.level.name,
+                  'name': segment.name,
+                  'direction': segment.direction,
+                  'congestion': segment.congestion,
+                },
+              },
+          ]),
+        );
         final routeHash = Object.hashAll(widget.route);
         await _setSource(
           'kiwi-route',
@@ -416,13 +560,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           'kiwi-pins',
           pinsHash,
           () => _collection([
-            for (final c in cameras)
-              _pin(
-                'camera:${c.id}',
-                GeoPoint(c.latitude, c.longitude),
-                'camera',
-                c.name,
-              ),
+            for (final c in cameras) _cameraPin(c),
             for (final e in widget.roadEvents)
               _pin('event:${e.id}', e.location, 'event', e.roadName ?? ''),
             for (var i = 0; i < widget.explorePlaces.length; i++)

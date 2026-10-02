@@ -218,7 +218,7 @@ export async function routeOptions(from, to, env, stops = [], requestedModes = n
     );
     const options = settled.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
     const driving = options.filter((option) => option.mode === 'drive');
-    if (driving.length) {
+    if (options.length && (driving.length || requestedModes?.length)) {
       return {
         provider: 'google',
         trafficAvailable: driving.some((option) => option.trafficIntervals.length > 0),

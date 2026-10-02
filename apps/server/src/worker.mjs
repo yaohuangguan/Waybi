@@ -7,6 +7,7 @@ import { handlePlaces } from './places.mjs';
 import { routeOptions } from './routes.mjs';
 import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.mjs';
 import { loadRoadEventState } from './road_events.mjs';
+import { loadTrafficFlowState } from './traffic_flow.mjs';
 import { handleRoadIntelligence } from './road_intelligence_api.mjs';
 import { createRoadReport, readRoadReports } from './road_reports.mjs';
 import { recordApiUsage, readUsageSummary } from './cost_guard.mjs';
@@ -202,6 +203,9 @@ async function handleApi(request, env, ctx) {
     const state = await loadRoadEventState(env);
     const reports = await readRoadReports(env);
     return json({ ...state, events: [...reports, ...state.events] });
+  }
+  if (url.pathname === '/api/traffic-flow') {
+    return json(await loadTrafficFlowState(env));
   }
   if (url.pathname === '/api/parking') {
     const at = validateCoordinatePair(url.searchParams.get('at'));

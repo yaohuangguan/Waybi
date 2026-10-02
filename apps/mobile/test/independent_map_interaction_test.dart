@@ -8,6 +8,7 @@ import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:kiwi_lens_mobile/domain/map_provider.dart';
 import 'package:kiwi_lens_mobile/domain/map_layer_settings.dart';
 import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
+import 'package:kiwi_lens_mobile/domain/traffic_flow.dart';
 import 'package:kiwi_lens_mobile/providers/independent_map_renderer.dart';
 import 'package:kiwi_lens_mobile/providers/provider_contracts.dart';
 import 'package:kiwi_lens_mobile/providers/location_marker_art.dart';
@@ -130,6 +131,18 @@ void main() {
                   onCamera: (_) {},
                   roadEvents: const [],
                   onRoadEvent: (_) {},
+                  trafficSegments: const [
+                    TrafficFlowSegment(
+                      id: 'nzta:traffic:2',
+                      motorway: 'Northern Motorway',
+                      name: 'Oteha Valley Rd - Upper Harb Hwy',
+                      direction: 'Southbound',
+                      congestion: 'Heavy',
+                      level: TrafficFlowLevel.heavy,
+                      start: GeoPoint(-36.84, 174.75),
+                      end: GeoPoint(-36.85, 174.76),
+                    ),
+                  ],
                   route: const [
                     GeoPoint(-36.8485, 174.7633),
                     GeoPoint(-36.8518, 174.7634),
@@ -159,7 +172,10 @@ void main() {
           await LocationMarkerArt.practicePng(style);
         }
         await LocationMarkerArt.glowPng();
-        await LocationMarkerArt.cameraPng();
+        for (final kind in CameraKind.values) {
+          await LocationMarkerArt.cameraPng(kind);
+        }
+        await LocationMarkerArt.finishFlagPng();
       });
       await tester.runAsync(() async {
         platform.onMapStyleLoadedPlatform.call(null);
@@ -173,14 +189,26 @@ void main() {
       final map = tester.widget<ml.MapLibreMap>(find.byType(ml.MapLibreMap));
       expect(map.attributionButtonMargins, const Point(8, 8));
       final pins = platform.sources['kiwi-pins']!['features'] as List;
+      final camera = pins.firstWhere(
+        (feature) => feature['id'] == 'camera:cam-1',
+      );
+      expect(camera['properties']['kind'], 'camera');
+      expect(
+        camera['properties']['icon'].toString(),
+        startsWith('kiwi-camera-'),
+      );
       expect(
         pins.any(
           (feature) =>
-              feature['id'] == 'camera:cam-1' &&
-              feature['properties']['kind'] == 'camera',
+              feature['id'] == 'destination' &&
+              feature['properties']['kind'] == 'destination',
         ),
         isTrue,
       );
+      final traffic =
+          platform.sources['kiwi-traffic']!['features'] as List<dynamic>;
+      expect(traffic, hasLength(1));
+      expect(traffic.single['properties']['level'], 'heavy');
       final builds = platform.builds;
       platform.updates.clear();
       for (var i = 0; i < 120; i++) {

@@ -353,8 +353,8 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     provider.searchParams.set('zoom', '14');
     provider.searchParams.set('addressdetails', '1');
     const upstream = await fetch(provider, {
-      headers: { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)',
-        referer: 'https://github.com/yaohuangguan/kiwi-lens', accept: 'application/json' },
+      headers: { 'user-agent': 'KiwiLens/0.1 (https://github.com/Kiwi-Lens/kiwi-lens)',
+        referer: 'https://github.com/Kiwi-Lens/kiwi-lens', accept: 'application/json' },
       signal: AbortSignal.timeout(10000)
     });
     if (!upstream.ok) return json({ error: 'Current-place lookup unavailable' }, 502);

@@ -152,7 +152,7 @@ WSL 可以完成代码开发、测试和 Android 构建，但 iOS 最终编译�
 Mac 上的典型流程：
 
 ```bash
-git clone git@github.com:yaohuangguan/kiwi-lens.git
+git clone git@github.com:Kiwi-Lens/kiwi-lens.git
 cd kiwi-lens
 corepack enable
 pnpm install

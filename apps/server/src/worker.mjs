@@ -1,6 +1,8 @@
 import seed from '../data/cameras.json' with { type: 'json' };
 import { fetchNztaCameras, SOURCE_URL } from './sync.mjs';
 import { handleAccount, roadReportAuthor, userFromRequest, userHasPlus } from './auth.mjs';
+import { syncAllAppleSubscriptions } from './apple_billing.mjs';
+import { handleBilling } from './billing.mjs';
 import { handlePlaces } from './places.mjs';
 import { routeOptions } from './routes.mjs';
 import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.mjs';
@@ -373,6 +375,7 @@ export default {
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     try {
       const featureResponse =
+        await handleBilling(request, env) ||
         await handleAccount(request, env) ||
         await handleRouteWatchAlerts(request, env) ||
         await handleRouteWatch(request, env) ||
@@ -394,6 +397,7 @@ export default {
     if (event.cron === '0 */6 * * *') {
       ctx.waitUntil(syncCameras(env));
     }
+    ctx.waitUntil(syncAllAppleSubscriptions(env));
     ctx.waitUntil(evaluateAllRouteWatches(env));
   }
 };

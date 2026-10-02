@@ -60,6 +60,10 @@ Plus is for proactive road intelligence and convenience rather than access to th
 
 Automatic camera refresh remains available to everyone.
 
+The Flutter account page opens a native Plus discovery and subscription page. iOS uses StoreKit 2, with server verification, restore purchases and App Store subscription management. Planned New Zealand prices remain **NZ$4.99/month** and **NZ$39.99/year**; available products display Apple's localized prices. Purchases stay disabled until App Store products and verification credentials are configured.
+
+Stripe Checkout and Customer Portal backend APIs are retained for a future website channel. See [billing setup](docs/billing.md) for product IDs, server secrets, migrations and validation steps.
+
 ## Journey Brief
 
 Before starting a route, Kiwi Lens condenses the most useful decision information into one compact card:
@@ -300,6 +304,7 @@ Kiwi Lens uses location on the device for navigation, route progress and road-in
 - Route Watch background checks use the saved route corridor
 - route/search requests are sent only to the services required to perform those operations
 - account data and Route Watch state are stored in D1
+- billing records store provider transaction/customer identifiers and membership status; payment details are handled by Apple or Stripe
 - validated camera snapshots are stored in Workers KV
 - API keys and privileged provider credentials must not be committed to the repository
 

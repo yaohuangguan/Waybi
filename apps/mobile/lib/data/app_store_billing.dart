@@ -57,10 +57,12 @@ class AppStoreBillingGateway extends PlusBillingGateway {
     'me.samyao.kiwilens.plus.annual',
   };
   Future<void> _updates = Future.value();
+  Future<void>? _configuration;
   Completer<void>? _purchase;
   Completer<void>? _restore;
   String? _requestedProduct;
   bool _ready = false;
+  bool _configured = false;
   bool _disposed = false;
 
   // Owned by the app root so pending transactions also survive leaving the Plus page.
@@ -71,6 +73,23 @@ class AppStoreBillingGateway extends PlusBillingGateway {
       _queue,
       onError: (Object error) => _fail(error),
     );
+    _configuration = _readConfiguration().then<void>((_) {}).catchError((
+      Object _,
+    ) {
+      // Retain transactions until configuration can be loaded again.
+    });
+  }
+
+  Future<Map<String, dynamic>> _readConfiguration() async {
+    final config = await account.appleBillingConfig();
+    _ids
+      ..clear()
+      ..addAll([
+        config['monthly'] as String? ?? 'me.samyao.kiwilens.plus.monthly',
+        config['annual'] as String? ?? 'me.samyao.kiwilens.plus.annual',
+      ]);
+    _configured = true;
+    return config;
   }
 
   void _accountChanged() {
@@ -86,7 +105,10 @@ class AppStoreBillingGateway extends PlusBillingGateway {
 
   void _queue(List<PurchaseDetails> updates) {
     _updates = _updates
-        .then((_) => _handle(updates))
+        .then((_) async {
+          await _configuration;
+          await _handle(updates);
+        })
         .catchError((Object error) => _fail(error));
   }
 
@@ -97,7 +119,6 @@ class AppStoreBillingGateway extends PlusBillingGateway {
 
   Future<void> _handle(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
-      if (!_ids.contains(purchase.productID)) continue;
       if (purchase.status == PurchaseStatus.pending) continue;
       if (purchase.status == PurchaseStatus.canceled) {
         _fail(const PlusPurchaseCancelled());
@@ -116,10 +137,13 @@ class AppStoreBillingGateway extends PlusBillingGateway {
         _fail(StateError('Missing App Store transaction'));
         continue;
       }
-      if (!account.signedIn || account.profile?.id.isEmpty != false) {
+      if (!_configured ||
+          !account.signedIn ||
+          account.profile?.id.isEmpty != false) {
         _pending[id] = purchase;
         continue;
       }
+      if (!_ids.contains(purchase.productID)) continue;
       if (!_processing.add(id)) continue;
       _pending.remove(id);
       try {
@@ -153,15 +177,10 @@ class AppStoreBillingGateway extends PlusBillingGateway {
     initialize();
     _ready = false;
     _products.clear();
-    final config = await account.appleBillingConfig();
+    final config = await _readConfiguration();
     _ready = config['ready'] == true;
-    final monthly =
-        config['monthly'] as String? ?? 'me.samyao.kiwilens.plus.monthly';
     final annual =
         config['annual'] as String? ?? 'me.samyao.kiwilens.plus.annual';
-    _ids
-      ..clear()
-      ..addAll([monthly, annual]);
     if (!_supported || !_ready || !await _store.available()) {
       return PlusOffering(
         available: false,

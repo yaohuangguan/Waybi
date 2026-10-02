@@ -14,6 +14,7 @@ class BillingAccount extends AccountRepository {
     setPlan('free');
   }
   final verification = Completer<Map<String, dynamic>>();
+  Future<Map<String, dynamic>>? configuration;
   String? transaction;
   bool verified = false;
   void setPlan(String plan) {
@@ -35,11 +36,13 @@ class BillingAccount extends AccountRepository {
   @override
   bool get signedIn => true;
   @override
-  Future<Map<String, dynamic>> appleBillingConfig() async => {
-    'ready': true,
-    'monthly': 'me.samyao.kiwilens.plus.monthly',
-    'annual': productId,
-  };
+  Future<Map<String, dynamic>> appleBillingConfig() async =>
+      await configuration ??
+      {
+        'ready': true,
+        'monthly': 'me.samyao.kiwilens.plus.monthly',
+        'annual': productId,
+      };
   @override
   Future<Map<String, dynamic>> verifyApplePurchase(String transactionId) async {
     transaction = transactionId;
@@ -97,17 +100,18 @@ class TestStore extends AppStoreClient {
   }
 }
 
-PurchaseDetails purchase(PurchaseStatus status) => PurchaseDetails(
-  purchaseID: '100000000000001',
-  productID: productId,
-  verificationData: PurchaseVerificationData(
-    localVerificationData: '',
-    serverVerificationData: '',
-    source: 'app_store',
-  ),
-  transactionDate: '1000',
-  status: status,
-)..pendingCompletePurchase = true;
+PurchaseDetails purchase(PurchaseStatus status, {String id = productId}) =>
+    PurchaseDetails(
+      purchaseID: '100000000000001',
+      productID: id,
+      verificationData: PurchaseVerificationData(
+        localVerificationData: '',
+        serverVerificationData: '',
+        source: 'app_store',
+      ),
+      transactionDate: '1000',
+      status: status,
+    )..pendingCompletePurchase = true;
 
 Future<void> tick() => Future<void>.delayed(Duration.zero);
 
@@ -201,4 +205,28 @@ void main() {
     );
     expect(store.param, isNull);
   });
+  test(
+    'startup transactions wait for configured product IDs without opening Plus',
+    () async {
+      final config = Completer<Map<String, dynamic>>();
+      account.configuration = config.future;
+      gateway.initialize();
+      store.stream.add([
+        purchase(PurchaseStatus.purchased, id: 'custom.plus.annual'),
+      ]);
+      await tick();
+      expect(account.transaction, isNull);
+      config.complete({
+        'ready': true,
+        'monthly': 'custom.plus.monthly',
+        'annual': 'custom.plus.annual',
+      });
+      await tick();
+      expect(account.transaction, '100000000000001');
+      account.verification.complete({'verified': true, 'active': true});
+      await tick();
+      expect(account.profile?.isPlus, true);
+      expect(store.completed, 1);
+    },
+  );
 }

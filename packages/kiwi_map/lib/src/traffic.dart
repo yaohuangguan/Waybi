@@ -1,4 +1,8 @@
 import 'geometry.dart';
+import 'layers.dart';
+
+abstract interface class TrafficFlowLayerSource
+    implements MapLayerSource<TrafficFlowSnapshot> {}
 
 enum TrafficFlowLevel { free, moderate, heavy, unknown }
 

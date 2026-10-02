@@ -1,6 +1,6 @@
 name: kiwi_map
 description: Reusable map contracts and overlay models extracted from Kiwi Lens.
-version: 0.1.0
+version: 0.2.0
 publish_to: none
 
 environment:

@@ -24,6 +24,21 @@ void main() {
     expect(segment.start.isValid, isTrue);
   });
 
+  test('map core composes optional B2B layers without renderer coupling', () {
+    final stack = KiwiMapStack(
+      traffic: _FakeTrafficSource(),
+      roadIntelligence: _FakeRoadIntelligenceSource(),
+    );
+    expect(stack.traffic, isNotNull);
+    expect(stack.roadIntelligence, isNotNull);
+    expect(
+      stack.layers
+          .singleWhere((layer) => layer.id == 'road-intelligence')
+          .b2bEntitlement,
+      'road-intelligence',
+    );
+  });
+
   test('Road Intelligence API payload decodes as an optional map overlay', () {
     final snapshot = RoadIntelligenceLayerSnapshot.fromApiJson({
       'generatedAt': '2026-10-03T10:00:00+13:00',
@@ -50,4 +65,16 @@ void main() {
     );
     expect(snapshot.features.single.location, const GeoPoint(-36.85, 174.76));
   });
+}
+
+class _FakeTrafficSource implements TrafficFlowLayerSource {
+  @override
+  Future<TrafficFlowSnapshot> load(MapBounds bounds) async =>
+      const TrafficFlowSnapshot(segments: [], syncStatus: 'live');
+}
+
+class _FakeRoadIntelligenceSource implements RoadIntelligenceLayerSource {
+  @override
+  Future<RoadIntelligenceLayerSnapshot> load(MapBounds bounds) async =>
+      const RoadIntelligenceLayerSnapshot(features: [], sourceStatus: 'live');
 }

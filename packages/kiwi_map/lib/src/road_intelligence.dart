@@ -1,21 +1,11 @@
 import 'geometry.dart';
+import 'layers.dart';
 
 /// Provider-neutral overlay contract. Kiwi Lens can feed this from its own
 /// Road Intelligence API; a B2B consumer can provide another implementation
 /// without coupling the map renderer to authentication or HTTP.
-abstract interface class RoadIntelligenceLayerSource {
-  Future<RoadIntelligenceLayerSnapshot> load(RoadIntelligenceViewport viewport);
-}
-
-class RoadIntelligenceViewport {
-  const RoadIntelligenceViewport({
-    required this.southWest,
-    required this.northEast,
-  });
-
-  final GeoPoint southWest;
-  final GeoPoint northEast;
-}
+abstract interface class RoadIntelligenceLayerSource
+    implements MapLayerSource<RoadIntelligenceLayerSnapshot> {}
 
 class RoadIntelligenceLayerSnapshot {
   const RoadIntelligenceLayerSnapshot({

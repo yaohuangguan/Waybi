@@ -858,10 +858,15 @@ class _ProfilePageState extends State<ProfilePage> {
                 leading: const Icon(Icons.layers_outlined),
                 title: Text(_text('Map style', '地图样式')),
                 subtitle: Text(
-                  _text(
-                    'Default, satellite, terrain and hybrid',
-                    '标准、卫星、地形和混合',
-                  ),
+                  _mapProvider == MapProvider.independent
+                      ? _text(
+                          'Kiwi vector map · day and night colours',
+                          'Kiwi 矢量地图 · 日夜配色',
+                        )
+                      : _text(
+                          'Default, satellite, terrain and hybrid',
+                          '标准、卫星、地形和混合',
+                        ),
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: widget.onMapLayers,
@@ -898,6 +903,17 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 8),
+              if (_mapProvider == MapProvider.google)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    _text(
+                      'Google navigation uses its navigation arrow. Custom markers appear while browsing and in Kiwi Practice.',
+                      'Google 导航使用导航箭头。浏览地图与 Kiwi 实践版可使用自定义位置标记。',
+                    ),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
               _SectionTitle(_text('Navigation & voice', '导航与语音')),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

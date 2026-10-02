@@ -9,6 +9,7 @@ class TestAccount extends AccountRepository {
     if (loggedIn) setPlan('free');
   }
   bool loggedIn;
+  bool? syncedVoice;
   void setPlan(String plan) {
     profile = AccountProfile(
       email: 'driver@example.test',
@@ -42,6 +43,7 @@ class TestAccount extends AccountRepository {
     required String language,
     required bool voiceEnabled,
   }) async {
+    syncedVoice = voiceEnabled;
     throw StateError('Preference sync unavailable after successful login');
   }
 }

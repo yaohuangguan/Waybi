@@ -12,11 +12,13 @@ class PlusPage extends StatefulWidget {
     required this.account,
     required this.language,
     required this.billing,
+    this.voiceEnabled = true,
     this.onSignIn,
   });
   final AccountRepository account;
   final String language;
   final PlusBillingGateway billing;
+  final bool voiceEnabled;
   final VoidCallback? onSignIn;
   @override
   State<PlusPage> createState() => _PlusPageState();
@@ -150,8 +152,11 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) =>
-          _PlusSignIn(account: widget.account, language: widget.language),
+      builder: (_) => _PlusSignIn(
+        account: widget.account,
+        language: widget.language,
+        voiceEnabled: widget.voiceEnabled,
+      ),
     );
     if (mounted && widget.account.signedIn) await _load();
   }
@@ -704,9 +709,14 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
 }
 
 class _PlusSignIn extends StatefulWidget {
-  const _PlusSignIn({required this.account, required this.language});
+  const _PlusSignIn({
+    required this.account,
+    required this.language,
+    required this.voiceEnabled,
+  });
   final AccountRepository account;
   final String language;
+  final bool voiceEnabled;
   @override
   State<_PlusSignIn> createState() => _PlusSignInState();
 }
@@ -743,7 +753,7 @@ class _PlusSignInState extends State<_PlusSignIn> {
       try {
         await widget.account.updatePreferences(
           language: widget.language,
-          voiceEnabled: true,
+          voiceEnabled: widget.voiceEnabled,
         );
       } catch (_) {
         // Signing in succeeded; a preference sync can be retried later.

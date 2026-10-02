@@ -159,7 +159,12 @@ void main() {
       final billing = TestBilling();
       await tester.pumpWidget(
         MaterialApp(
-          home: PlusPage(account: account, language: 'en', billing: billing),
+          home: PlusPage(
+            account: account,
+            language: 'en',
+            voiceEnabled: false,
+            billing: billing,
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -183,6 +188,7 @@ void main() {
       await tester.tap(find.text('Sign in'));
       await tester.pumpAndSettle();
       expect(find.text('Welcome back.'), findsNothing);
+      expect(account.syncedVoice, false);
       expect(find.text('Subscribe to Plus'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('plus-subscribe')));
       await tester.pumpAndSettle();

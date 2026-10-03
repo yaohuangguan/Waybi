@@ -19,7 +19,15 @@ test('identity migration pauses API and scheduled writes while keeping assets av
 });
 
 test('product surfaces are noindex while public marketing assets stay indexable', async () => {
-  const env = { ASSETS: { fetch: async () => new Response('site', { headers: { 'cache-control': 'public, max-age=60' } }) } };
+  const assetUrls = [];
+  const env = {
+    ASSETS: {
+      fetch: async (request) => {
+        assetUrls.push(request.url);
+        return new Response('site', { headers: { 'cache-control': 'public, max-age=60' } });
+      }
+    }
+  };
   const ctx = { waitUntil() {} };
 
   for (const path of ['/app', '/app/', '/dashboard', '/dashboard/profile']) {
@@ -28,9 +36,11 @@ test('product surfaces are noindex while public marketing assets stay indexable'
     assert.equal(response.headers.get('x-robots-tag'), 'noindex, follow');
     assert.equal(response.headers.get('cache-control'), 'private, no-cache');
   }
+  assert.deepEqual(assetUrls.slice(0, 4), Array(4).fill('https://waybi.test/index.html'));
 
   const marketing = await worker.fetch(new Request('https://waybi.test/'), env, ctx);
   assert.equal(marketing.headers.get('x-robots-tag'), null);
+  assert.equal(assetUrls.at(-1), 'https://waybi.test/');
 });
 
 function fakeEnv(initial = null) {

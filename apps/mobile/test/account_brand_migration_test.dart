@@ -19,8 +19,9 @@ void main() {
       final account = AccountRepository(
         storage: storage,
         client: MockClient((request) async {
-          if (request.url.path.endsWith('/logout'))
+          if (request.url.path.endsWith('/logout')) {
             throw http.ClientException('Offline');
+          }
           expect(request.headers['cookie'], 'waybi_session=legacy-token');
           return http.Response(
             jsonEncode({

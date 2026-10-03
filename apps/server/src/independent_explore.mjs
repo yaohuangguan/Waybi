@@ -43,7 +43,8 @@ export function selectNearby(places, point, category = 'for-you', query = '') {
     .sort((a, b) => a.distance - b.distance);
   if (category !== 'for-you') return sorted.filter(p => p.primaryType === category).slice(0, 20);
   // Round robin keeps dense cafe clusters from crowding out parks and sights.
-  const queues = GROUPS.map(group => sorted.filter(p => p.primaryType === group));
+  const queues = GROUPS.map(group => sorted.filter(p => p.primaryType === group)
+    .sort((a, b) => Number(Boolean(b.photoUrl)) - Number(Boolean(a.photoUrl)) || a.distance - b.distance));
   const selected = [];
   while (selected.length < 20 && queues.some(q => q.length)) {
     for (const queue of queues) if (queue.length && selected.length < 20) selected.push(queue.shift());
@@ -88,10 +89,13 @@ async function addPhotos(places, point, fetcher) {
   }), fetcher).then(data => {
     for (const page of data.query?.pages || []) {
       if (!page.pageimage) continue;
-      const matches = places.filter(p => (p.wikidata && p.wikidata === page.pageprops?.wikibase_item) || p.wikipedia === `en:${page.title}`);
+      const coordinate = page.coordinates?.find(c => c.primary) || page.coordinates?.[0];
+      const normalized = name => String(name || '').split(/[,(]/)[0].toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+      const matches = places.filter(p => (p.wikidata && p.wikidata === page.pageprops?.wikibase_item) || p.wikipedia === `en:${page.title}` ||
+        (coordinate && normalized(p.englishName || p.name).length > 4 && normalized(p.englishName || p.name) === normalized(page.title) &&
+          distance([p.longitude, p.latitude], [coordinate.lon, coordinate.lat]) < 150));
       for (const p of matches) files.set(p.placeId, `File:${page.pageimage}`);
       // Geotagged, photographed landmarks expand discovery beyond businesses.
-      const coordinate = page.coordinates?.find(c => c.primary) || page.coordinates?.[0];
       if (!matches.length && coordinate && !page.pageprops?.disambiguation && distance(point, [coordinate.lon, coordinate.lat]) <= RADIUS) {
         const place = { placeId: `wikipedia:en:${page.pageid}`, provider: 'osm', name: page.title, address: '', primaryType: 'activities',
           latitude: coordinate.lat, longitude: coordinate.lon, photoUrl: null, photoAttribution: '', photoCredit: null };
@@ -112,7 +116,7 @@ async function addPhotos(places, point, fetcher) {
 }
 async function loadNearby(env, point, language, fetcher) {
   const cell = point.map(n => Math.round(n * 100) / 100);
-  const key = `waybi:explore:v1:${cell.join(',')}:${language}`;
+  const key = `waybi:explore:v2:${cell.join(',')}:${language}`;
   const cached = await env.CAMERA_DATA?.get(key, 'json');
   if (Array.isArray(cached)) return cached;
   const around = `(around:${RADIUS},${cell[1]},${cell[0]})`;
@@ -120,8 +124,9 @@ async function loadNearby(env, point, language, fetcher) {
     '[leisure~"^(park|garden|nature_reserve|sports_centre|swimming_pool)$"]', '[tourism~"^(attraction|museum|gallery|viewpoint|zoo)$"]',
     '[shop~"^(mall|department_store|books|clothes|bakery|supermarket)$"]'];
   const query = `[out:json][timeout:20];(${selectors.map(s => `nwr${s}[name]${around};`).join('')});out center tags;`;
-  let raw, lastError;
-  for (const host of ['overpass.private.coffee', 'overpass-api.de']) {
+  let raw, lastError, places;
+  try { places = await nearbyTilePlaces(cell, language, fetcher); } catch (error) { lastError = error; }
+  for (const host of places ? [] : ['overpass.private.coffee', 'overpass-api.de']) {
     try {
       const r = await fetcher(`https://${host}/api/interpreter`, { method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA },
@@ -132,12 +137,12 @@ async function loadNearby(env, point, language, fetcher) {
       break;
     } catch (error) { raw = null; lastError = error; }
   }
-  if (!raw) {
+  if (!places && !raw) {
     const previous = await env.CAMERA_DATA?.get(`${key}:previous`, 'json');
     if (Array.isArray(previous) && previous.length) return previous;
     throw lastError;
   }
-  const places = normalizeNearby(raw.elements, cell, language);
+  places ??= normalizeNearby(raw.elements, cell, language);
   // Bound response/cache size while keeping a useful pool for each category.
   const pool = GROUPS.flatMap(group => selectNearby(places, cell, group).slice(0, 20));
   await addPhotos(pool, cell, fetcher).catch(() => {});
@@ -160,3 +165,4 @@ export async function independentExplore(url, env, fetcher = fetch) {
     return response({ error: 'Nearby places are temporarily unavailable' }, 503);
   }
 }
+import { nearbyTilePlaces } from './vector_places.mjs';

@@ -55,7 +55,9 @@ The database reserves upstream requests atomically against the explicit monthly
 budget. Keys remain server-side; cached NZ tiles are reused for 60 seconds. Check
 the account's actual plan before enabling: quotas are not assumed from marketing.
 
-Independent discovery uses a geographically bounded, daily-cached open POI pool
+Independent discovery uses four bounded zoom-14 tiles from the same free basemap
+as Waybi Map, with Overpass as a fallback and a 30-day previous pool for outages.
+The geographically bounded, daily-cached POI pool
 with balanced sights, parks, food, coffee and shopping. Photos are linked through
 OSM/Wikipedia/Wikidata identities, with Commons authors and licenses retained.
 Unknown photos use category artwork. Attribution is available from info controls;

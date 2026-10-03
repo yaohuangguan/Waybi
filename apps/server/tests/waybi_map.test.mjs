@@ -6,6 +6,8 @@ import { normalizeNearby, selectNearby, commonsPhoto, independentExplore } from 
 import { createRoadGraph, matchTrafficGeometry } from '../src/traffic_geometry.mjs';
 import { withRoadGeometry } from '../src/traffic_flow.mjs';
 import { trafficTileConfig, handleTrafficTile } from '../src/traffic_tiles.mjs';
+import { PbfWriter } from 'pbf';
+import { decodeTilePlaces, nearbyTilePlaces } from '../src/vector_places.mjs';
 
 const point = [174.7633, -36.8485];
 const elements = Array.from({ length: 12 }, (_, i) => ({ type: 'node', id: i, lat: point[1], lon: point[0] + i / 10000,
@@ -31,6 +33,56 @@ test('photo metadata rejects unlicensed images and arbitrary external URLs', () 
   const photo = commonsPhoto(page); assert.equal(photo.photoCredit.author, 'Photographer');
   page.imageinfo[0].extmetadata.LicenseShortName.value = 'All rights reserved'; assert.equal(commonsPhoto(page), null);
   page.imageinfo[0].extmetadata.LicenseShortName.value = 'CC BY-SA 4.0'; page.imageinfo[0].thumburl = 'http://localhost/private'; assert.equal(commonsPhoto(page), null);
+});
+
+test('recommendations bring real photos forward while keeping nearby categories balanced', () => {
+  const places = normalizeNearby(elements, point);
+  places.find(p => p.primaryType === 'activities').photoUrl = 'https://upload.wikimedia.org/real.jpg';
+  places.push({ ...places[0], placeId: 'photo-cafe', name: 'Photographed cafe', longitude: point[0] + .01, photoUrl: 'https://upload.wikimedia.org/cafe.jpg' });
+  const result = selectNearby(places, point);
+  assert.deepEqual(result.slice(0, 5).map(p => p.primaryType), ['activities', 'parks', 'food', 'coffee', 'shopping']);
+  assert.equal(result[3].name, 'Photographed cafe');
+  assert.equal(selectNearby(places, point, 'coffee')[0].name, 'Cafe 0');
+});
+
+function pointTile() {
+  const writer = new PbfWriter();
+  writer.writeMessage(3, (_, layer) => {
+    layer.writeStringField(1, 'poi');
+    layer.writeMessage(2, (_, feature) => {
+      feature.writeVarintField(1, 42);
+      feature.writePackedVarint(2, [0, 0, 1, 1, 2, 2, 3, 3]);
+      feature.writeVarintField(3, 1);
+      feature.writePackedVarint(4, [9, 4096, 4096]);
+    }, null);
+    for (const key of ['class', 'subclass', 'name', 'name:zh']) layer.writeStringField(3, key);
+    for (const value of ['attraction', 'museum', 'Sky Tower', '天空塔']) {
+      layer.writeMessage(4, (text, field) => field.writeStringField(1, text), value);
+    }
+    layer.writeVarintField(5, 4096);
+    layer.writeVarintField(15, 2);
+  }, null);
+  return writer.finish();
+}
+
+test('open map POIs decode MVT point coordinates and localized names at zoom 14', async () => {
+  const bytes = pointTile();
+  const [place] = decodeTilePlaces(bytes, 16145, 9998, 14, 'zh');
+  assert.equal(place.name, '天空塔');
+  assert.equal(place.englishName, 'Sky Tower');
+  assert.equal(place.primaryType, 'activities');
+  assert.ok(Math.abs(place.longitude - ((16145.5 / 16384) * 360 - 180)) < 1e-8);
+  assert.ok(place.latitude < -36 && place.latitude > -37);
+  assert.equal(place.photoUrl, null);
+  let tiles = 0;
+  const fetcher = async target => {
+    if (String(target).endsWith('/planet')) return Response.json({ tiles: ['https://tiles.openfreemap.org/planet/test/{z}/{x}/{y}.pbf'] });
+    assert.ok(String(target).includes('/14/'));
+    if (++tiles === 1) throw new Error('One tile unavailable');
+    return new Response(bytes);
+  };
+  assert.ok((await nearbyTilePlaces(point, 'zh', fetcher)).length > 0);
+  assert.equal(tiles, 4);
 });
 test('independent Explore uses bounded cached OSM results with no Google calls', async () => {
   const store = new Map(), urls = [], env = { CAMERA_DATA: { get: async k => store.get(k), put: async (k, v) => store.set(k, JSON.parse(v)) } };

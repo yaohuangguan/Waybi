@@ -19,7 +19,7 @@ class MapRendererCapabilities {
 
 /// Renderer-neutral controller contract.
 ///
-/// Kiwi Lens currently adapts MapLibre to this interface. A future consumer can
+/// Waybi currently adapts MapLibre to this interface. A future consumer can
 /// provide another renderer without changing search, routing or Road
 /// Intelligence layer models.
 abstract interface class MapRendererController {

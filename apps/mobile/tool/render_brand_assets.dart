@@ -6,8 +6,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
-import 'package:kiwi_lens_mobile/widgets/kiwi_mascot.dart';
+import 'package:waybi_mobile/theme/waybi_theme.dart';
+import 'package:waybi_mobile/widgets/waybi_bird.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -16,19 +16,19 @@ void main() {
     const edge = 52.0;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    canvas.drawColor(KiwiLensColors.lightBackground, BlendMode.src);
+    canvas.drawColor(WaybiColors.lightBackground, BlendMode.src);
     canvas.translate(edge, edge);
-    KiwiMascotPainter().paint(
+    WaybiBirdPainter().paint(
       canvas,
       const Size(pixels - edge * 2, pixels - edge * 2),
     );
     final picture = recorder.endRecording();
     final image = await picture.toImage(pixels, pixels);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (data == null) throw StateError('Could not encode the Kiwi icon');
+    if (data == null) throw StateError('Could not encode the Waybi icon');
     final png = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
     File('assets/icon/app_icon.png').writeAsBytesSync(png);
-    File('../web/public/brand/kiwi-lens-icon.png').writeAsBytesSync(png);
+    File('../web/public/brand/waybi-icon.png').writeAsBytesSync(png);
     image.dispose();
     picture.dispose();
   });

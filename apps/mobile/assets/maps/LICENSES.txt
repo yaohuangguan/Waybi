@@ -1,4 +1,4 @@
-Kiwi Lens map style adapts Positron: quieter colours, local labels, reduced clutter, day/night palette.
+Waybi map style adapts Positron: quieter colours, local labels, reduced clutter, day/night palette.
 Design attribution: OpenMapTiles, CartoDB Inc., Stamen and Paul Norman.
 https://github.com/hyperknot/openfreemap-styles
 https://github.com/openmaptiles/positron-gl-style

@@ -160,8 +160,7 @@ class IndependentSearchProvider
             headers: {
               'Accept': 'application/json',
               if (!kIsWeb)
-                'User-Agent':
-                    'KiwiLens/1.0 (+https://kiwi-lens.nzs.workers.dev)',
+                'User-Agent': 'Waybi/1.0 (+https://waybi.nzs.workers.dev)',
             },
           )
           .timeout(const Duration(seconds: 12));

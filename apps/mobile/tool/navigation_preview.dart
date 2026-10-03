@@ -5,13 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
-import 'package:kiwi_lens_mobile/drive/drive_engine.dart';
-import 'package:kiwi_lens_mobile/drive/journey_tracker.dart';
-import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
-import 'package:kiwi_lens_mobile/widgets/journey_summary_sheet.dart';
-import 'package:kiwi_lens_mobile/widgets/navigation_overlay.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/safety_camera.dart';
+import 'package:waybi_mobile/drive/drive_engine.dart';
+import 'package:waybi_mobile/drive/journey_tracker.dart';
+import 'package:waybi_mobile/theme/waybi_theme.dart';
+import 'package:waybi_mobile/widgets/journey_summary_sheet.dart';
+import 'package:waybi_mobile/widgets/navigation_overlay.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,10 +59,8 @@ class _NavigationPreviewState extends State<NavigationPreview> {
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
-    title: 'Kiwi Lens navigation preview',
-    theme: dark
-        ? KiwiLensTheme.darkFor(language)
-        : KiwiLensTheme.lightFor(language),
+    title: 'Waybi navigation preview',
+    theme: dark ? WaybiTheme.darkFor(language) : WaybiTheme.lightFor(language),
     locale: Locale(language),
     supportedLocales: const [Locale('en'), Locale('zh')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
@@ -70,7 +68,7 @@ class _NavigationPreviewState extends State<NavigationPreview> {
       builder: (context) => Scaffold(
         appBar: AppBar(
           title: const Text(
-            'Kiwi Lens · UI preview',
+            'Waybi · UI preview',
             style: TextStyle(fontSize: 15),
           ),
           actions: [
@@ -117,7 +115,7 @@ class _NavigationPreviewState extends State<NavigationPreview> {
                     NavigationLane('↑→', false),
                   ],
                 ),
-                destinationTitle: 'Kiwi Cafe · Auckland',
+                destinationTitle: 'Waybi Cafe · Auckland',
                 gpsAccuracy: 5,
                 voiceEnabled: voice,
                 lanesEnabled: lanes,
@@ -128,7 +126,7 @@ class _NavigationPreviewState extends State<NavigationPreview> {
                   builder: (_) => JourneySummarySheet(
                     language: language,
                     summary: JourneySummary(
-                      destination: 'Kiwi Cafe · Auckland',
+                      destination: 'Waybi Cafe · Auckland',
                       startedAt: DateTime.now().subtract(
                         const Duration(minutes: 18),
                       ),

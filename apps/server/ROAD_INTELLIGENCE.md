@@ -1,6 +1,6 @@
 # Road Intelligence v1 preview
 
-Base URL: `https://kiwi-lens.nzs.workers.dev/api/v1/road-intelligence`.
+Base URL: `https://waybi.nzs.workers.dev/api/v1/road-intelligence`.
 The API exposes official NZ road events and safety cameras with attribution, source freshness and data-use conditions. It excludes Google content, personal journeys and private community reports.
 
 Apply D1 migration `0011_road_intelligence_api.sql` before deployment. Tests use Node 24 SQLite against the actual migration and statements.

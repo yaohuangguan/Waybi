@@ -2,13 +2,13 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/drive/drive_engine.dart';
-import 'package:kiwi_lens_mobile/drive/navigation_language.dart';
-import 'package:kiwi_lens_mobile/drive/voice_engine.dart';
-import 'package:kiwi_lens_mobile/drive/route_progress_tracker.dart';
-import 'package:kiwi_lens_mobile/providers/independent_navigation_engine.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/drive/drive_engine.dart';
+import 'package:waybi_mobile/drive/navigation_language.dart';
+import 'package:waybi_mobile/drive/voice_engine.dart';
+import 'package:waybi_mobile/drive/route_progress_tracker.dart';
+import 'package:waybi_mobile/providers/independent_navigation_engine.dart';
 
 class SilentVoice extends VoiceEngine {
   @override
@@ -69,7 +69,7 @@ const middle = GeoPoint(-36.855, 174.76);
 const destination = GeoPoint(-36.85, 174.76);
 RouteOption makeRoute({List<GeoPoint> waypoints = const []}) => RouteOption(
   id: 'test',
-  mode: KiwiTravelMode.drive,
+  mode: WaybiTravelMode.drive,
   durationSeconds: 1000,
   distanceMeters: 1000,
   points: const [origin, middle, destination],

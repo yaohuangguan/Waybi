@@ -79,7 +79,7 @@ class AccountRepository extends ChangeNotifier {
     : _client = client ?? http.Client(),
       _storage = storage ?? const FlutterSecureStorage();
 
-  static const _storageKey = 'kiwi_lens_session';
+  static const _storageKey = 'waybi_session';
   static const _googleIosClientId = String.fromEnvironment(
     'GOOGLE_IOS_CLIENT_ID',
     defaultValue: '858928595374-slrbiedfhivmnliv0d4uvpn0n8rh21tu.apps.googleusercontent.com',
@@ -111,10 +111,10 @@ class AccountRepository extends ChangeNotifier {
     Object? body,
   }) async {
     final headers = <String, String>{
-      if (_session != null) 'cookie': 'kiwi_session=$_session',
+      if (_session != null) 'cookie': 'waybi_session=$_session',
       if (method != 'GET') ...{
         'content-type': 'application/json',
-        'x-kiwi-client': 'mobile',
+        'x-waybi-client': 'mobile',
       },
     };
     final request = http.Request(method, Uri.parse('$workerBaseUrl$path'))
@@ -140,7 +140,9 @@ class AccountRepository extends ChangeNotifier {
 
   Future<void> restore() async {
     try {
-      _session = await _storage.read(key: _storageKey);
+      _session =
+          await _storage.read(key: _storageKey) ??
+          await _storage.read(key: 'kiwi_lens_session');
       if (_session == null) return;
       final response = await _request('/api/auth/me');
       if (response.statusCode == 401) {
@@ -175,7 +177,7 @@ class AccountRepository extends ChangeNotifier {
       );
       final next = AccountProfile.fromJson(_body(response));
       final cookie = response.headers['set-cookie'] ?? '';
-      final match = RegExp(r'(?:^|;\s*)kiwi_session=([0-9a-f]{64})')
+      final match = RegExp(r'(?:^|;\s*)waybi_session=([0-9a-f]{64})')
           .firstMatch(cookie);
       if (match == null) throw StateError('Sign-in session was not returned');
       _session = match.group(1);
@@ -209,7 +211,7 @@ class AccountRepository extends ChangeNotifier {
       final next = AccountProfile.fromJson(_body(response));
       if (!link) {
         final cookie = response.headers['set-cookie'] ?? '';
-        final match = RegExp(r'(?:^|;\s*)kiwi_session=([0-9a-f]{64})')
+        final match = RegExp(r'(?:^|;\s*)waybi_session=([0-9a-f]{64})')
             .firstMatch(cookie);
         if (match == null) throw StateError('Sign-in session was not returned');
         _session = match.group(1);

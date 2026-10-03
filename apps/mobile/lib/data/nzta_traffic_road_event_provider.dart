@@ -23,7 +23,7 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
   @override
   bool supports(CountryProfile country) => country.code == 'NZ';
 
-  static const _cacheKey = 'kiwi.cache.road_events.v1';
+  static const _cacheKey = 'waybi.cache.road_events.v1';
 
   @override
   Future<List<RoadEvent>> load() async {

@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/country_profile.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/road_event.dart';
-import 'package:kiwi_lens_mobile/domain/road_intelligence.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/domain/country_profile.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/road_event.dart';
+import 'package:waybi_mobile/domain/road_intelligence.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
 
 RoadEvent camera(String id, GeoPoint point, {DateTime? until}) => RoadEvent(
   id: id,
@@ -15,7 +15,7 @@ RoadEvent camera(String id, GeoPoint point, {DateTime? until}) => RoadEvent(
 
 RouteOption eastRoute() => const RouteOption(
   id: 'east',
-  mode: KiwiTravelMode.drive,
+  mode: WaybiTravelMode.drive,
   durationSeconds: 600,
   distanceMeters: 1112,
   points: [GeoPoint(0, 0), GeoPoint(0, .01)],
@@ -95,15 +95,18 @@ void main() {
     expect(results.map((event) => event.id), ['ahead']);
   });
 
-  test('provider registry keeps partial road intelligence when one provider fails', () async {
-    final registry = RoadEventProviderRegistry([
-      CountingProvider(),
-      FailingProvider(),
-    ]);
-    final events = await registry.load(CountryProfiles.nz);
-    expect(events, hasLength(1));
-    expect(registry.lastErrors, hasLength(1));
-  });
+  test(
+    'provider registry keeps partial road intelligence when one provider fails',
+    () async {
+      final registry = RoadEventProviderRegistry([
+        CountingProvider(),
+        FailingProvider(),
+      ]);
+      final events = await registry.load(CountryProfiles.nz);
+      expect(events, hasLength(1));
+      expect(registry.lastErrors, hasLength(1));
+    },
+  );
 
   test('long road-event geometry matches near the driver even when midpoint is far away', () {
     const engine = RoadIntelligenceEngine(maxDistanceMeters: 1500);
@@ -111,11 +114,7 @@ void main() {
       id: 'works',
       type: RoadEventType.roadworks,
       location: const GeoPoint(0, .05),
-      geometry: const [
-        GeoPoint(0, .005),
-        GeoPoint(0, .02),
-        GeoPoint(0, .05),
-      ],
+      geometry: const [GeoPoint(0, .005), GeoPoint(0, .02), GeoPoint(0, .05)],
       source: const RoadEventSource(
         provider: 'test',
         country: 'NZ',
@@ -130,5 +129,4 @@ void main() {
     expect(results.map((item) => item.id), ['works']);
     expect(results.single.distanceFromDriver, lessThan(600));
   });
-
 }

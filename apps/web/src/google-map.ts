@@ -1,5 +1,5 @@
 import { importLibrary, setOptions } from '@googlemaps/js-api-loader';
-import { cameraLabel, distanceMeters, type Camera, type Coordinate, type Route } from '@kiwi-lens/core';
+import { cameraLabel, distanceMeters, type Camera, type Coordinate, type Route } from '@waybi/core';
 import type { ParkingPlace } from './parking';
 import type { TrafficInterval } from './route-planner';
 

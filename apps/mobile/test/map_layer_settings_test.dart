@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/map_layer_settings.dart';
-import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
+import 'package:waybi_mobile/domain/map_layer_settings.dart';
+import 'package:waybi_mobile/domain/safety_camera.dart';
 
 SafetyCamera camera(String type) => SafetyCamera(
   id: type,

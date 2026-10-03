@@ -2,16 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/map_layer_settings.dart';
-import 'package:kiwi_lens_mobile/drive/drive_engine.dart';
-import 'package:kiwi_lens_mobile/providers/independent_map_renderer.dart';
-import 'package:kiwi_lens_mobile/providers/provider_contracts.dart';
-import 'package:kiwi_lens_mobile/providers/place_search_providers.dart';
-import 'package:kiwi_lens_mobile/widgets/full_screen_search.dart';
-import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
-import 'package:kiwi_lens_mobile/widgets/navigation_overlay.dart';
-import 'package:kiwi_lens_mobile/widgets/arrival_experience_panel.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/map_layer_settings.dart';
+import 'package:waybi_mobile/drive/drive_engine.dart';
+import 'package:waybi_mobile/providers/independent_map_renderer.dart';
+import 'package:waybi_mobile/providers/provider_contracts.dart';
+import 'package:waybi_mobile/providers/place_search_providers.dart';
+import 'package:waybi_mobile/widgets/full_screen_search.dart';
+import 'package:waybi_mobile/theme/waybi_theme.dart';
+import 'package:waybi_mobile/widgets/navigation_overlay.dart';
+import 'package:waybi_mobile/widgets/arrival_experience_panel.dart';
 
 final _night = ValueNotifier(false);
 
@@ -23,8 +23,8 @@ void main() {
       valueListenable: _night,
       builder: (_, dark, _) => MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: KiwiLensTheme.lightFor('zh'),
-        darkTheme: KiwiLensTheme.darkFor('zh'),
+        theme: WaybiTheme.lightFor('zh'),
+        darkTheme: WaybiTheme.darkFor('zh'),
         themeMode: dark ? ThemeMode.dark : ThemeMode.light,
         home: const _Preview(),
       ),

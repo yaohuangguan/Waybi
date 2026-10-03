@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kiwi_lens_mobile/data/camera_repository.dart';
-import 'package:kiwi_lens_mobile/data/nzta_traffic_road_event_provider.dart';
-import 'package:kiwi_lens_mobile/domain/road_event.dart';
+import 'package:waybi_mobile/data/camera_repository.dart';
+import 'package:waybi_mobile/data/nzta_traffic_road_event_provider.dart';
+import 'package:waybi_mobile/domain/road_event.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -15,7 +15,7 @@ void main() {
     'camera repository falls back to the persisted snapshot offline',
     () async {
       SharedPreferences.setMockInitialValues({
-        'kiwi.cache.cameras.v1': jsonEncode({
+        'waybi.cache.cameras.v1': jsonEncode({
           'syncStatus': 'live',
           'sourceUpdatedAt': '2026-10-01T00:00:00Z',
           'checkedAt': '2026-10-01T00:05:00Z',
@@ -50,7 +50,7 @@ void main() {
     'road-event provider falls back to persisted NZTA events offline',
     () async {
       SharedPreferences.setMockInitialValues({
-        'kiwi.cache.road_events.v1': jsonEncode({
+        'waybi.cache.road_events.v1': jsonEncode({
           'syncStatus': 'live',
           'checkedAt': '2026-10-01T00:05:00Z',
           'events': [

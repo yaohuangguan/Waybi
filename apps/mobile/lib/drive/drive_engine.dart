@@ -92,6 +92,7 @@ class DriveEngine extends ChangeNotifier {
   List<RoadEvent> upcomingRoadEvents = const [];
   List<TrafficFlowSegment> trafficFlowSegments = const [];
   DateTime? trafficFlowUpdatedAt;
+  TrafficTileOverlay? trafficTileOverlay;
   String trafficFlowStatus = 'not_loaded';
   int trafficFlowRevision = 0;
   String roadIntelligenceStatus = 'not_loaded';
@@ -251,7 +252,7 @@ class DriveEngine extends ChangeNotifier {
 
     // Keep the puck on the freshly-calculated route origin until iOS provides
     // a trustworthy fix. This prevents an indoor 50–100 m GPS jump from
-    // instantly moving the Kiwi onto a nearby motorway.
+    // instantly moving the Waybi onto a nearby motorway.
     if (routeStart != null) {
       locationAccuracyMeters = 20;
       _onLocation(
@@ -265,9 +266,9 @@ class DriveEngine extends ChangeNotifier {
         distanceFilter: 0,
         intervalDuration: const Duration(seconds: 1),
         foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'Kiwi Lens Drive',
+          notificationTitle: 'Waybi Drive',
           notificationText: 'Navigation and safety-camera alerts are active',
-          notificationChannelName: 'Kiwi Lens navigation',
+          notificationChannelName: 'Waybi navigation',
           enableWakeLock: true,
           setOngoing: true,
         ),
@@ -351,6 +352,7 @@ class DriveEngine extends ChangeNotifier {
     try {
       final snapshot = await _trafficFlowRepository.load();
       trafficFlowSegments = snapshot.segments;
+      trafficTileOverlay = snapshot.tileOverlay;
       trafficFlowUpdatedAt =
           snapshot.sourceUpdatedAt ?? snapshot.checkedAt ?? DateTime.now();
       trafficFlowStatus = snapshot.syncStatus;
@@ -362,6 +364,7 @@ class DriveEngine extends ChangeNotifier {
         notifyListeners();
       } else {
         trafficFlowStatus = 'stale';
+        notifyListeners();
       }
     }
     _trafficFlowRefreshTimer ??= Timer.periodic(

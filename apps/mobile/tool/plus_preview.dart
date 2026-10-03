@@ -3,18 +3,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:kiwi_lens_mobile/data/account_repository.dart';
-import 'package:kiwi_lens_mobile/data/plus_billing.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
-import 'package:kiwi_lens_mobile/widgets/plus_page.dart';
-import 'package:kiwi_lens_mobile/widgets/trips_page.dart';
+import 'package:waybi_mobile/data/account_repository.dart';
+import 'package:waybi_mobile/data/plus_billing.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/theme/waybi_theme.dart';
+import 'package:waybi_mobile/widgets/plus_page.dart';
+import 'package:waybi_mobile/widgets/trips_page.dart';
 
 class PreviewAccount extends AccountRepository {
   PreviewAccount() {
     profile = const AccountProfile(
       email: 'driver@example.test',
-      displayName: 'Kiwi',
+      displayName: 'Waybi',
       providers: [],
       routes: [],
       places: [],
@@ -84,9 +84,7 @@ class _PlusPreviewState extends State<PlusPreview> {
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
-    theme: dark
-        ? KiwiLensTheme.darkFor(language)
-        : KiwiLensTheme.lightFor(language),
+    theme: dark ? WaybiTheme.darkFor(language) : WaybiTheme.lightFor(language),
     locale: Locale(language),
     supportedLocales: const [Locale('en'), Locale('zh')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,

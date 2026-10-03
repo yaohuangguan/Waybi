@@ -1,7 +1,7 @@
 import 'geometry.dart';
 import 'layers.dart';
 
-/// Provider-neutral overlay contract. Kiwi Lens can feed this from its own
+/// Provider-neutral overlay contract. Waybi can feed this from its own
 /// Road Intelligence API; a B2B consumer can provide another implementation
 /// without coupling the map renderer to authentication or HTTP.
 abstract interface class RoadIntelligenceLayerSource
@@ -18,7 +18,7 @@ class RoadIntelligenceLayerSnapshot {
   final String sourceStatus;
   final DateTime? updatedAt;
 
-  /// Decodes the stable event shape returned by Kiwi Lens Road Intelligence.
+  /// Decodes the stable event shape returned by Waybi Road Intelligence.
   /// Transport/authentication deliberately remain the caller's responsibility.
   factory RoadIntelligenceLayerSnapshot.fromApiJson(Map<String, dynamic> json) {
     final features = (json['events'] as List<dynamic>? ?? const [])

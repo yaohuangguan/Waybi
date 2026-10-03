@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../domain/map_layer_settings.dart';
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 class CameraMarkerArt {
   static final Map<String, Future<Uint8List>> _cache = {};
@@ -76,7 +76,7 @@ class CameraMarkerArt {
       paint
         ..style = PaintingStyle.stroke
         ..strokeWidth = 5
-        ..color = KiwiLensColors.sky;
+        ..color = WaybiColors.sky;
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           const Rect.fromLTWH(7.5, 3.5, 77, 79),

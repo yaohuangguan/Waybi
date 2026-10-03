@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 class TripDestination {
   const TripDestination({
@@ -244,19 +244,19 @@ class _TripsPageState extends State<TripsPage> {
   Color _trafficColor(RouteOption route) {
     final delay = route.trafficDelaySeconds ?? 0;
     if (delay >= 600 || route.traffic.trafficJam > 0) {
-      return KiwiLensColors.danger;
+      return WaybiColors.danger;
     }
     if (delay >= 180 || route.traffic.slow > 0) {
-      return KiwiLensColors.warning;
+      return WaybiColors.warning;
     }
-    return KiwiLensColors.success;
+    return WaybiColors.success;
   }
 
   Color _watchColor(RouteWatchItem? watch) => switch (watch?.status) {
-    'disrupted' => KiwiLensColors.danger,
-    'warning' => KiwiLensColors.warning,
-    'advisory' => KiwiLensColors.ocean,
-    'healthy' => KiwiLensColors.success,
+    'disrupted' => WaybiColors.danger,
+    'warning' => WaybiColors.warning,
+    'advisory' => WaybiColors.ocean,
+    'healthy' => WaybiColors.success,
     _ => Theme.of(context).colorScheme.outline,
   };
 
@@ -1105,8 +1105,8 @@ class _TripsPageState extends State<TripsPage> {
               const SizedBox(height: 5),
               Text(
                 _text(
-                  'Kiwi Lens compares today’s live Home ↔ Work time with your saved baseline and keeps watching official NZTA road disruptions in the background.',
-                  'Kiwi Lens 会把今天家 ↔ 公司的实时通勤与平时基准对比，并持续后台监控 NZTA 官方道路异常。',
+                  'Waybi compares today’s live Home ↔ Work time with your saved baseline and keeps watching official NZTA road disruptions in the background.',
+                  'Waybi 会把今天家 ↔ 公司的实时通勤与平时基准对比，并持续后台监控 NZTA 官方道路异常。',
                 ),
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
@@ -1127,8 +1127,8 @@ class _TripsPageState extends State<TripsPage> {
                 _EmptyCard(
                   icon: Icons.lock_outline_rounded,
                   text: _text(
-                    'Sign in from My Kiwi Lens to save Smart Commute to your account.',
-                    '请先在“我的 Kiwi Lens”登录，再把智能通勤保存到账号。',
+                    'Sign in from My Waybi to save Smart Commute to your account.',
+                    '请先在“我的 Waybi”登录，再把智能通勤保存到账号。',
                   ),
                 )
               else if (!(snapshot!.quickPlaces.containsKey('Home') &&

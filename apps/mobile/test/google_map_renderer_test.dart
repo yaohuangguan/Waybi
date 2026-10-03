@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/providers/google_map_renderer.dart';
+import 'package:waybi_mobile/providers/google_map_renderer.dart';
 
 void main() {
   test('POI tap cancels a pending blank-map dismissal', () {

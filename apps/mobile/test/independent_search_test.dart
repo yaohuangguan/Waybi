@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/providers/place_search_providers.dart';
-import 'package:kiwi_lens_mobile/widgets/full_screen_search.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/providers/place_search_providers.dart';
+import 'package:waybi_mobile/widgets/full_screen_search.dart';
 
 void main() {
   test('two-character Chinese searches identify app, preserve UTF-8 and cache repeated queries', () async {
@@ -15,7 +15,7 @@ void main() {
       requestSpacing: Duration.zero,
       client: MockClient((request) async {
         requests++;
-        expect(request.headers['User-Agent'], startsWith('KiwiLens/'));
+        expect(request.headers['User-Agent'], startsWith('Waybi/'));
         expect(request.url.queryParameters['q'], 'cafe');
         return http.Response.bytes(
           utf8.encode(

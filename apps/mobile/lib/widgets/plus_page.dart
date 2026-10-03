@@ -3,7 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../data/account_repository.dart';
 import '../data/plus_billing.dart';
-import 'kiwi_mascot.dart';
+import 'waybi_bird.dart';
 
 /// Native Plus discovery and subscription flow, shared by account and upsell entries.
 class PlusPage extends StatefulWidget {
@@ -386,7 +386,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Kiwi Lens Plus',
+          'Waybi Plus',
           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
         actions: [
@@ -426,7 +426,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const KiwiMascot(size: 74),
+                    const WaybiBird(size: 74),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -443,8 +443,8 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                 const SizedBox(height: 13),
                 Text(
                   t(
-                    'Less guesswork before you leave. More help when you arrive. Your Kiwi, with a few extra superpowers.',
-                    '出发前少一点猜测，到达时多一点顺畅。你的小小 Kiwi，拥有更多贴心本领。',
+                    'Less guesswork before you leave. More help when you arrive. Your Waybi, with a few extra superpowers.',
+                    '出发前少一点猜测，到达时多一点顺畅。你的小小 Waybi，拥有更多贴心本领。',
                   ),
                   style: const TextStyle(
                     color: Color(0xffc4d3b8),
@@ -616,7 +616,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
               ),
               TextButton(
                 onPressed: () => _openDocument(
-                  'https://github.com/yaohuangguan/kiwi-lens#privacy',
+                  'https://github.com/yaohuangguan/Waybi#privacy',
                 ),
                 child: Text(t('Privacy & data', '隐私与数据')),
               ),
@@ -691,7 +691,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                           isPlus
                               ? (canManage
                                     ? t('Manage subscription', '管理订阅')
-                                    : t('Let’s go, Kiwi', '回到地图，出发吧'))
+                                    : t('Let’s go, Waybi', '回到地图，出发吧'))
                               : !widget.account.signedIn
                               ? t('Sign in to continue', '登录后继续')
                               : _offering?.available == true
@@ -790,7 +790,7 @@ class _PlusSignInState extends State<_PlusSignIn> {
           children: [
             Text(
               _register
-                  ? t('Create your Kiwi account', '创建 Kiwi 账户')
+                  ? t('Create your Waybi account', '创建 Waybi 账户')
                   : t('Welcome back.', '欢迎回来。'),
               style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w700),
             ),

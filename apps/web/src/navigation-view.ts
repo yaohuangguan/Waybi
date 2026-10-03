@@ -1,4 +1,4 @@
-import { nearestOnRoute, type Coordinate, type Route } from '@kiwi-lens/core';
+import { nearestOnRoute, type Coordinate, type Route } from '@waybi/core';
 
 const EARTH_RADIUS_METRES = 6_371_008.8;
 

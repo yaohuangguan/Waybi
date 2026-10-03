@@ -22,18 +22,18 @@ async function boot() {
     app?.remove();
 
     if (path === '/dashboard') {
-      renderBootState('Loading your Kiwi Lens dashboard…');
+      renderBootState('Loading your Waybi dashboard…');
       await import('./dashboard');
       return;
     }
 
-    renderBootState('Loading Kiwi Lens…');
+    renderBootState('Loading Waybi…');
     await import('./marketing');
   } catch (error) {
-    console.error('Kiwi Lens route failed to load', error);
+    console.error('Waybi route failed to load', error);
     document.body.innerHTML = `
       <main style="min-height:100vh;display:grid;place-items:center;padding:32px;background:#F8FBEF;font-family:system-ui,sans-serif;color:#152510">
-        <div style="max-width:520px;text-align:center"><h1>Kiwi Lens could not load this page.</h1><p style="color:#64705B">Refresh the page or return to the website.</p><a href="/" style="color:#486B29;font-weight:700">Return home</a></div>
+        <div style="max-width:520px;text-align:center"><h1>Waybi could not load this page.</h1><p style="color:#64705B">Refresh the page or return to the website.</p><a href="/" style="color:#486B29;font-weight:700">Return home</a></div>
       </main>`;
   }
 }

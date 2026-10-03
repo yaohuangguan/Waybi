@@ -1,9 +1,12 @@
+import roadGeometry from '../data/traffic-road-geometry.json' with { type: 'json' };
+import { distance } from './traffic_geometry.mjs';
+import { trafficTileConfig } from './traffic_tiles.mjs';
 export const TRAFFIC_FLOW_SOURCE =
   'https://trafficnz.info/service/traffic-conditions/rest/2';
 export const TRAFFIC_FLOW_SOURCE_PAGE =
   'https://www.nzta.govt.nz/about-us/our-data-and-official-information/use-our-data/about-the-apis';
 
-const CACHE_KEY = 'traffic-flow/current';
+const CACHE_KEY = 'waybi:traffic-flow/v2';
 const FRESH_MS = 60 * 1000;
 
 function finite(value) {
@@ -205,7 +208,7 @@ export async function fetchNztaTrafficFlow(fetcher = fetch, now = new Date()) {
     headers: {
       accept: 'application/xml, application/json;q=0.9',
       'user-agent':
-        'Kiwi Lens/0.1 (https://github.com/yaohuangguan/kiwi-lens)',
+        'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)',
     },
     signal: AbortSignal.timeout(15000),
   });
@@ -225,6 +228,26 @@ export async function fetchNztaTrafficFlow(fetcher = fetch, now = new Date()) {
   return normalizeTrafficFlowXml(raw, now);
 }
 
+export function withRoadGeometry(state, env = {}, now = new Date()) {
+  const sourceAt = Date.parse(state.sourceUpdatedAt || '');
+  const live = state.syncStatus === 'live' && Number.isFinite(sourceAt) && now.getTime() - sourceAt < 10 * 60 * 1000;
+  return { ...state,
+    syncStatus: live ? 'live' : 'stale',
+    coverage: 'published-nzta-sections',
+    tileOverlay: trafficTileConfig(env),
+    geometryUpdatedAt: roadGeometry.generatedAt,
+    segments: state.segments.map(segment => {
+      const shape = roadGeometry.segments[segment.id];
+      const start = [segment.start.longitude, segment.start.latitude], end = [segment.end.longitude, segment.end.latitude];
+      const valid = shape && distance(start, shape.start) < 40 && distance(end, shape.end) < 40;
+      return { ...segment, level: live ? segment.level : 'unknown',
+        geometry: valid ? { type: 'LineString', coordinates: shape.coordinates } : null,
+        geometryQuality: valid ? 'road-matched' : 'unmatched', source: 'nzta',
+      };
+    }),
+  };
+}
+
 export async function loadTrafficFlowState(
   env,
   fetcher = fetch,
@@ -235,13 +258,13 @@ export async function loadTrafficFlowState(
   const fresh =
     Number.isFinite(checked) && now.getTime() - checked < FRESH_MS;
   if (fresh && Array.isArray(stored?.segments) && stored.segments.length) {
-    return stored;
+    return withRoadGeometry(stored, env, now);
   }
 
   try {
     const live = await fetchNztaTrafficFlow(fetcher, now);
     await env.CAMERA_DATA.put(CACHE_KEY, JSON.stringify(live));
-    return live;
+    return withRoadGeometry(live, env, now);
   } catch (error) {
     if (Array.isArray(stored?.segments) && stored.segments.length) {
       const stale = {
@@ -251,7 +274,7 @@ export async function loadTrafficFlowState(
         syncError: String(error?.message || error),
       };
       await env.CAMERA_DATA.put(CACHE_KEY, JSON.stringify(stale));
-      return stale;
+      return withRoadGeometry(stale, env, now);
     }
     throw error;
   }

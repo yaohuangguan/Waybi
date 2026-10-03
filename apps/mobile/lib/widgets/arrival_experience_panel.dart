@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/parking_repository.dart';
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 class ArrivalExperiencePanel extends StatelessWidget {
   const ArrivalExperiencePanel({
@@ -262,7 +262,7 @@ class _ArrivalIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ColoredBox(
-    color: KiwiLensColors.ocean.withValues(alpha: .13),
+    color: WaybiColors.ocean.withValues(alpha: .13),
     child: Center(
       child: Icon(Icons.location_on_rounded, color: scheme.primary, size: 32),
     ),

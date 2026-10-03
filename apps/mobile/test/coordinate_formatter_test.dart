@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/coordinate_formatter.dart';
+import 'package:waybi_mobile/domain/coordinate_formatter.dart';
 
 void main() {
   test('formats map coordinates consistently for place cards', () {

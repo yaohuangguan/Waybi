@@ -12,10 +12,8 @@ class SpeedLimitInfo {
 }
 
 class SpeedLimitRepository {
-  SpeedLimitRepository({
-    http.Client? client,
-    this.baseUrl = workerBaseUrl,
-  }) : _client = client ?? http.Client();
+  SpeedLimitRepository({http.Client? client, this.baseUrl = workerBaseUrl})
+    : _client = client ?? http.Client();
 
   final http.Client _client;
   final String baseUrl;

@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
-import 'package:kiwi_lens_mobile/providers/independent_navigation_engine.dart';
-import 'package:kiwi_lens_mobile/widgets/independent_navigation_overlay.dart';
-import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/domain/safety_camera.dart';
+import 'package:waybi_mobile/providers/independent_navigation_engine.dart';
+import 'package:waybi_mobile/widgets/independent_navigation_overlay.dart';
+import 'package:waybi_mobile/theme/waybi_theme.dart';
 
-import 'independent_navigation_engine_test.dart' show FakeDrive, makeRoute, origin;
+import 'independent_navigation_engine_test.dart'
+    show FakeDrive, makeRoute, origin;
 
 void main() {
   testWidgets(
@@ -41,7 +42,7 @@ void main() {
       drive.upcomingCameraDistanceMeters = 300;
       await tester.pumpWidget(
         MaterialApp(
-          theme: KiwiLensTheme.dark,
+          theme: WaybiTheme.dark,
           home: Scaffold(
             body: IndependentNavigationOverlay(
               engine: nav,

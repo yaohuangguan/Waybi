@@ -215,7 +215,7 @@ importers:
       '@googlemaps/js-api-loader':
         specifier: ^2.1.3
         version: 2.1.3
-      '@kiwi-lens/core':
+      '@waybi/core':
         specifier: workspace:*
         version: link:../../packages/core
     devDependencies:

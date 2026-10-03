@@ -1,3 +1,4 @@
+import { clientKind } from './brand_compat.mjs';
 import Stripe from 'stripe';
 import { reconcileEntitlement } from './billing_entitlements.mjs';
 import { appleConfig, syncAppleTransaction } from './apple_billing.mjs';
@@ -57,7 +58,7 @@ export async function syncSubscription(db, stripe, env, subscriptionId, now = Da
   const owner = await db.prepare('SELECT user_id FROM billing_customers WHERE customer_id = ?').bind(customerId).first();
   if (!owner) return false;
   const item = subscription.items?.data?.find((i) => [env.STRIPE_PRICE_MONTHLY, env.STRIPE_PRICE_ANNUAL].includes(objectId(i.price)));
-  // Unrelated products in the same Stripe account never grant Kiwi Plus.
+  // Unrelated products in the same Stripe account never grant Waybi Plus.
   if (!item) return false;
   const periodEnd = Number(item.current_period_end ?? subscription.current_period_end) * 1000;
   if (!Number.isFinite(periodEnd) || periodEnd <= 0) throw new Error('Missing subscription period');
@@ -126,8 +127,8 @@ export async function handleBilling(request, env, dependencies = {}) {
     try { return await webhook(request, env, stripe, now); }
     catch (error) { console.error('Stripe fulfillment failed', error?.type || 'storage'); return respond({ error: 'Fulfillment will be retried' }, 500); }
   }
-  if (request.method !== 'GET' && (!((request.headers.get('origin') === url.origin && request.headers.get('x-kiwi-client') === 'web') ||
-      (url.pathname === '/api/billing/apple/verify' && !request.headers.get('origin') && request.headers.get('x-kiwi-client') === 'mobile')))) {
+  if (request.method !== 'GET' && (!((request.headers.get('origin') === url.origin && clientKind(request) === 'web') ||
+      (url.pathname === '/api/billing/apple/verify' && !request.headers.get('origin') && clientKind(request) === 'mobile')))) {
     return respond({ error: 'Invalid request origin' }, 403);
   }
   const user = await userFromRequest(env.USER_DB, request);

@@ -1,12 +1,12 @@
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/route_option.dart';
 
-const _ink = KiwiLensColors.darkOcean;
-const _accent = KiwiLensColors.sky;
+const _ink = WaybiColors.darkOcean;
+const _accent = WaybiColors.sky;
 
 String _duration(int seconds) {
   final duration = Duration(seconds: seconds);

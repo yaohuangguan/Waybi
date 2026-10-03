@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const mobile = resolve(root, 'apps/mobile');
 const releaseApp = resolve(mobile, 'build/ios/iphoneos/Runner.app');
-const bundleId = 'me.samyao.kiwilens';
+const bundleId = 'me.samyao.waybi';
 const mode = process.argv[2] ?? 'install';
 const buildDefines = existsSync(resolve(mobile, '.dart-defines.local.json'))
   ? ['--dart-define-from-file=.dart-defines.local.json'] : [];
@@ -77,7 +77,7 @@ function signingHelp(error) {
 }
 
 function debugOnDevice(device) {
-  console.log('Starting Kiwi Lens debug build on ' + device.name + '...');
+  console.log('Starting Waybi debug build on ' + device.name + '...');
   const child = spawn(
     'flutter',
     ['run', '-d', device.id, '--no-dds', ...buildDefines],
@@ -115,7 +115,7 @@ function installRelease(device) {
     { stdio: 'inherit' },
   );
 
-  console.log('Launching Kiwi Lens...');
+  console.log('Launching Waybi...');
   try {
     run(
       'xcrun',
@@ -123,11 +123,11 @@ function installRelease(device) {
       { stdio: 'inherit' },
     );
   } catch {
-    console.warn('Install succeeded, but automatic launch failed. Open Kiwi Lens from the iPhone home screen.');
+    console.warn('Install succeeded, but automatic launch failed. Open Waybi from the iPhone home screen.');
   }
 
   console.log('');
-  console.log('Kiwi Lens Release is installed on ' + device.name + '.');
+  console.log('Waybi Release is installed on ' + device.name + '.');
   console.log('Future runs of pnpm mobile:ios:install will rebuild and install the new version over the existing app.');
 }
 
@@ -172,6 +172,6 @@ function main() {
 try {
   main();
 } catch (error) {
-  console.error('\nKiwi Lens iOS command failed: ' + error.message);
+  console.error('\nWaybi iOS command failed: ' + error.message);
   process.exit(1);
 }

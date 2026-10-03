@@ -17,7 +17,7 @@ class RouteRepository {
     required LatLng origin,
     required LatLng destination,
     List<LatLng> stops = const [],
-    KiwiTravelMode? mode,
+    WaybiTravelMode? mode,
   }) async {
     final uri = Uri.parse('$baseUrl/api/route-options').replace(
       queryParameters: {
@@ -41,7 +41,7 @@ class RouteRepository {
         .where(
           (option) =>
               option.points.length >= 2 ||
-              option.mode == KiwiTravelMode.transit,
+              option.mode == WaybiTravelMode.transit,
         )
         .toList(growable: false);
     if (options.isEmpty) throw StateError('No routes available');

@@ -1,5 +1,5 @@
 import { importLibrary } from '@googlemaps/js-api-loader';
-import { distanceMeters, type Coordinate, type Route, type RouteStep } from '@kiwi-lens/core';
+import { distanceMeters, type Coordinate, type Route, type RouteStep } from '@waybi/core';
 
 function maneuverParts(raw?: string) {
   const value = (raw || '').toLowerCase();

@@ -1,3 +1,4 @@
+import { independentExplore } from './independent_explore.mjs';
 import { geoapifyExplore } from './compatible_places.mjs';
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -175,6 +176,7 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
   }
   if (url.pathname === '/api/explore') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+    if (url.searchParams.get('provider') === 'osm') return independentExplore(url, env);
     if (url.searchParams.get('provider') === 'geoapify') {
       return geoapifyExplore(url, env);
     }
@@ -353,8 +355,8 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     provider.searchParams.set('zoom', '14');
     provider.searchParams.set('addressdetails', '1');
     const upstream = await fetch(provider, {
-      headers: { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)',
-        referer: 'https://github.com/yaohuangguan/kiwi-lens', accept: 'application/json' },
+      headers: { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)',
+        referer: 'https://github.com/yaohuangguan/Waybi', accept: 'application/json' },
       signal: AbortSignal.timeout(10000)
     });
     if (!upstream.ok) return json({ error: 'Current-place lookup unavailable' }, 502);

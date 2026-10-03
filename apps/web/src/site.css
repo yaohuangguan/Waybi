@@ -224,10 +224,10 @@ button, input { font: inherit; }
   .dashboard-empty-actions .site-primary-button { width:100%; }
 }
 
-/* Canonical Kiwi Lens mark: website, dashboard and PWA use the same source. */
+/* Canonical Waybi mark: website, dashboard and PWA use the same source. */
 .site-logo img { width: 34px; height: 34px; display: block; border-radius: 9px; }
 
-/* Source artwork cropped directly from the approved Kiwi Lens identity board. */
+/* Source artwork cropped directly from the approved Waybi identity board. */
 .site-lockup { display: block; width: 217px; height: auto; mix-blend-mode: multiply; }
 .mini-brand .site-lockup { width: 170px; mix-blend-mode: normal; }
 .product-window-bar { background: #fff; color: #152510; border-bottom: 1px solid #DBE5CB; }

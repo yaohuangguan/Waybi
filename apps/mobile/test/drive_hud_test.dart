@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
-import 'package:kiwi_lens_mobile/drive/drive_engine.dart';
-import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
-import 'package:kiwi_lens_mobile/widgets/drive_hud.dart';
+import 'package:waybi_mobile/domain/safety_camera.dart';
+import 'package:waybi_mobile/drive/drive_engine.dart';
+import 'package:waybi_mobile/theme/waybi_theme.dart';
+import 'package:waybi_mobile/widgets/drive_hud.dart';
 
 void main() {
   testWidgets(
@@ -31,7 +31,7 @@ void main() {
       addTearDown(engine.dispose);
       await tester.pumpWidget(
         MaterialApp(
-          theme: KiwiLensTheme.darkFor('zh'),
+          theme: WaybiTheme.darkFor('zh'),
           locale: const Locale('zh'),
           supportedLocales: const [Locale('zh')],
           localizationsDelegates: GlobalMaterialLocalizations.delegates,

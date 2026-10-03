@@ -57,15 +57,15 @@ class SafetyCameraSnapshot {
 abstract interface class SafetyCameraLayerSource
     implements MapLayerSource<SafetyCameraSnapshot> {}
 
-/// Default camera source shipped with Kiwi Lens Map.
+/// Default camera source shipped with Waybi Map.
 ///
-/// It uses the public Kiwi Lens camera endpoint so a standalone map gets the
+/// It uses the public Waybi camera endpoint so a standalone map gets the
 /// official camera positions without requiring the host app to build another
 /// adapter. Hosts can replace this source with their own implementation.
-class KiwiLensSafetyCameraSource implements SafetyCameraLayerSource {
-  KiwiLensSafetyCameraSource({
+class WaybiSafetyCameraSource implements SafetyCameraLayerSource {
+  WaybiSafetyCameraSource({
     http.Client? client,
-    this.baseUrl = 'https://kiwi-lens.nzs.workers.dev',
+    this.baseUrl = 'https://waybi.nzs.workers.dev',
   }) : _client = client ?? http.Client(),
        _ownsClient = client == null;
 

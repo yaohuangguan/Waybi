@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
-import 'package:kiwi_lens_mobile/widgets/explore_search.dart';
+import 'package:waybi_mobile/widgets/explore_search.dart';
 
 void main() {
   testWidgets('destination icon is painted and visible without an icon font', (

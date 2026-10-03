@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/data/account_repository.dart';
-import 'package:kiwi_lens_mobile/data/plus_billing.dart';
-import 'package:kiwi_lens_mobile/widgets/plus_page.dart';
+import 'package:waybi_mobile/data/account_repository.dart';
+import 'package:waybi_mobile/data/plus_billing.dart';
+import 'package:waybi_mobile/widgets/plus_page.dart';
 
 class TestAccount extends AccountRepository {
   TestAccount({this.loggedIn = true}) {
@@ -249,7 +249,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Free map'), findsOneWidget);
       expect(find.text('Account'), findsNothing);
-      expect(find.text('Kiwi Lens Plus'), findsNothing);
+      expect(find.text('Waybi Plus'), findsNothing);
     },
   );
 }

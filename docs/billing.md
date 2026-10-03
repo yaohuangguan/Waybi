@@ -1,4 +1,4 @@
-# Kiwi Lens Plus billing
+# Waybi Plus billing
 
 Flutter is the primary product. The iOS subscription flow uses Apple's StoreKit 2 through `in_app_purchase`. Stripe backend APIs are retained for a future website channel; the iOS app does not open Stripe Checkout or link to website purchases. This change adds no website purchase UI, keeping the website's App Store acquisition direction.
 
@@ -6,12 +6,12 @@ The code is ready for configuration. App Store Connect products and merchant cre
 
 ## Apple setup
 
-Create the Kiwi Lens application with bundle ID `me.samyao.kiwilens`. Create one auto-renewable subscription group containing two products at the same service level:
+Create the Waybi application with bundle ID `me.samyao.waybi`. Create one auto-renewable subscription group containing two products at the same service level:
 
 | Product ID | Duration | Planned New Zealand price |
 | --- | --- | --- |
-| `me.samyao.kiwilens.plus.monthly` | 1 month | NZ$4.99 |
-| `me.samyao.kiwilens.plus.annual` | 1 year | NZ$39.99 |
+| `me.samyao.waybi.plus.monthly` | 1 month | NZ$4.99 |
+| `me.samyao.waybi.plus.annual` | 1 year | NZ$39.99 |
 
 Set each product's localization, availability, price and review information in App Store Connect. Complete the applicable paid-app agreements and merchant details there. Live native prices come from StoreKit, including the current storefront currency; the application does not charge its fallback display prices.
 
@@ -25,7 +25,7 @@ Generate an **In-App Purchase** key in App Store Connect â†’ Users and Access â†
 
 Optional Worker variables `APPLE_IAP_PRODUCT_MONTHLY` and `APPLE_IAP_PRODUCT_ANNUAL` override product IDs. `APPLE_IAP_ENVIRONMENT=Sandbox` pins a test deployment to Apple's sandbox. The default uses production first and retries sandbox only for Apple's `4040010` transaction-not-found response, supporting TestFlight and App Review. Authentication, network and server failures do not trigger fallback.
 
-The app signs in to a Kiwi account before purchasing and supplies its UUID as StoreKit's `appAccountToken`. The server accepts only a transaction ID, queries authenticated Apple API endpoints and validates the app, product, environment and matching account. It obtains the latest subscription status before storing access. Client receipts, client expiration dates and a successful payment-sheet dismissal never grant Plus. An original subscription cannot be moved to another Kiwi account. Restore requires the original Kiwi account and Apple account.
+The app signs in to a Waybi account before purchasing and supplies its UUID as StoreKit's `appAccountToken`. The server accepts only a transaction ID, queries authenticated Apple API endpoints and validates the app, product, environment and matching account. It obtains the latest subscription status before storing access. Client receipts, client expiration dates and a successful payment-sheet dismissal never grant Plus. An original subscription cannot be moved to another Waybi account. Restore requires the original Waybi account and Apple account.
 
 Only server-verified transactions are finished in StoreKit. Failed verification leaves transactions retryable. The listener is owned by the app root so leaving the Plus page does not drop pending purchases; account restoration retries queued transactions. Restore waits for verification before reporting completion. Valid expired history can be finished without enabling Plus.
 
@@ -33,7 +33,7 @@ Known subscriptions are refreshed on account fetch and by the existing 15-minute
 
 ## Stripe setup (website channel)
 
-Create a Kiwi Lens Plus product with recurring NZD prices of 499 cents/month and 3999 cents/year. Configure Worker secrets:
+Create a Waybi Plus product with recurring NZD prices of 499 cents/month and 3999 cents/year. Configure Worker secrets:
 
 | Secret | Value |
 | --- | --- |
@@ -49,9 +49,9 @@ Enable the Customer Portal for payment method updates and cancellation. Optional
 - `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`
 - `invoice.paid`, `invoice.payment_failed`
 
-Match the webhook endpoint's API version to the pinned Stripe SDK's default API version. Use consistent test/live keys, prices and webhook secrets. Hosted Checkout and Portal sessions are tied to the authenticated Kiwi user. The server chooses prices, validates webhook signatures against the raw body, deduplicates fulfilled events and fetches current subscription state to handle delayed events. A success URL alone does not grant access. Existing manual or paid Plus accounts cannot start a second checkout.
+Match the webhook endpoint's API version to the pinned Stripe SDK's default API version. Use consistent test/live keys, prices and webhook secrets. Hosted Checkout and Portal sessions are tied to the authenticated Waybi user. The server chooses prices, validates webhook signatures against the raw body, deduplicates fulfilled events and fetches current subscription state to handle delayed events. A success URL alone does not grant access. Existing manual or paid Plus accounts cannot start a second checkout.
 
-The authenticated backend exposes `GET /api/billing/status`, `POST /api/billing/checkout` (`plan`, `language`), `POST /api/billing/confirm` (`sessionId`) and `POST /api/billing/portal`. Public prices are at `GET /api/billing/plans`. Browser mutations require the same origin and `x-kiwi-client: web`. Checkout/Portal return URLs currently target `/subscribe`; build that separate website flow before enabling public Stripe purchases. These APIs are deliberately not exposed as a purchasing option inside the iOS app.
+The authenticated backend exposes `GET /api/billing/status`, `POST /api/billing/checkout` (`plan`, `language`), `POST /api/billing/confirm` (`sessionId`) and `POST /api/billing/portal`. Public prices are at `GET /api/billing/plans`. Browser mutations require the same origin and `x-waybi-client: web`. Checkout/Portal return URLs currently target `/subscribe`; build that separate website flow before enabling public Stripe purchases. These APIs are deliberately not exposed as a purchasing option inside the iOS app.
 
 ## Deploy and validate
 
@@ -70,7 +70,7 @@ flutter test
 
 `flutter run -d web-server --target tool/plus_preview.dart` renders the actual Flutter Plus and Trips widgets with clearly labeled sample data for visual checks. It cannot process purchases. Test doubles exercise delayed/rejected server verification, canceled purchases, expired restores, ownership checks, renewal/refund state and preservation of other entitlements; these checks are not a real Apple or Stripe payment test.
 
-After products and secrets are configured, validate on a signed iPhone/TestFlight build with Apple's sandbox: localized products, a new monthly/yearly purchase, cancellation, restoration after app restart, a different Kiwi account's rejection, expiration/refund, subscription management and account synchronization. Test Stripe separately with test Checkout and signed webhook retries before enabling live mode.
+After products and secrets are configured, validate on a signed iPhone/TestFlight build with Apple's sandbox: localized products, a new monthly/yearly purchase, cancellation, restoration after app restart, a different Waybi account's rejection, expiration/refund, subscription management and account synchronization. Test Stripe separately with test Checkout and signed webhook retries before enabling live mode.
 
 Before App Store submission, set the application's privacy-policy URL and subscription metadata in App Store Connect. The current native page links Apple's standard EULA and the repository's published privacy/data description; update the latter to the final public privacy-policy URL when available. This change does not submit the application or configure merchant accounts.
 

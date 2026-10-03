@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
-import 'package:kiwi_lens_mobile/drive/route_camera_matcher.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/domain/safety_camera.dart';
+import 'package:waybi_mobile/drive/route_camera_matcher.dart';
 
 void main() {
   const matcher = RouteCameraMatcher();
   const route = RouteOption(
     id: 'northbound',
-    mode: KiwiTravelMode.drive,
+    mode: WaybiTravelMode.drive,
     durationSeconds: 200,
     distanceMeters: 1100,
     points: [GeoPoint(-36.85, 174.76), GeoPoint(-36.84, 174.76)],

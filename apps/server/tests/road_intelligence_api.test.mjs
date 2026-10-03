@@ -37,10 +37,10 @@ async function fixture(t) {
   const call = (path, options = {}) => handleRoadIntelligence(new Request(ROOT + path, options), env,
     { waitUntil(promise) { pending.push(promise); } }, async () => cameras, { now: NOW, loadRoads: async () => roads });
   t.after(async () => { await Promise.all(pending); });
-  const created = await call('/keys', { method: 'POST', headers: { cookie: `kiwi_session=${token}` }, body: JSON.stringify({ name: 'Integration test' }) });
+  const created = await call('/keys', { method: 'POST', headers: { cookie: `waybi_session=${token}` }, body: JSON.stringify({ name: 'Integration test' }) });
   assert.equal(created.status, 201);
   const key = await created.json();
-  return { call, key, sqlite, headers: { authorization: `Bearer ${key.key}` }, cookie: `kiwi_session=${token}` };
+  return { call, key, sqlite, headers: { authorization: `Bearer ${key.key}` }, cookie: `waybi_session=${token}` };
 }
 
 test('keys are hashed, returned once, owned by the session and revocable', async (t) => {

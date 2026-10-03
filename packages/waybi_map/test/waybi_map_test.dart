@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kiwi_lens_map/kiwi_lens_map.dart';
+import 'package:waybi_map/waybi_map.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -29,7 +29,7 @@ void main() {
   });
 
   test('map core composes optional B2B layers without renderer coupling', () {
-    final stack = KiwiLensMapStack(
+    final stack = WaybiMapStack(
       safetyCameras: _FakeCameraSource(),
       traffic: _FakeTrafficSource(),
       roadIntelligence: _FakeRoadIntelligenceSource(),
@@ -52,9 +52,9 @@ void main() {
   });
 
   test(
-    'default camera source loads and clips Kiwi Lens camera positions',
+    'default camera source loads and clips Waybi camera positions',
     () async {
-      final source = KiwiLensSafetyCameraSource(
+      final source = WaybiSafetyCameraSource(
         baseUrl: 'https://example.test',
         client: MockClient((request) async {
           expect(request.url.path, '/api/cameras');

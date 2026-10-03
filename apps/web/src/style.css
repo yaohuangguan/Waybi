@@ -442,10 +442,10 @@ body[data-mode='explore'] .poi-card { display: flex; flex-direction: column; bot
 .route-info-card { background: #f1f5f1; color: #425258; }.planning-actions button { border-color: #cfe2e6; background: #f2f6f2; color: #355561; }
 @media (min-width: 1100px) { .topbar { background: linear-gradient(90deg,rgba(11,23,23,.99),rgba(11,23,23,.94) 38%,rgba(11,23,23,.8) 62%,rgba(11,23,23,.58)); } }
 
-/* Canonical Kiwi Lens mark. */
+/* Canonical Waybi mark. */
 .brand-icon img { width: 31px; height: 31px; display: block; border-radius: 8px; }
 
-/* Kiwi Lens approved lockup and coastal navigation chrome. */
+/* Waybi approved lockup and coastal navigation chrome. */
 .topbar { background: rgba(255,255,255,.96); color: #152510; box-shadow: 0 8px 20px rgba(3,43,69,.12); }
 .brand { flex: none; }
 .brand img { display: block; width: 185px; height: 44px; object-fit: contain; object-position: left center; mix-blend-mode: multiply; }
@@ -491,7 +491,7 @@ body[data-mode='explore'] .poi-card { display: flex; flex-direction: column; bot
 .parking-pin.selected { width: 36px; height: 36px; background: #486B29; box-shadow: 0 0 0 4px rgba(0,166,166,.2), 0 5px 14px rgba(3,43,69,.27); }
 .nav-parking-hint { margin-top: 10px; padding: 9px 12px; border-radius: 11px; background: #eaf8fa; color: #29441F; font-size: 11px; font-weight: 600; }
 
-/* Kiwi Lens navigation controls */
+/* Waybi navigation controls */
 .topbar { background: #152510; border-bottom: 1px solid rgba(125,211,252,.24); }
 .search-panel { border: 1px solid #cbe4ed; box-shadow: 0 14px 40px rgba(3,43,69,.16); }
 .bottom-panel, .nav-sheet { border-top: 1px solid #DBE5CB; }

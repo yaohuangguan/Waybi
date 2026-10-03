@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 
 import 'data/account_repository.dart';
+import 'data/brand_migration.dart';
 import 'data/app_store_billing.dart';
 import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
@@ -48,7 +49,7 @@ import 'providers/independent_transit_routing_provider.dart';
 import 'providers/place_search_providers.dart';
 import 'providers/provider_contracts.dart';
 import 'services/notification_service.dart';
-import 'theme/kiwi_lens_theme.dart';
+import 'theme/waybi_theme.dart';
 import 'widgets/arrival_experience_panel.dart';
 import 'widgets/map_symbols.dart';
 import 'widgets/independent_navigation_overlay.dart';
@@ -65,19 +66,20 @@ import 'widgets/route_preview_sheet.dart';
 import 'widgets/transit_trip_overlay.dart';
 import 'widgets/trips_page.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const KiwiLensApp());
+  await migrateWaybiPreferences(await SharedPreferences.getInstance());
+  runApp(const WaybiApp());
 }
 
-class KiwiLensApp extends StatefulWidget {
-  const KiwiLensApp({super.key});
+class WaybiApp extends StatefulWidget {
+  const WaybiApp({super.key});
 
   @override
-  State<KiwiLensApp> createState() => _KiwiLensAppState();
+  State<WaybiApp> createState() => _WaybiAppState();
 }
 
-class _KiwiLensAppState extends State<KiwiLensApp> {
+class _WaybiAppState extends State<WaybiApp> {
   ThemeMode _themeMode = ThemeMode.system;
   Locale _locale = const Locale('en');
 
@@ -89,7 +91,7 @@ class _KiwiLensAppState extends State<KiwiLensApp> {
 
   Future<void> _restoreAppearance() async {
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('tasman.appearance') ?? 'system';
+    final saved = prefs.getString('waybi.appearance') ?? 'system';
     final mode = switch (saved) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
@@ -98,7 +100,7 @@ class _KiwiLensAppState extends State<KiwiLensApp> {
     if (mounted) {
       setState(() {
         _themeMode = mode;
-        _locale = Locale(prefs.getString('kiwi.app.language') ?? 'en');
+        _locale = Locale(prefs.getString('waybi.app.language') ?? 'en');
       });
     }
   }
@@ -107,7 +109,7 @@ class _KiwiLensAppState extends State<KiwiLensApp> {
     if (_themeMode == mode) return;
     setState(() => _themeMode = mode);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('tasman.appearance', switch (mode) {
+    await prefs.setString('waybi.appearance', switch (mode) {
       ThemeMode.light => 'light',
       ThemeMode.dark => 'dark',
       ThemeMode.system => 'system',
@@ -117,13 +119,13 @@ class _KiwiLensAppState extends State<KiwiLensApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Kiwi Lens',
+      title: 'Waybi',
       locale: _locale,
       supportedLocales: const [Locale('en'), Locale('zh')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       debugShowCheckedModeBanner: false,
-      theme: KiwiLensTheme.lightFor(_locale.languageCode),
-      darkTheme: KiwiLensTheme.darkFor(_locale.languageCode),
+      theme: WaybiTheme.lightFor(_locale.languageCode),
+      darkTheme: WaybiTheme.darkFor(_locale.languageCode),
       themeMode: _themeMode,
       home: SplashGate(
         child: MapHomePage(
@@ -158,10 +160,10 @@ class _OnboardingFeature extends StatelessWidget {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: KiwiLensColors.ice,
+            color: WaybiColors.ice,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, color: KiwiLensColors.ocean, size: 21),
+          child: Icon(icon, color: WaybiColors.ocean, size: 21),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -172,7 +174,7 @@ class _OnboardingFeature extends StatelessWidget {
                 title,
                 style: const TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: KiwiLensColors.deepOcean,
+                  color: WaybiColors.deepOcean,
                 ),
               ),
               const SizedBox(height: 2),
@@ -181,7 +183,7 @@ class _OnboardingFeature extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 12.5,
                   height: 1.35,
-                  color: KiwiLensColors.lightTextSecondary,
+                  color: WaybiColors.lightTextSecondary,
                 ),
               ),
             ],
@@ -192,8 +194,8 @@ class _OnboardingFeature extends StatelessWidget {
   );
 }
 
-class _TransientKiwiLensBanner extends StatefulWidget {
-  const _TransientKiwiLensBanner({
+class _TransientWaybiBanner extends StatefulWidget {
+  const _TransientWaybiBanner({
     super.key,
     required this.message,
     required this.onDismiss,
@@ -203,11 +205,10 @@ class _TransientKiwiLensBanner extends StatefulWidget {
   final VoidCallback onDismiss;
 
   @override
-  State<_TransientKiwiLensBanner> createState() =>
-      _TransientKiwiLensBannerState();
+  State<_TransientWaybiBanner> createState() => _TransientWaybiBannerState();
 }
 
-class _TransientKiwiLensBannerState extends State<_TransientKiwiLensBanner> {
+class _TransientWaybiBannerState extends State<_TransientWaybiBanner> {
   Timer? _timer;
 
   @override
@@ -230,7 +231,7 @@ class _TransientKiwiLensBannerState extends State<_TransientKiwiLensBanner> {
         padding: const EdgeInsets.fromLTRB(20, 76, 20, 0),
         child: PointerInterceptor(
           child: Material(
-            color: KiwiLensColors.darkOcean.withValues(alpha: .96),
+            color: WaybiColors.darkOcean.withValues(alpha: .96),
             elevation: 8,
             borderRadius: BorderRadius.circular(15),
             child: Padding(
@@ -240,7 +241,7 @@ class _TransientKiwiLensBannerState extends State<_TransientKiwiLensBanner> {
                 children: [
                   const Icon(
                     Icons.info_outline_rounded,
-                    color: KiwiLensColors.sky,
+                    color: WaybiColors.sky,
                     size: 19,
                   ),
                   const SizedBox(width: 9),
@@ -398,7 +399,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   RoutePlan? _routePlan;
   Map<String, RouteCameraSummary> _routeCameraSummaries = const {};
   Map<String, RoutePreferenceSummary> _routePreferenceSummaries = const {};
-  KiwiTravelMode _selectedMode = KiwiTravelMode.drive;
+  WaybiTravelMode _selectedMode = WaybiTravelMode.drive;
   String? _selectedRouteId;
   bool _routePreviewLoading = false;
   int _routeRequest = 0;
@@ -466,7 +467,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
     );
     _independentNavigation.addListener(_onIndependentNavigationChanged);
-    unawaited(KiwiLensNotificationService.instance.initialize());
+    unawaited(WaybiNotificationService.instance.initialize());
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
     _plusBilling.initialize();
@@ -505,7 +506,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _maybeShowCoreOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('tasman.onboarding.core.v1') == true) return;
+    if (prefs.getBool('waybi.onboarding.core.v1') == true) return;
     if (!mounted) return;
     await WidgetsBinding.instance.endOfFrame;
     if (!mounted) return;
@@ -525,7 +526,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               height: 44,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [KiwiLensColors.ocean, KiwiLensColors.teal],
+                  colors: [WaybiColors.ocean, WaybiColors.teal],
                 ),
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -534,7 +535,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                _text('Welcome to Kiwi Lens', '欢迎使用 Kiwi Lens'),
+                _text('Welcome to Waybi', '欢迎使用 Waybi'),
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
@@ -563,16 +564,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               icon: Icons.add_alert_rounded,
               title: _text('Report the road', '上报道路情况'),
               body: _text(
-                'Share crashes, hazards, roadworks, flooding and congestion with other Kiwi Lens drivers.',
-                '向其他 Kiwi Lens 用户分享事故、危险、施工、积水与拥堵。',
+                'Share crashes, hazards, roadworks, flooding and congestion with other Waybi drivers.',
+                '向其他 Waybi 用户分享事故、危险、施工、积水与拥堵。',
               ),
             ),
             _OnboardingFeature(
               icon: Icons.explore_rounded,
               title: _text('Made for New Zealand', '为新西兰道路设计'),
               body: _text(
-                'Kiwi location marker, NZ road data and a calm ocean-blue driving interface.',
-                'Kiwi 定位标记、新西兰道路数据，以及 Kiwi Lens 海洋蓝驾驶界面。',
+                'Waybi location marker, NZ road data and a calm lime driving interface.',
+                'Waybi 定位标记、新西兰道路数据，以及 Waybi lime 驾驶界面。',
               ),
             ),
           ],
@@ -580,7 +581,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         actions: [
           FilledButton.icon(
             onPressed: () async {
-              await prefs.setBool('tasman.onboarding.core.v1', true);
+              await prefs.setBool('waybi.onboarding.core.v1', true);
               if (dialogContext.mounted) Navigator.of(dialogContext).pop();
             },
             icon: const Icon(Icons.arrow_forward_rounded),
@@ -717,7 +718,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final eligible =
         _account.profile?.isPlus == true &&
         _guidanceRunning &&
-        _selectedMode == KiwiTravelMode.drive &&
+        _selectedMode == WaybiTravelMode.drive &&
         remaining != null;
     if (!eligible) {
       if (_arrivalMode && mounted) setState(() => _arrivalMode = false);
@@ -873,7 +874,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
-        'kiwi.navigation.offline_corridor.v1',
+        'waybi.navigation.offline_corridor.v1',
         jsonEncode({
           'cachedAt': now.toIso8601String(),
           'destination': _destinationTitle,
@@ -946,7 +947,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _lastNotifiedCameraId = camera.id;
       final cameraType = CameraKindLabel.fromCamera(camera)
           .localizedLabel(_appLanguage);
-      await KiwiLensNotificationService.instance.showRoadAlert(
+      await WaybiNotificationService.instance.showRoadAlert(
         id: 'camera:${camera.id}',
         title: _text('Safety camera ahead', '前方安全摄像头'),
         body: _text(
@@ -969,7 +970,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           : _notifyRoadIncidents && importantOfficial;
       if (!enabled || !_notifiedRoadEventIds.add(event.id)) continue;
       final reporter = event.metadata['reporterName']?.toString();
-      await KiwiLensNotificationService.instance.showRoadAlert(
+      await WaybiNotificationService.instance.showRoadAlert(
         id: event.id,
         title: _roadEventLabel(event.type),
         body: reporter == null
@@ -1110,7 +1111,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _showRoadEventDetails(RoadEvent event) async {
     final reporter =
         event.metadata['reporterName']?.toString() ??
-        _text('Kiwi Lens driver', 'Kiwi Lens 用户');
+        _text('Waybi driver', 'Waybi 用户');
     final description = event.metadata['description']?.toString();
     final reportedAt =
         DateTime.tryParse(event.metadata['reportedAt']?.toString() ?? '') ??
@@ -1141,12 +1142,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: KiwiLensColors.ice,
+                    color: WaybiColors.ice,
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Icon(
                     Icons.add_alert_rounded,
-                    color: KiwiLensColors.ocean,
+                    color: WaybiColors.ocean,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1156,7 +1157,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     style: const TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.w700,
-                      color: KiwiLensColors.deepOcean,
+                      color: WaybiColors.deepOcean,
                     ),
                   ),
                 ),
@@ -1170,7 +1171,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               ),
               style: const TextStyle(
                 fontWeight: FontWeight.w600,
-                color: KiwiLensColors.deepOcean,
+                color: WaybiColors.deepOcean,
               ),
             ),
             if (description != null && description.isNotEmpty) ...[
@@ -1181,7 +1182,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             Text(
               _remainingTime(event.validUntil),
               style: const TextStyle(
-                color: KiwiLensColors.lightTextSecondary,
+                color: WaybiColors.lightTextSecondary,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1193,23 +1194,23 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _restoreMapSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _useCarMarker = prefs.getBool('kiwi.map.car_marker') ?? false;
+    _useCarMarker = prefs.getBool('waybi.map.car_marker') ?? false;
     _mapProvider = MapProvider.values.firstWhere(
-      (value) => value.name == prefs.getString('kiwi.map.provider'),
+      (value) => value.name == prefs.getString('waybi.map.provider'),
       orElse: () => MapProvider.google,
     );
-    if (prefs.getString('kiwi.map.provider') == 'mapbox') {
+    if (prefs.getString('waybi.map.provider') == 'mapbox') {
       _mapProvider = MapProvider.independent;
     }
     _locationMarker = LocationMarkerStyle.values.firstWhere(
-      (value) => value.name == prefs.getString('kiwi.map.location_marker'),
+      (value) => value.name == prefs.getString('waybi.map.location_marker'),
       orElse: () => LocationMarkerStyle.kiwi,
     );
     _useCarMarker = _locationMarker != LocationMarkerStyle.classic;
-    _quickActions = prefs.getStringList('kiwi.quick_actions') ?? _quickActions;
+    _quickActions = prefs.getStringList('waybi.quick_actions') ?? _quickActions;
     if (_mapProvider == MapProvider.google) _restoreGoogleRecent(prefs);
     for (final action in ['Home', 'Work']) {
-      final record = prefs.getString('kiwi.quick_location.$action');
+      final record = prefs.getString('waybi.quick_location.$action');
       if (record == null) continue;
       try {
         final item = jsonDecode(record) as Map<String, dynamic>;
@@ -1226,7 +1227,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         // Ignore an invalid old shortcut rather than blocking map startup.
       }
     }
-    final parkedCarRecord = prefs.getString('kiwi.plus.parked_car.v1');
+    final parkedCarRecord = prefs.getString('waybi.plus.parked_car.v1');
     if (parkedCarRecord != null) {
       try {
         final item = jsonDecode(parkedCarRecord) as Map<String, dynamic>;
@@ -1244,51 +1245,51 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
           );
         } else {
-          await prefs.remove('kiwi.plus.parked_car.v1');
+          await prefs.remove('waybi.plus.parked_car.v1');
         }
       } catch (_) {
-        await prefs.remove('kiwi.plus.parked_car.v1');
+        await prefs.remove('waybi.plus.parked_car.v1');
       }
     }
-    _appLanguage = prefs.getString('kiwi.app.language') ?? 'en';
-    _voiceLanguage = prefs.getString('kiwi.voice.language') ?? 'en-NZ';
-    _voiceEnabled = prefs.getBool('kiwi.voice.enabled') ?? true;
-    _lanesEnabled = prefs.getBool('kiwi.nav.lanes') ?? true;
-    _keepScreenAwake = prefs.getBool('kiwi.nav.keep_screen_awake') ?? true;
+    _appLanguage = prefs.getString('waybi.app.language') ?? 'en';
+    _voiceLanguage = prefs.getString('waybi.voice.language') ?? 'en-NZ';
+    _voiceEnabled = prefs.getBool('waybi.voice.enabled') ?? true;
+    _lanesEnabled = prefs.getBool('waybi.nav.lanes') ?? true;
+    _keepScreenAwake = prefs.getBool('waybi.nav.keep_screen_awake') ?? true;
     _driveEngine.navigationLanguage = _appLanguage;
     await _driveEngine.setKeepScreenAwake(_keepScreenAwake);
     await NativeMapLanguage.apply(_appLanguage);
     _settingsLoaded = true;
     _notifySafetyCameras =
-        prefs.getBool('tasman.notifications.safety_cameras') ?? false;
+        prefs.getBool('waybi.notifications.safety_cameras') ?? false;
     _notifyRoadIncidents =
-        prefs.getBool('tasman.notifications.road_incidents') ?? false;
+        prefs.getBool('waybi.notifications.road_incidents') ?? false;
     _notifyCommunityReports =
-        prefs.getBool('tasman.notifications.community_reports') ?? false;
+        prefs.getBool('waybi.notifications.community_reports') ?? false;
     _notifySavedRouteDisruptions =
-        prefs.getBool('tasman.notifications.saved_route_disruptions') ?? false;
+        prefs.getBool('waybi.notifications.saved_route_disruptions') ?? false;
     _driveEngine.voiceEnabled = _voiceEnabled;
     _layers = MapLayerSettings(
-      cameras: prefs.getBool('kiwi.layers.cameras') ?? true,
+      cameras: prefs.getBool('waybi.layers.cameras') ?? true,
       spotSpeed:
-          prefs.getBool('tasman.layers.spot_speed') ??
-          prefs.getBool('kiwi.layers.speed') ??
+          prefs.getBool('waybi.layers.spot_speed') ??
+          prefs.getBool('waybi.layers.speed') ??
           true,
-      averageSpeed: prefs.getBool('tasman.layers.average_speed') ?? true,
-      redLight: prefs.getBool('kiwi.layers.red_light') ?? true,
-      dualRedLightSpeed: prefs.getBool('tasman.layers.dual_red_speed') ?? true,
-      busLane: prefs.getBool('tasman.layers.bus_lane') ?? true,
-      other: prefs.getBool('kiwi.layers.other') ?? true,
-      alertSpotSpeed: prefs.getBool('tasman.alerts.spot_speed') ?? true,
-      alertAverageSpeed: prefs.getBool('tasman.alerts.average_speed') ?? true,
-      alertRedLight: prefs.getBool('tasman.alerts.red_light') ?? true,
+      averageSpeed: prefs.getBool('waybi.layers.average_speed') ?? true,
+      redLight: prefs.getBool('waybi.layers.red_light') ?? true,
+      dualRedLightSpeed: prefs.getBool('waybi.layers.dual_red_speed') ?? true,
+      busLane: prefs.getBool('waybi.layers.bus_lane') ?? true,
+      other: prefs.getBool('waybi.layers.other') ?? true,
+      alertSpotSpeed: prefs.getBool('waybi.alerts.spot_speed') ?? true,
+      alertAverageSpeed: prefs.getBool('waybi.alerts.average_speed') ?? true,
+      alertRedLight: prefs.getBool('waybi.alerts.red_light') ?? true,
       alertDualRedLightSpeed:
-          prefs.getBool('tasman.alerts.dual_red_speed') ?? true,
-      alertBusLane: prefs.getBool('tasman.alerts.bus_lane') ?? true,
-      alertOther: prefs.getBool('tasman.alerts.other_camera') ?? false,
-      traffic: prefs.getBool('kiwi.layers.traffic') ?? false,
+          prefs.getBool('waybi.alerts.dual_red_speed') ?? true,
+      alertBusLane: prefs.getBool('waybi.alerts.bus_lane') ?? true,
+      alertOther: prefs.getBool('waybi.alerts.other_camera') ?? false,
+      traffic: prefs.getBool('waybi.layers.traffic') ?? false,
       style: BaseMapStyle.values.firstWhere(
-        (value) => value.name == prefs.getString('kiwi.layers.style'),
+        (value) => value.name == prefs.getString('waybi.layers.style'),
         orElse: () => BaseMapStyle.standard,
       ),
     );
@@ -1366,7 +1367,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (!mounted) return false;
     setState(() {
       _message = whenInUse.isPermanentlyDenied
-          ? 'Location is disabled for Kiwi Lens. Enable it in system settings.'
+          ? 'Location is disabled for Waybi. Enable it in system settings.'
           : 'Location permission is required for navigation.';
     });
     return false;
@@ -1522,9 +1523,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           latitude: place.location.latitude,
           longitude: place.location.longitude,
         ),
-        mode: KiwiTravelMode.drive,
+        mode: WaybiTravelMode.drive,
       );
-      final driving = plan.forMode(KiwiTravelMode.drive).toList()
+      final driving = plan.forMode(WaybiTravelMode.drive).toList()
         ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
       if (driving.isEmpty || !mounted || request != _placeQuickRouteRequest) {
         return;
@@ -1608,9 +1609,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 latitude: entry.value.location.latitude,
                 longitude: entry.value.location.longitude,
               ),
-              mode: KiwiTravelMode.drive,
+              mode: WaybiTravelMode.drive,
             );
-            final driving = plan.forMode(KiwiTravelMode.drive).toList()
+            final driving = plan.forMode(WaybiTravelMode.drive).toList()
               ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
             if (driving.isNotEmpty) results[entry.key] = driving.first;
           } catch (_) {
@@ -1673,9 +1674,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             latitude: destination.location.latitude,
             longitude: destination.location.longitude,
           ),
-          mode: KiwiTravelMode.drive,
+          mode: WaybiTravelMode.drive,
         );
-        final driving = plan.forMode(KiwiTravelMode.drive).toList()
+        final driving = plan.forMode(WaybiTravelMode.drive).toList()
           ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
         if (driving.isNotEmpty) results[label] = driving.first;
       } catch (_) {
@@ -1785,7 +1786,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           for (final layer in layers)
             PolygonOptions(
               points: layer.$1,
-              fillColor: KiwiLensColors.sky.withValues(alpha: layer.$2),
+              fillColor: WaybiColors.sky.withValues(alpha: layer.$2),
               strokeColor: Colors.transparent,
               strokeWidth: 0,
               geodesic: true,
@@ -1915,7 +1916,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _navigationController != null &&
         defaultTargetPlatform == TargetPlatform.iOS) {
       unawaited(
-        const MethodChannel('kiwi_lens/navigation_camera')
+        const MethodChannel('waybi/navigation_camera')
             .invokeMethod<void>('pauseFollowing')
             .catchError((Object e) {
               debugPrint('Pause follow: $e');
@@ -1995,14 +1996,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               ),
               subtitle: Text(
                 _text(
-                  'Reports are shared with Kiwi Lens drivers for about 2 hours.',
-                  '上报内容将在约 2 小时内共享给 Kiwi Lens 驾驶用户。',
+                  'Reports are shared with Waybi drivers for about 2 hours.',
+                  '上报内容将在约 2 小时内共享给 Waybi 驾驶用户。',
                 ),
               ),
             ),
             for (final choice in choices)
               ListTile(
-                leading: Icon(choice.$4, color: KiwiLensColors.ocean),
+                leading: Icon(choice.$4, color: WaybiColors.ocean),
                 title: Text(_text(choice.$2, choice.$3)),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () =>
@@ -2132,7 +2133,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() {
       _routePlan = null;
       _selectedRouteId = null;
-      _selectedMode = KiwiTravelMode.drive;
+      _selectedMode = WaybiTravelMode.drive;
       _routePreviewLoading = false;
       _selectedPlace = null;
       _journeyPhase = JourneyPhase.idle;
@@ -2160,7 +2161,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final place = parking.toPlaceSummary();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
-      'kiwi.plus.parked_car.v1',
+      'waybi.plus.parked_car.v1',
       jsonEncode({
         'name': place.name,
         'address': place.address,
@@ -2286,13 +2287,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     });
     final poi = _selectedPoi;
     if (poi != null) {
-      await _loadRoutePreview(poi, preferredMode: KiwiTravelMode.walk);
+      await _loadRoutePreview(poi, preferredMode: WaybiTravelMode.walk);
     }
   }
 
   Future<void> _loadRoutePreview(
     PointOfInterest poi, {
-    KiwiTravelMode preferredMode = KiwiTravelMode.drive,
+    WaybiTravelMode preferredMode = WaybiTravelMode.drive,
   }) async {
     final origin = _manualOrigin?.location ?? _gpsLocation;
     if (origin == null) {
@@ -2310,13 +2311,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _following = false;
       _message = null;
     });
-    if (preferredMode == KiwiTravelMode.drive &&
+    if (preferredMode == WaybiTravelMode.drive &&
         _selectedParking == null &&
         _selectedPlace != null) {
       unawaited(_loadParking(_selectedPlace!.place));
     }
     final camerasReady = _driveEngine.loadCameras();
-    final trafficReady = preferredMode == KiwiTravelMode.drive
+    final trafficReady = preferredMode == WaybiTravelMode.drive
         ? _driveEngine.loadTrafficFlow()
         : Future<void>.value();
     try {
@@ -2351,7 +2352,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           .forMode(preferredMode)
           .take(3)
           .toList(growable: false);
-      final preferredRoute = preferredMode == KiwiTravelMode.drive
+      final preferredRoute = preferredMode == WaybiTravelMode.drive
           ? recommendedRoute(preferredRoutes, preferenceSummaries)
           : preferredRoutes.firstOrNull;
       if (!mounted || request != _routeRequest) return;
@@ -2363,7 +2364,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _journeyPhase = JourneyPhase.routePreview;
       });
       _driveEngine.setRoute(
-        preferredMode == KiwiTravelMode.drive ? preferredRoute : null,
+        preferredMode == WaybiTravelMode.drive ? preferredRoute : null,
       );
       await _renderRoutePreview();
     } catch (error) {
@@ -2381,7 +2382,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final matcher = const RouteCameraMatcher();
     final summaries = <String, RouteCameraSummary>{};
     for (final route in plan.options) {
-      if (route.mode != KiwiTravelMode.drive) {
+      if (route.mode != WaybiTravelMode.drive) {
         summaries[route.id] = const RouteCameraSummary();
         continue;
       }
@@ -2405,7 +2406,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final summaries = <String, RoutePreferenceSummary>{};
     final matcher = const RouteCameraMatcher();
     for (final route in plan.options) {
-      if (route.mode != KiwiTravelMode.drive) continue;
+      if (route.mode != WaybiTravelMode.drive) continue;
       var congestionScore =
           (route.trafficDelaySeconds ?? 0) +
           route.traffic.trafficJam * 300 +
@@ -2531,25 +2532,25 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           notifySavedRouteDisruptions: _notifySavedRouteDisruptions,
           onNotifySafetyCamerasChanged: (value) => unawaited(
             _setNotificationPreference(
-              'tasman.notifications.safety_cameras',
+              'waybi.notifications.safety_cameras',
               value,
             ),
           ),
           onNotifyRoadIncidentsChanged: (value) => unawaited(
             _setNotificationPreference(
-              'tasman.notifications.road_incidents',
+              'waybi.notifications.road_incidents',
               value,
             ),
           ),
           onNotifyCommunityReportsChanged: (value) => unawaited(
             _setNotificationPreference(
-              'tasman.notifications.community_reports',
+              'waybi.notifications.community_reports',
               value,
             ),
           ),
           onNotifySavedRouteDisruptionsChanged: (value) => unawaited(
             _setNotificationPreference(
-              'tasman.notifications.saved_route_disruptions',
+              'waybi.notifications.saved_route_disruptions',
               value,
             ),
           ),
@@ -2648,7 +2649,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 ),
               ),
               const Text(
-                'Saved to Kiwi Lens only; not published to Google.',
+                'Saved to Waybi only; not published to Google.',
                 style: TextStyle(fontSize: 11, color: Colors.black54),
               ),
             ],
@@ -2722,15 +2723,15 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               )
               .toList(growable: false),
           strokeColor: active
-              ? KiwiLensColors.ocean.withValues(alpha: .92)
-              : KiwiLensColors.sky.withValues(alpha: .38),
+              ? WaybiColors.ocean.withValues(alpha: .92)
+              : WaybiColors.sky.withValues(alpha: .38),
           strokeWidth: active ? 8 : 6,
           zIndex: active ? 18 : 8,
           clickable: false,
         ),
       );
 
-      if (_selectedMode == KiwiTravelMode.drive) {
+      if (_selectedMode == WaybiTravelMode.drive) {
         final intervals = route.trafficIntervals.isEmpty
             ? <TrafficInterval>[
                 TrafficInterval(
@@ -2806,7 +2807,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         language: _appLanguage,
       );
       final transit = transitPlan
-          .forMode(KiwiTravelMode.transit)
+          .forMode(WaybiTravelMode.transit)
           .take(3)
           .toList(growable: false);
       if (!mounted || transit.isEmpty) return transit;
@@ -2814,7 +2815,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _routePlan = RoutePlan(
           options: [
             ...current.options.where(
-              (route) => route.mode != KiwiTravelMode.transit,
+              (route) => route.mode != WaybiTravelMode.transit,
             ),
             ...transit,
           ],
@@ -2840,31 +2841,31 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _selectMode(KiwiTravelMode mode) async {
+  Future<void> _selectMode(WaybiTravelMode mode) async {
     final plan = _routePlan;
     if (plan == null) return;
     var routes = plan.forMode(mode).take(3).toList(growable: false);
     if (routes.isEmpty &&
-        mode == KiwiTravelMode.transit &&
+        mode == WaybiTravelMode.transit &&
         _mapProvider == MapProvider.independent) {
       routes = await _loadIndependentTransitRoutes();
     }
     if (routes.isEmpty) return;
 
-    final selected = mode == KiwiTravelMode.drive
+    final selected = mode == WaybiTravelMode.drive
         ? recommendedRoute(routes, _routePreferenceSummaries) ?? routes.first
         : routes.first;
     setState(() {
       _selectedMode = mode;
       _selectedRouteId = selected.id;
     });
-    _driveEngine.setRoute(mode == KiwiTravelMode.drive ? selected : null);
+    _driveEngine.setRoute(mode == WaybiTravelMode.drive ? selected : null);
     await _renderRoutePreview();
   }
 
   void _selectRoute(RouteOption route) {
     setState(() => _selectedRouteId = route.id);
-    _driveEngine.setRoute(route.mode == KiwiTravelMode.drive ? route : null);
+    _driveEngine.setRoute(route.mode == WaybiTravelMode.drive ? route : null);
     unawaited(_renderRoutePreview());
   }
 
@@ -2896,7 +2897,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final selected = _selectedRoute;
     if (poi == null || selected == null) return;
     final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList('kiwi.saved.routes') ?? <String>[];
+    final saved = prefs.getStringList('waybi.saved.routes') ?? <String>[];
     final record = jsonEncode({
       'savedAt': DateTime.now().toIso8601String(),
       'destination': {
@@ -2929,7 +2930,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     });
     saved.insert(0, record);
     if (saved.length > 20) saved.removeRange(20, saved.length);
-    await prefs.setStringList('kiwi.saved.routes', saved);
+    await prefs.setStringList('waybi.saved.routes', saved);
     if (_account.profile != null && _mapProvider == MapProvider.google) {
       try {
         await _account.recordRoute(
@@ -2958,7 +2959,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _driveEngine.voiceEnabled = value;
     unawaited(
       SharedPreferences.getInstance().then(
-        (prefs) => prefs.setBool('kiwi.voice.enabled', value),
+        (prefs) => prefs.setBool('waybi.voice.enabled', value),
       ),
     );
     if (_mapProvider == MapProvider.independent ||
@@ -2980,7 +2981,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() => _lanesEnabled = value);
     unawaited(
       SharedPreferences.getInstance().then(
-        (prefs) => prefs.setBool('kiwi.nav.lanes', value),
+        (prefs) => prefs.setBool('waybi.nav.lanes', value),
       ),
     );
   }
@@ -2996,8 +2997,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
     if (!await GoogleMapsNavigator.areTermsAccepted()) {
       final accepted = await GoogleMapsNavigator.showTermsAndConditionsDialog(
-        'Kiwi Lens Navigation',
-        'Kiwi Lens',
+        'Waybi Navigation',
+        'Waybi',
       );
       if (!accepted) return false;
     }
@@ -3060,10 +3061,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   NavigationTravelMode? get _nativeTravelMode => switch (_selectedMode) {
-    KiwiTravelMode.drive => NavigationTravelMode.driving,
-    KiwiTravelMode.walk => NavigationTravelMode.walking,
-    KiwiTravelMode.bicycle => NavigationTravelMode.cycling,
-    KiwiTravelMode.transit => null,
+    WaybiTravelMode.drive => NavigationTravelMode.driving,
+    WaybiTravelMode.walk => NavigationTravelMode.walking,
+    WaybiTravelMode.bicycle => NavigationTravelMode.cycling,
+    WaybiTravelMode.transit => null,
   };
 
   Future<void> _startTransitTrip(PointOfInterest poi, RouteOption route) async {
@@ -3092,7 +3093,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               destinationName: _destinationTitle,
               latitude: destination.latitude,
               longitude: destination.longitude,
-              mode: KiwiTravelMode.transit.apiValue,
+              mode: WaybiTravelMode.transit.apiValue,
               distanceMeters: route.distanceMeters,
               durationSeconds: route.durationSeconds,
             )
@@ -3126,7 +3127,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     });
 
     try {
-      if (_selectedMode == KiwiTravelMode.transit) {
+      if (_selectedMode == WaybiTravelMode.transit) {
         await _startTransitTrip(poi, selectedRoute);
         return;
       }
@@ -3179,7 +3180,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       final routeToken = selectedRoute.routeToken;
       final travelMode = _nativeTravelMode!;
       final useRouteToken =
-          _selectedMode == KiwiTravelMode.drive &&
+          _selectedMode == WaybiTravelMode.drive &&
           routeToken != null &&
           routeToken.isNotEmpty;
       final status = await GoogleMapsNavigator.setDestinations(
@@ -3245,7 +3246,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       await _navigationController?.setNavigationUIEnabled(true);
       final navigationController = _navigationController;
       if (navigationController != null) {
-        await _applyKiwiLensNavigationChrome(navigationController);
+        await _applyWaybiNavigationChrome(navigationController);
         await _followNavigationCamera(navigationController);
         await navigationController.setReportIncidentButtonEnabled(false);
       }
@@ -3350,7 +3351,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _parkingLegFinished =
             _selectedParking != null &&
             _parkingOriginalPlace != null &&
-            _selectedMode == KiwiTravelMode.drive;
+            _selectedMode == WaybiTravelMode.drive;
       });
       final parked = _parkingLegFinished ? _selectedParking : null;
       if (parked != null) {
@@ -3617,7 +3618,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   void _restoreGoogleRecent(SharedPreferences prefs) {
     _guestRecent.clear();
     for (final record
-        in prefs.getStringList('kiwi.recent.google') ?? const []) {
+        in prefs.getStringList('waybi.recent.google') ?? const []) {
       try {
         final item = jsonDecode(record) as Map<String, dynamic>;
         _guestRecent.add(
@@ -3649,7 +3650,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         }),
     ];
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('kiwi.recent.google', records);
+    await prefs.setStringList('waybi.recent.google', records);
   }
 
   Future<void> _syncDestinationMarker(
@@ -3756,7 +3757,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               snippet: () {
                 final reporter =
                     event.metadata['reporterName']?.toString() ??
-                    _text('Kiwi Lens driver', 'Kiwi Lens 用户');
+                    _text('Waybi driver', 'Waybi 用户');
                 final time = _relativeTime(
                   DateTime.tryParse(
                         event.metadata['reportedAt']?.toString() ?? '',
@@ -3888,7 +3889,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
     }
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('kiwi.map.car_marker', value);
+    await prefs.setBool('waybi.map.car_marker', value);
     _queueMapRefresh();
   }
 
@@ -3896,7 +3897,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() => _locationMarker = style);
     await _setCarMarker(style != LocationMarkerStyle.classic);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('kiwi.map.location_marker', style.name);
+    await prefs.setString('waybi.map.location_marker', style.name);
     if (_carMarker != null) {
       final controller = _driveEngine.active
           ? _navigationController
@@ -4000,7 +4001,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           : JourneyPhase.placeSelected;
     });
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('kiwi.map.provider', provider.name);
+    await prefs.setString('waybi.map.provider', provider.name);
     if (provider == MapProvider.google) _restoreGoogleRecent(prefs);
     if (provider == MapProvider.independent && _layers.traffic) {
       unawaited(_driveEngine.loadTrafficFlow(force: true));
@@ -4056,24 +4057,24 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _driveEngine.setCameraAlertFilter(value.alerts);
     final prefs = await SharedPreferences.getInstance();
     await Future.wait([
-      prefs.setBool('kiwi.layers.cameras', value.cameras),
-      prefs.setBool('tasman.layers.spot_speed', value.spotSpeed),
-      prefs.setBool('tasman.layers.average_speed', value.averageSpeed),
-      prefs.setBool('kiwi.layers.red_light', value.redLight),
-      prefs.setBool('tasman.layers.dual_red_speed', value.dualRedLightSpeed),
-      prefs.setBool('tasman.layers.bus_lane', value.busLane),
-      prefs.setBool('kiwi.layers.other', value.other),
-      prefs.setBool('tasman.alerts.spot_speed', value.alertSpotSpeed),
-      prefs.setBool('tasman.alerts.average_speed', value.alertAverageSpeed),
-      prefs.setBool('tasman.alerts.red_light', value.alertRedLight),
+      prefs.setBool('waybi.layers.cameras', value.cameras),
+      prefs.setBool('waybi.layers.spot_speed', value.spotSpeed),
+      prefs.setBool('waybi.layers.average_speed', value.averageSpeed),
+      prefs.setBool('waybi.layers.red_light', value.redLight),
+      prefs.setBool('waybi.layers.dual_red_speed', value.dualRedLightSpeed),
+      prefs.setBool('waybi.layers.bus_lane', value.busLane),
+      prefs.setBool('waybi.layers.other', value.other),
+      prefs.setBool('waybi.alerts.spot_speed', value.alertSpotSpeed),
+      prefs.setBool('waybi.alerts.average_speed', value.alertAverageSpeed),
+      prefs.setBool('waybi.alerts.red_light', value.alertRedLight),
       prefs.setBool(
-        'tasman.alerts.dual_red_speed',
+        'waybi.alerts.dual_red_speed',
         value.alertDualRedLightSpeed,
       ),
-      prefs.setBool('tasman.alerts.bus_lane', value.alertBusLane),
-      prefs.setBool('tasman.alerts.other_camera', value.alertOther),
-      prefs.setBool('kiwi.layers.traffic', value.traffic),
-      prefs.setString('kiwi.layers.style', value.style.name),
+      prefs.setBool('waybi.alerts.bus_lane', value.alertBusLane),
+      prefs.setBool('waybi.alerts.other_camera', value.alertOther),
+      prefs.setBool('waybi.layers.traffic', value.traffic),
+      prefs.setString('waybi.layers.style', value.style.name),
     ]);
     if (trafficJustEnabled && _mapProvider == MapProvider.independent) {
       await _driveEngine.loadTrafficFlow(force: true);
@@ -4101,7 +4102,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         mapProvider: _mapProvider,
         language: _appLanguage,
         trafficStatus: _driveEngine.trafficFlowStatus,
-        trafficSegmentCount: _driveEngine.trafficFlowSegments.length,
+        trafficSegmentCount: _driveEngine.trafficFlowSegments
+            .where((s) => s.hasRoadGeometry)
+            .length,
         onChanged: (value) => unawaited(_setMapLayers(value)),
       ),
     );
@@ -4155,7 +4158,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 '${events.length} 个道路事件可能影响这条路线。',
               );
         if (id.isNotEmpty) {
-          await KiwiLensNotificationService.instance.showPlusCommuteAlert(
+          await WaybiNotificationService.instance.showPlusCommuteAlert(
             id: id,
             title: title,
             body: body,
@@ -4181,22 +4184,22 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
     if (value) {
-      await KiwiLensNotificationService.instance.requestPermission();
+      await WaybiNotificationService.instance.requestPermission();
     }
     if (!mounted) return;
     setState(() {
       switch (key) {
-        case 'tasman.notifications.safety_cameras':
+        case 'waybi.notifications.safety_cameras':
           _notifySafetyCameras = value;
-        case 'tasman.notifications.road_incidents':
+        case 'waybi.notifications.road_incidents':
           _notifyRoadIncidents = value;
-        case 'tasman.notifications.community_reports':
+        case 'waybi.notifications.community_reports':
           _notifyCommunityReports = value;
-        case 'tasman.notifications.saved_route_disruptions':
+        case 'waybi.notifications.saved_route_disruptions':
           _notifySavedRouteDisruptions = value;
       }
     });
-    if (value && key == 'tasman.notifications.saved_route_disruptions') {
+    if (value && key == 'waybi.notifications.saved_route_disruptions') {
       unawaited(_deliverRouteWatchAlerts());
     }
   }
@@ -4205,22 +4208,22 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() => _voiceLanguage = language);
     await _driveEngine.setVoiceLanguage(language);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('kiwi.voice.language', language);
+    await prefs.setString('waybi.voice.language', language);
   }
 
   Future<void> _setAppLanguage(String language) async {
     final next = language == 'zh' ? 'zh' : 'en';
     setState(() => _appLanguage = next);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('kiwi.app.language', next);
+    await prefs.setString('waybi.app.language', next);
     _driveEngine.navigationLanguage = next;
     widget.onAppLanguageChanged?.call(next);
     final applied = await NativeMapLanguage.apply(next);
     if (!applied && mounted) {
       setState(
         () => _message = _text(
-          'Navigation text updated. Change the app language in system Settings for Google map labels, then reopen Kiwi Lens.',
-          '导航文字已更新。Google 地图标签请在系统设置中选择应用语言，然后重新打开 Kiwi Lens。',
+          'Navigation text updated. Change the app language in system Settings for Google map labels, then reopen Waybi.',
+          '导航文字已更新。Google 地图标签请在系统设置中选择应用语言，然后重新打开 Waybi。',
         ),
       );
     }
@@ -4233,7 +4236,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() => _keepScreenAwake = value);
     await _driveEngine.setKeepScreenAwake(value);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('kiwi.nav.keep_screen_awake', value);
+    await prefs.setBool('waybi.nav.keep_screen_awake', value);
   }
 
   void _beginJourney(PointOfInterest poi) {
@@ -4277,18 +4280,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
-    final sheetColor = dark ? KiwiLensColors.darkOcean : scheme.surface;
-    final headerColor = dark ? KiwiLensColors.darkSurface : scheme.surface;
+    final sheetColor = dark ? WaybiColors.darkOcean : scheme.surface;
+    final headerColor = dark ? WaybiColors.darkSurface : scheme.surface;
     final badgeColor = dark
-        ? KiwiLensColors.deepTeal.withValues(alpha: .38)
+        ? WaybiColors.deepTeal.withValues(alpha: .38)
         : scheme.primaryContainer;
-    final badgeForeground = dark
-        ? KiwiLensColors.sky
-        : scheme.onPrimaryContainer;
+    final badgeForeground = dark ? WaybiColors.sky : scheme.onPrimaryContainer;
     final secondaryColor = dark
-        ? KiwiLensColors.darkTextSecondary
+        ? WaybiColors.darkTextSecondary
         : scheme.onSurfaceVariant;
-    final dividerColor = dark ? KiwiLensColors.darkBorder : theme.dividerColor;
+    final dividerColor = dark ? WaybiColors.darkBorder : theme.dividerColor;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -4468,13 +4469,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ? _independentNavigation.remainingSeconds
         : nav?.timeToFinalDestinationSeconds;
     final details =
-        'Kiwi Lens trip to $_destinationTitle. '
+        'Waybi trip to $_destinationTitle. '
         'Remaining: ${remaining == null ? 'unknown' : '${(remaining / 1000).toStringAsFixed(1)} km'}. '
         'ETA: ${arrival == null ? 'unknown' : DateTime.now().add(Duration(seconds: arrival)).toLocal().toString().substring(0, 16)}. '
         'This is an ETA snapshot, not live location sharing.';
     if (!mounted) return;
     try {
-      await const MethodChannel('kiwi_lens/share')
+      await const MethodChannel('waybi/share')
           .invokeMethod<void>('shareText', {'text': details});
     } on MissingPluginException {
       await Clipboard.setData(ClipboardData(text: details));
@@ -4649,10 +4650,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (!_account.signedIn) throw StateError('Sign in to use Route Watch');
     if (_account.profile?.isPlus != true) {
       throw StateError(
-        _text(
-          'Smart Commute is a Kiwi Lens Plus feature.',
-          '智能通勤是 Kiwi Lens Plus 功能。',
-        ),
+        _text('Smart Commute is a Waybi Plus feature.', '智能通勤是 Waybi Plus 功能。'),
       );
     }
     if (!enabled) {
@@ -4685,9 +4683,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         latitude: destination.location.latitude,
         longitude: destination.location.longitude,
       ),
-      mode: KiwiTravelMode.drive,
+      mode: WaybiTravelMode.drive,
     );
-    final driving = plan.forMode(KiwiTravelMode.drive).toList()
+    final driving = plan.forMode(WaybiTravelMode.drive).toList()
       ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
     if (driving.isEmpty || driving.first.points.length < 2) {
       throw StateError(
@@ -4830,7 +4828,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _showSaved() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedRoutes = prefs.getStringList('kiwi.saved.routes') ?? [];
+    final savedRoutes = prefs.getStringList('waybi.saved.routes') ?? [];
     final favoritePlaces =
         (_account.profile?.places ?? <Map<String, dynamic>>[])
             .where((item) => item['isFavorite'] == true)
@@ -5024,7 +5022,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       if (_mapProvider == MapProvider.google) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(
-          'kiwi.quick_location.$saveAs',
+          'waybi.quick_location.$saveAs',
           jsonEncode({
             'name': place.name,
             'address': place.address,
@@ -5083,11 +5081,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Color _quickCommuteColor(RouteOption route) {
     final delay = route.trafficDelaySeconds ?? 0;
-    if (delay >= 600) return KiwiLensColors.danger;
+    if (delay >= 600) return WaybiColors.danger;
     if (delay >= 180 || route.traffic.trafficJam > 0) {
-      return KiwiLensColors.warning;
+      return WaybiColors.warning;
     }
-    return KiwiLensColors.ocean;
+    return WaybiColors.ocean;
   }
 
   Widget _quickActionLabel(String action) {
@@ -5140,16 +5138,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               avatar: Icon(
                 _quickActionIcon(action),
                 size: 15,
-                color: KiwiLensColors.ocean,
+                color: WaybiColors.ocean,
               ),
               visualDensity: VisualDensity.compact,
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               padding: const EdgeInsets.symmetric(horizontal: 7),
               backgroundColor: Theme.of(context).colorScheme.surface
                   .withValues(alpha: .96),
-              side: BorderSide(
-                color: KiwiLensColors.sky.withValues(alpha: .28),
-              ),
+              side: BorderSide(color: WaybiColors.sky.withValues(alpha: .28)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(13),
               ),
@@ -5298,7 +5294,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     onPressed: () async {
                       setState(() => _quickActions = actions);
                       final prefs = await SharedPreferences.getInstance();
-                      await prefs.setStringList('kiwi.quick_actions', actions);
+                      await prefs.setStringList('waybi.quick_actions', actions);
                       if (context.mounted) Navigator.of(context).pop();
                     },
                     child: Text(_text('Done', '完成')),
@@ -5464,10 +5460,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                             gradient: const LinearGradient(
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
-                              colors: [
-                                KiwiLensColors.ocean,
-                                KiwiLensColors.teal,
-                              ],
+                              colors: [WaybiColors.ocean, WaybiColors.teal],
                             ),
                             borderRadius: BorderRadius.circular(15),
                             boxShadow: const [
@@ -5488,7 +5481,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                         Text(
                           _text('Start', '出发'),
                           style: TextStyle(
-                            color: KiwiLensColors.ocean,
+                            color: WaybiColors.ocean,
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
                           ),
@@ -5576,7 +5569,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _applyKiwiLensNavigationChrome(
+  Future<void> _applyWaybiNavigationChrome(
     GoogleNavigationViewController controller,
   ) async {
     await controller.setMyLocationEnabled(
@@ -5614,7 +5607,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _markerSignature = '';
     _radarPolygons = [];
     await controller.setNavigationUIEnabled(_guidanceRunning);
-    await _applyKiwiLensNavigationChrome(controller);
+    await _applyWaybiNavigationChrome(controller);
     if (_driveEngine.snappedLocation != null) {
       await _followNavigationCamera(controller);
       await controller.setReportIncidentButtonEnabled(false);
@@ -5630,7 +5623,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
     );
     final activeRoute = _activeNavigationRoute;
-    if (_selectedMode == KiwiTravelMode.drive &&
+    if (_selectedMode == WaybiTravelMode.drive &&
         activeRoute != null &&
         activeRoute.points.length >= 2) {
       final trafficOptions = <PolylineOptions>[];
@@ -5773,6 +5766,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     onRoadEvent: (event) =>
                         unawaited(_showRoadEventDetails(event)),
                     trafficSegments: _driveEngine.trafficFlowSegments,
+                    trafficTileOverlay: _driveEngine.trafficTileOverlay,
+                    trafficFresh: _driveEngine.trafficFlowStatus == 'live',
                     routePaths: _visibleIndependentRoutePaths,
                     selectedPlace: _selectedPlace?.place,
                     explorePlaces: _exploreResults,
@@ -5878,7 +5873,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                           tooltip: _parkedCarAgeLabel(),
                           icon: const Icon(
                             Icons.directions_car_filled_rounded,
-                            color: KiwiLensColors.ocean,
+                            color: WaybiColors.ocean,
                           ),
                           onPressed: _showParkedCar,
                         ),
@@ -5915,7 +5910,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                         tooltip: _text('Report road issue', '上报道路情况'),
                         icon: const Icon(
                           Icons.add_alert_rounded,
-                          color: KiwiLensColors.ocean,
+                          color: WaybiColors.ocean,
                         ),
                         onPressed: () => unawaited(_showRoadReport()),
                       ),
@@ -5930,8 +5925,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                         icon: Icon(
                           _locationControlIcon,
                           color: _following
-                              ? KiwiLensColors.ocean
-                              : KiwiLensColors.deepOcean,
+                              ? WaybiColors.ocean
+                              : WaybiColors.deepOcean,
                         ),
                         onPressed: _cycleLocationCamera,
                       ),
@@ -5983,8 +5978,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                     colors: [
-                                      KiwiLensColors.ocean,
-                                      KiwiLensColors.teal,
+                                      WaybiColors.ocean,
+                                      WaybiColors.teal,
                                     ],
                                   ),
                                   borderRadius: BorderRadius.circular(13),
@@ -6013,8 +6008,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                                     ),
                                     Text(
                                       _text(
-                                        'Navigate Aotearoa with Kiwi Lens',
-                                        '用 Kiwi Lens 探索新西兰',
+                                        'Navigate Aotearoa with Waybi',
+                                        '用 Waybi 探索新西兰',
                                       ),
                                       style: TextStyle(
                                         color: Theme.of(context)
@@ -6029,7 +6024,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                               ),
                               const Icon(
                                 Icons.arrow_forward_rounded,
-                                color: KiwiLensColors.ocean,
+                                color: WaybiColors.ocean,
                                 size: 19,
                               ),
                             ],
@@ -6142,7 +6137,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               ),
             ),
           if (_message != null)
-            _TransientKiwiLensBanner(
+            _TransientWaybiBanner(
               key: ValueKey(_message),
               message: _message!,
               onDismiss: () {
@@ -6279,7 +6274,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   onPressed: _busy
                       ? null
                       : () => unawaited(_navigateToSelectedPoi()),
-                  backgroundColor: KiwiLensColors.ocean,
+                  backgroundColor: WaybiColors.ocean,
                   foregroundColor: Colors.white,
                   icon: _busy
                       ? const SizedBox(
@@ -6294,7 +6289,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   label: Text(
                     _busy
                         ? _text('Starting…', '正在开始…')
-                        : _selectedMode == KiwiTravelMode.transit
+                        : _selectedMode == WaybiTravelMode.transit
                         ? _text('Start trip', '开始行程')
                         : _text('Start', '开始导航'),
                     style: const TextStyle(fontWeight: FontWeight.w700),

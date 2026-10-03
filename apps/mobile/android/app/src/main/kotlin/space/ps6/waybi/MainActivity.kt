@@ -1,4 +1,4 @@
-package space.ps6.kiwilens
+package space.ps6.waybi
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -25,7 +25,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "kiwi_lens/map_language")
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "waybi/map_language")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "setLanguage" -> {

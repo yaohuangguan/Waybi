@@ -35,7 +35,7 @@ class CameraRepository {
   final http.Client _client;
   final String baseUrl;
 
-  static const _cacheKey = 'kiwi.cache.cameras.v1';
+  static const _cacheKey = 'waybi.cache.cameras.v1';
 
   Future<CameraSnapshot> fetchSnapshot() async {
     Object? networkError;
@@ -87,8 +87,8 @@ class CameraRepository {
         .post(
           Uri.parse('$baseUrl/api/cameras/sync'),
           headers: {
-            'cookie': 'kiwi_session=$sessionToken',
-            'x-kiwi-client': 'mobile',
+            'cookie': 'waybi_session=$sessionToken',
+            'x-waybi-client': 'mobile',
           },
         )
         .timeout(const Duration(seconds: 30));

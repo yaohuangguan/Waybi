@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/road_event.dart';
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 class RoadEventTimeline extends StatelessWidget {
   const RoadEventTimeline({
@@ -77,21 +77,19 @@ class RoadEventTimeline extends StatelessWidget {
     if (visible.isEmpty && maneuverLabel == null) {
       return const SizedBox.shrink();
     }
-    final foreground = dark
-        ? KiwiLensColors.darkText
-        : KiwiLensColors.lightText;
+    final foreground = dark ? WaybiColors.darkText : WaybiColors.lightText;
     final muted = dark
-        ? KiwiLensColors.darkTextSecondary
-        : KiwiLensColors.lightTextSecondary;
+        ? WaybiColors.darkTextSecondary
+        : WaybiColors.lightTextSecondary;
     final surface = dark
-        ? KiwiLensColors.darkOcean.withValues(alpha: .94)
-        : KiwiLensColors.lightSurface.withValues(alpha: .96);
+        ? WaybiColors.darkOcean.withValues(alpha: .94)
+        : WaybiColors.lightSurface.withValues(alpha: .96);
     final items = <Widget>[
       _TimelineNode(
         icon: Icons.navigation_rounded,
         label: _text('Now', '当前'),
         detail: maneuverLabel ?? _text('Driving', '行驶中'),
-        color: KiwiLensColors.sky,
+        color: WaybiColors.sky,
         foreground: foreground,
         muted: muted,
       ),
@@ -101,10 +99,10 @@ class RoadEventTimeline extends StatelessWidget {
           label: _label(event),
           detail: _distance(event),
           color: event.severity.index >= RoadEventSeverity.warning.index
-              ? KiwiLensColors.warning
+              ? WaybiColors.warning
               : event.type == RoadEventType.safetyCamera
-              ? KiwiLensColors.teal
-              : KiwiLensColors.coastal,
+              ? WaybiColors.teal
+              : WaybiColors.coastal,
           foreground: foreground,
           muted: muted,
         ),
@@ -115,16 +113,14 @@ class RoadEventTimeline extends StatelessWidget {
       child: Container(
         constraints: const BoxConstraints(minHeight: 58),
         padding: const EdgeInsets.symmetric(
-          horizontal: KiwiLensSpacing.x3,
-          vertical: KiwiLensSpacing.x2,
+          horizontal: WaybiSpacing.x3,
+          vertical: WaybiSpacing.x2,
         ),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(KiwiLensRadius.panel),
+          borderRadius: BorderRadius.circular(WaybiRadius.panel),
           border: Border.all(
-            color: dark
-                ? KiwiLensColors.darkBorder
-                : KiwiLensColors.lightBorder,
+            color: dark ? WaybiColors.darkBorder : WaybiColors.lightBorder,
           ),
         ),
         child: Row(
@@ -136,12 +132,12 @@ class RoadEventTimeline extends StatelessWidget {
                 gradient: const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [KiwiLensColors.ocean, KiwiLensColors.teal],
+                  colors: [WaybiColors.ocean, WaybiColors.teal],
                 ),
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            const SizedBox(width: KiwiLensSpacing.x2),
+            const SizedBox(width: WaybiSpacing.x2),
             Expanded(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -153,8 +149,8 @@ class RoadEventTimeline extends StatelessWidget {
                           width: 24,
                           height: 2,
                           color: dark
-                              ? KiwiLensColors.darkBorder
-                              : KiwiLensColors.lightBorder,
+                              ? WaybiColors.darkBorder
+                              : WaybiColors.lightBorder,
                         ),
                       items[index],
                     ],

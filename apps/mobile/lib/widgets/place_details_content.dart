@@ -5,7 +5,7 @@ import '../data/place_details_repository.dart';
 import '../domain/coordinate_formatter.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 class PlaceDetailsContent extends StatefulWidget {
   const PlaceDetailsContent({
@@ -158,10 +158,10 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
     final trafficHeavy = delaySeconds >= 300 || route.traffic.trafficJam > 0;
     final trafficModerate = delaySeconds >= 120 || route.traffic.slow > 0;
     final trafficColor = trafficHeavy
-        ? KiwiLensColors.danger
+        ? WaybiColors.danger
         : trafficModerate
-        ? KiwiLensColors.warning
-        : KiwiLensColors.success;
+        ? WaybiColors.warning
+        : WaybiColors.success;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 7, 16, 0),
@@ -414,7 +414,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                           children: [
                             const Icon(
                               Icons.star_rounded,
-                              color: KiwiLensColors.warning,
+                              color: WaybiColors.warning,
                               size: 17,
                             ),
                             const SizedBox(width: 4),
@@ -460,7 +460,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                                       ),
                                 style: TextStyle(
                                   color: place.businessStatus == 'OPERATIONAL'
-                                      ? KiwiLensColors.success
+                                      ? WaybiColors.success
                                       : scheme.onSurfaceVariant,
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
@@ -924,7 +924,7 @@ class _ReviewTile extends StatelessWidget {
                       Text(
                         '${review.rating!.toStringAsFixed(1)} ★',
                         style: const TextStyle(
-                          color: KiwiLensColors.warning,
+                          color: WaybiColors.warning,
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
                         ),

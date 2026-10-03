@@ -3,7 +3,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@kiwi-lens/core": ["../../packages/core/src/index.ts"]
+      "@waybi/core": ["../../packages/core/src/index.ts"]
     },
     "lib": [
       "ES2022",

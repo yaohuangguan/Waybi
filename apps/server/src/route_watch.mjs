@@ -333,7 +333,7 @@ export async function handleRouteWatchAlerts(request, env) {
   if (!user) return json({ error: 'Sign in required' }, 401);
   if (!await userHasPlus(env.USER_DB, user.id)) {
     return json({
-      error: 'Kiwi Lens Plus is required for proactive commute alerts',
+      error: 'Waybi Plus is required for proactive commute alerts',
       code: 'PLUS_REQUIRED'
     }, 403);
   }
@@ -363,7 +363,7 @@ export async function handleRouteWatchAlerts(request, env) {
     request.method === 'POST' &&
     url.pathname === '/api/route-watch-alerts/read'
   ) {
-    if (request.headers.get('x-kiwi-client') !== 'mobile') {
+    if (request.headers.get('x-waybi-client') !== 'mobile') {
       return json({ error: 'Invalid client' }, 403);
     }
     const body = await request.json().catch(() => null);
@@ -400,7 +400,7 @@ export async function handleRouteWatch(request, env) {
   if (!user) return json({ error: 'Sign in required' }, 401);
   if (!await userHasPlus(env.USER_DB, user.id)) {
     return json({
-      error: 'Kiwi Lens Plus is required for Smart Commute',
+      error: 'Waybi Plus is required for Smart Commute',
       code: 'PLUS_REQUIRED'
     }, 403);
   }
@@ -428,7 +428,7 @@ export async function handleRouteWatch(request, env) {
   }
 
   if (request.method === 'POST' && url.pathname === '/api/route-watches') {
-    if (request.headers.get('x-kiwi-client') !== 'mobile') {
+    if (request.headers.get('x-waybi-client') !== 'mobile') {
       return json({ error: 'Invalid client' }, 403);
     }
     const body = await request.json().catch(() => null);
@@ -530,7 +530,7 @@ export async function handleRouteWatch(request, env) {
 
   const match = /^\/api\/route-watches\/([^/]+)$/.exec(url.pathname);
   if (match && request.method === 'DELETE') {
-    if (request.headers.get('x-kiwi-client') !== 'mobile') {
+    if (request.headers.get('x-waybi-client') !== 'mobile') {
       return json({ error: 'Invalid client' }, 403);
     }
     const id = decodeURIComponent(match[1]);

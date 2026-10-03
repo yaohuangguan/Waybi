@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/domain/route_preference.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/domain/route_preference.dart';
 
 RouteOption route(String id, {required int seconds, required int metres}) =>
     RouteOption(
       id: id,
-      mode: KiwiTravelMode.drive,
+      mode: WaybiTravelMode.drive,
       durationSeconds: seconds,
       distanceMeters: metres,
       points: const [GeoPoint(-36.85, 174.76), GeoPoint(-36.86, 174.77)],

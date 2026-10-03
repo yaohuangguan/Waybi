@@ -76,7 +76,7 @@ class _ProfileSheetState extends State<ProfileSheet> {
                     children: [
                       const Expanded(
                         child: Text(
-                          'My Kiwi Lens',
+                          'My Waybi',
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w700,

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:kiwi_lens_mobile/drive/voice_engine.dart';
+import 'package:waybi_mobile/drive/voice_engine.dart';
 
 class ControlledTts extends FlutterTts {
   final spoken = <String>[];

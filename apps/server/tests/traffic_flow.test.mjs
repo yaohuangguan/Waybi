@@ -104,7 +104,7 @@ test('Worker exposes live traffic flow at /api/traffic-flow', async () => {
   };
   const xml = `<getTrafficConditionsResponse>
     <trafficConditions>
-      <lastUpdated>2026-10-03T09:24:28.587+13:00</lastUpdated>
+      <lastUpdated>${new Date().toISOString()}</lastUpdated>
       <motorways>
         <name>Southern Motorway</name>
         <locations>
@@ -146,7 +146,7 @@ test('traffic flow fetch uses the live no-key NZTA endpoint response', async () 
       url,
       'https://trafficnz.info/service/traffic-conditions/rest/2',
     );
-    assert.match(init.headers['user-agent'], /Kiwi Lens/);
+    assert.match(init.headers['user-agent'], /Waybi/);
     return new Response(JSON.stringify(samplePayload()), {
       headers: { 'content-type': 'application/json' },
     });

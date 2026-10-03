@@ -33,7 +33,7 @@ async function accountApi<T>(path: string, method = 'GET', body?: object): Promi
   const response = await fetch(path, {
     method,
     credentials: 'same-origin',
-    headers: method === 'GET' ? {} : { 'content-type': 'application/json', 'x-kiwi-client': 'web' },
+    headers: method === 'GET' ? {} : { 'content-type': 'application/json', 'x-waybi-client': 'web' },
     body: body ? JSON.stringify(body) : undefined
   });
   const data = await response.json().catch(() => ({}));

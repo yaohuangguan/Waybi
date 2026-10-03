@@ -3,6 +3,21 @@ import assert from 'node:assert/strict';
 import worker, { readCameraState, syncCameras } from '../src/worker.mjs';
 import seed from '../data/cameras.json' with { type: 'json' };
 
+test('identity migration pauses API and scheduled writes while keeping assets available', async () => {
+  const env = {
+    WAYBI_MIGRATION_PAUSED: 'true',
+    ASSETS: { fetch: async () => new Response('site') }
+  };
+  const ctx = { waitUntil() { assert.fail('Migration must not start background work'); } };
+  for (const method of ['GET', 'POST']) {
+    const response = await worker.fetch(new Request('https://waybi.test/api/account', { method }), env, ctx);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('Retry-After'), '60');
+  }
+  assert.equal(await (await worker.fetch(new Request('https://waybi.test/'), env, ctx)).text(), 'site');
+  await worker.scheduled({ cron: '0 */6 * * *' }, env, ctx);
+});
+
 function fakeEnv(initial = null) {
   let value = initial;
   return {
@@ -48,7 +63,7 @@ test('Worker API serves the full seeded camera list when KV is empty', async () 
 });
 
 test('cross-origin address requests get a readable configuration response', async () => {
-  const response = await worker.fetch(new Request('https://kiwi-lens.nzs.workers.dev/api/suggest?q=Queen', {
+  const response = await worker.fetch(new Request('https://waybi.nzs.workers.dev/api/suggest?q=Queen', {
     headers: { Origin: 'https://preview.example' }
   }), fakeEnv(), { waitUntil() {} });
   assert.equal(response.status, 503);
@@ -299,7 +314,7 @@ test('Cost Guard telemetry accepts only known mobile usage events', async () => 
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-kiwi-client': 'mobile'
+        'x-waybi-client': 'mobile'
       },
       body: JSON.stringify({ event: 'google_navigation_destination', units: 2 })
     }),
@@ -313,7 +328,7 @@ test('Cost Guard telemetry accepts only known mobile usage events', async () => 
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-kiwi-client': 'mobile'
+        'x-waybi-client': 'mobile'
       },
       body: JSON.stringify({ event: 'made_up_billable_event' })
     }),
@@ -327,7 +342,7 @@ test('Cost Guard telemetry accepts only known mobile usage events', async () => 
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-kiwi-client': 'web'
+        'x-waybi-client': 'web'
       },
       body: JSON.stringify({ event: 'google_navigation_destination' })
     }),
@@ -352,8 +367,8 @@ test('manual camera sync is rejected for free users', async () => {
     new Request('https://example.test/api/cameras/sync', {
       method: 'POST',
       headers: {
-        'x-kiwi-client': 'mobile',
-        cookie: `kiwi_session=${'a'.repeat(64)}`
+        'x-waybi-client': 'mobile',
+        cookie: `waybi_session=${'a'.repeat(64)}`
       }
     }),
     env,
@@ -377,8 +392,8 @@ test('manual camera sync is available to Plus users', async () => {
     new Request('https://example.test/api/cameras/sync', {
       method: 'POST',
       headers: {
-        'x-kiwi-client': 'mobile',
-        cookie: `kiwi_session=${'b'.repeat(64)}`
+        'x-waybi-client': 'mobile',
+        cookie: `waybi_session=${'b'.repeat(64)}`
       }
     }),
     env,

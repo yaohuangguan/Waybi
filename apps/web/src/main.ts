@@ -3,7 +3,7 @@ declare global {
   interface Window { gm_authFailure?: () => void }
 }
 
-import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@kiwi-lens/core';
+import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@waybi/core';
 import './account.css';
 import { applyUiLanguage, t } from './i18n';
 import { currentAccountEmail, initAccount, isSignedIn, ownReview, recentDestinations, rememberDestination, rememberPreferences, rememberRoute, renderAccount, saveOwnReview, savePlace, savedPlace, type AccountProfile } from './account';
@@ -1255,7 +1255,7 @@ function renderPoiAccountState(place: PoiSelection) {
   comment.disabled = !signedIn;
   saveReview.disabled = !signedIn;
   $('poiOwnReviewHint').textContent = signedIn
-    ? (language === 'zh' ? '仅保存在 Kiwi Lens 账户，不会发布到 Google' : 'Private to Kiwi Lens; not posted to Google')
+    ? (language === 'zh' ? '仅保存在 Waybi 账户，不会发布到 Google' : 'Private to Waybi; not posted to Google')
     : (language === 'zh' ? '登录后撰写私人评价' : 'Sign in to write a private review');
   $('poiAccountHint').textContent = signedIn
     ? (language === 'zh' ? `同步到 ${currentAccountEmail()}` : `Synced to ${currentAccountEmail()}`)
@@ -1807,7 +1807,7 @@ function showJourneySummary(arrived: boolean) {
   root.replaceChildren();
   const modal = document.createElement('section'); modal.className = 'modal journey-summary';
   modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', 'journeySummaryTitle');
-  modal.innerHTML = `<img src="/brand/kiwi-lens-lockup.svg" alt="Kiwi Lens" width="210" /><h2 id="journeySummaryTitle">${title}</h2>
+  modal.innerHTML = `<img src="/brand/waybi-lockup.svg" alt="Waybi" width="210" /><h2 id="journeySummaryTitle">${title}</h2>
     <p>${escapeHtml(destinationName)}</p><div class="journey-stats"><div><strong>${formatDistance(journeyDistance, language)}</strong><span>${language === 'zh' ? '行驶距离' : 'Travelled'}</span></div>
     <div><strong>${minutes} ${language === 'zh' ? '分钟' : 'min'}</strong><span>${language === 'zh' ? '行程用时' : 'Journey time'}</span></div></div>
     <svg class="journey-trace" viewBox="0 0 360 190" role="img" aria-label="${language === 'zh' ? '行程路线总览' : 'Journey route overview'}"><rect width="360" height="190" rx="20" fill="#eaf5cf"/>

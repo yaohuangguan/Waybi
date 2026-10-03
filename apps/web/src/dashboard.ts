@@ -3,13 +3,13 @@ import './site.css';
 import { currentProfile, initAccount, type AccountProfile, type Language } from './account';
 import { renderProfileView } from './profile-view';
 
-const logo = `<img class="site-lockup" src="/brand/kiwi-lens-lockup.svg" alt="Kiwi Lens Maps & Navigation" />`;
+const logo = `<img class="site-lockup" src="/brand/waybi-lockup.svg" alt="Waybi Maps & Navigation" />`;
 
 let language: Language = 'en';
 let voiceEnabled = true;
 
 document.documentElement.lang = 'en-NZ';
-document.title = 'Dashboard · Kiwi Lens';
+document.title = 'Dashboard · Waybi';
 document.body.dataset.surface = 'dashboard';
 document.body.innerHTML = `
   <div class="dashboard-shell">
@@ -20,17 +20,17 @@ document.body.innerHTML = `
     <main class="dashboard-layout">
       <aside class="dashboard-sidebar">
         <span class="dashboard-label">ACCOUNT</span>
-        <h1 id="dashboardTitle">Your Kiwi Lens</h1>
+        <h1 id="dashboardTitle">Your Waybi</h1>
         <p id="dashboardIntro">Sign in to keep recent trips, favorite places, notes and personal reviews together.</p>
         <div id="dashboardAccount" class="dashboard-account"></div>
-        <div class="dashboard-help"><strong>Navigation stays available</strong><p>You can always use Kiwi Lens in guest mode. An account adds synchronization and history.</p><a href="/app">Continue as guest →</a></div>
+        <div class="dashboard-help"><strong>Navigation stays available</strong><p>You can always use Waybi in guest mode. An account adds synchronization and history.</p><a href="/app">Continue as guest →</a></div>
       </aside>
       <section class="dashboard-main">
         <div class="dashboard-topline"><div><span class="dashboard-label">DASHBOARD</span><h2 id="dashboardGreeting">Your activity, all in one place.</h2></div><span class="dashboard-status"><i></i><span id="dashboardStatusText">Guest mode</span></span></div>
         <div id="dashboardEmpty" class="dashboard-empty">
           <div class="dashboard-empty-intro">
             <div class="dashboard-empty-icon">◎</div>
-            <div><h3>Sign in to make Kiwi Lens yours</h3><p>Navigation stays available without an account. Sign in when you want history and personal context to follow you.</p></div>
+            <div><h3>Sign in to make Waybi yours</h3><p>Navigation stays available without an account. Sign in when you want history and personal context to follow you.</p></div>
           </div>
           <div class="dashboard-empty-grid">
             <article><span>↗</span><strong>Recent navigation</strong><p>Keep a lightweight history of destinations, travel modes and trip distance.</p></article>
@@ -58,7 +58,7 @@ function renderDashboard() {
   (document.getElementById('dashboardGreeting') as HTMLElement).textContent = signedIn
     ? (language === 'zh' ? '欢迎回来，这是你的近期活动。' : 'Welcome back. Here’s your recent activity.')
     : (language === 'zh' ? '你的活动，集中在一个页面。' : 'Your activity, all in one place.');
-  (document.getElementById('dashboardTitle') as HTMLElement).textContent = language === 'zh' ? '你的 Kiwi Lens' : 'Your Kiwi Lens';
+  (document.getElementById('dashboardTitle') as HTMLElement).textContent = language === 'zh' ? '你的 Waybi' : 'Your Waybi';
   (document.getElementById('dashboardIntro') as HTMLElement).textContent = language === 'zh'
     ? '登录后可集中查看最近行程、收藏地点、备注和个人评价。'
     : 'Sign in to keep recent trips, favorite places, notes and personal reviews together.';

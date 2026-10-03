@@ -22,7 +22,7 @@ function fixture(t) {
   const env = { APPLE_IAP_ISSUER_ID: 'test-issuer', APPLE_IAP_KEY_ID: 'test-key',
     APPLE_IAP_PRIVATE_KEY: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }), APPLE_IAP_ENVIRONMENT: 'Sandbox' };
   const transaction = { transactionId, originalTransactionId: transactionId, appAccountToken: userId,
-    environment: 'Sandbox', bundleId: 'me.samyao.kiwilens', productId: 'me.samyao.kiwilens.plus.annual',
+    environment: 'Sandbox', bundleId: 'me.samyao.waybi', productId: 'me.samyao.waybi.plus.annual',
     type: 'Auto-Renewable Subscription', purchaseDate: now - 1000, expiresDate: now + 86400000 };
   const current = { status: 1, transaction: { ...transaction }, renewal: { autoRenewStatus: 1 } };
   const fetcher = async (url, options) => {
@@ -41,7 +41,7 @@ test('Apple API JWT uses an actual ES256 signature and app-bound claims', async 
   const token = await appleToken(f.env, now);
   const [header, payload, signature] = token.split('.');
   const claims = JSON.parse(Buffer.from(payload, 'base64url'));
-  assert.equal(claims.bid, 'me.samyao.kiwilens'); assert.equal(claims.aud, 'appstoreconnect-v1');
+  assert.equal(claims.bid, 'me.samyao.waybi'); assert.equal(claims.aud, 'appstoreconnect-v1');
   assert.equal(verify('sha256', Buffer.from(`${header}.${payload}`), { key: f.keys.publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(signature, 'base64url')), true);
 });
 test('Apple validates current account, app, product and environment before granting access', async (t) => {
@@ -50,7 +50,7 @@ test('Apple validates current account, app, product and environment before grant
   await assert.rejects(f.sync()); assert.equal(f.row(), undefined);
   f.transaction.appAccountToken = userId; f.transaction.productId = 'other.product';
   await assert.rejects(f.sync());
-  f.transaction.productId = 'me.samyao.kiwilens.plus.annual'; f.transaction.environment = 'Production';
+  f.transaction.productId = 'me.samyao.waybi.plus.annual'; f.transaction.environment = 'Production';
   await assert.rejects(f.sync());
   f.transaction.environment = 'Sandbox';
   assert.equal((await f.sync()).active, true); assert.equal(f.row().source, 'apple');

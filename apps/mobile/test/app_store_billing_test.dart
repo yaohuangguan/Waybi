@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
-import 'package:kiwi_lens_mobile/data/account_repository.dart';
-import 'package:kiwi_lens_mobile/data/app_store_billing.dart';
-import 'package:kiwi_lens_mobile/data/plus_billing.dart';
+import 'package:waybi_mobile/data/account_repository.dart';
+import 'package:waybi_mobile/data/app_store_billing.dart';
+import 'package:waybi_mobile/data/plus_billing.dart';
 
 const userId = '729db2f1-5891-4b09-9b2c-72ba7a8f271b';
-const productId = 'me.samyao.kiwilens.plus.annual';
+const productId = 'me.samyao.waybi.plus.annual';
 
 class BillingAccount extends AccountRepository {
   BillingAccount() {
@@ -40,7 +40,7 @@ class BillingAccount extends AccountRepository {
       await configuration ??
       {
         'ready': true,
-        'monthly': 'me.samyao.kiwilens.plus.monthly',
+        'monthly': 'me.samyao.waybi.plus.monthly',
         'annual': productId,
       };
   @override
@@ -135,7 +135,7 @@ void main() {
     account.dispose();
   });
 
-  test('purchase binds the Kiwi account and finishes only after server verification', () async {
+  test('purchase binds the Waybi account and finishes only after server verification', () async {
     final offering = await gateway.load();
     final buying = gateway.subscribe(offering.plans.single);
     await tick();

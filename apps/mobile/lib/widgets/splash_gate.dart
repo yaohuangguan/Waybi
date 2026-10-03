@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../theme/kiwi_lens_theme.dart';
-import 'kiwi_mascot.dart';
+import '../theme/waybi_theme.dart';
+import 'waybi_bird.dart';
 
 class SplashGate extends StatefulWidget {
   const SplashGate({super.key, required this.child});
@@ -35,31 +35,29 @@ class _SplashGateState extends State<SplashGate> {
   Widget build(BuildContext context) => AnimatedSwitcher(
     duration: const Duration(milliseconds: 360),
     child: _ready
-        ? KeyedSubtree(key: const ValueKey('kiwi-map'), child: widget.child)
+        ? KeyedSubtree(key: const ValueKey('waybi-map'), child: widget.child)
         : Scaffold(
-            key: ValueKey('kiwi-splash'),
-            backgroundColor: KiwiLensColors.lightBackground,
+            key: ValueKey('waybi-splash'),
+            backgroundColor: WaybiColors.lightBackground,
             body: SafeArea(
               child: Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const KiwiMascot(size: 136),
+                    const WaybiBird(size: 136),
                     const SizedBox(height: 22),
                     const Text(
-                      'Kiwi Lens',
+                      'Waybi',
                       style: TextStyle(
-                        color: KiwiLensColors.deepOcean,
+                        color: WaybiColors.deepOcean,
                         fontSize: 36,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'A little kiwi. A clearer journey.',
-                      style: TextStyle(
-                        color: KiwiLensColors.lightTextSecondary,
-                      ),
+                      'Meet Waybi. Find your way.',
+                      style: TextStyle(color: WaybiColors.lightTextSecondary),
                     ),
                   ],
                 ),

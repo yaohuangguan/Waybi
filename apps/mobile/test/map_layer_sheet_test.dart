@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/map_layer_settings.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/widgets/map_layer_sheet.dart';
+import 'package:waybi_mobile/domain/map_layer_settings.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/widgets/map_layer_sheet.dart';
 
 void main() {
   testWidgets('independent map can enable opt-in live traffic', (tester) async {

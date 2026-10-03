@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/data/parking_repository.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/road_event.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/widgets/arrival_experience_panel.dart';
-import 'package:kiwi_lens_mobile/widgets/road_event_timeline.dart';
-import 'package:kiwi_lens_mobile/widgets/route_preview_sheet.dart';
+import 'package:waybi_mobile/data/parking_repository.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/road_event.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/widgets/arrival_experience_panel.dart';
+import 'package:waybi_mobile/widgets/road_event_timeline.dart';
+import 'package:waybi_mobile/widgets/route_preview_sheet.dart';
 
 const _destination = GeoPoint(-36.8485, 174.7633);
 
@@ -14,7 +14,7 @@ void main() {
   test('route explanation follows the selected app language', () {
     const route = RouteOption(
       id: 'drive-1',
-      mode: KiwiTravelMode.drive,
+      mode: WaybiTravelMode.drive,
       durationSeconds: 600,
       distanceMeters: 3000,
       points: [_destination],
@@ -32,7 +32,7 @@ void main() {
   ) async {
     const route = RouteOption(
       id: 'drive-1',
-      mode: KiwiTravelMode.drive,
+      mode: WaybiTravelMode.drive,
       durationSeconds: 600,
       distanceMeters: 3000,
       points: [_destination],
@@ -53,7 +53,7 @@ void main() {
               provider: 'google',
               stopsApplied: 0,
             ),
-            selectedMode: KiwiTravelMode.drive,
+            selectedMode: WaybiTravelMode.drive,
             selectedRouteId: route.id,
             busy: false,
             stopCount: 0,

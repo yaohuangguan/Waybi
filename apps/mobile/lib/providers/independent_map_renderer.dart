@@ -43,6 +43,8 @@ class IndependentMapRenderer extends StatefulWidget {
     this.heading = 0,
     this.contentPadding = EdgeInsets.zero,
     this.following = false,
+    this.trafficTileOverlay,
+    this.trafficFresh = true,
     this.styleLoader = IndependentMapStyle.load,
   });
   final MapViewportState initialViewport;
@@ -67,6 +69,8 @@ class IndependentMapRenderer extends StatefulWidget {
   final double heading;
   final EdgeInsets contentPadding;
   final bool following;
+  final TrafficTileOverlay? trafficTileOverlay;
+  final bool trafficFresh;
   final Future<String> Function({required bool dark, required String language})
   styleLoader;
   @override
@@ -83,6 +87,9 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   bool? _dark;
   bool _ready = false, _syncing = false, _dirty = false;
   int _generation = 0;
+  String? _trafficTileSignature;
+  Timer? _creditTimer;
+  bool _showCredit = true;
   final _signatures = <String, int>{};
   final _pointers = <int, Offset>{};
   bool _gestureReported = false;
@@ -93,10 +100,17 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   MapViewportState get viewport => _viewport;
   ml.LatLng _point(GeoPoint p) => ml.LatLng(p.latitude, p.longitude);
 
+  @override
+  void dispose() {
+    _creditTimer?.cancel();
+    super.dispose();
+  }
+
   void _loadStyle() {
     _dark = Theme.of(context).brightness == Brightness.dark;
     _ready = false;
     _generation++;
+    _trafficTileSignature = null;
     _signatures.clear();
     _appliedPadding = null;
     _style = widget.styleLoader(dark: _dark!, language: widget.language);
@@ -226,32 +240,32 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     try {
       for (final style in LocationMarkerStyle.values) {
         await c.addImage(
-          'kiwi-puck-${style.name}',
+          'waybi-puck-${style.name}',
           await LocationMarkerArt.practicePng(style),
         );
       }
-      await c.addImage('kiwi-light', await LocationMarkerArt.glowPng());
+      await c.addImage('waybi-light', await LocationMarkerArt.glowPng());
       for (final kind in CameraKind.values) {
         await c.addImage(
-          'kiwi-camera-${kind.name}',
+          'waybi-camera-${kind.name}',
           await LocationMarkerArt.cameraPng(kind),
         );
       }
       await c.addImage(
-        'kiwi-finish-flag',
+        'waybi-finish-flag',
         await LocationMarkerArt.finishFlagPng(),
       );
       for (final source in [
-        'kiwi-traffic',
-        'kiwi-route',
-        'kiwi-pins',
-        'kiwi-driver',
+        'waybi-traffic',
+        'waybi-route',
+        'waybi-pins',
+        'waybi-driver',
       ]) {
         await c.addGeoJsonSource(source, _collection(const []));
       }
       await c.addLineLayer(
-        'kiwi-route',
-        'kiwi-route-edge',
+        'waybi-route',
+        'waybi-route-edge',
         ml.LineLayerProperties(
           lineColor: [
             'case',
@@ -274,12 +288,12 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           lineCap: 'round',
           lineJoin: 'round',
         ),
-        belowLayerId: 'kiwi-poi-dot',
+        belowLayerId: 'waybi-poi-dot',
         enableInteraction: false,
       );
       await c.addLineLayer(
-        'kiwi-route',
-        'kiwi-route-line',
+        'waybi-route',
+        'waybi-route-line',
         ml.LineLayerProperties(
           lineColor: [
             'case',
@@ -302,12 +316,12 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           lineCap: 'round',
           lineJoin: 'round',
         ),
-        belowLayerId: 'kiwi-poi-dot',
+        belowLayerId: 'waybi-poi-dot',
         enableInteraction: false,
       );
       await c.addLineLayer(
-        'kiwi-traffic',
-        'kiwi-traffic-casing',
+        'waybi-traffic',
+        'waybi-traffic-casing',
         const ml.LineLayerProperties(
           lineColor: '#ffffff',
           lineWidth: 7,
@@ -315,12 +329,12 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           lineCap: 'round',
           lineJoin: 'round',
         ),
-        belowLayerId: 'kiwi-route-edge',
+        belowLayerId: 'waybi-route-edge',
         enableInteraction: false,
       );
       await c.addLineLayer(
-        'kiwi-traffic',
-        'kiwi-traffic-flow',
+        'waybi-traffic',
+        'waybi-traffic-flow',
         ml.LineLayerProperties(
           lineColor: [
             'match',
@@ -338,12 +352,12 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           lineCap: 'round',
           lineJoin: 'round',
         ),
-        belowLayerId: 'kiwi-route-edge',
+        belowLayerId: 'waybi-route-edge',
         enableInteraction: false,
       );
       await c.addCircleLayer(
-        'kiwi-pins',
-        'kiwi-pins-dot',
+        'waybi-pins',
+        'waybi-pins-dot',
         ml.CircleLayerProperties(
           circleRadius: [
             'match',
@@ -378,8 +392,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         enableInteraction: false,
       );
       await c.addSymbolLayer(
-        'kiwi-pins',
-        'kiwi-camera-icon',
+        'waybi-pins',
+        'waybi-camera-icon',
         ml.SymbolLayerProperties(
           iconImage: ['get', 'icon'],
           iconSize: 30 / 96 * imageScale,
@@ -395,10 +409,10 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         enableInteraction: false,
       );
       await c.addSymbolLayer(
-        'kiwi-pins',
-        'kiwi-destination-flag',
+        'waybi-pins',
+        'waybi-destination-flag',
         ml.SymbolLayerProperties(
-          iconImage: 'kiwi-finish-flag',
+          iconImage: 'waybi-finish-flag',
           iconSize: 42 / 96 * imageScale,
           iconAllowOverlap: true,
           iconIgnorePlacement: true,
@@ -412,8 +426,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         enableInteraction: false,
       );
       await c.addSymbolLayer(
-        'kiwi-pins',
-        'kiwi-pins-label',
+        'waybi-pins',
+        'waybi-pins-label',
         const ml.SymbolLayerProperties(
           textField: ['get', 'name'],
           textFont: ['Noto Sans Regular'],
@@ -440,10 +454,10 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         enableInteraction: false,
       );
       await c.addSymbolLayer(
-        'kiwi-driver',
-        'kiwi-driver-light',
+        'waybi-driver',
+        'waybi-driver-light',
         ml.SymbolLayerProperties(
-          iconImage: 'kiwi-light',
+          iconImage: 'waybi-light',
           iconSize: .5 * imageScale,
           iconAllowOverlap: true,
           iconIgnorePlacement: true,
@@ -453,8 +467,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         enableInteraction: false,
       );
       await c.addSymbolLayer(
-        'kiwi-driver',
-        'kiwi-driver-puck',
+        'waybi-driver',
+        'waybi-driver-puck',
         ml.SymbolLayerProperties(
           iconImage: ['get', 'icon'],
           iconSize: 44 / 96 * imageScale,
@@ -467,6 +481,10 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       );
       if (!mounted || generation != _generation) return;
       _ready = true;
+      _creditTimer?.cancel();
+      _creditTimer = Timer(const Duration(seconds: 5), () {
+        if (mounted) setState(() => _showCredit = false);
+      });
       _signatures.clear();
       await _updatePadding();
       _queueSync();
@@ -474,6 +492,41 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     } catch (e) {
       if (mounted) debugPrint('Practice map initialization failed: $e');
     }
+  }
+
+  Future<void> _syncTrafficTiles() async {
+    final overlay = widget.layers.traffic ? widget.trafficTileOverlay : null;
+    final signature = overlay == null
+        ? null
+        : '${overlay.tileTemplate}:${DateTime.now().millisecondsSinceEpoch ~/ 60000}';
+    if (signature == _trafficTileSignature) return;
+    final c = _controller!;
+    if (_trafficTileSignature != null) {
+      await c.removeLayer('waybi-city-traffic');
+      await c.removeSource('waybi-city-traffic');
+      _trafficTileSignature = null;
+    }
+    if (overlay == null) return;
+    await c.addSource(
+      'waybi-city-traffic',
+      ml.RasterSourceProperties(
+        tiles: [
+          '${overlay.tileTemplate}?refresh=${DateTime.now().millisecondsSinceEpoch ~/ 60000}',
+        ],
+        tileSize: 256,
+        minzoom: 6,
+        maxzoom: 19,
+        bounds: const [166, -48, 179, -34],
+        attribution: overlay.attribution,
+      ),
+    );
+    await c.addRasterLayer(
+      'waybi-city-traffic',
+      'waybi-city-traffic',
+      const ml.RasterLayerProperties(rasterOpacity: .85, rasterFadeDuration: 0),
+      belowLayerId: 'waybi-route-edge',
+    );
+    _trafficTileSignature = signature;
   }
 
   Map<String, dynamic> _collection(List<Map<String, dynamic>> features) => {
@@ -504,7 +557,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         'kind': 'camera',
         'name': camera.name,
         'cameraKind': kind.name,
-        'icon': 'kiwi-camera-${kind.name}',
+        'icon': 'waybi-camera-${kind.name}',
       },
     };
   }
@@ -520,11 +573,15 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     try {
       while (mounted && _ready && _dirty && generation == _generation) {
         _dirty = false;
+        await _syncTrafficTiles();
         final traffic = widget.layers.traffic
             ? widget.trafficSegments
+                  .where((s) => s.hasRoadGeometry)
+                  .toList(growable: false)
             : const <TrafficFlowSegment>[];
         final trafficHash = Object.hash(
           widget.layers.traffic,
+          widget.trafficFresh,
           Object.hashAll(
             traffic.map(
               (segment) => Object.hash(
@@ -532,12 +589,13 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                 segment.level,
                 segment.start,
                 segment.end,
+                Object.hashAll(segment.geometry),
               ),
             ),
           ),
         );
         await _setSource(
-          'kiwi-traffic',
+          'waybi-traffic',
           trafficHash,
           () => _collection([
             for (final segment in traffic)
@@ -547,12 +605,11 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                 'geometry': {
                   'type': 'LineString',
                   'coordinates': [
-                    [segment.start.longitude, segment.start.latitude],
-                    [segment.end.longitude, segment.end.latitude],
+                    for (final p in segment.geometry) [p.longitude, p.latitude],
                   ],
                 },
                 'properties': {
-                  'level': segment.level.name,
+                  'level': widget.trafficFresh ? segment.level.name : 'unknown',
                   'name': segment.name,
                   'direction': segment.direction,
                   'congestion': segment.congestion,
@@ -570,7 +627,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           ),
         );
         await _setSource(
-          'kiwi-route',
+          'waybi-route',
           routeHash,
           () => _collection([
             for (final route in widget.routePaths)
@@ -602,7 +659,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           activeRoute?.points.lastOrNull,
         );
         await _setSource(
-          'kiwi-pins',
+          'waybi-pins',
           pinsHash,
           () => _collection([
             for (final c in cameras) _cameraPin(c),
@@ -628,7 +685,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           widget.locationMarker,
         );
         await _setSource(
-          'kiwi-driver',
+          'waybi-driver',
           driverHash,
           () => _collection([
             if (widget.locationEnabled && widget.location != null)
@@ -643,7 +700,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                 },
                 'properties': {
                   'heading': widget.heading,
-                  'icon': 'kiwi-puck-${widget.locationMarker.name}',
+                  'icon': 'waybi-puck-${widget.locationMarker.name}',
                 },
               },
           ]),
@@ -677,11 +734,11 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           height: 24,
         ),
         [
-          'kiwi-camera-icon',
-          'kiwi-pins-dot',
-          'kiwi-pins-label',
-          'kiwi-poi-dot',
-          'kiwi-poi-label',
+          'waybi-camera-icon',
+          'waybi-pins-dot',
+          'waybi-pins-label',
+          'waybi-poi-dot',
+          'waybi-poi-label',
         ],
         null,
       );
@@ -824,6 +881,24 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           },
         ),
       ),
+      if (_showCredit)
+        Positioned(
+          bottom: 8,
+          left: 8,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface
+                    .withValues(alpha: .92),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                child: Text('© OpenStreetMap', style: TextStyle(fontSize: 10)),
+              ),
+            ),
+          ),
+        ),
     ],
   );
 }

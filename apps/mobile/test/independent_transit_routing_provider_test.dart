@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/providers/independent_transit_routing_provider.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/providers/independent_transit_routing_provider.dart';
 
 void main() {
   test(
@@ -83,7 +83,7 @@ void main() {
         destination: const GeoPoint(-36.870, 174.778),
         language: 'en',
       );
-      final route = plan.forMode(KiwiTravelMode.transit).single;
+      final route = plan.forMode(WaybiTravelMode.transit).single;
 
       expect(requestUri.path, '/api/v6/plan');
       expect(requestUri.queryParameters['algorithm'], 'RAPTOR');

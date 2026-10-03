@@ -18,6 +18,21 @@ test('identity migration pauses API and scheduled writes while keeping assets av
   await worker.scheduled({ cron: '0 */6 * * *' }, env, ctx);
 });
 
+test('product surfaces are noindex while public marketing assets stay indexable', async () => {
+  const env = { ASSETS: { fetch: async () => new Response('site', { headers: { 'cache-control': 'public, max-age=60' } }) } };
+  const ctx = { waitUntil() {} };
+
+  for (const path of ['/app', '/app/', '/dashboard', '/dashboard/profile']) {
+    const response = await worker.fetch(new Request(`https://waybi.test${path}`), env, ctx);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-robots-tag'), 'noindex, follow');
+    assert.equal(response.headers.get('cache-control'), 'private, no-cache');
+  }
+
+  const marketing = await worker.fetch(new Request('https://waybi.test/'), env, ctx);
+  assert.equal(marketing.headers.get('x-robots-tag'), null);
+});
+
 function fakeEnv(initial = null) {
   let value = initial;
   return {

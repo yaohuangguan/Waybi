@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#F8FBEF" />
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+  <meta name="description" content="Learn how Waybi uses published NZTA fixed safety-camera locations for route-aware navigation reminders in New Zealand, including validation, matching and coverage limits." />
+  <link rel="canonical" href="https://waybi.nzs.workers.dev/safety-camera-navigation/" />
+  <link rel="alternate" hreflang="en-NZ" href="https://waybi.nzs.workers.dev/safety-camera-navigation/" />
+  <link rel="alternate" hreflang="x-default" href="https://waybi.nzs.workers.dev/safety-camera-navigation/" />
+  <link rel="icon" type="image/png" href="/brand/waybi-icon.png" />
+  <link rel="stylesheet" href="/seo.css" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Waybi" />
+  <meta property="og:title" content="NZ Safety Camera Navigation & Alerts | Waybi" />
+  <meta property="og:description" content="Route-aware reminders built from published NZTA fixed safety-camera data, with clear coverage limits and validation." />
+  <meta property="og:url" content="https://waybi.nzs.workers.dev/safety-camera-navigation/" />
+  <meta property="og:image" content="https://waybi.nzs.workers.dev/og-waybi.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Waybi — A clearer journey" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <title>NZ Safety Camera Navigation &amp; Alerts | Waybi</title>
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@graph":[
+      {
+        "@type":"WebPage",
+        "@id":"https://waybi.nzs.workers.dev/safety-camera-navigation/#webpage",
+        "url":"https://waybi.nzs.workers.dev/safety-camera-navigation/",
+        "name":"NZ Safety Camera Navigation & Alerts | Waybi",
+        "description":"How Waybi uses published NZTA fixed safety-camera locations for route-aware navigation reminders in New Zealand.",
+        "inLanguage":"en-NZ",
+        "isPartOf":{"@id":"https://waybi.nzs.workers.dev/#website"}
+      },
+      {
+        "@type":"BreadcrumbList",
+        "itemListElement":[
+          {"@type":"ListItem","position":1,"name":"Waybi","item":"https://waybi.nzs.workers.dev/"},
+          {"@type":"ListItem","position":2,"name":"Safety-camera navigation","item":"https://waybi.nzs.workers.dev/safety-camera-navigation/"}
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/"><img src="/brand/waybi-lockup.svg" width="268" height="84" alt="Waybi — A clearer journey" /></a>
+      <nav aria-label="Main navigation">
+        <a href="/new-zealand-navigation/">NZ navigation</a>
+        <a href="/safety-camera-navigation/" aria-current="page">Safety cameras</a>
+        <a href="/route-watch/">Route Watch</a>
+        <a href="/zh/" lang="zh-CN">中文</a>
+        <a class="primary" href="/app">Open Waybi</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <span class="kicker">NZTA SAFETY-CAMERA AWARENESS</span>
+        <h1>Camera reminders that understand the route, not just the radius.</h1>
+        <p class="lead">Waybi uses published fixed safety-camera information from NZ Transport Agency Waka Kotahi and matches it against the route you are actually travelling. The goal is useful advance awareness without pretending the public dataset contains information it does not.</p>
+        <div class="hero-actions">
+          <a class="button" href="/app">Open Waybi</a>
+          <a class="button secondary" href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" rel="noopener noreferrer">View the NZTA source</a>
+        </div>
+        <div class="proof">
+          <div><strong>Official published source</strong><span>Fixed-camera locations are sourced from NZ Transport Agency Waka Kotahi.</span></div>
+          <div><strong>Route-aware matching</strong><span>Cameras are projected against the active route rather than treated as generic nearby points.</span></div>
+          <div><strong>Validated snapshots</strong><span>The backend keeps the last known-good dataset if a refresh does not pass validation.</span></div>
+        </div>
+      </div>
+    </section>
+    <div class="wrap content">
+      <article class="article">
+        <h2>What Waybi means by “safety-camera awareness”</h2>
+        <p>Waybi does not claim to detect enforcement activity. It uses the public list of fixed safety-camera locations and places that information in the context of a planned route. During navigation, high-confidence matched cameras can appear on the map and trigger an approach reminder at an appropriate distance.</p>
+        <p>This is deliberately different from showing every camera point within a large circle around the driver. A nearby camera on a parallel road, a road underneath a motorway or a road travelling in another direction may not be relevant to the active route. Waybi uses route geometry and road context to reduce those false positives.</p>
+
+        <h2>How the camera dataset is kept current</h2>
+        <p>The production Cloudflare Worker checks the official source every six hours. A new snapshot only replaces the current one when the source date and coordinates pass validation. If a sync fails or a candidate dataset looks invalid, Waybi retains the most recent validated snapshot instead of replacing good data with an empty or suspicious result.</p>
+        <div class="callout">
+          <strong>Automatic refresh remains part of the free navigation experience.</strong>
+          Waybi Plus can expose a manual “check now” camera sync, but the scheduled camera refresh continues automatically for everyone.
+        </div>
+
+        <h2>What the public source does not tell Waybi</h2>
+        <p>The published fixed-camera list is useful, but it is not a complete description of enforcement on every road. The source does not provide every direction-of-travel or enforcement-lane attribute that a navigation system might want. Waybi therefore avoids presenting those unknowns as facts.</p>
+        <ul>
+          <li>It does not claim that every mobile or temporary enforcement location is known.</li>
+          <li>It does not claim that every published camera applies to every direction or lane.</li>
+          <li>It does not replace speed-limit signs, temporary road controls or other legal requirements.</li>
+          <li>It does not guarantee that a camera dataset is real-time simply because it was recently checked.</li>
+        </ul>
+
+        <h2>Route matching before an alert</h2>
+        <p>After a route is calculated, Waybi projects camera points against the route geometry and records how far along the route each match occurs. The navigation experience can then reason about the driver's progress along that route rather than only the straight-line distance to the camera.</p>
+        <p>High-confidence matches are used for approach alerts. This makes reminders more useful on dense urban roads where several streets may be physically close together but operationally unrelated.</p>
+
+        <h2>Camera reminders and voice guidance should not fight each other</h2>
+        <p>Waybi's navigation experience separates primary turn guidance from secondary road-awareness announcements. Camera speech can wait for an active navigation instruction to finish so two voices do not compete at the same moment. The visual alert also keeps the road name and distance visible without taking over the whole map.</p>
+
+        <h2>Why Waybi calls them safety cameras</h2>
+        <p>Waybi follows the terminology used by NZ Transport Agency Waka Kotahi for its safety-camera programme. The feature is positioned as road awareness: useful context about the road ahead, not a tool for ignoring posted limits. Drivers remain responsible for following the law and the conditions in front of them.</p>
+
+        <section class="faq" aria-labelledby="faq-title">
+          <h2 id="faq-title">Safety-camera questions</h2>
+          <details><summary>Does Waybi show all speed cameras in New Zealand?</summary><p>No. Waybi uses the published NZTA fixed safety-camera dataset. It does not claim complete knowledge of mobile enforcement, temporary activity, every camera direction or every lane.</p></details>
+          <details><summary>How often does Waybi check the camera data?</summary><p>The production backend is configured to check the official fixed-camera source every six hours and retain the last validated snapshot if an update cannot be trusted.</p></details>
+          <details><summary>Are camera alerts a substitute for road signs?</summary><p>No. Camera and navigation information are driving aids. Road signs, temporary controls, current conditions and New Zealand law always take priority.</p></details>
+        </section>
+      </article>
+      <aside class="aside" aria-label="Safety-camera sources and links">
+        <section><h2>Official source</h2><p>NZ Transport Agency Waka Kotahi publishes the fixed safety-camera locations Waybi uses.</p><a href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" rel="noopener noreferrer">Open NZTA fixed-camera locations →</a></section>
+        <section><h2>Plan a route</h2><p>See camera context inside Waybi's route planning experience.</p><a href="/app">Open Waybi →</a></section>
+        <section><h2>Full navigation guide</h2><p>Traffic, routes, parking, map providers and bilingual guidance.</p><a href="/new-zealand-navigation/">New Zealand navigation →</a></section>
+      </aside>
+    </div>
+    <section class="related">
+      <div class="wrap">
+        <h2>More Waybi road intelligence</h2>
+        <div class="cards">
+          <a class="card" href="/new-zealand-navigation/"><span>Navigation</span><strong>Route planning for New Zealand</strong><p>How Waybi combines routes, traffic context, parking and navigation.</p></a>
+          <a class="card" href="/route-watch/"><span>Waybi Plus</span><strong>Route Watch</strong><p>Monitor a saved Home ↔ Work corridor against official NZTA road events.</p></a>
+          <a class="card" href="/zh/" lang="zh-CN"><span>中文</span><strong>Waybi 中文介绍</strong><p>了解新西兰导航与固定摄像头提醒。</p></a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="wrap"><span>© 2026 Waybi · A clearer journey</span><nav><a href="/">Home</a><a href="/app">Web app</a><a href="https://github.com/yaohuangguan/Waybi">GitHub</a></nav></div>
+  </footer>
+</body>
+</html>

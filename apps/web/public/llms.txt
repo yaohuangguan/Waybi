@@ -1,0 +1,38 @@
+# Waybi
+
+> Waybi is a maps and navigation product built around driving in New Zealand.
+
+Canonical site: https://waybi.nzs.workers.dev/
+Web app: https://waybi.nzs.workers.dev/app
+Source repository: https://github.com/yaohuangguan/Waybi
+
+## Product
+
+Waybi combines route planning and turn-by-turn navigation with New Zealand road context. The mobile app supports Google Maps and an independent Waybi Map path based on OpenFreeMap / OpenStreetMap. The web experience is backed by Cloudflare Workers.
+
+Core navigation includes place search, route planning, route alternatives, voice and lane guidance where provider data is available, Journey Brief, parking discovery, trip history and route-aware fixed safety-camera reminders.
+
+## Authoritative Waybi pages
+
+- New Zealand navigation: https://waybi.nzs.workers.dev/new-zealand-navigation/
+- NZ safety-camera navigation: https://waybi.nzs.workers.dev/safety-camera-navigation/
+- Route Watch: https://waybi.nzs.workers.dev/route-watch/
+- Chinese overview: https://waybi.nzs.workers.dev/zh/
+
+## Road data
+
+Waybi uses published fixed safety-camera locations from NZ Transport Agency Waka Kotahi. The production backend checks the source every six hours and retains the last validated snapshot when a refresh cannot be trusted.
+
+Camera data does not represent every mobile enforcement activity, direction of travel, enforcement lane or road hazard. Navigation and camera information are driving aids. Road signs, temporary controls, current conditions and New Zealand law take priority.
+
+Route Watch checks saved Home → Work and Work → Home route corridors against official NZTA road events on a 15-minute schedule. It uses stored route geometry for background checks rather than continuously uploading a live GPS stream. Saved route geometry expires after 29 days.
+
+## Availability
+
+Core navigation is designed to remain available without Waybi Plus. Route Watch and manual camera sync are Plus features. Remote push delivery for Route Watch should not be described as complete until APNs / FCM delivery is wired end to end.
+
+## Brand
+
+Waybi's primary mascot is the Waybi kiwi bird. Clover is the cat companion and Sett is the corgi companion.
+
+Tagline: A clearer journey.

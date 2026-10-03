@@ -72,8 +72,15 @@ function render() {
   menuListeners = new AbortController();
   const c = copy[language as keyof typeof copy];
   document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
-  document.title = language === 'zh' ? 'Waybi · 多一点 Waybi 的导航地图' : 'Waybi · Your map. A little more Waybi.';
-  document.querySelector('meta[name="description"]')?.setAttribute('content', c.lead);
+  document.title = language === 'zh'
+    ? 'Waybi 新西兰导航 App｜路线规划、摄像头提醒与停车'
+    : 'Waybi — New Zealand Navigation App | Traffic & Safety Camera Alerts';
+  document.querySelector('meta[name="description"]')?.setAttribute(
+    'content',
+    language === 'zh'
+      ? 'Waybi 是为新西兰道路打造的导航 App，提供路线规划、交通路况、NZTA 固定安全摄像头提醒、停车信息，以及中英文导航体验。'
+      : 'Waybi is a New Zealand navigation app with route planning, traffic-aware guidance, NZTA fixed safety-camera reminders, parking discovery, and English or Chinese navigation.'
+  );
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#F8FBEF');
   document.body.dataset.surface = 'marketing';
   document.body.innerHTML = `
@@ -120,6 +127,14 @@ function render() {
           <div class="safety-art" aria-hidden="true">${bird}<div class="camera-demo"><span>◉</span><div><strong>${c.demo}</strong><small>${c.demoRoad}</small></div></div></div>
           <div class="safety-copy"><span class="eyebrow">${c.safetyLabel}</span><h2>${c.safetyTitle}</h2><p>${c.safetyLead}</p><ul class="safety-list">${c.safetyItems.map(item => `<li><b aria-hidden="true">✓</b>${item}</li>`).join('')}</ul><a class="text-link" href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" target="_blank" rel="noopener noreferrer">${c.source}<span aria-hidden="true">↗</span></a><div class="source-note">${c.sourceNote}</div></div>
         </section>
+        <section class="seo-guides" aria-labelledby="seo-guides-title">
+          <div class="section-heading"><div><span class="eyebrow">${language === 'zh' ? '深入了解 WAYBI' : 'EXPLORE WAYBI'}</span><h2 id="seo-guides-title">${language === 'zh' ? '不只是一个漂亮的地图。' : 'More than a pretty map.'}</h2></div><p>${language === 'zh' ? '看看 Waybi 如何处理路线、固定摄像头与每天重复走的通勤路线。' : 'See how Waybi handles routes, fixed safety-camera awareness and the journeys you repeat every day.'}</p></div>
+          <div class="seo-guide-grid">
+            <a class="seo-guide-card" href="/new-zealand-navigation/"><span>${language === 'zh' ? '导航' : 'NAVIGATION'}</span><h3>${language === 'zh' ? '新西兰路线规划' : 'New Zealand navigation'}</h3><p>${language === 'zh' ? '路线选择、交通信息、停车、多地图提供方与中英文导航。' : 'Route choices, traffic context, parking, multiple map providers and bilingual guidance.'}</p><b>${language === 'zh' ? '了解导航 →' : 'Explore navigation →'}</b></a>
+            <a class="seo-guide-card" href="/safety-camera-navigation/"><span>${language === 'zh' ? '道路提醒' : 'ROAD AWARENESS'}</span><h3>${language === 'zh' ? 'NZTA 固定安全摄像头提醒' : 'NZ safety-camera guidance'}</h3><p>${language === 'zh' ? '了解官方数据来源、路线匹配、自动更新与明确的覆盖范围。' : 'How official fixed-camera data is validated, matched to your route and kept current.'}</p><b>${language === 'zh' ? '了解摄像头提醒 →' : 'How camera reminders work →'}</b></a>
+            <a class="seo-guide-card" href="/route-watch/"><span>WAYBI PLUS</span><h3>Route Watch</h3><p>${language === 'zh' ? '用保存的通勤路线走廊检查 NZTA 道路事件，而不是全天持续上传实时 GPS。' : 'Monitor a saved commute corridor against official NZTA road events without continuously uploading live GPS.'}</p><b>${language === 'zh' ? '了解 Route Watch →' : 'Explore Route Watch →'}</b></a>
+          </div>
+        </section>
         <section class="faq" id="faq"><div><span class="eyebrow">${c.faqLabel}</span><h2>${c.faqTitle}</h2></div><div>${c.faqs.map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join('')}</div></section>
         <section class="download cta" id="download" aria-labelledby="download-title">
           <div><span class="eyebrow">${language === 'zh' ? 'WAYBI · IPHONE 版' : 'WAYBI FOR IPHONE'}</span>
@@ -139,7 +154,7 @@ function render() {
           </div>
         </section>
       </main>
-      <footer class="footer"><a class="brand" href="/">${logo}</a><div class="footer-links">${c.links.map((label, i) => `<a href="${['#download', '/dashboard', 'https://github.com/yaohuangguan/Waybi/issues'][i]}">${label}</a>`).join('')}</div><p>${c.footer}<br>${c.disclaimer}</p><small>© ${new Date().getFullYear()} Waybi</small></footer>
+      <footer class="footer"><a class="brand" href="/">${logo}</a><div class="footer-links">${c.links.map((label, i) => `<a href="${['#download', '/dashboard', 'https://github.com/yaohuangguan/Waybi/issues'][i]}">${label}</a>`).join('')}<a href="/new-zealand-navigation/">${language === 'zh' ? '导航指南' : 'Navigation guide'}</a><a href="/safety-camera-navigation/">${language === 'zh' ? '摄像头提醒' : 'Safety cameras'}</a><a href="/route-watch/">Route Watch</a><a href="/zh/" lang="zh-CN">中文</a></div><p>${c.footer}<br>${c.disclaimer}</p><small>© ${new Date().getFullYear()} Waybi</small></footer>
     </div>`;
   document.querySelector('.language')?.addEventListener('click', () => {
     language = language === 'zh' ? 'en' : 'zh';

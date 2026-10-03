@@ -7,8 +7,17 @@ export default defineConfig({
     registerType: 'autoUpdate',
     includeAssets: ['brand/waybi-icon.png', 'brand/waybi-lockup.svg'],
     manifest: {
-      name: 'Waybi · NZ Navigation', short_name: 'Waybi', description: 'Route planning and road-safety awareness for New Zealand.',
-      theme_color: '#152510', background_color: '#152510', display: 'standalone', start_url: '/app', scope: '/', orientation: 'portrait',
+      name: 'Waybi · New Zealand Navigation',
+      short_name: 'Waybi',
+      description: 'New Zealand navigation with route planning, traffic-aware guidance, fixed safety-camera reminders, parking discovery and bilingual guidance.',
+      lang: 'en-NZ',
+      categories: ['navigation', 'travel'],
+      theme_color: '#152510',
+      background_color: '#152510',
+      display: 'standalone',
+      start_url: '/app',
+      scope: '/',
+      orientation: 'portrait',
       icons: [{ src: '/brand/waybi-icon.png', sizes: '1024x1024', type: 'image/png', purpose: 'any' }]
     },
     workbox: {

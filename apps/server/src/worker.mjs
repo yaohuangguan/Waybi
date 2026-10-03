@@ -389,7 +389,7 @@ export default {
         pathname === '/app' || pathname.startsWith('/app/') ||
         pathname === '/dashboard' || pathname.startsWith('/dashboard/');
       const assetRequest = productSurface
-        ? new Request(new URL('/index.html', request.url), request)
+        ? new Request(new URL('/', request.url), request)
         : request;
       const response = await env.ASSETS.fetch(assetRequest);
       if (!productSurface) return response;

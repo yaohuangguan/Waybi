@@ -36,7 +36,7 @@ test('product surfaces are noindex while public marketing assets stay indexable'
     assert.equal(response.headers.get('x-robots-tag'), 'noindex, follow');
     assert.equal(response.headers.get('cache-control'), 'private, no-cache');
   }
-  assert.deepEqual(assetUrls.slice(0, 4), Array(4).fill('https://waybi.test/index.html'));
+  assert.deepEqual(assetUrls.slice(0, 4), Array(4).fill('https://waybi.test/'));
 
   const marketing = await worker.fetch(new Request('https://waybi.test/'), env, ctx);
   assert.equal(marketing.headers.get('x-robots-tag'), null);

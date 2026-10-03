@@ -385,10 +385,13 @@ export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
     if (!pathname.startsWith('/api/')) {
-      const response = await env.ASSETS.fetch(request);
       const productSurface =
         pathname === '/app' || pathname.startsWith('/app/') ||
         pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+      const assetRequest = productSurface
+        ? new Request(new URL('/', request.url), request)
+        : request;
+      const response = await env.ASSETS.fetch(assetRequest);
       if (!productSurface) return response;
 
       const headers = new Headers(response.headers);

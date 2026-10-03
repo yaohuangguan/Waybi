@@ -123,6 +123,18 @@ void main() {
     expect(filter.accepted!.point, actual);
   });
 
+  test('a distant route origin cannot permanently block actual GPS', () {
+    var now = DateTime(2026, 10, 3, 9);
+    final filter = NavigationLocationFilter(anchor: home, clock: () => now);
+    const actual = GeoPoint(-36.8114218, 174.6048637);
+    for (var i = 0; i < 3; i++) {
+      now = DateTime(2026, 10, 3, 9).add(Duration(seconds: i));
+      final accepted = filter.accept(fix(actual, seconds: i, accuracy: 6));
+      expect(accepted != null, i == 2);
+    }
+    expect(filter.accepted!.point, actual);
+  });
+
   test('duplicate stationary samples cannot release the initial marker', () {
     final filter = NavigationLocationFilter(
       clock: () => DateTime(2026, 10, 3, 9),

@@ -71,7 +71,7 @@ class NavigationLocationFilter {
         final stationary = speed < 1.5;
         final anchorTolerance = math.max(28.0, fix.accuracyMeters * 1.35);
         if (stationary && fromAnchor > anchorTolerance) {
-          if (fromAnchor > 250 || !_confirmedRelocation(fix)) return null;
+          if (!_confirmedRelocation(fix)) return null;
           _anchor = fix.point;
           return _commit(fix);
         }

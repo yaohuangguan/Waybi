@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/traffic_flow.dart';
 import 'package:waybi_mobile/domain/map_layer_settings.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/providers/independent_map_renderer.dart';
@@ -139,7 +140,7 @@ class _PreviewState extends State<_Preview> {
                     center: _location,
                     zoom: 17,
                   ),
-                  layers: const MapLayerSettings(),
+                  layers: const MapLayerSettings(traffic: true),
                   locationMarker: LocationMarkerStyle.kiwi,
                   locationEnabled: true,
                   following: _following,
@@ -149,7 +150,35 @@ class _PreviewState extends State<_Preview> {
                   onCamera: (_) {},
                   roadEvents: const [],
                   onRoadEvent: (_) {},
-                  trafficSegments: const [],
+                  // Visible sample congestion crosses the active lime route.
+                  trafficSegments: _browse
+                      ? const []
+                      : const [
+                          TrafficFlowSegment(
+                            id: 'preview-heavy',
+                            motorway: '',
+                            name: 'Sample congestion',
+                            direction: '',
+                            congestion: 'Heavy',
+                            level: TrafficFlowLevel.heavy,
+                            start: _location,
+                            end: GeoPoint(-36.8500, 174.7625),
+                            geometryQuality: 'road-matched',
+                            geometry: [_location, GeoPoint(-36.8500, 174.7625)],
+                          ),
+                          TrafficFlowSegment(
+                            id: 'preview-moderate',
+                            motorway: '',
+                            name: 'Sample congestion',
+                            direction: '',
+                            congestion: 'Moderate',
+                            level: TrafficFlowLevel.moderate,
+                            start: GeoPoint(-36.8470, 174.7641),
+                            end: _location,
+                            geometryQuality: 'road-matched',
+                            geometry: [GeoPoint(-36.8470, 174.7641), _location],
+                          ),
+                        ],
                   routePaths: _browse
                       ? const []
                       : const [

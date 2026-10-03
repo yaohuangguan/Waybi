@@ -330,6 +330,29 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         belowLayerId: 'waybi-alternative-edge',
         enableInteraction: false,
       );
+      // A narrow congestion stripe sits inside the wider lime route. Fresh
+      // slow/heavy traffic remains visible without gray or stale data hiding
+      // the route, and the provider's actual road geometry is retained.
+      await c.addLineLayer(
+        'waybi-traffic',
+        'waybi-traffic-congestion',
+        ml.LineLayerProperties(
+          lineColor: [
+            'match',
+            ['get', 'level'],
+            'heavy',
+            '#D93025',
+            '#F2A900',
+          ],
+          lineWidth: 3,
+          lineOpacity: 1,
+          lineCap: 'round',
+          lineJoin: 'round',
+        ),
+        filter: ['in', 'level', 'moderate', 'heavy'],
+        belowLayerId: 'waybi-poi-dot',
+        enableInteraction: false,
+      );
       await c.addCircleLayer(
         'waybi-pins',
         'waybi-pins-dot',

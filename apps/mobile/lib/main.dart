@@ -1317,7 +1317,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           prefs.getBool('waybi.alerts.dual_red_speed') ?? true,
       alertBusLane: prefs.getBool('waybi.alerts.bus_lane') ?? true,
       alertOther: prefs.getBool('waybi.alerts.other_camera') ?? false,
-      traffic: prefs.getBool('waybi.layers.traffic') ?? false,
+      traffic: prefs.getBool('waybi.layers.traffic') ?? true,
       style: BaseMapStyle.values.firstWhere(
         (value) => value.name == prefs.getString('waybi.layers.style'),
         orElse: () => BaseMapStyle.standard,
@@ -2783,7 +2783,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ),
       );
 
-      if (_selectedMode == WaybiTravelMode.drive) {
+      if (_layers.traffic && _selectedMode == WaybiTravelMode.drive) {
         final intervals = route.trafficIntervals.isEmpty
             ? <TrafficInterval>[
                 TrafficInterval(
@@ -5762,50 +5762,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _navigationBottomInset,
       ),
     );
-    final activeRoute = _activeNavigationRoute;
-    if (_selectedMode == WaybiTravelMode.drive &&
-        activeRoute != null &&
-        activeRoute.points.length >= 2) {
-      final trafficOptions = <PolylineOptions>[];
-      final intervals = activeRoute.trafficIntervals.isEmpty
-          ? <TrafficInterval>[
-              TrafficInterval(
-                startPolylinePointIndex: 0,
-                endPolylinePointIndex: activeRoute.points.length - 1,
-                speed: 'unknown',
-              ),
-            ]
-          : activeRoute.trafficIntervals;
-      for (final interval in intervals) {
-        final start = interval.startPolylinePointIndex
-            .clamp(0, activeRoute.points.length - 1)
-            .toInt();
-        if (start >= activeRoute.points.length - 1) continue;
-        final end = interval.endPolylinePointIndex
-            .clamp(start + 1, activeRoute.points.length - 1)
-            .toInt();
-        trafficOptions.add(
-          PolylineOptions(
-            points: activeRoute.points
-                .sublist(start, end + 1)
-                .map(
-                  (point) => LatLng(
-                    latitude: point.latitude,
-                    longitude: point.longitude,
-                  ),
-                )
-                .toList(growable: false),
-            strokeColor: _trafficColor(interval.speed, true),
-            strokeWidth: 8,
-            zIndex: 40,
-            clickable: false,
-          ),
-        );
-      }
-      if (trafficOptions.isNotEmpty) {
-        await controller.addPolylines(trafficOptions);
-      }
-    }
+    // The SDK owns the current route and its live traffic colors. A preview
+    // polyline here would conceal congestion and remain stale after reroutes.
     await _syncDestinationMarker(controller);
     await _syncCameraMarkers();
     _queueMapRefresh();

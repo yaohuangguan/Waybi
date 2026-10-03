@@ -85,14 +85,15 @@ export async function enrichPlacePhotos(places, point, fetcher, { radius = RADIU
     }) : Promise.resolve();
   const wikiTask = getJson(api('en.wikipedia.org', {
     generator: 'geosearch', ggscoord: `${point[1]}|${point[0]}`, ggsradius: String(radius), ggslimit: '30', ggsnamespace: '0',
-    prop: 'pageimages|coordinates|pageprops', piprop: 'name', colimit: 'max',
+    prop: 'pageimages|coordinates|pageprops|pageterms', wbptterms: 'label|alias', piprop: 'name', colimit: 'max',
   }), fetcher).then(data => {
     for (const page of data.query?.pages || []) {
       if (!page.pageimage) continue;
       const coordinate = page.coordinates?.find(c => c.primary) || page.coordinates?.[0];
       const normalized = name => String(name || '').split(/[,(]/)[0].toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
       const matches = places.filter(p => (p.wikidata && p.wikidata === page.pageprops?.wikibase_item) || p.wikipedia === `en:${page.title}` ||
-        (coordinate && normalized(p.englishName || p.name).length > 4 && normalized(p.englishName || p.name) === normalized(page.title) &&
+        (coordinate && normalized(p.englishName || p.name).length > 4 &&
+          [page.title, ...(page.terms?.label || []), ...(page.terms?.alias || [])].some(name => normalized(p.englishName || p.name) === normalized(name)) &&
           distance([p.longitude, p.latitude], [coordinate.lon, coordinate.lat]) < 150));
       for (const p of matches) files.set(p.placeId, `File:${page.pageimage}`);
       // Geotagged, photographed landmarks expand discovery beyond businesses.

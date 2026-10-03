@@ -27,11 +27,11 @@ class _Preview extends StatefulWidget {
 class _PreviewState extends State<_Preview> {
   LocationMarkerStyle marker = LocationMarkerStyle.dog;
   final place = const PlaceSummary(
-    name: 'Auckland Art Gallery Toi o Tāmaki',
-    location: GeoPoint(-36.8514, 174.7663),
+    name: 'Sky Tower',
+    location: GeoPoint(-36.8485, 174.7622),
     address:
-        'Wellesley Street East, Auckland Central, Auckland 1010, New Zealand',
-    category: 'art_gallery',
+        'Victoria Street West, Auckland Central, Auckland 1010, New Zealand',
+    category: 'attraction',
     reference: ProviderReference('osm', 'gallery'),
   );
 
@@ -49,27 +49,7 @@ class _PreviewState extends State<_Preview> {
                 CompanionSearchPrompt(
                   marker: marker,
                   language: 'zh',
-                  onTap: () {},
-                ),
-                const SizedBox(height: 20),
-                SegmentedButton<LocationMarkerStyle>(
-                  segments: const [
-                    ButtonSegment(
-                      value: LocationMarkerStyle.kiwi,
-                      label: Text('Waybi'),
-                    ),
-                    ButtonSegment(
-                      value: LocationMarkerStyle.cat,
-                      label: Text('Clover'),
-                    ),
-                    ButtonSegment(
-                      value: LocationMarkerStyle.dog,
-                      label: Text('Sett'),
-                    ),
-                  ],
-                  selected: {marker},
-                  onSelectionChanged: (value) =>
-                      setState(() => marker = value.single),
+                  onSearch: (_) {},
                 ),
               ],
             ),
@@ -82,6 +62,14 @@ class _PreviewState extends State<_Preview> {
                 'name': place.name,
                 'address': place.address,
                 'primaryType': place.category,
+                'photos': [
+                  {
+                    'url': 'https://upload.wikimedia.org/wikipedia/commons/f/f8/01_Auckland_New_Zealand-1000137.jpg',
+                    'attribution': 'QFSE Media \u00b7 CC BY-SA 3.0 nz',
+                    'sourceUrl': 'https://commons.wikimedia.org/wiki/File:01_Auckland_New_Zealand-1000137.jpg',
+                    'licenseUrl': 'https://creativecommons.org/licenses/by-sa/3.0/nz/deed.en',
+                  },
+                ],
               }),
               detailsLoading: false,
               detailsError: null,

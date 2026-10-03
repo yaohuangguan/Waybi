@@ -49,3 +49,21 @@ test('invalid coordinates never reach a photo provider', async () => {
   const response = await independentPlaceDetails(url, {}, () => { throw Error('must not fetch'); });
   assert.equal(response.status, 400);
 });
+
+test('selected OSM object media is used only with matching identity and coordinates', async () => {
+  const url = input(); url.searchParams.set('id', 'N:555');
+  let latitude = -36.8485;
+  const fetcher = async endpoint => {
+    if (endpoint.hostname === 'www.openstreetmap.org') return result({ elements: [{
+      type: 'node', id: 555, lat: latitude, lon: 174.7622,
+      tags: { name: 'Sky Tower', wikimedia_commons: 'File:Sky Tower.jpg' },
+    }] });
+    if (endpoint.hostname === 'en.wikipedia.org') return result({ query: { pages: [] } });
+    return result(commons('CC BY-SA 4.0'));
+  };
+  const matched = await (await independentPlaceDetails(url, {}, fetcher)).json();
+  assert.equal(matched.photos.length, 1);
+  latitude = -41.28;
+  const unrelated = await (await independentPlaceDetails(url, {}, fetcher)).json();
+  assert.deepEqual(unrelated.photos, []);
+});

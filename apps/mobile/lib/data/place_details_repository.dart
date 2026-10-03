@@ -151,7 +151,7 @@ class PlaceDetailsRepository {
         );
     final response = await _client
         .get(uri)
-        .timeout(const Duration(seconds: 20));
+        .timeout(const Duration(seconds: 26));
     if (response.statusCode != 200) {
       throw StateError('Place photos unavailable');
     }

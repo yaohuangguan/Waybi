@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../domain/map_provider.dart';
-import '../theme/waybi_theme.dart';
 import 'waybi_bird.dart';
 
 String companionName(LocationMarkerStyle marker) => switch (marker) {
@@ -54,12 +53,12 @@ class CompanionSearchPrompt extends StatefulWidget {
     super.key,
     required this.marker,
     required this.language,
-    required this.onTap,
+    required this.onSearch,
   });
 
   final LocationMarkerStyle marker;
   final String language;
-  final VoidCallback onTap;
+  final ValueChanged<String> onSearch;
 
   @override
   State<CompanionSearchPrompt> createState() => _CompanionSearchPromptState();
@@ -72,10 +71,22 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
     duration: const Duration(milliseconds: 2400),
   );
 
+  final _input = TextEditingController();
+  bool? _reduceMotion;
+
+  void _submit() {
+    FocusScope.of(context).unfocus();
+    widget.onSearch(_input.text.trim());
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _greet();
+    final reduced = MediaQuery.disableAnimationsOf(context);
+    if (_reduceMotion != reduced) {
+      _reduceMotion = reduced;
+      _greet();
+    }
   }
 
   void _greet() {
@@ -95,6 +106,7 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
 
   @override
   void dispose() {
+    _input.dispose();
     _greeting.dispose();
     super.dispose();
   }
@@ -105,78 +117,87 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
     final chinese = widget.language == 'zh';
     final name = companionName(widget.marker);
     final question = chinese ? '去哪里？' : 'Where to?';
-    return Semantics(
-      button: true,
-      label: '$name: $question',
-      excludeSemantics: true,
-      child: Material(
-        color: scheme.surface.withValues(alpha: .96),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(19),
-          side: BorderSide(color: scheme.primary.withValues(alpha: .25)),
-        ),
-        elevation: 4,
-        shadowColor: const Color(0x3020351C),
-        child: InkWell(
-          key: const Key('companionSearchButton'),
-          borderRadius: BorderRadius.circular(19),
-          onTap: widget.onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(9, 8, 12, 8),
-            child: Row(
-              children: [
-                RepaintBoundary(
-                  child: AnimatedBuilder(
-                    animation: _greeting,
-                    child: CompanionAvatar(marker: widget.marker),
-                    builder: (context, child) {
-                      final wave = math.sin(_greeting.value * math.pi * 4);
-                      final envelope = 1 - _greeting.value;
-                      return Transform.translate(
-                        offset: Offset(0, -2 * wave.abs() * envelope),
-                        child: Transform.rotate(
-                          angle: .055 * wave * envelope,
-                          child: Transform.scale(
-                            scale: 1 + .04 * wave.abs() * envelope,
-                            child: child,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        question,
-                        style: TextStyle(
-                          color: scheme.onSurface,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        chinese ? '$name 陪你出发' : '$name is ready when you are',
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(
-                  Icons.arrow_forward_rounded,
-                  color: WaybiColors.ocean,
-                  size: 19,
-                ),
-              ],
+    return Material(
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .65)),
+      ),
+      elevation: 3,
+      shadowColor: const Color(0x2420351C),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        child: Row(
+          children: [
+            RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _greeting,
+                child: CompanionAvatar(marker: widget.marker, size: 44),
+                builder: (context, child) {
+                  final wave = math.sin(_greeting.value * math.pi * 4);
+                  final envelope = 1 - _greeting.value;
+                  return Transform.translate(
+                    offset: Offset(0, -2 * wave.abs() * envelope),
+                    child: Transform.rotate(
+                      angle: .04 * wave * envelope,
+                      child: child,
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$name · $question',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  TextField(
+                    key: const Key('companionSearchInput'),
+                    controller: _input,
+                    textInputAction: TextInputAction.search,
+                    autocorrect: false,
+                    style: TextStyle(color: scheme.onSurface, fontSize: 16),
+                    decoration: InputDecoration(
+                      hintText: chinese
+                          ? '搜索地点、地址'
+                          : 'Search places or addresses',
+                      hintStyle: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 15,
+                      ),
+                      isDense: true,
+                      filled: false,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                    ),
+                    onSubmitted: (_) => _submit(),
+                  ),
+                ],
+              ),
+            ),
+            IconButton.filledTonal(
+              key: const Key('companionSearchSubmit'),
+              tooltip: chinese ? '搜索' : 'Search',
+              onPressed: _submit,
+              style: IconButton.styleFrom(
+                backgroundColor: scheme.primaryContainer,
+                foregroundColor: scheme.primary,
+                visualDensity: VisualDensity.compact,
+              ),
+              icon: const Icon(Icons.search_rounded, size: 21),
+            ),
+          ],
         ),
       ),
     );

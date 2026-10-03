@@ -2136,7 +2136,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final height = MediaQuery.sizeOf(context).height;
     final deckHeight = expanded
         ? (height * .72).clamp(430.0, 660.0)
-        : (height * .36).clamp(245.0, 310.0);
+        : (height * .38).clamp(285.0, 340.0);
     return deckHeight + MediaQuery.paddingOf(context).bottom + 24;
   }
 
@@ -6098,7 +6098,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     CompanionSearchPrompt(
                       marker: _locationMarker,
                       language: _appLanguage,
-                      onTap: _showGoSearch,
+                      onSearch: (query) => unawaited(_openSearch(query: query)),
                     ),
                     const SizedBox(height: 9),
                     _buildQuickActions(),

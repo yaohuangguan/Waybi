@@ -7,7 +7,6 @@ import '../domain/coordinate_formatter.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../theme/waybi_theme.dart';
-import 'waybi_bird.dart';
 
 class PlaceDetailsContent extends StatefulWidget {
   const PlaceDetailsContent({
@@ -241,28 +240,34 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
     PlaceDetails? place,
   ) {
     final photo = place?.photos.isNotEmpty == true ? place!.photos.first : null;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: SizedBox(
-        width: 88,
-        height: 88,
-        child: photo == null
-            ? ColoredBox(
-                color: scheme.primaryContainer,
-                child: const Center(child: WaybiBird(size: 60)),
-              )
-            : Image.network(
-                photo.url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => ColoredBox(
-                  color: scheme.primaryContainer,
-                  child: Icon(
-                    Icons.place_rounded,
-                    color: scheme.primary,
-                    size: 30,
+    return Tooltip(
+      message: photo?.attribution ?? '',
+      child: GestureDetector(
+        onTap: () => _setExpanded(true),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            width: 88,
+            height: 88,
+            child: photo == null
+                ? ColoredBox(
+                    color: scheme.primaryContainer,
+                    child: const SizedBox.shrink(),
+                  )
+                : Image.network(
+                    photo.url,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => ColoredBox(
+                      color: scheme.primaryContainer,
+                      child: Icon(
+                        Icons.place_rounded,
+                        color: scheme.primary,
+                        size: 30,
+                      ),
+                    ),
                   ),
-                ),
-              ),
+          ),
+        ),
       ),
     );
   }
@@ -366,15 +371,14 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                   ),
                 ),
                 if (_expanded && place?.photos.isNotEmpty == true)
-                  _PhotoStrip(photos: place!.photos)
-                else if (_expanded)
-                  _PhotoFallback(title: title),
+                  _PhotoStrip(photos: place!.photos),
+
                 Padding(
                   padding: EdgeInsets.fromLTRB(16, _expanded ? 10 : 2, 8, 2),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (!_expanded) ...[
+                      if (!_expanded && place?.photos.isNotEmpty == true) ...[
                         _compactThumbnail(scheme, title, place),
                         const SizedBox(width: 12),
                       ],
@@ -806,26 +810,6 @@ class _PhotoStrip extends StatelessWidget {
           );
         },
       ),
-    );
-  }
-}
-
-class _PhotoFallback extends StatelessWidget {
-  const _PhotoFallback({required this.title});
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      height: 92,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [scheme.primaryContainer, scheme.surfaceContainerHighest],
-        ),
-      ),
-      alignment: Alignment.center,
-      child: const WaybiBird(size: 64),
     );
   }
 }

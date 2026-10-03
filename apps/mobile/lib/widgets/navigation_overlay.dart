@@ -177,12 +177,17 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
     super.dispose();
   }
 
-  void _toggleSheet() {
-    _sheetController.animateTo(
-      expanded ? _minExtent : _maxExtent,
+  Future<void> _toggleSheet() async {
+    final next = !expanded;
+    await _sheetController.animateTo(
+      next ? _maxExtent : _minExtent,
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutCubic,
     );
+    // Header controls can change the available extent while opening. When
+    // closing, the controller may already be at its new minimum and emit no
+    // notification; preserve the user's tap intent in that case as well.
+    if (mounted) setState(() => expanded = next);
   }
 
   ImageDescriptor? _laneDescriptor;

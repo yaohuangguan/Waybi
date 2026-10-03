@@ -275,7 +275,11 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             lineCap: 'round',
             lineJoin: 'round',
           ),
-          filter: ['==', 'active', active],
+          filter: [
+            '==',
+            ['get', 'active'],
+            active,
+          ],
           belowLayerId: 'waybi-poi-dot',
           enableInteraction: false,
         );
@@ -289,7 +293,11 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             lineCap: 'round',
             lineJoin: 'round',
           ),
-          filter: ['==', 'active', active],
+          filter: [
+            '==',
+            ['get', 'active'],
+            active,
+          ],
           belowLayerId: 'waybi-poi-dot',
           enableInteraction: false,
         );
@@ -349,7 +357,22 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           lineCap: 'round',
           lineJoin: 'round',
         ),
-        filter: ['in', 'level', 'moderate', 'heavy'],
+        // iOS converts method-channel filters through NSPredicate. Use
+        // expression syntax consistently; legacy property-name filters can
+        // raise an Objective-C exception outside Dart's error handling.
+        filter: [
+          'any',
+          [
+            '==',
+            ['get', 'level'],
+            'moderate',
+          ],
+          [
+            '==',
+            ['get', 'level'],
+            'heavy',
+          ],
+        ],
         belowLayerId: 'waybi-poi-dot',
         enableInteraction: false,
       );
@@ -486,6 +509,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       _signatures.clear();
       await _updatePadding();
       _queueSync();
+      debugPrint('Waybi native map layers ready');
       widget.onReady(this);
     } catch (e) {
       if (mounted) debugPrint('Practice map initialization failed: $e');

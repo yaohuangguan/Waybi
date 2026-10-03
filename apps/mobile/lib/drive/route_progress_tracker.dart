@@ -48,7 +48,11 @@ class RouteProgressTracker {
     double speedKph = 0,
     double? headingDegrees,
   }) {
-    if (!point.isValid || !accuracyMeters.isFinite || accuracyMeters > 65) {
+    if (!point.isValid ||
+        !accuracyMeters.isFinite ||
+        accuracyMeters <= 0 ||
+        accuracyMeters > 35 ||
+        (_lastTime != null && !time.isAfter(_lastTime!))) {
       return null;
     }
     final previous = _previous;

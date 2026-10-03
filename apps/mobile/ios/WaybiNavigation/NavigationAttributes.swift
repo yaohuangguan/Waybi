@@ -11,6 +11,7 @@ struct NavigationAttributes: ActivityAttributes {
     var maneuver: String
     var offRoute: Bool
     var updatedAt: Date
+    var gpsReliable: Bool?
   }
   var destination: String
   var language: String

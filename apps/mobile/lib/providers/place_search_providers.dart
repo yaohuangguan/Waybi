@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
@@ -102,7 +103,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
 
 /// Keyless OSM search. Every candidate carries coordinates and provenance.
 class IndependentSearchProvider
-    implements SearchProvider, PlaceProvider, ExploreProvider {
+    implements ExpandedSearchProvider, PlaceProvider, ExploreProvider {
   IndependentSearchProvider({
     http.Client? client,
     this.requestSpacing = const Duration(milliseconds: 750),
@@ -225,7 +226,10 @@ class IndependentSearchProvider
             location: location,
             address: address,
             category: props['osm_value']?.toString() ?? '',
-            kind: props['housenumber']?.toString().isNotEmpty == true
+            kind:
+                props['osm_key'] != 'shop' &&
+                    props['osm_key'] != 'amenity' &&
+                    props['housenumber']?.toString().isNotEmpty == true
                 ? PlaceKind.address
                 : PlaceKind.poi,
             reference: ProviderReference(
@@ -263,13 +267,16 @@ class IndependentSearchProvider
     return core.runes.length >= 2 && core != query.trim() ? core : null;
   }
 
-  String _compactSearchText(String value) =>
-      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  String _compactSearchText(String value) => value.toLowerCase().replaceAll(
+    RegExp(r'[^\p{L}\p{N}]+', unicode: true),
+    '',
+  );
 
   bool _nameMatchesCore(PlaceSummary place, String core) {
     final name = _compactSearchText(place.name);
     final wanted = _compactSearchText(core);
     return wanted.isNotEmpty &&
+        name.isNotEmpty &&
         (name.contains(wanted) || wanted.contains(name));
   }
 
@@ -374,11 +381,29 @@ class IndependentSearchProvider
 
   bool _shouldBoundLocally(String query, GeoPoint? proximity) =>
       proximity != null &&
-      proximity.latitude > -48 &&
-      proximity.latitude < -34 &&
-      proximity.longitude > 166 &&
-      proximity.longitude < 179 &&
+      proximity.isValid &&
       !_queryNamesAnotherRegion(query);
+
+  bool _inNewZealand(GeoPoint? point) =>
+      point != null &&
+      point.latitude > -48 &&
+      point.latitude < -34 &&
+      point.longitude > 166 &&
+      point.longitude < 179;
+
+  // Verified local trading names bridge gaps in the public multilingual index.
+  // They change the query, never fabricate a destination or its coordinates.
+  String _localTradingName(String query, GeoPoint? proximity) {
+    if (!_inNewZealand(proximity)) return query;
+    const aliases = {
+      '福地': 'Foodie Asian Supermarket',
+      '福地超市': 'Foodie Asian Supermarket',
+      '福地亚洲超市': 'Foodie Asian Supermarket',
+      '太平超市': 'Tai Ping',
+      '太平亚洲超市': 'Tai Ping',
+    };
+    return aliases[query.replaceAll(RegExp(r'\s+'), '')] ?? query;
+  }
 
   bool _isCategoryIntent(String query) {
     final normalized = query.toLowerCase().trim().replaceAll(' ', '_');
@@ -394,13 +419,16 @@ class IndependentSearchProvider
   }
 
   String _localBbox(GeoPoint center) {
-    const latRadius = .40;
-    const lonRadius = .58;
+    const latRadius = .65;
+    final lonRadius =
+        (latRadius /
+                math.cos(center.latitude * math.pi / 180).abs().clamp(.2, 1))
+            .clamp(.65, 3.25);
     return [
-      (center.longitude - lonRadius).toStringAsFixed(4),
-      (center.latitude - latRadius).toStringAsFixed(4),
-      (center.longitude + lonRadius).toStringAsFixed(4),
-      (center.latitude + latRadius).toStringAsFixed(4),
+      (center.longitude - lonRadius).clamp(-180, 180).toStringAsFixed(4),
+      (center.latitude - latRadius).clamp(-90, 90).toStringAsFixed(4),
+      (center.longitude + lonRadius).clamp(-180, 180).toStringAsFixed(4),
+      (center.latitude + latRadius).clamp(-90, 90).toStringAsFixed(4),
     ].join(',');
   }
 
@@ -471,6 +499,7 @@ class IndependentSearchProvider
     'lang': 'en',
     if (proximity != null) 'lat': proximity.latitude.toStringAsFixed(3),
     if (proximity != null) 'lon': proximity.longitude.toStringAsFixed(3),
+    if (proximity != null) 'location_bias_scale': '0.1',
     if (localBias && _shouldBoundLocally(query, proximity))
       'bbox': _localBbox(proximity!),
   };
@@ -480,6 +509,21 @@ class IndependentSearchProvider
     String query, {
     GeoPoint? proximity,
     required String language,
+  }) => _search(query, proximity: proximity, language: language);
+
+  @override
+  Future<List<PlaceCandidate>> searchFurther(
+    String query, {
+    GeoPoint? proximity,
+    required String language,
+  }) =>
+      _search(query, proximity: proximity, language: language, expanded: true);
+
+  Future<List<PlaceCandidate>> _search(
+    String query, {
+    GeoPoint? proximity,
+    required String language,
+    bool expanded = false,
   }) async {
     final trimmed = query.trim();
     if (trimmed.runes.length < 2) return [];
@@ -500,14 +544,17 @@ class IndependentSearchProvider
       '基督城': 'Christchurch',
       '皇后镇': 'Queenstown',
     };
-    final plainQuery = aliases[trimmed] ?? trimmed;
+    final plainQuery = _localTradingName(
+      aliases[trimmed] ?? trimmed,
+      proximity,
+    );
     final regionalQuery = _regionalIntentQuery(trimmed, proximity);
-    final coreQuery = _coreBrandQuery(trimmed);
+    final coreQuery = _coreBrandQuery(plainQuery);
     final primaryQuery = regionalQuery ?? plainQuery;
-    final bounded = _shouldBoundLocally(primaryQuery, proximity);
+    final bounded = !expanded && _shouldBoundLocally(primaryQuery, proximity);
     var results = await _load(
       'api/',
-      _photonParameters(primaryQuery, proximity),
+      _photonParameters(primaryQuery, proximity, localBias: !expanded),
     );
 
     // A bounded local query keeps short brands local, but must not make long
@@ -526,7 +573,26 @@ class IndependentSearchProvider
         _photonParameters(primaryQuery, proximity, localBias: false),
       );
       final merged = <String, PlaceSummary>{};
-      for (final place in [...results, ...global]) {
+      // A missing local Chinese name must not turn into an overseas namesake.
+      // Keep nearby/NZ destinations and exact named cities. Wider POI results
+      // are available through the explicit "Search further" action.
+      final wider = global.where((place) {
+        if (proximity == null) return true;
+        final metres = distanceMeters(
+          proximity.latitude,
+          proximity.longitude,
+          place.location.latitude,
+          place.location.longitude,
+        );
+        if (metres <= 250000) return true;
+        if (_inNewZealand(proximity) && _inNewZealand(place.location)) {
+          return true;
+        }
+        return !RegExp(r'[\u3400-\u9fff]').hasMatch(plainQuery) &&
+            _administrativeCategories.contains(place.category) &&
+            _strongNameMatch(place, plainQuery);
+      });
+      for (final place in [...results, ...wider]) {
         final ref = place.reference;
         final key = ref == null
             ? '${place.name}|${place.location.latitude}|${place.location.longitude}'
@@ -554,7 +620,7 @@ class IndependentSearchProvider
       for (final fallbackQuery in fallbacks) {
         final fallback = await _load(
           'api/',
-          _photonParameters(fallbackQuery, proximity),
+          _photonParameters(fallbackQuery, proximity, localBias: !expanded),
         );
         for (final place in fallback) {
           final ref = place.reference;
@@ -591,9 +657,14 @@ class IndependentSearchProvider
               ? _nameMatchesCore(p, coreQuery)
               : _isCategoryIntent(plainQuery)
               ? _poiCategories.contains(p.category)
-              : _strongNameMatch(p, plainQuery) ||
-                    _compactSearchText(p.address)
-                        .contains(_compactSearchText(plainQuery));
+              : _nameMatchesCore(p, plainQuery) ||
+                    _compactSearchText(plainQuery).isNotEmpty &&
+                        _compactSearchText(p.address)
+                            .contains(_compactSearchText(plainQuery));
+          final exactName =
+              (_strongNameMatch(b, plainQuery) ? 1 : 0) -
+              (_strongNameMatch(a, plainQuery) ? 1 : 0);
+          if (exactName != 0 && coreQuery != null) return exactName;
           final relevance = (matches(b) ? 1 : 0) - (matches(a) ? 1 : 0);
           if (relevance != 0) return relevance;
           double metres(PlaceSummary p) => distanceMeters(
@@ -607,14 +678,14 @@ class IndependentSearchProvider
         }
         final aRank = _resultRank(
           a,
-          query: trimmed,
+          query: plainQuery,
           proximity: proximity,
           preferredName: regionalQuery,
           coreName: coreQuery,
         );
         final bRank = _resultRank(
           b,
-          query: trimmed,
+          query: plainQuery,
           proximity: proximity,
           preferredName: regionalQuery,
           coreName: coreQuery,

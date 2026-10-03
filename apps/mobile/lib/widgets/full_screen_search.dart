@@ -44,6 +44,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
   int _request = 0;
   bool _loading = false;
   bool _resolving = false;
+  bool _expandedArea = false;
   String? _error;
   List<PlaceCandidate> _results = const [];
 
@@ -66,7 +67,11 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
     super.dispose();
   }
 
-  void _search(String input, {bool immediate = false}) {
+  void _search(
+    String input, {
+    bool immediate = false,
+    bool expandedArea = false,
+  }) {
     _debounce?.cancel();
     final request = ++_request;
     final query = input.trim();
@@ -81,16 +86,25 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
     setState(() {
       _loading = true;
       _error = null;
+      _expandedArea = expandedArea;
+      _results = const [];
     });
     _debounce = Timer(
       immediate ? Duration.zero : const Duration(milliseconds: 280),
       () async {
         try {
-          final results = await widget.provider.search(
-            query,
-            proximity: widget.currentLocation,
-            language: widget.language,
-          );
+          final provider = widget.provider;
+          final results = expandedArea && provider is ExpandedSearchProvider
+              ? await provider.searchFurther(
+                  query,
+                  proximity: widget.currentLocation,
+                  language: widget.language,
+                )
+              : await provider.search(
+                  query,
+                  proximity: widget.currentLocation,
+                  language: widget.language,
+                );
           if (!mounted || request != _request) return;
           setState(() {
             _results = results;
@@ -224,6 +238,47 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
         children: [
           if (_loading || _resolving)
             const LinearProgressIndicator(minHeight: 2),
+          if (!recent &&
+              widget.provider is ExpandedSearchProvider &&
+              widget.currentLocation != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 10, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _expandedArea
+                          ? _text('All regions', '所有地区')
+                          : _text('Nearby first', '附近优先'),
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () => _search(
+                            _controller.text,
+                            immediate: true,
+                            expandedArea: !_expandedArea,
+                          ),
+                    icon: Icon(
+                      _expandedArea
+                          ? Icons.near_me_outlined
+                          : Icons.public_rounded,
+                      size: 17,
+                    ),
+                    label: Text(
+                      _expandedArea
+                          ? _text('Search nearby', '搜索附近')
+                          : _text('Search further', '搜索更远的地点'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (recent && items.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 22, 18, 8),
@@ -244,7 +299,11 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                     child: Text(_error!, style: TextStyle(color: scheme.error)),
                   ),
                   TextButton(
-                    onPressed: () => _search(_controller.text, immediate: true),
+                    onPressed: () => _search(
+                      _controller.text,
+                      immediate: true,
+                      expandedArea: _expandedArea,
+                    ),
                     child: Text(_text('Retry', '重试')),
                   ),
                 ],

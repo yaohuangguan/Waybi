@@ -14,6 +14,59 @@ void main() {
   tearDown(() => messenger.setMockMethodCallHandler(channel, null));
 
   test(
+    'native Live Activity availability is surfaced and latest trip can retry',
+    () async {
+      var enabled = false;
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        return {
+          'supported': true,
+          'enabled': enabled,
+          'active': enabled,
+          'errorCode': enabled ? null : 'LIVE_ACTIVITIES_DISABLED',
+        };
+      });
+      final navigation = SystemNavigation(channel: channel);
+      await navigation.start({
+        'instruction': 'Continue',
+        'destination': 'Foodie',
+      });
+      expect(navigation.enabled, isFalse);
+      expect(navigation.surfaceActive, isFalse);
+      expect(navigation.failureReason, 'LIVE_ACTIVITIES_DISABLED');
+      await navigation.update({
+        'instruction': 'Turn right',
+        'destination': 'Foodie',
+      });
+      enabled = true;
+      await navigation.retry();
+      expect(calls.last.method, 'start');
+      expect((calls.last.arguments as Map)['instruction'], 'Turn right');
+      expect(navigation.surfaceActive, isTrue);
+    },
+  );
+
+  test(
+    'GPS confidence changes update the system surface immediately',
+    () async {
+      final calls = <MethodCall>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        return true;
+      });
+      final navigation = SystemNavigation(channel: channel);
+      await navigation.start({'instruction': 'Continue', 'gpsReliable': true});
+      await navigation.update({'instruction': 'Continue', 'gpsReliable': true});
+      await navigation.update({
+        'instruction': 'Continue',
+        'gpsReliable': false,
+      });
+      expect(calls, hasLength(3));
+    },
+  );
+
+  test(
     'background GPS starts only after the foreground stream is released',
     () async {
       final cancellation = Completer<void>();

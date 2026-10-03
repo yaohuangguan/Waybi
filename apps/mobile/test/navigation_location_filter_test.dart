@@ -18,7 +18,10 @@ void main() {
   );
 
   test('stationary navigation rejects a 100 metre indoor GPS jump', () {
-    final filter = NavigationLocationFilter(anchor: home);
+    final filter = NavigationLocationFilter(
+      anchor: home,
+      clock: () => DateTime(2026, 10, 3, 9, 0, 4),
+    );
     final drift = fix(
       const GeoPoint(-36.8476, 174.7633),
       accuracy: 22,
@@ -30,7 +33,10 @@ void main() {
   });
 
   test('accurate nearby stationary fixes are accepted and held', () {
-    final filter = NavigationLocationFilter(anchor: home);
+    final filter = NavigationLocationFilter(
+      anchor: home,
+      clock: () => DateTime(2026, 10, 3, 9, 0, 4),
+    );
     final first = fix(const GeoPoint(-36.84848, 174.76331), accuracy: 7);
     final jitter = fix(
       const GeoPoint(-36.84844, 174.76334),
@@ -43,7 +49,9 @@ void main() {
   });
 
   test('one apparently accurate stationary fix does not release the puck', () {
-    final filter = NavigationLocationFilter();
+    final filter = NavigationLocationFilter(
+      clock: () => DateTime(2026, 10, 3, 9, 0, 4),
+    );
     final first = fix(home, accuracy: 6, speed: 0);
 
     expect(filter.accept(first), isNull);
@@ -51,7 +59,10 @@ void main() {
   });
 
   test('poor accuracy is rejected before it can move the puck', () {
-    final filter = NavigationLocationFilter(anchor: home);
+    final filter = NavigationLocationFilter(
+      anchor: home,
+      clock: () => DateTime(2026, 10, 3, 9, 0, 4),
+    );
     expect(
       filter.accept(fix(const GeoPoint(-36.8485, 174.7633), accuracy: 55)),
       isNull,
@@ -59,7 +70,10 @@ void main() {
   });
 
   test('plausible moving fixes remain accepted', () {
-    final filter = NavigationLocationFilter(anchor: home);
+    final filter = NavigationLocationFilter(
+      anchor: home,
+      clock: () => DateTime(2026, 10, 3, 9, 0, 4),
+    );
     final first = fix(home, accuracy: 6, speed: 10);
     final next = fix(
       const GeoPoint(-36.84805, 174.7633),
@@ -70,5 +84,50 @@ void main() {
 
     expect(filter.accept(first), isNotNull);
     expect(filter.accept(next), isNotNull);
+  });
+
+  test('stale, future and duplicate fixes cannot move navigation', () {
+    final now = DateTime(2026, 10, 3, 9);
+    final filter = NavigationLocationFilter(clock: () => now);
+    expect(filter.accept(fix(home, seconds: -15, speed: 10)), isNull);
+    expect(filter.accept(fix(home, seconds: 6, speed: 10)), isNull);
+    expect(filter.accept(fix(home, speed: 10)), isNotNull);
+    expect(filter.accept(fix(home, speed: 10)), isNull);
+  });
+
+  test(
+    'a stale anchor is replaced only after three precise consistent fixes',
+    () {
+      var now = DateTime(2026, 10, 3, 9);
+      final filter = NavigationLocationFilter(anchor: home, clock: () => now);
+      const actual = GeoPoint(-36.84795, 174.7633);
+      for (var i = 0; i < 3; i++) {
+        now = DateTime(2026, 10, 3, 9).add(Duration(seconds: i));
+        final accepted = filter.accept(fix(actual, seconds: i, accuracy: 6));
+        expect(accepted != null, i == 2);
+      }
+      expect(filter.accepted!.point, actual);
+    },
+  );
+
+  test('navigation recovers from a GPS outage instead of holding forever', () {
+    var now = DateTime(2026, 10, 3, 9);
+    final filter = NavigationLocationFilter(anchor: home, clock: () => now);
+    filter.accept(fix(home, speed: 10));
+    const actual = GeoPoint(-36.84795, 174.7633);
+    for (var i = 12; i < 15; i++) {
+      now = DateTime(2026, 10, 3, 9).add(Duration(seconds: i));
+      final accepted = filter.accept(fix(actual, seconds: i, accuracy: 6));
+      expect(accepted != null, i == 14);
+    }
+    expect(filter.accepted!.point, actual);
+  });
+
+  test('duplicate stationary samples cannot release the initial marker', () {
+    final filter = NavigationLocationFilter(
+      clock: () => DateTime(2026, 10, 3, 9),
+    );
+    expect(filter.accept(fix(home)), isNull);
+    expect(filter.accept(fix(home)), isNull);
   });
 }

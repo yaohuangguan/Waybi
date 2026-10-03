@@ -4,6 +4,37 @@ import 'package:waybi_mobile/drive/route_progress_tracker.dart';
 
 void main() {
   test(
+    'out-of-order and moderately inaccurate fixes cannot advance a turn',
+    () {
+      final tracker = RouteProgressTracker(const [
+        GeoPoint(-36.86, 174.76),
+        GeoPoint(-36.85, 174.76),
+      ]);
+      final now = DateTime(2026);
+      final first = tracker.update(const GeoPoint(-36.859, 174.76), time: now)!;
+      expect(
+        tracker.update(
+          const GeoPoint(-36.851, 174.76),
+          time: now.subtract(const Duration(seconds: 1)),
+        ),
+        isNull,
+      );
+      expect(
+        tracker.update(
+          const GeoPoint(-36.851, 174.76),
+          time: now.add(const Duration(seconds: 1)),
+          accuracyMeters: 50,
+        ),
+        isNull,
+      );
+      final good = tracker.update(
+        const GeoPoint(-36.8589, 174.76),
+        time: now.add(const Duration(seconds: 2)),
+      )!;
+      expect(good.alongMeters - first.alongMeters, lessThan(20));
+    },
+  );
+  test(
     'visible road projection follows curved geometry instead of GPS offset',
     () {
       final tracker = RouteProgressTracker(const [

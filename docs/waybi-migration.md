@@ -1,7 +1,7 @@
 # Waybi identity migration
 
 The repository and primary packages become Waybi (`@waybi/*`, `waybi_mobile`,
-`waybi_map`). The bird artwork remains unchanged. Caity and Sett replace the
+`waybi_map`). The bird artwork remains unchanged. Clover and Sett replace the
 previous cat/dog artwork; serialized marker choices stay `kiwi`, `cat`, `dog`
 so existing preferences continue to select the same companion.
 

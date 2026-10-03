@@ -888,12 +888,12 @@ class _ProfilePageState extends State<ProfilePage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Image.asset(
-                            'assets/markers/caity.png',
+                            'assets/markers/clover.png',
                             width: 28,
                             height: 28,
                           ),
                           const SizedBox(width: 8),
-                          Text(_text('Caity', 'Caity 猫')),
+                          Text(_text('Clover', 'Clover 猫')),
                         ],
                       ),
                     ),

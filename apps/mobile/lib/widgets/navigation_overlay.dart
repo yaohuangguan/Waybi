@@ -650,7 +650,14 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                 child: SizedBox(
                   child: NotificationListener<DraggableScrollableNotification>(
                     onNotification: (notification) {
-                      final open = notification.extent > _minExtent + .01;
+                      // On short screens the header can leave only a tiny
+                      // resize range. Tapping the handle must still reveal the
+                      // scrollable trip tools when that range is below 1%.
+                      final threshold = ((_maxExtent - _minExtent) / 2).clamp(
+                        0.0,
+                        .01,
+                      );
+                      final open = notification.extent > _minExtent + threshold;
                       if (open != expanded) setState(() => expanded = open);
                       WidgetsBinding.instance.addPostFrameCallback(
                         (_) => _reportBottomInset(),

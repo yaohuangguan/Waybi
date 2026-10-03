@@ -6,6 +6,7 @@ import { handleAccount, roadReportAuthor, userFromRequest, userHasPlus } from '.
 import { syncAllAppleSubscriptions } from './apple_billing.mjs';
 import { handleBilling } from './billing.mjs';
 import { handlePlaces } from './places.mjs';
+import { independentPlaceDetails } from './independent_place_details.mjs';
 import { routeOptions } from './routes.mjs';
 import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.mjs';
 import { loadRoadEventState } from './road_events.mjs';
@@ -301,6 +302,9 @@ async function handleApi(request, env, ctx) {
         recordApiUsage(env, { provider, sku, calls: units, units })
       )
     ));
+  }
+  if (url.pathname === '/api/independent-place-details') {
+    return independentPlaceDetails(url, env);
   }
   if (url.pathname === '/api/search') {
     const query = (url.searchParams.get('q') || '').trim();

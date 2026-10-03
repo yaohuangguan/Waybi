@@ -9,6 +9,62 @@ import 'package:waybi_mobile/providers/place_search_providers.dart';
 import 'package:waybi_mobile/widgets/full_screen_search.dart';
 
 void main() {
+  test(
+    'equally relevant addresses use uncapped nearby-first ordering',
+    () async {
+      final provider = IndependentSearchProvider(
+        requestSpacing: Duration.zero,
+        client: MockClient(
+          (request) async => http.Response(
+            jsonEncode({
+              'features': [
+                {
+                  'properties': {
+                    'osm_id': 801,
+                    'osm_type': 'N',
+                    'name': '12 Queen Street',
+                    'osm_value': 'house',
+                    'housenumber': '12',
+                    'street': 'Queen Street',
+                    'city': 'Wellington',
+                  },
+                  'geometry': {
+                    'coordinates': [174.9, -41.28],
+                  },
+                },
+                {
+                  'properties': {
+                    'osm_id': 802,
+                    'osm_type': 'N',
+                    'name': '12 Queen Street, Auckland',
+                    'osm_value': 'house',
+                    'housenumber': '12',
+                    'street': 'Queen Street',
+                    'city': 'Auckland',
+                    'postcode': '1010',
+                  },
+                  'geometry': {
+                    'coordinates': [174.761, -36.847],
+                  },
+                },
+              ],
+            }),
+            200,
+          ),
+        ),
+      );
+      final results = await provider.search(
+        '12 Queen Street',
+        proximity: const GeoPoint(-36.8485, 174.7633),
+        language: 'en',
+      );
+      expect(results.first.reference!.id, 'N:802');
+      expect(results.first.kind, PlaceKind.address);
+      expect(results.first.address, contains('1010'));
+      provider.dispose();
+    },
+  );
+
   test('two-character Chinese searches identify app, preserve UTF-8 and cache repeated queries', () async {
     var requests = 0;
     final provider = IndependentSearchProvider(

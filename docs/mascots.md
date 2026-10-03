@@ -1,26 +1,34 @@
 # Waybi companions
 
-The existing Waybi bird is unchanged. The logo lockup retains its original SVG
-bird paths and replaces the old wordmark with Waybi. Serialized marker choices
-remain `kiwi`, `cat`, and `dog` for preference compatibility.
+Waybi's bird artwork remains unchanged. Clover is the gray tabby cat and Sett
+is the orange-and-white corgi from the supplied character artwork. The former
+Caity display name is now Clover. Serialized marker preferences remain `kiwi`,
+`cat`, and `dog`, so existing selections survive the update.
 
-Caity and Sett were generated with the built-in image generation tool, using the
-existing bird as a style reference. Both PNGs retain transparent backgrounds.
-The same cached 96 px render is used by Google and Waybi Map location markers;
-settings use the source PNGs directly.
+The built-in image generation tool extracted each character separately with
+actual transparency. App settings and the website use these cutouts. The
+shared Google/Waybi map renderer adds a soft pink or blue circular base with a
+white rim when rasterizing the cached 96 px location puck. No background circle
+or text is baked into the source character.
 
-Final prompt set:
+The home search prompt follows the marker selection, greeting the user as
+Waybi, Clover, or Sett. Its small motion finishes after 2.4 seconds. System
+Reduce Motion disables the animation; other marker styles greet as Waybi.
 
-- Caity: a polished, colorful orange-and-cream calico cat navigation companion,
-  sitting facing forward, large expressive eyes, soft blush, lime bandana,
-  cream/lime circular badge, crisp readable silhouette at map-marker size.
-  Match the warm friendly Waybi bird style; no words, preserve transparency
-  outside the badge, keep the reference bird unchanged.
-- Sett: a polished, colorful golden-tan-and-cream floppy-eared dog navigation
-  companion, sitting facing forward, large expressive eyes, soft blush, teal
-  bandana, cream/lime circular badge, crisp readable silhouette at map-marker
-  size. Match the warm friendly Waybi bird style; no words, preserve transparency
-  outside the badge, keep the reference bird unchanged.
+Final prompt set (built-in tool; no fallback CLI):
 
-Saved assets: `apps/mobile/assets/markers/caity.png` and
-`apps/mobile/assets/markers/sett.png`. No fallback CLI was used.
+- Clover: extract only the left gray tabby cat; preserve the sitting pose,
+  curled striped tail, gray stripes, white muzzle/chest/paws, pink nose and
+  ears, dark green eyes, original illustration style and colors. Remove the
+  pink circle, background, text, slogan and dog. Center the complete cat on a
+  square transparent canvas, with clean alpha edges and no added decorations.
+- Sett: extract only the right orange-and-white corgi; preserve the standing
+  pose, short legs, upright pink-lined ears, curled white-tipped tail, white
+  forehead stripe/muzzle/chest/paws, dark green eyes, happy mouth and pink
+  tongue, original illustration style and colors. Remove the blue circle,
+  background, text, slogan and cat. Center the complete dog on a square
+  transparent canvas, with clean alpha edges and no added decorations.
+
+App assets: `apps/mobile/assets/markers/clover.png` and
+`apps/mobile/assets/markers/sett.png`. Matching website assets live under
+`apps/web/public/brand/` with the same filenames.

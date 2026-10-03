@@ -3,14 +3,25 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import '../domain/map_provider.dart';
 
 class PlacePhoto {
-  const PlacePhoto({required this.name, required this.attribution});
+  const PlacePhoto({
+    required this.name,
+    required this.attribution,
+    this.directUrl,
+    this.sourceUrl = '',
+    this.licenseUrl = '',
+  });
 
   final String name;
   final String attribution;
+  final String? directUrl;
+  final String sourceUrl;
+  final String licenseUrl;
 
   String get url =>
+      directUrl ??
       Uri.parse('$workerBaseUrl/api/place-photo')
           .replace(queryParameters: {'name': name})
           .toString();
@@ -18,6 +29,9 @@ class PlacePhoto {
   factory PlacePhoto.fromJson(Map<String, dynamic> json) => PlacePhoto(
     name: json['name']?.toString() ?? '',
     attribution: json['attribution']?.toString() ?? '',
+    directUrl: json['url']?.toString(),
+    sourceUrl: json['sourceUrl']?.toString() ?? '',
+    licenseUrl: json['licenseUrl']?.toString() ?? '',
   );
 }
 
@@ -86,7 +100,10 @@ class PlaceDetails {
     final photos = (json['photos'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(PlacePhoto.fromJson)
-        .where((photo) => photo.name.isNotEmpty)
+        .where(
+          (photo) =>
+              photo.name.isNotEmpty || photo.directUrl?.isNotEmpty == true,
+        )
         .toList(growable: false);
     final reviews = (json['reviews'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
@@ -120,6 +137,28 @@ class PlaceDetailsRepository {
     : _client = client ?? http.Client();
 
   final http.Client _client;
+
+  Future<PlaceDetails> fetchIndependent(PlaceSummary place) async {
+    final uri = Uri.parse('$workerBaseUrl/api/independent-place-details')
+        .replace(
+          queryParameters: {
+            'id': place.reference?.id ?? '',
+            'name': place.name,
+            'address': place.address,
+            'type': place.category,
+            'at': '${place.location.longitude},${place.location.latitude}',
+          },
+        );
+    final response = await _client
+        .get(uri)
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw StateError('Place photos unavailable');
+    }
+    return PlaceDetails.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
 
   Future<PlaceDetails> fetch(String placeId, {String language = 'en'}) async {
     final uri = Uri.parse('$workerBaseUrl/api/place-details')

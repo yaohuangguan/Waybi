@@ -206,6 +206,7 @@ class IndependentSearchProvider
             props['locality']?.toString() ?? '',
             props['city']?.toString() ?? '',
             props['state']?.toString() ?? '',
+            props['postcode']?.toString() ?? '',
             props['country']?.toString() ?? '',
           ];
           final seenAddressParts = <String>{};
@@ -218,6 +219,9 @@ class IndependentSearchProvider
             location: location,
             address: address,
             category: props['osm_value']?.toString() ?? '',
+            kind: props['housenumber']?.toString().isNotEmpty == true
+                ? PlaceKind.address
+                : PlaceKind.poi,
             reference: ProviderReference(
               'osm',
               '${props['osm_type'] ?? ''}:${props['osm_id'] ?? ''}',
@@ -566,6 +570,35 @@ class IndependentSearchProvider
 
     results = results.toList(growable: false)
       ..sort((a, b) {
+        // Keep explicitly named destinations and brand intent, then rank
+        // equally relevant addresses/places by actual distance without a cap.
+        if (proximity != null &&
+            regionalQuery == null &&
+            !_queryNamesAnotherRegion(trimmed)) {
+          bool exactRegion(PlaceSummary p) =>
+              _administrativeCategories.contains(p.category) &&
+              _compactSearchText(p.name) == _compactSearchText(plainQuery) &&
+              p.address.contains('New Zealand');
+          final region = (exactRegion(b) ? 1 : 0) - (exactRegion(a) ? 1 : 0);
+          if (region != 0) return region;
+          bool matches(PlaceSummary p) => coreQuery != null
+              ? _nameMatchesCore(p, coreQuery)
+              : _isCategoryIntent(plainQuery)
+              ? _poiCategories.contains(p.category)
+              : _strongNameMatch(p, plainQuery) ||
+                    _compactSearchText(p.address)
+                        .contains(_compactSearchText(plainQuery));
+          final relevance = (matches(b) ? 1 : 0) - (matches(a) ? 1 : 0);
+          if (relevance != 0) return relevance;
+          double metres(PlaceSummary p) => distanceMeters(
+            proximity.latitude,
+            proximity.longitude,
+            p.location.latitude,
+            p.location.longitude,
+          );
+          final nearby = metres(a).compareTo(metres(b));
+          if (nearby != 0) return nearby;
+        }
         final aRank = _resultRank(
           a,
           query: trimmed,
@@ -590,6 +623,7 @@ class IndependentSearchProvider
             name: p.name,
             address: p.address,
             category: p.category,
+            kind: p.kind,
             location: p.location,
             reference: p.reference,
           ),

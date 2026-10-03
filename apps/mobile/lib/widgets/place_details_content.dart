@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/place_details_repository.dart';
 import '../domain/coordinate_formatter.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../theme/waybi_theme.dart';
+import 'waybi_bird.dart';
 
 class PlaceDetailsContent extends StatefulWidget {
   const PlaceDetailsContent({
@@ -242,16 +244,12 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: SizedBox(
-        width: 70,
-        height: 70,
+        width: 88,
+        height: 88,
         child: photo == null
             ? ColoredBox(
                 color: scheme.primaryContainer,
-                child: Icon(
-                  Icons.place_rounded,
-                  color: scheme.primary,
-                  size: 30,
-                ),
+                child: const Center(child: WaybiBird(size: 60)),
               )
             : Image.network(
                 photo.url,
@@ -283,17 +281,48 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
             selectedPlace.location.latitude,
             selectedPlace.location.longitude,
           );
-    final title = place?.name ?? selectedPlace.name;
-    final type =
+    final title = selectedPlace.reference?.provider == 'google'
+        ? place?.name ?? selectedPlace.name
+        : selectedPlace.name;
+    final rawType =
         (place?.primaryType.isNotEmpty == true
                 ? place!.primaryType
                 : selectedPlace.category)
             .replaceAll('_', ' ')
             .trim();
+    final typeNames = <String, (String, String)>{
+      'cafe': ('Café', '咖啡馆'),
+      'coffee': ('Café', '咖啡馆'),
+      'restaurant': ('Restaurant', '餐厅'),
+      'food': ('Food & drink', '餐饮'),
+      'park': ('Park', '公园'),
+      'parks': ('Park & nature', '公园与自然'),
+      'garden': ('Garden', '花园'),
+      'supermarket': ('Supermarket', '超市'),
+      'shopping': ('Shopping', '购物'),
+      'shop': ('Shop', '商店'),
+      'activities': ('Things to do', '景点与活动'),
+      'museum': ('Museum', '博物馆'),
+      'attraction': ('Attraction', '景点'),
+      'gallery': ('Gallery', '美术馆'),
+      'art gallery': ('Art gallery', '美术馆'),
+      'hospital': ('Hospital', '医院'),
+      'school': ('School', '学校'),
+      'hotel': ('Hotel', '酒店'),
+      'parking': ('Parking', '停车场'),
+      'fuel': ('Petrol station', '加油站'),
+      'bakery': ('Bakery', '面包店'),
+      'residential': ('Street', '街道'),
+      'house': ('Address', '地址'),
+    };
+    final names = typeNames[rawType];
+    final type = names == null
+        ? (rawType.isEmpty ? _text('Place', '地点') : rawType)
+        : _text(names.$1, names.$2);
     final screenHeight = MediaQuery.sizeOf(context).height;
     final maxHeight = _expanded
         ? (screenHeight * .72).clamp(430.0, 660.0)
-        : (screenHeight * .36).clamp(245.0, 310.0);
+        : (screenHeight * .38).clamp(285.0, 340.0);
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 260),
@@ -310,9 +339,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxHeight),
           child: SingleChildScrollView(
-            physics: _expanded
-                ? const BouncingScrollPhysics()
-                : const NeverScrollableScrollPhysics(),
+            physics: const BouncingScrollPhysics(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -357,7 +384,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                           children: [
                             Text(
                               title,
-                              maxLines: _expanded ? 2 : 1,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: _expanded ? 22 : 18,
@@ -367,28 +394,27 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                             ),
                             if (type.isNotEmpty) ...[
                               const SizedBox(height: 4),
-                              Text(
-                                type,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: scheme.primary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: scheme.primaryContainer,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  type,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: scheme.primary,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ],
-                            const SizedBox(height: 4),
-                            Text(
-                              address,
-                              maxLines: _expanded ? 2 : 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: scheme.onSurfaceVariant,
-                                fontSize: 12,
-                                height: 1.3,
-                              ),
-                            ),
                           ],
                         ),
                       ),
@@ -397,6 +423,31 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                         onPressed: widget.onClose,
                         icon: const Icon(Icons.close_rounded),
                         tooltip: _text('Close', '关闭'),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.location_on_outlined,
+                        size: 17,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: SelectableText(
+                          address,
+                          key: const Key('placeFullAddress'),
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -724,14 +775,30 @@ class _PhotoStrip extends StatelessWidget {
                   left: 8,
                   right: 8,
                   bottom: 6,
-                  child: Text(
-                    '© ${photo.attribution}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      shadows: [Shadow(blurRadius: 5, color: Colors.black87)],
+                  child: InkWell(
+                    onTap: photo.sourceUrl.isEmpty && photo.licenseUrl.isEmpty
+                        ? null
+                        : () {
+                            final uri = Uri.tryParse(
+                              photo.sourceUrl.isEmpty
+                                  ? photo.licenseUrl
+                                  : photo.sourceUrl,
+                            );
+                            if (uri?.scheme == 'https') {
+                              launchUrl(
+                                uri!,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            }
+                          },
+                    child: Text(
+                      '© ${photo.attribution}',
+                      maxLines: 2,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        shadows: [Shadow(blurRadius: 5, color: Colors.black87)],
+                      ),
                     ),
                   ),
                 ),
@@ -758,7 +825,7 @@ class _PhotoFallback extends StatelessWidget {
         ),
       ),
       alignment: Alignment.center,
-      child: Icon(Icons.place_rounded, color: scheme.primary, size: 34),
+      child: const WaybiBird(size: 64),
     );
   }
 }

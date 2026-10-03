@@ -31,6 +31,10 @@ test('photo metadata rejects unlicensed images and arbitrary external URLs', () 
   const page = { imageinfo: [{ thumburl: 'https://upload.wikimedia.org/example.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Example.jpg',
     extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' }, LicenseUrl: { value: 'https://creativecommons.org/licenses/by-sa/4.0/' }, Artist: { value: '<a href="bad">Photographer</a>' } } }] };
   const photo = commonsPhoto(page); assert.equal(photo.photoCredit.author, 'Photographer');
+  page.imageinfo[0].extmetadata.LicenseShortName.value = 'CC BY-SA 3.0 nz';
+  page.imageinfo[0].extmetadata.LicenseUrl.value = 'https://creativecommons.org/licenses/by-sa/3.0/nz/deed.en';
+  assert.equal(commonsPhoto(page).photoCredit.license, 'CC BY-SA 3.0 nz');
+  page.imageinfo[0].extmetadata.LicenseShortName.value = 'CC BY-NC-SA 3.0'; assert.equal(commonsPhoto(page), null);
   page.imageinfo[0].extmetadata.LicenseShortName.value = 'All rights reserved'; assert.equal(commonsPhoto(page), null);
   page.imageinfo[0].extmetadata.LicenseShortName.value = 'CC BY-SA 4.0'; page.imageinfo[0].thumburl = 'http://localhost/private'; assert.equal(commonsPhoto(page), null);
 });

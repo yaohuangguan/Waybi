@@ -11,12 +11,16 @@ class MapLayerSheet extends StatefulWidget {
     required this.onChanged,
     required this.mapProvider,
     required this.language,
+    this.trafficStatus = 'not_loaded',
+    this.trafficSegmentCount = 0,
   });
 
   final MapLayerSettings settings;
   final ValueChanged<MapLayerSettings> onChanged;
   final MapProvider mapProvider;
   final String language;
+  final String trafficStatus;
+  final int trafficSegmentCount;
 
   @override
   State<MapLayerSheet> createState() => _MapLayerSheetState();
@@ -303,13 +307,43 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         title: Text(_text('Live traffic', '实时交通')),
-                        value:
-                            widget.mapProvider == MapProvider.google &&
-                            current.traffic,
-                        onChanged: widget.mapProvider == MapProvider.google
-                            ? (value) =>
-                                  update(current.copyWith(traffic: value))
-                            : null,
+                        subtitle: Text(
+                          widget.mapProvider == MapProvider.independent
+                              ? current.traffic
+                                    ? widget.trafficStatus == 'live' &&
+                                              widget.trafficSegmentCount > 0
+                                          ? _text(
+                                              '${widget.trafficSegmentCount} live motorway segments',
+                                              '${widget.trafficSegmentCount} 条实时高速路况',
+                                            )
+                                          : widget.trafficStatus == 'stale' &&
+                                                widget.trafficSegmentCount > 0
+                                          ? _text(
+                                              '${widget.trafficSegmentCount} cached segments · source stale',
+                                              '${widget.trafficSegmentCount} 条缓存路况 · 数据源过期',
+                                            )
+                                          : widget.trafficStatus ==
+                                                'unavailable'
+                                          ? _text(
+                                              'Live traffic is temporarily unavailable',
+                                              '实时交通暂时不可用',
+                                            )
+                                          : _text(
+                                              'Loading NZTA motorway flow…',
+                                              '正在加载 NZTA 高速实时路况…',
+                                            )
+                                    : _text(
+                                        'Off by default · turn on for NZTA motorway flow',
+                                        '默认关闭 · 开启后显示 NZTA 高速实时路况',
+                                      )
+                              : _text(
+                                  'Google Maps live traffic overlay',
+                                  'Google Maps 实时交通图层',
+                                ),
+                        ),
+                        value: current.traffic,
+                        onChanged: (value) =>
+                            update(current.copyWith(traffic: value)),
                       ),
                     ),
                     const Divider(),

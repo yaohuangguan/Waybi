@@ -46,6 +46,6 @@ class MapViewportState {
   );
 }
 
-enum LocationMarkerStyle { kiwi, arrow, car, classic }
+enum LocationMarkerStyle { kiwi, cat, dog, arrow, car, classic }
 
 enum MapAppearance { standard, satellite, terrain, hybrid }

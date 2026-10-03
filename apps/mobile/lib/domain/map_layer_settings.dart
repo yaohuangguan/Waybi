@@ -74,7 +74,7 @@ class MapLayerSettings {
     this.alertDualRedLightSpeed = true,
     this.alertBusLane = true,
     this.alertOther = false,
-    this.traffic = true,
+    this.traffic = false,
     this.style = BaseMapStyle.standard,
   });
 

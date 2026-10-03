@@ -39,6 +39,12 @@ void main() {
     expect(stack.roadIntelligence, isNotNull);
     expect(
       stack.layers
+          .singleWhere((layer) => layer.id == 'traffic')
+          .enabledByDefault,
+      isFalse,
+    );
+    expect(
+      stack.layers
           .singleWhere((layer) => layer.id == 'road-intelligence')
           .b2bEntitlement,
       'road-intelligence',

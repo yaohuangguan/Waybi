@@ -107,7 +107,7 @@ void main() {
               return Scaffold(
                 body: IndependentMapRenderer(
                   initialViewport: MapViewportState(center: location, zoom: 17),
-                  layers: const MapLayerSettings(),
+                  layers: const MapLayerSettings(traffic: true),
                   locationMarker: LocationMarkerStyle.kiwi,
                   locationEnabled: true,
                   following: following,

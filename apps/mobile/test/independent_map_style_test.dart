@@ -46,6 +46,11 @@ void main() {
         layer('park')['paint']['fill-color'],
         isNot(layer('water')['paint']['fill-color']),
       );
+      expect(layer('highway_motorway_inner')['paint']['line-color'], '#747a81');
+      expect(
+        layer('highway_motorway_casing')['paint']['line-color'],
+        '#50555b',
+      );
       expect(
         layer('highway_motorway_inner')['paint']['line-color'],
         isNot(layer('highway_minor')['paint']['line-color']),

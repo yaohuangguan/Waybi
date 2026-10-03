@@ -62,8 +62,8 @@ Map<String, dynamic> kiwiMapStyle(
           ? (dark ? '#53626a' : '#b8c2c4')
           : motorway
           ? (casing
-                ? (dark ? '#8b6640' : '#dfb75f')
-                : (dark ? '#b88b50' : '#ffd786'))
+                ? (dark ? '#424b52' : '#50555b')
+                : (dark ? '#65717a' : '#747a81'))
           : major
           ? (casing
                 ? (dark ? '#71633f' : '#dfcf92')

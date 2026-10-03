@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/route_option.dart';
+import '../domain/route_preference.dart';
 import '../data/parking_repository.dart';
 import 'kiwi_mascot.dart';
 
@@ -115,6 +116,8 @@ class RoutePreviewSheet extends StatelessWidget {
     required this.stopCount,
     required this.cameraCount,
     this.routeCameraSummaries = const {},
+    this.routePreferenceSummaries = const {},
+    this.canRequestTransit = false,
     required this.customOrigin,
     required this.onModeChanged,
     required this.onRouteSelected,
@@ -143,6 +146,8 @@ class RoutePreviewSheet extends StatelessWidget {
   final int stopCount;
   final int cameraCount;
   final Map<String, RouteCameraSummary> routeCameraSummaries;
+  final Map<String, RoutePreferenceSummary> routePreferenceSummaries;
+  final bool canRequestTransit;
   final bool customOrigin;
   final ValueChanged<KiwiTravelMode> onModeChanged;
   final ValueChanged<RouteOption> onRouteSelected;
@@ -163,7 +168,11 @@ class RoutePreviewSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final routes = plan.forMode(selectedMode).toList(growable: false);
+    final routes = plan.forMode(selectedMode).take(3).toList(growable: false);
+    final preferences = assessRoutePreferences(
+      routes,
+      routePreferenceSummaries,
+    );
     RouteOption? selected;
     for (final route in routes) {
       if (route.id == selectedRouteId) {
@@ -309,76 +318,91 @@ class RoutePreviewSheet extends StatelessWidget {
                     children: [
                       for (final mode in KiwiTravelMode.values)
                         Expanded(
-                          child: InkWell(
-                            onTap:
-                                plan.forMode(mode).isEmpty ||
-                                    (selectedParkingId != null &&
-                                        mode != KiwiTravelMode.drive)
-                                ? null
-                                : () => onModeChanged(mode),
-                            borderRadius: BorderRadius.circular(14),
-                            child: Opacity(
-                              opacity:
-                                  plan.forMode(mode).isEmpty ||
-                                      (selectedParkingId != null &&
-                                          mode != KiwiTravelMode.drive)
-                                  ? .35
-                                  : 1,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 6,
-                                  horizontal: 2,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: selectedMode == mode
-                                      ? Theme.of(context)
-                                            .colorScheme
-                                            .primaryContainer
-                                      : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Icon(
-                                      _icon(mode),
+                          child: Builder(
+                            builder: (context) {
+                              final hasRoute = plan.forMode(mode).isNotEmpty;
+                              final available =
+                                  hasRoute ||
+                                  (canRequestTransit &&
+                                      mode == KiwiTravelMode.transit);
+                              final disabled =
+                                  !available ||
+                                  (selectedParkingId != null &&
+                                      mode != KiwiTravelMode.drive);
+                              return InkWell(
+                                onTap: disabled
+                                    ? null
+                                    : () => onModeChanged(mode),
+                                borderRadius: BorderRadius.circular(14),
+                                child: Opacity(
+                                  opacity: disabled ? .35 : 1,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 6,
+                                      horizontal: 2,
+                                    ),
+                                    decoration: BoxDecoration(
                                       color: selectedMode == mode
                                           ? Theme.of(context)
                                                 .colorScheme
-                                                .onPrimaryContainer
-                                          : Theme.of(context)
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                      size: 18,
+                                                .primaryContainer
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(14),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      _modeLabel(mode, isChinese: isChinese),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          _icon(mode),
+                                          color: selectedMode == mode
+                                              ? Theme.of(context)
+                                                    .colorScheme
+                                                    .onPrimaryContainer
+                                              : Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _modeLabel(
+                                            mode,
+                                            isChinese: isChinese,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        Text(
+                                          !hasRoute
+                                              ? (mode ==
+                                                            KiwiTravelMode
+                                                                .transit &&
+                                                        canRequestTransit
+                                                    ? (isChinese
+                                                          ? '加载'
+                                                          : 'Load')
+                                                    : '—')
+                                              : _duration(
+                                                  plan
+                                                      .forMode(mode)
+                                                      .first
+                                                      .durationSeconds,
+                                                  isChinese: isChinese,
+                                                ),
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    Text(
-                                      plan.forMode(mode).isEmpty
-                                          ? '—'
-                                          : _duration(
-                                              plan
-                                                  .forMode(mode)
-                                                  .first
-                                                  .durationSeconds,
-                                              isChinese: isChinese,
-                                            ),
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
                         ),
                     ],
@@ -405,6 +429,7 @@ class RoutePreviewSheet extends StatelessWidget {
                         cameraSummary:
                             routeCameraSummaries[routes[index].id] ??
                             const RouteCameraSummary(),
+                        preference: preferences[routes[index].id],
                         onTap: () => onRouteSelected(routes[index]),
                       ),
                       if (index != routes.length - 1) const SizedBox(height: 6),
@@ -526,6 +551,7 @@ class _RouteOptionTile extends StatelessWidget {
     required this.active,
     required this.fastestDuration,
     required this.cameraSummary,
+    required this.preference,
     required this.onTap,
   });
 
@@ -534,6 +560,7 @@ class _RouteOptionTile extends StatelessWidget {
   final bool active;
   final int fastestDuration;
   final RouteCameraSummary cameraSummary;
+  final RoutePreferenceAssessment? preference;
   final VoidCallback onTap;
 
   String get _trafficLabel {
@@ -548,6 +575,24 @@ class _RouteOptionTile extends StatelessWidget {
     if (route.traffic.trafficJam > 0) return KiwiLensColors.danger;
     if (route.traffic.slow > 0) return KiwiLensColors.warning;
     return KiwiLensColors.ocean;
+  }
+
+  List<String> get _preferenceLabels {
+    final value = preference;
+    if (value == null) return const [];
+    final labels = <String>[];
+    if (value.recommended) {
+      labels.add(isChinese ? '综合推荐' : 'Recommended');
+    }
+    if (value.fastest) labels.add(isChinese ? '时间最短' : 'Fastest');
+    if (value.shortest) labels.add(isChinese ? '距离最近' : 'Shortest');
+    if (route.mode == KiwiTravelMode.drive && value.leastTraffic) {
+      labels.add(isChinese ? '堵车更少' : 'Less traffic');
+    }
+    if (route.mode == KiwiTravelMode.drive && value.zeroCameras) {
+      labels.add(isChinese ? '0 摄像头' : '0 cameras');
+    }
+    return labels.take(3).toList(growable: false);
   }
 
   List<Color> _trafficBars() {
@@ -645,6 +690,41 @@ class _RouteOptionTile extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  if (_preferenceLabels.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        for (final label in _preferenceLabels)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color:
+                                  label == (isChinese ? '综合推荐' : 'Recommended')
+                                  ? scheme.primaryContainer
+                                  : scheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                color:
+                                    label ==
+                                        (isChinese ? '综合推荐' : 'Recommended')
+                                    ? scheme.primary
+                                    : scheme.onSurfaceVariant,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                   if (route.mode == KiwiTravelMode.drive) ...[
                     const SizedBox(height: 5),
                     Container(

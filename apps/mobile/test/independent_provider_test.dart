@@ -63,6 +63,105 @@ void main() {
     },
   );
   test(
+    'Independent driving preview fills up to three sensible alternatives',
+    () async {
+      final provider = IndependentRoutingProvider(
+        client: MockClient((request) async {
+          final isCar = request.url.path.startsWith('/routed-car/');
+          final via = request.url.path.split(';').length > 2;
+          if (isCar && !via) {
+            expect(request.url.queryParameters['alternatives'], '3');
+            return http.Response(
+              jsonEncode({
+                'code': 'Ok',
+                'routes': [
+                  {
+                    'distance': 4800,
+                    'duration': 420,
+                    'geometry': {
+                      'coordinates': [
+                        [174.766, -36.844],
+                        [174.778, -36.870],
+                      ],
+                    },
+                    'legs': const [],
+                  },
+                  {
+                    'distance': 3800,
+                    'duration': 480,
+                    'geometry': {
+                      'coordinates': [
+                        [174.766, -36.844],
+                        [174.774, -36.857],
+                        [174.778, -36.870],
+                      ],
+                    },
+                    'legs': const [],
+                  },
+                ],
+              }),
+              200,
+            );
+          }
+          if (isCar && via) {
+            return http.Response(
+              jsonEncode({
+                'code': 'Ok',
+                'routes': [
+                  {
+                    'distance': 4400,
+                    'duration': 540,
+                    'geometry': {
+                      'coordinates': [
+                        [174.766, -36.844],
+                        [174.769, -36.858],
+                        [174.778, -36.870],
+                      ],
+                    },
+                    'legs': const [],
+                  },
+                ],
+              }),
+              200,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'code': 'Ok',
+              'routes': [
+                {
+                  'distance': 3000,
+                  'duration': 900,
+                  'geometry': {
+                    'coordinates': [
+                      [174.766, -36.844],
+                      [174.778, -36.870],
+                    ],
+                  },
+                  'legs': const [],
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+
+      final plan = await provider.route(
+        origin: const GeoPoint(-36.844, 174.766),
+        destination: const GeoPoint(-36.870, 174.778),
+        language: 'en',
+      );
+      final routes = plan.forMode(KiwiTravelMode.drive).toList();
+
+      expect(routes, hasLength(3));
+      expect(routes.map((route) => route.id).toSet(), hasLength(3));
+      expect(routes.last.waypoints, hasLength(2));
+      provider.dispose();
+    },
+  );
+
+  test(
     'rerouting requests only the active mode and keeps waypoint order',
     () async {
       final requests = <Uri>[];

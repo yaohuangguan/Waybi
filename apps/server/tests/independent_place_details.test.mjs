@@ -45,7 +45,7 @@ test('non-free media and failed upstreams leave a usable place card', async () =
 });
 
 test('invalid coordinates never reach a photo provider', async () => {
-  const url = input(); url.searchParams.set('at', '0,0');
+  const url = input(); url.searchParams.set('at', '181,91');
   const response = await independentPlaceDetails(url, {}, () => { throw Error('must not fetch'); });
   assert.equal(response.status, 400);
 });

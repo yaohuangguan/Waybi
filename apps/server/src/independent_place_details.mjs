@@ -1,3 +1,4 @@
+import { validCoordinate } from './geo.mjs';
 import { enrichPlacePhotos } from './independent_explore.mjs';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
@@ -32,9 +33,9 @@ export async function independentPlaceDetails(url, env, fetcher = fetch) {
   const name = (url.searchParams.get('name') || '').trim();
   const address = (url.searchParams.get('address') || '').trim();
   const primaryType = (url.searchParams.get('type') || '').trim();
-  if (point.length !== 2 || !(point[0] > 166 && point[0] < 179 && point[1] > -48 && point[1] < -34) ||
+  if (point.length !== 2 || !validCoordinate(point[1], point[0]) ||
       !name || name.length > 160 || address.length > 500 || primaryType.length > 80) {
-    return json({ error: 'Valid NZ place coordinates and name required' }, 400);
+    return json({ error: 'Valid place coordinates and name required' }, 400);
   }
   const placeId = url.searchParams.get('id') || '';
   const result = { placeId, name, address, primaryType, photos: [] };

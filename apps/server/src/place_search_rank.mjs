@@ -1,0 +1,41 @@
+import { distanceMeters } from './geo.mjs';
+
+function compact(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/[\p{P}\p{S}\s]+/gu, '');
+}
+
+function relevance(place, query) {
+  const q = compact(query);
+  if (!q) return 0;
+  const name = compact(place.name);
+  const address = compact(place.address || place.label);
+  if (name === q) return 5;
+  if (name.startsWith(q) || q.startsWith(name)) return 4;
+  if (name.includes(q)) return 3;
+  if (address.includes(q)) return 2;
+  return 1;
+}
+
+export function rankPlaces(results, query, near) {
+  if (!Array.isArray(results) || !near) return results || [];
+  return results.map((place, index) => {
+    const point = [Number(place.longitude), Number(place.latitude)];
+    const distance = point.every(Number.isFinite) ? distanceMeters(near, point) : Infinity;
+    return { place, index, distance, relevance: relevance(place, query) };
+  }).sort((a, b) => {
+    // Default search intent is local-first, not country-locked. Any plausible
+    // result within an everyday driving radius outranks a remote namesake.
+    const aLocal = a.distance <= 80000 ? 1 : 0;
+    const bLocal = b.distance <= 80000 ? 1 : 0;
+    if (aLocal !== bLocal) return bLocal - aLocal;
+    if (a.relevance !== b.relevance) return b.relevance - a.relevance;
+    if (a.distance !== b.distance) return a.distance - b.distance;
+    return a.index - b.index;
+  }).map(({ place, distance }) => ({
+    ...place,
+    ...(Number.isFinite(distance) ? { distanceMeters: Math.round(distance) } : {})
+  }));
+}

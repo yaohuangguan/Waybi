@@ -538,7 +538,6 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         tileSize: 256,
         minzoom: 6,
         maxzoom: 19,
-        bounds: const [166, -48, 179, -34],
         attribution: overlay.attribution,
       ),
     );

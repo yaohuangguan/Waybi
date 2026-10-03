@@ -1,5 +1,7 @@
 import { independentExplore } from './independent_explore.mjs';
 import { geoapifyExplore } from './compatible_places.mjs';
+import { parseLonLat } from './geo.mjs';
+import { rankPlaces } from './place_search_rank.mjs';
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -7,10 +9,7 @@ function json(body, status = 200) {
   });
 }
 
-function nzPoint(value) {
-  const [lon, lat] = (value || '').split(',').map(Number);
-  return lon > 166 && lon < 179 && lat > -48 && lat < -34 ? [lon, lat] : null;
-}
+function geoPoint(value) { return parseLonLat(value); }
 
 function placesApiKey(env) {
   return env.GOOGLE_PLACES_SERVER_API_KEY || env.GOOGLE_ROUTES_API_KEY;
@@ -54,14 +53,13 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
       return json({ error: 'Query must be 2–120 characters' }, 400);
     }
 
-    const point = nzPoint(url.searchParams.get('near'));
+    const point = geoPoint(url.searchParams.get('near'));
     const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
     const googleKey = placesApiKey(env);
     if (googleKey && url.searchParams.get('provider') !== 'geoapify') {
       const body = {
         textQuery: query,
         languageCode: prefersChinese ? 'zh-CN' : 'en',
-        regionCode: 'NZ',
         pageSize: 10
       };
       if (point) {
@@ -96,7 +94,7 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
       })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
       if (google.ok) {
         const local = mapGooglePlaces(await google.json());
-        if (local.length) return json(local);
+        if (local.length) return json(rankPlaces(local, query, point));
       }
 
       trackUsage('google', 'places_text_search', 1);
@@ -116,7 +114,7 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
       });
       if (globalGoogle.ok) {
         const global = mapGooglePlaces(await globalGoogle.json());
-        if (global.length) return json(global);
+        if (global.length) return json(rankPlaces(global, query, point));
       }
     }
 
@@ -147,7 +145,6 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     const buildGeoapifyUrl = ({ localFirst }) => {
       const provider = new URL('https://api.geoapify.com/v1/geocode/autocomplete');
       provider.searchParams.set('text', query);
-      if (localFirst) provider.searchParams.set('filter', 'countrycode:nz');
       provider.searchParams.set('lang', prefersChinese ? 'zh' : 'en');
       provider.searchParams.set('limit', '6');
       provider.searchParams.set('format', 'json');
@@ -164,7 +161,7 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     });
     if (localUpstream.ok) {
       const local = mapGeoapifyPlaces(await localUpstream.json());
-      if (local.length) return json(local);
+      if (local.length) return json(rankPlaces(local, query, point));
     }
 
     trackUsage('geoapify', 'autocomplete', 1);
@@ -172,7 +169,7 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
       signal: AbortSignal.timeout(10000)
     });
     if (!globalUpstream.ok) return json({ error: 'Address autocomplete unavailable' }, 502);
-    return json(mapGeoapifyPlaces(await globalUpstream.json()));
+    return json(rankPlaces(mapGeoapifyPlaces(await globalUpstream.json()), query, point));
   }
   if (url.pathname === '/api/explore') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
@@ -182,8 +179,8 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     }
     const apiKey = placesApiKey(env);
     if (!apiKey) return json({ error: 'Google Places server key is not configured' }, 503);
-    const point = nzPoint(url.searchParams.get('at'));
-    if (!point) return json({ error: 'Valid NZ coordinates required' }, 400);
+    const point = geoPoint(url.searchParams.get('at'));
+    if (!point) return json({ error: 'Valid coordinates required' }, 400);
     const query = (url.searchParams.get('q') || '').trim();
     const category = (url.searchParams.get('category') || 'for-you').trim();
     const languageCode = url.searchParams.get('lang') === 'zh' ? 'zh-CN' : 'en';
@@ -208,7 +205,6 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
       body = {
         textQuery: query,
         languageCode,
-        regionCode: 'NZ',
         maxResultCount: 18,
         locationBias: {
           circle: {
@@ -221,7 +217,6 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
       provider = 'https://places.googleapis.com/v1/places:searchNearby';
       body = {
         languageCode,
-        regionCode: 'NZ',
         maxResultCount: 18,
         includedTypes: categoryTypes[category] || categoryTypes['for-you'],
         rankPreference: 'POPULARITY',
@@ -346,8 +341,8 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
   }
   if (url.pathname === '/api/reverse') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-    const point = nzPoint(url.searchParams.get('at'));
-    if (!point) return json({ error: 'Valid NZ coordinates required' }, 400);
+    const point = geoPoint(url.searchParams.get('at'));
+    if (!point) return json({ error: 'Valid coordinates required' }, 400);
     const provider = new URL('https://nominatim.openstreetmap.org/reverse');
     provider.searchParams.set('format', 'jsonv2');
     provider.searchParams.set('lat', String(point[1]));

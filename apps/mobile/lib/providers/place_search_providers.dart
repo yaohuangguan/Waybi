@@ -37,8 +37,14 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
     if (response.statusCode == 503 && !mapCompatible) {
       response = await _client
           .get(
-            Uri.parse('$workerBaseUrl/api/search')
-                .replace(queryParameters: {'q': query, 'lang': language}),
+            Uri.parse('$workerBaseUrl/api/search').replace(
+              queryParameters: {
+                'q': query,
+                'lang': language,
+                if (proximity != null)
+                  'near': '${proximity.longitude},${proximity.latitude}',
+              },
+            ),
           )
           .timeout(const Duration(seconds: 12));
     }

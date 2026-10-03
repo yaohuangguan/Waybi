@@ -78,11 +78,11 @@ test('area and corridor results have provenance, pagination, freshness and no pr
 
 test('bad coordinates, unbounded queries, methods and oversized input fail closed', async (t) => {
   const { call, headers } = await fixture(t);
-  for (const path of ['/events', '/events?near=0,0', '/events?bbox=170,-48,178,-34', '/events?near=174.77,-36.85&limit=0', '/events?bbox=174.7,-36.9,174.9,-36.8&near=broken']) {
+  for (const path of ['/events', '/events?near=181,91', '/events?bbox=170,-48,178,-34', '/events?near=174.77,-36.85&limit=0', '/events?bbox=174.7,-36.9,174.9,-36.8&near=broken']) {
     assert.equal((await call(path, { headers })).status, 400, path);
   }
   assert.equal((await call('/events', { method: 'POST', headers })).status, 405);
-  assert.equal((await call('/corridor', { method: 'POST', headers, body: JSON.stringify({ coordinates: [[0, 0], [1, 1]] }) })).status, 400);
+  assert.equal((await call('/corridor', { method: 'POST', headers, body: JSON.stringify({ coordinates: [[181, 91], [1, 1]] }) })).status, 400);
   assert.equal((await call('/corridor', { method: 'POST', headers, body: 'x'.repeat(25000) })).status, 400);
   assert.equal((await call('/events?near=174.77,-36.85')).status, 401);
 });

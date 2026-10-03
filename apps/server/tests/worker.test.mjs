@@ -214,7 +214,7 @@ test('failed scheduled sync keeps validated cameras in KV', async () => {
 });
 
 test('Worker rejects malformed route coordinates before upstream calls', async () => {
-  const response = await worker.fetch(new Request('https://example.test/api/route?from=0,0&to=1,1'), fakeEnv(), { waitUntil() {} });
+  const response = await worker.fetch(new Request('https://example.test/api/route?from=181,91&to=1,1'), fakeEnv(), { waitUntil() {} });
   assert.equal(response.status, 400);
 });
 
@@ -289,7 +289,7 @@ test('route API preserves OSRM lane guidance for turn steps', async () => {
 });
 
 
-test('Google place search falls back globally when NZ-biased search has no result', async () => {
+test('Google place search falls back globally when proximity-biased search has no result', async () => {
   const originalFetch = globalThis.fetch;
   const bodies = [];
   globalThis.fetch = async (_url, options = {}) => {
@@ -323,7 +323,7 @@ test('Google place search falls back globally when NZ-biased search has no resul
     assert.equal(place.latitude, 38.0428);
     assert.equal(place.longitude, 114.5149);
     assert.equal(bodies.length, 2);
-    assert.equal(bodies[0].regionCode, 'NZ');
+    assert.equal(bodies[0].regionCode, undefined);
     assert.ok(bodies[0].locationBias);
     assert.equal(bodies[1].regionCode, undefined);
     assert.equal(bodies[1].locationBias, undefined);

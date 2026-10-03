@@ -12,7 +12,7 @@ function envWithStore() {
   };
 }
 
-test('creates and reads a short-lived NZ road report', async () => {
+test('creates and reads a short-lived road report', async () => {
   const env = envWithStore();
   const now = new Date('2026-09-26T02:00:00Z');
   const report = await createRoadReport(env, {
@@ -30,10 +30,13 @@ test('creates and reads a short-lived NZ road report', async () => {
   assert.equal((await readRoadReports(env, new Date('2026-09-26T05:00:00Z'))).length, 0);
 });
 
-test('rejects invalid or non-NZ road reports', async () => {
+test('accepts global road reports and rejects invalid world coordinates', async () => {
   const env = envWithStore();
+  const global = await createRoadReport(env, { type: 'incident', latitude: 40.7128, longitude: -74.006 });
+  assert.equal(global.location.latitude, 40.7128);
+  assert.equal(global.source.country, null);
   await assert.rejects(
-    () => createRoadReport(env, { type: 'incident', latitude: 0, longitude: 0 }),
-    /Valid NZ road report/
+    () => createRoadReport(env, { type: 'incident', latitude: 91, longitude: 0 }),
+    /Valid global road report/
   );
 });

@@ -2,6 +2,7 @@ import { clientKind, sessionCookieName } from './brand_compat.mjs';
 import { pbkdf2, scrypt } from 'node:crypto';
 import { syncAppleForUser } from './apple_billing.mjs';
 import { verifyGoogleIdToken } from './google_token.mjs';
+import { validCoordinate } from './geo.mjs';
 
 const encoder = new TextEncoder();
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
@@ -318,7 +319,7 @@ export async function handleAccount(request, env) {
   if (path === '/api/profile/destinations' && request.method === 'POST') {
     const body = await readBody(request);
     if (typeof body?.label !== 'string' || body.label.length < 1 || body.label.length > 200 ||
-      !(body.latitude > -48 && body.latitude < -34 && body.longitude > 166 && body.longitude < 179)) {
+      !validCoordinate(body.latitude, body.longitude)) {
       return response({ error: 'Invalid destination' }, 400);
     }
     await db.prepare(`INSERT INTO recent_destinations (user_id, label, latitude, longitude, updated_at)
@@ -338,7 +339,7 @@ export async function handleAccount(request, env) {
     const note = typeof body?.note === 'string' ? body.note.trim() : '';
     if (!placeId || placeId.length > 256 || !name || name.length > 200 || address.length > 500 ||
       note.length > 2000 || typeof body?.isFavorite !== 'boolean' ||
-      !(body.latitude > -48 && body.latitude < -34 && body.longitude > 166 && body.longitude < 179)) {
+      !validCoordinate(body.latitude, body.longitude)) {
       return response({ error: 'Invalid place bookmark' }, 400);
     }
     await db.prepare(`INSERT INTO place_bookmarks
@@ -369,7 +370,7 @@ export async function handleAccount(request, env) {
     const distance = body?.distanceMeters;
     const duration = body?.durationSeconds;
     if (!name || name.length > 200 || !['drive', 'transit', 'walk', 'bicycle'].includes(mode) ||
-      !(body.latitude > -48 && body.latitude < -34 && body.longitude > 166 && body.longitude < 179) ||
+      !validCoordinate(body.latitude, body.longitude) ||
       (distance != null && (!Number.isFinite(distance) || distance < 0 || distance > 5_000_000)) ||
       (duration != null && (!Number.isFinite(duration) || duration < 0 || duration > 2_000_000))) {
       return response({ error: 'Invalid route history' }, 400);

@@ -101,7 +101,7 @@ test('independent Explore uses bounded cached OSM results with no Google calls',
   const parks = await (await independentExplore(url, env, fetcher)).json();
   assert.equal(urls.length, calls); assert.equal(parks[0].name, '公园');
   assert.ok(!urls.some(url => url.includes('google')));
-  assert.equal((await independentExplore(new URL('https://example.test/?at=0,0'), env, fetcher)).status, 400);
+  assert.equal((await independentExplore(new URL('https://example.test/?at=181,91'), env, fetcher)).status, 400);
 });
 const way = (nodes, coordinates, oneway = 'yes') => ({ type: 'way', nodes, tags: { oneway }, geometry: coordinates.map(p => ({ lon: p[0], lat: p[1] })) });
 

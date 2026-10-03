@@ -4,7 +4,7 @@
 
 Canonical site: https://waybi.nzs.workers.dev/
 Web app: https://waybi.nzs.workers.dev/app
-Source repository: https://github.com/yaohuangguan/kiwi-lens
+Source repository: https://github.com/yaohuangguan/Waybi
 
 ## Product
 

@@ -1,2 +1,6 @@
-export 'package:kiwi_lens_map/kiwi_lens_map.dart'
-    show TrafficFlowLevel, TrafficFlowSegment, TrafficFlowSnapshot;
+export 'package:waybi_map/waybi_map.dart'
+    show
+        TrafficFlowLevel,
+        TrafficFlowSegment,
+        TrafficFlowSnapshot,
+        TrafficTileOverlay;

@@ -35,8 +35,8 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
-      - name: Analyze and test reusable kiwi_lens_map package
-        working-directory: packages/kiwi_lens_map
+      - name: Analyze and test reusable waybi_map package
+        working-directory: packages/waybi_map
         run: |
           dart pub get
           dart analyze

@@ -1,6 +1,6 @@
-import 'package:kiwi_lens_map/kiwi_lens_map.dart';
+import 'package:waybi_map/waybi_map.dart';
 
-export 'package:kiwi_lens_map/kiwi_lens_map.dart'
+export 'package:waybi_map/waybi_map.dart'
     show
         GeoPoint,
         LocationMarkerStyle,

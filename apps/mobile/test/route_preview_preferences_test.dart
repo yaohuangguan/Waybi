@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/domain/route_preference.dart';
-import 'package:kiwi_lens_mobile/widgets/route_preview_sheet.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/domain/route_preference.dart';
+import 'package:waybi_mobile/widgets/route_preview_sheet.dart';
 
 RouteOption makeRoute(String id, int seconds, int metres) => RouteOption(
   id: id,
-  mode: KiwiTravelMode.drive,
+  mode: WaybiTravelMode.drive,
   durationSeconds: seconds,
   distanceMeters: metres,
   points: const [GeoPoint(-36.85, 174.76), GeoPoint(-36.86, 174.77)],
@@ -25,7 +25,7 @@ void main() {
       makeRoute('balanced', 640, 9000),
       makeRoute('short', 700, 8000),
     ];
-    KiwiTravelMode? requestedMode;
+    WaybiTravelMode? requestedMode;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -39,7 +39,7 @@ void main() {
               provider: 'independent',
               stopsApplied: 0,
             ),
-            selectedMode: KiwiTravelMode.drive,
+            selectedMode: WaybiTravelMode.drive,
             selectedRouteId: 'balanced',
             busy: false,
             stopCount: 0,
@@ -89,6 +89,6 @@ void main() {
 
     await tester.tap(find.text('Transit'));
     await tester.pump();
-    expect(requestedMode, KiwiTravelMode.transit);
+    expect(requestedMode, WaybiTravelMode.transit);
   });
 }

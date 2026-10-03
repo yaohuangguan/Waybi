@@ -1,4 +1,4 @@
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
@@ -6,7 +6,7 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../domain/route_option.dart';
 import '../domain/route_preference.dart';
 import '../data/parking_repository.dart';
-import 'kiwi_mascot.dart';
+import 'waybi_bird.dart';
 
 String _duration(int seconds, {bool isChinese = false}) {
   final duration = Duration(seconds: seconds);
@@ -43,7 +43,7 @@ String routeExplanation(
           ? '比最快路线多 ${_duration(extra, isChinese: true)}'
           : '+${_duration(extra)} vs fastest',
     );
-  } else if (selected.mode == KiwiTravelMode.drive) {
+  } else if (selected.mode == WaybiTravelMode.drive) {
     facts.add(isChinese ? '当前最快路线' : 'Fastest available route');
   }
   final distanceDifference = selected.distanceMeters - fastest.distanceMeters;
@@ -69,19 +69,19 @@ String routeExplanation(
   return facts.join(' · ');
 }
 
-IconData _icon(KiwiTravelMode mode) => switch (mode) {
-  KiwiTravelMode.drive => Icons.directions_car_filled_rounded,
-  KiwiTravelMode.transit => Icons.train_rounded,
-  KiwiTravelMode.walk => Icons.directions_walk_rounded,
-  KiwiTravelMode.bicycle => Icons.pedal_bike_rounded,
+IconData _icon(WaybiTravelMode mode) => switch (mode) {
+  WaybiTravelMode.drive => Icons.directions_car_filled_rounded,
+  WaybiTravelMode.transit => Icons.train_rounded,
+  WaybiTravelMode.walk => Icons.directions_walk_rounded,
+  WaybiTravelMode.bicycle => Icons.pedal_bike_rounded,
 };
 
-String _modeLabel(KiwiTravelMode mode, {required bool isChinese}) =>
+String _modeLabel(WaybiTravelMode mode, {required bool isChinese}) =>
     switch (mode) {
-      KiwiTravelMode.drive => isChinese ? '驾车' : 'Drive',
-      KiwiTravelMode.transit => isChinese ? '公交' : 'Transit',
-      KiwiTravelMode.walk => isChinese ? '步行' : 'Walk',
-      KiwiTravelMode.bicycle => isChinese ? '骑行' : 'Bike',
+      WaybiTravelMode.drive => isChinese ? '驾车' : 'Drive',
+      WaybiTravelMode.transit => isChinese ? '公交' : 'Transit',
+      WaybiTravelMode.walk => isChinese ? '步行' : 'Walk',
+      WaybiTravelMode.bicycle => isChinese ? '骑行' : 'Bike',
     };
 
 String _cameraTypeLabel(String value, {required bool isChinese}) {
@@ -140,7 +140,7 @@ class RoutePreviewSheet extends StatelessWidget {
   final String destinationTitle;
   final String originTitle;
   final RoutePlan plan;
-  final KiwiTravelMode selectedMode;
+  final WaybiTravelMode selectedMode;
   final String? selectedRouteId;
   final bool busy;
   final int stopCount;
@@ -149,7 +149,7 @@ class RoutePreviewSheet extends StatelessWidget {
   final Map<String, RoutePreferenceSummary> routePreferenceSummaries;
   final bool canRequestTransit;
   final bool customOrigin;
-  final ValueChanged<KiwiTravelMode> onModeChanged;
+  final ValueChanged<WaybiTravelMode> onModeChanged;
   final ValueChanged<RouteOption> onRouteSelected;
   final VoidCallback onStart;
   final VoidCallback onAddStop;
@@ -226,7 +226,7 @@ class RoutePreviewSheet extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const KiwiMascot(size: 30),
+                      const WaybiBird(size: 30),
                       IconButton(
                         visualDensity: VisualDensity.compact,
                         constraints: const BoxConstraints.tightFor(
@@ -316,7 +316,7 @@ class RoutePreviewSheet extends StatelessWidget {
                     ),
                   Row(
                     children: [
-                      for (final mode in KiwiTravelMode.values)
+                      for (final mode in WaybiTravelMode.values)
                         Expanded(
                           child: Builder(
                             builder: (context) {
@@ -324,11 +324,11 @@ class RoutePreviewSheet extends StatelessWidget {
                               final available =
                                   hasRoute ||
                                   (canRequestTransit &&
-                                      mode == KiwiTravelMode.transit);
+                                      mode == WaybiTravelMode.transit);
                               final disabled =
                                   !available ||
                                   (selectedParkingId != null &&
-                                      mode != KiwiTravelMode.drive);
+                                      mode != WaybiTravelMode.drive);
                               return InkWell(
                                 onTap: disabled
                                     ? null
@@ -378,7 +378,7 @@ class RoutePreviewSheet extends StatelessWidget {
                                         Text(
                                           !hasRoute
                                               ? (mode ==
-                                                            KiwiTravelMode
+                                                            WaybiTravelMode
                                                                 .transit &&
                                                         canRequestTransit
                                                     ? (isChinese
@@ -452,14 +452,14 @@ class RoutePreviewSheet extends StatelessWidget {
                       parkingLoading: parkingLoading,
                       isChinese: isChinese,
                     ),
-                    if (selected.mode == KiwiTravelMode.drive &&
+                    if (selected.mode == WaybiTravelMode.drive &&
                         (selected.traffic.hasIssues ||
                             selected.warnings.isNotEmpty))
                       _TrafficCard(route: selected, isChinese: isChinese),
-                    if (selected.mode == KiwiTravelMode.transit &&
+                    if (selected.mode == WaybiTravelMode.transit &&
                         selected.transit.isNotEmpty)
                       _TransitDetails(route: selected, isChinese: isChinese),
-                    if (selectedMode == KiwiTravelMode.drive)
+                    if (selectedMode == WaybiTravelMode.drive)
                       _ParkingChoices(
                         places: parkingPlaces,
                         selectedId: selectedParkingId,
@@ -495,7 +495,7 @@ class RoutePreviewSheet extends StatelessWidget {
                                 vertical: 8,
                               ),
                             ),
-                            onPressed: selectedMode == KiwiTravelMode.transit
+                            onPressed: selectedMode == WaybiTravelMode.transit
                                 ? null
                                 : onAddStop,
                             icon: const Icon(
@@ -572,9 +572,9 @@ class _RouteOptionTile extends StatelessWidget {
   }
 
   Color _trafficColor() {
-    if (route.traffic.trafficJam > 0) return KiwiLensColors.danger;
-    if (route.traffic.slow > 0) return KiwiLensColors.warning;
-    return KiwiLensColors.ocean;
+    if (route.traffic.trafficJam > 0) return WaybiColors.danger;
+    if (route.traffic.slow > 0) return WaybiColors.warning;
+    return WaybiColors.ocean;
   }
 
   List<String> get _preferenceLabels {
@@ -586,10 +586,10 @@ class _RouteOptionTile extends StatelessWidget {
     }
     if (value.fastest) labels.add(isChinese ? '时间最短' : 'Fastest');
     if (value.shortest) labels.add(isChinese ? '距离最近' : 'Shortest');
-    if (route.mode == KiwiTravelMode.drive && value.leastTraffic) {
+    if (route.mode == WaybiTravelMode.drive && value.leastTraffic) {
       labels.add(isChinese ? '堵车更少' : 'Less traffic');
     }
-    if (route.mode == KiwiTravelMode.drive && value.zeroCameras) {
+    if (route.mode == WaybiTravelMode.drive && value.zeroCameras) {
       labels.add(isChinese ? '0 摄像头' : '0 cameras');
     }
     return labels.take(3).toList(growable: false);
@@ -598,28 +598,28 @@ class _RouteOptionTile extends StatelessWidget {
   List<Color> _trafficBars() {
     if (route.traffic.trafficJam > 0) {
       return const [
-        KiwiLensColors.ocean,
-        KiwiLensColors.warning,
-        KiwiLensColors.warning,
-        KiwiLensColors.danger,
-        KiwiLensColors.danger,
+        WaybiColors.ocean,
+        WaybiColors.warning,
+        WaybiColors.warning,
+        WaybiColors.danger,
+        WaybiColors.danger,
       ];
     }
     if (route.traffic.slow > 0) {
       return const [
-        KiwiLensColors.ocean,
-        KiwiLensColors.ocean,
-        KiwiLensColors.ocean,
-        KiwiLensColors.warning,
-        KiwiLensColors.warning,
+        WaybiColors.ocean,
+        WaybiColors.ocean,
+        WaybiColors.ocean,
+        WaybiColors.warning,
+        WaybiColors.warning,
       ];
     }
     return const [
-      KiwiLensColors.ocean,
-      KiwiLensColors.ocean,
-      KiwiLensColors.ocean,
-      KiwiLensColors.ocean,
-      KiwiLensColors.ocean,
+      WaybiColors.ocean,
+      WaybiColors.ocean,
+      WaybiColors.ocean,
+      WaybiColors.ocean,
+      WaybiColors.ocean,
     ];
   }
 
@@ -725,7 +725,7 @@ class _RouteOptionTile extends StatelessWidget {
                       ],
                     ),
                   ],
-                  if (route.mode == KiwiTravelMode.drive) ...[
+                  if (route.mode == WaybiTravelMode.drive) ...[
                     const SizedBox(height: 5),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -932,13 +932,13 @@ class _JourneyBrief extends StatelessWidget {
                 label: isChinese ? '交通' : 'Traffic',
                 value: _trafficLabel(),
               ),
-              if (route.mode == KiwiTravelMode.drive)
+              if (route.mode == WaybiTravelMode.drive)
                 _BriefStat(
                   icon: Icons.photo_camera_rounded,
                   label: isChinese ? '摄像头' : 'Cameras',
                   value: '${cameraSummary.count}',
                 ),
-              if (route.mode == KiwiTravelMode.drive)
+              if (route.mode == WaybiTravelMode.drive)
                 _BriefStat(
                   icon: Icons.local_parking_rounded,
                   label: isChinese ? '停车' : 'Parking',

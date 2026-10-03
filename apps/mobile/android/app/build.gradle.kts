@@ -17,7 +17,7 @@ val mapsApiKey = localProperties.getProperty("MAPS_API_KEY")
     ?: ""
 
 android {
-    namespace = "space.ps6.kiwilens"
+    namespace = "space.ps6.waybi"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -28,7 +28,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "space.ps6.kiwilens"
+        applicationId = "space.ps6.waybi"
         minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

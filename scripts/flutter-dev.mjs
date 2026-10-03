@@ -198,7 +198,7 @@ async function main() {
     );
   }
 
-  console.log('Running Kiwi Lens on ' + device.name + ' (' + device.id + ')');
+  console.log('Running Waybi on ' + device.name + ' (' + device.id + ')');
 
   const targetPlatform = device.targetPlatform?.toLowerCase() ?? '';
   const runArgs = ['run', '-d', device.id];
@@ -226,6 +226,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('\nKiwi Lens Flutter dev failed: ' + error.message);
+  console.error('\nWaybi Flutter dev failed: ' + error.message);
   process.exit(1);
 });

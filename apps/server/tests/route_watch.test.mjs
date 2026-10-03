@@ -129,7 +129,7 @@ function entitlementDb(plan) {
 test('Route Watch rejects signed-in free users with PLUS_REQUIRED', async () => {
   const response = await handleRouteWatch(
     new Request('https://example.test/api/route-watches', {
-      headers: { cookie: `kiwi_session=${'a'.repeat(64)}` }
+      headers: { cookie: `waybi_session=${'a'.repeat(64)}` }
     }),
     { USER_DB: entitlementDb('free'), CAMERA_DATA: {} }
   );
@@ -141,7 +141,7 @@ test('Route Watch rejects signed-in free users with PLUS_REQUIRED', async () => 
 test('Route Watch returns Plus entitlement for active Plus users', async () => {
   const response = await handleRouteWatch(
     new Request('https://example.test/api/route-watches', {
-      headers: { cookie: `kiwi_session=${'b'.repeat(64)}` }
+      headers: { cookie: `waybi_session=${'b'.repeat(64)}` }
     }),
     { USER_DB: entitlementDb('plus'), CAMERA_DATA: {} }
   );
@@ -176,7 +176,7 @@ test('Route Watch alert signatures only persist warning/disrupted event sets', (
 test('proactive alert feed rejects free users with PLUS_REQUIRED', async () => {
   const response = await handleRouteWatchAlerts(
     new Request('https://example.test/api/route-watch-alerts', {
-      headers: { cookie: `kiwi_session=${'c'.repeat(64)}` }
+      headers: { cookie: `waybi_session=${'c'.repeat(64)}` }
     }),
     { USER_DB: entitlementDb('free'), CAMERA_DATA: {} }
   );
@@ -214,7 +214,7 @@ test('proactive alert feed returns unread alerts for Plus users', async () => {
 
   const response = await handleRouteWatchAlerts(
     new Request('https://example.test/api/route-watch-alerts', {
-      headers: { cookie: `kiwi_session=${'d'.repeat(64)}` }
+      headers: { cookie: `waybi_session=${'d'.repeat(64)}` }
     }),
     { USER_DB: db, CAMERA_DATA: {} }
   );

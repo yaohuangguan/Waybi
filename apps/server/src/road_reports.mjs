@@ -26,7 +26,7 @@ export async function createRoadReport(env, payload, reporter = null, now = new 
   const heading = Number(payload?.headingDegrees);
   const id = crypto.randomUUID();
   const report = {
-    id: 'tasman:report:' + id,
+    id: 'waybi:report:' + id,
     type,
     location: { latitude, longitude },
     geometry: [{ latitude, longitude }],
@@ -37,7 +37,7 @@ export async function createRoadReport(env, payload, reporter = null, now = new 
     validFrom: now.toISOString(),
     validUntil: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
     source: {
-      provider: 'Kiwi Lens road reports',
+      provider: 'Waybi road reports',
       country: 'NZ',
       region: null,
       sourceId: id,
@@ -46,7 +46,7 @@ export async function createRoadReport(env, payload, reporter = null, now = new 
     metadata: {
       description: String(payload?.description || '').trim().slice(0, 120),
       userReported: true,
-      reporterName: reporter?.displayName || 'Kiwi Lens driver',
+      reporterName: reporter?.displayName || 'Waybi driver',
       reporterId: reporter?.id || null,
       reportedAt: now.toISOString()
     }

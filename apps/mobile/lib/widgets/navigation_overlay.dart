@@ -1,4 +1,4 @@
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
@@ -6,11 +6,11 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
-import 'kiwi_mascot.dart';
+import 'waybi_bird.dart';
 import 'road_event_timeline.dart';
 
-const _ink = KiwiLensColors.darkOcean;
-const _accent = KiwiLensColors.sky;
+const _ink = WaybiColors.darkOcean;
+const _accent = WaybiColors.sky;
 
 String navigationDistanceLabel(num? metres) {
   if (metres == null || !metres.isFinite) return '—';
@@ -34,7 +34,7 @@ class NavigationLane {
   final bool recommended;
 }
 
-/// Both providers feed the same Kiwi Lens HUD without manufacturing Google events.
+/// Both providers feed the same Waybi HUD without manufacturing Google events.
 class NavigationGuidance {
   const NavigationGuidance({
     required this.instruction,
@@ -406,7 +406,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                                                 .lanes[index]
                                                                 .recommended
                                                             ? _accent
-                                                            : KiwiLensColors
+                                                            : WaybiColors
                                                                   .darkSurface,
                                                         borderRadius:
                                                             BorderRadius.circular(
@@ -502,7 +502,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                      color: KiwiLensColors.deepOcean,
+                                      color: WaybiColors.deepOcean,
                                       fontSize: 12,
                                       height: 1.4,
                                     ),
@@ -629,7 +629,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             .clamp(100.0, constraints.maxHeight * .45),
                       ),
                       child: Material(
-                        color: dark ? KiwiLensColors.darkOcean : scheme.surface,
+                        color: dark ? WaybiColors.darkOcean : scheme.surface,
                         elevation: 0,
                         borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(27),
@@ -674,7 +674,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                 ),
                                 Row(
                                   children: [
-                                    const KiwiMascot(size: 32),
+                                    const WaybiBird(size: 32),
                                     const SizedBox(width: 9),
                                     Expanded(
                                       child: Text(
@@ -691,7 +691,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                     FilledButton.icon(
                                       onPressed: widget.onEnd,
                                       style: FilledButton.styleFrom(
-                                        backgroundColor: KiwiLensColors.danger,
+                                        backgroundColor: WaybiColors.danger,
                                         foregroundColor: Colors.white,
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 10,
@@ -724,7 +724,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                             const Icon(
                                               Icons.flag_rounded,
                                               size: 19,
-                                              color: KiwiLensColors.ocean,
+                                              color: WaybiColors.ocean,
                                             ),
                                             const SizedBox(width: 8),
                                             Expanded(
@@ -782,7 +782,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                     .engine
                                     .upcomingRoadEvents
                                     .isNotEmpty) ...[
-                                  const SizedBox(height: KiwiLensSpacing.x2),
+                                  const SizedBox(height: WaybiSpacing.x2),
                                   RoadEventTimeline(
                                     events: widget.engine.upcomingRoadEvents,
                                     language: widget.language,
@@ -799,7 +799,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                     ),
                                     decoration: BoxDecoration(
                                       color: widget.usingOfflineGuidance
-                                          ? KiwiLensColors.warning.withValues(
+                                          ? WaybiColors.warning.withValues(
                                               alpha: .12,
                                             )
                                           : scheme.surfaceContainerLow,
@@ -817,7 +817,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                               : Icons.offline_pin_rounded,
                                           size: 16,
                                           color: widget.usingOfflineGuidance
-                                              ? KiwiLensColors.warning
+                                              ? WaybiColors.warning
                                               : scheme.primary,
                                         ),
                                         const SizedBox(width: 7),
@@ -1117,7 +1117,7 @@ class _NavigationControlRail extends StatelessWidget {
             icon: Icons.add_alert_rounded,
             tooltip: _text('Report road issue', '报告路况'),
             onTap: onReport,
-            iconColor: KiwiLensColors.danger,
+            iconColor: WaybiColors.danger,
             backgroundColor: Color(0xFFFFF3F1),
           ),
         ],
@@ -1131,7 +1131,7 @@ class _RailDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Container(width: 1, height: 28, color: KiwiLensColors.lightBorder);
+      Container(width: 1, height: 28, color: WaybiColors.lightBorder);
 }
 
 class _RailButton extends StatelessWidget {
@@ -1161,7 +1161,7 @@ class _RailButton extends StatelessWidget {
           onPressed: onTap,
           tooltip: tooltip,
           iconSize: 21,
-          icon: Icon(icon, color: iconColor ?? KiwiLensColors.darkOcean),
+          icon: Icon(icon, color: iconColor ?? WaybiColors.darkOcean),
         ),
       ),
     );

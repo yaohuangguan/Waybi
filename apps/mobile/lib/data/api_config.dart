@@ -1,1 +1,1 @@
-const workerBaseUrl = 'https://kiwi-lens.nzs.workers.dev';
+const workerBaseUrl = 'https://waybi.nzs.workers.dev';

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/widgets/trips_page.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/widgets/trips_page.dart';
 
 void main() {
   testWidgets(
@@ -27,7 +27,7 @@ void main() {
       );
       const route = RouteOption(
         id: 'home-drive',
-        mode: KiwiTravelMode.drive,
+        mode: WaybiTravelMode.drive,
         durationSeconds: 900,
         staticDurationSeconds: 720,
         trafficDelaySeconds: 180,

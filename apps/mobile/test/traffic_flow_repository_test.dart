@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kiwi_lens_mobile/data/traffic_flow_repository.dart';
-import 'package:kiwi_lens_mobile/domain/traffic_flow.dart';
+import 'package:waybi_mobile/data/traffic_flow_repository.dart';
+import 'package:waybi_mobile/domain/traffic_flow.dart';
 
 void main() {
   test(

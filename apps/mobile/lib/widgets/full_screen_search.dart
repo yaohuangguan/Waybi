@@ -1,4 +1,5 @@
-import '../theme/kiwi_lens_theme.dart';
+import 'place_sources_sheet.dart';
+import '../theme/waybi_theme.dart';
 
 import 'dart:async';
 
@@ -176,21 +177,21 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
                 borderSide: const BorderSide(
-                  color: KiwiLensColors.sky,
+                  color: WaybiColors.sky,
                   width: 1.3,
                 ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
                 borderSide: const BorderSide(
-                  color: KiwiLensColors.sky,
+                  color: WaybiColors.sky,
                   width: 1.3,
                 ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(22),
                 borderSide: const BorderSide(
-                  color: KiwiLensColors.ocean,
+                  color: WaybiColors.ocean,
                   width: 1.8,
                 ),
               ),
@@ -318,31 +319,18 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               },
             ),
           ),
-          if (items.any((item) => item.reference?.provider == 'osm'))
+          if (items.any(
+            (item) => ['osm', 'geoapify'].contains(item.reference?.provider),
+          ))
             SafeArea(
               top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-                child: Text(
-                  'Photon · © OpenStreetMap contributors',
-                  style: TextStyle(
-                    color: scheme.onSurfaceVariant,
-                    fontSize: 11,
-                  ),
-                ),
-              ),
-            ),
-          if (items.any((item) => item.reference?.provider == 'geoapify'))
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
-                child: Text(
-                  'Places by Geoapify · © OpenStreetMap contributors',
-                  style: TextStyle(
-                    color: scheme.onSurfaceVariant,
-                    fontSize: 11,
-                  ),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  icon: const Icon(Icons.info_outline_rounded),
+                  tooltip: widget.language == 'zh' ? '数据来源' : 'Data credits',
+                  onPressed: () =>
+                      showPlaceSources(context, language: widget.language),
                 ),
               ),
             ),

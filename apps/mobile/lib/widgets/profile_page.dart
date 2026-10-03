@@ -1,4 +1,4 @@
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -249,8 +249,8 @@ class _ProfilePageState extends State<ProfilePage> {
     final isPlus = widget.account.profile?.isPlus == true;
     final status = snapshot?.syncStatus ?? 'unknown';
     final statusColor = switch (status) {
-      'live' => KiwiLensColors.success,
-      'stale' => KiwiLensColors.warning,
+      'live' => WaybiColors.success,
+      'stale' => WaybiColors.warning,
       'seed' => scheme.primary,
       _ => scheme.onSurfaceVariant,
     };
@@ -386,7 +386,7 @@ class _ProfilePageState extends State<ProfilePage> {
           Text(
             _text(
               'Uses every field NZTA publishes for fixed safety cameras: region, suburb, location, camera type and GPS. Mobile camera locations are not fixed or fabricated.',
-              '完整使用 NZTA 对固定安全摄像头公开的区域、郊区、位置、类型和 GPS。移动测速点没有固定公开位置，Kiwi Lens 不会虚构。',
+              '完整使用 NZTA 对固定安全摄像头公开的区域、郊区、位置、类型和 GPS。移动测速点没有固定公开位置，Waybi 不会虚构。',
             ),
             style: TextStyle(
               color: scheme.onSurfaceVariant,
@@ -404,8 +404,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 Expanded(
                   child: Text(
                     _text(
-                      'Instant NZTA refresh is a Kiwi Lens Plus feature. Automatic camera updates still stay available to everyone.',
-                      '立即刷新 NZTA 摄像头是 Kiwi Lens Plus 功能。后台自动更新仍然对所有用户开放。',
+                      'Instant NZTA refresh is a Waybi Plus feature. Automatic camera updates still stay available to everyone.',
+                      '立即刷新 NZTA 摄像头是 Waybi Plus 功能。后台自动更新仍然对所有用户开放。',
                     ),
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
@@ -454,10 +454,10 @@ class _ProfilePageState extends State<ProfilePage> {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          backgroundColor: KiwiLensColors.darkOcean,
+          backgroundColor: WaybiColors.darkOcean,
           foregroundColor: Colors.white,
           title: Text(
-            _text('My Kiwi Lens', '我的 Kiwi Lens'),
+            _text('My Waybi', '我的 Waybi'),
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
@@ -471,7 +471,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [KiwiLensColors.darkOcean, KiwiLensColors.ocean],
+                    colors: [WaybiColors.darkOcean, WaybiColors.ocean],
                   ),
                   borderRadius: BorderRadius.circular(22),
                 ),
@@ -479,13 +479,13 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     CircleAvatar(
                       radius: 27,
-                      backgroundColor: KiwiLensColors.sky,
+                      backgroundColor: WaybiColors.sky,
                       child: Text(
                         profile?.displayName.isNotEmpty == true
                             ? profile!.displayName[0].toUpperCase()
                             : 'T',
                         style: const TextStyle(
-                          color: KiwiLensColors.darkOcean,
+                          color: WaybiColors.darkOcean,
                           fontSize: 24,
                           fontWeight: FontWeight.w700,
                         ),
@@ -501,7 +501,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ? profile!.displayName
                                 : profile == null
                                 ? _text('Guest explorer', '访客')
-                                : _text('Kiwi Lens member', 'Kiwi Lens 用户'),
+                                : _text('Waybi member', 'Waybi 用户'),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 19,
@@ -530,7 +530,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         tooltip: _text('Edit profile', '编辑资料'),
                         icon: const Icon(
                           Icons.edit_rounded,
-                          color: KiwiLensColors.sky,
+                          color: WaybiColors.sky,
                         ),
                       ),
                   ],
@@ -667,7 +667,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _text('Kiwi Lens Sync', 'Kiwi Lens 同步'),
+                              _text('Waybi Sync', 'Waybi 同步'),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                               ),
@@ -785,7 +785,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 title: Text(_text('Appearance', '外观')),
                 subtitle: Text(
                   _text(
-                    'Use Kiwi Lens in light, dark or follow the system',
+                    'Use Waybi in light, dark or follow the system',
                     '选择浅色、深色或跟随系统',
                   ),
                 ),
@@ -843,7 +843,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     DropdownMenuItem(
                       value: MapProvider.independent,
-                      child: Text(_text('Kiwi Practice', 'Kiwi 实践版')),
+                      child: Text(_text('Waybi Map', 'Waybi 地图')),
                     ),
                   ],
                   onChanged: (value) async {
@@ -860,8 +860,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 subtitle: Text(
                   _mapProvider == MapProvider.independent
                       ? _text(
-                          'Kiwi vector map · day and night colours',
-                          'Kiwi 矢量地图 · 日夜配色',
+                          'Waybi Map · day and night colours',
+                          'Waybi 地图 · 日夜配色',
                         )
                       : _text(
                           'Default, satellite, terrain and hybrid',
@@ -880,15 +880,37 @@ class _ProfilePageState extends State<ProfilePage> {
                   items: [
                     DropdownMenuItem(
                       value: LocationMarkerStyle.kiwi,
-                      child: Text(_text('Kiwi bird', 'Kiwi 鸟标')),
+                      child: Text(_text('Waybi bird', 'Waybi 鸟标')),
                     ),
                     DropdownMenuItem(
                       value: LocationMarkerStyle.cat,
-                      child: Text(_text('Kiwi cat', 'Kiwi 猫')),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset(
+                            'assets/markers/caity.png',
+                            width: 28,
+                            height: 28,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(_text('Caity', 'Caity 猫')),
+                        ],
+                      ),
                     ),
                     DropdownMenuItem(
                       value: LocationMarkerStyle.dog,
-                      child: Text(_text('Kiwi dog', 'Kiwi 狗')),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset(
+                            'assets/markers/sett.png',
+                            width: 28,
+                            height: 28,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(_text('Sett', 'Sett 狗')),
+                        ],
+                      ),
                     ),
                     DropdownMenuItem(
                       value: LocationMarkerStyle.arrow,
@@ -916,8 +938,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Text(
                     _text(
-                      'Google navigation uses its navigation arrow. Custom markers appear while browsing and in Kiwi Practice.',
-                      'Google 导航使用导航箭头。浏览地图与 Kiwi 实践版可使用自定义位置标记。',
+                      'Google navigation uses its navigation arrow. Custom markers appear while browsing and in Waybi Map.',
+                      'Google 导航使用导航箭头。浏览地图与 Waybi 地图可使用自定义位置标记。',
                     ),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -988,8 +1010,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 _SectionTitle(_text('Notifications', '通知')),
                 Text(
                   _text(
-                    'Kiwi Lens only asks for system notification permission when you turn on a notification below.',
-                    '只有当你主动开启下面的通知类型时，Kiwi Lens 才会请求系统通知权限。',
+                    'Waybi only asks for system notification permission when you turn on a notification below.',
+                    '只有当你主动开启下面的通知类型时，Waybi 才会请求系统通知权限。',
                   ),
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -1034,8 +1056,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   title: Text(_text('Community reports', '社区上报')),
                   subtitle: Text(
                     _text(
-                      'Nearby reports shared by Kiwi Lens drivers',
-                      '附近 Kiwi Lens 用户分享的道路报告',
+                      'Nearby reports shared by Waybi drivers',
+                      '附近 Waybi 用户分享的道路报告',
                     ),
                   ),
                   value: _notifyCommunityReports,
@@ -1277,14 +1299,14 @@ class _PlusCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            KiwiLensColors.darkOcean,
-            KiwiLensColors.ocean.withValues(alpha: .92),
+            WaybiColors.darkOcean,
+            WaybiColors.ocean.withValues(alpha: .92),
           ],
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: KiwiLensColors.darkOcean.withValues(alpha: .13),
+            color: WaybiColors.darkOcean.withValues(alpha: .13),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -1299,12 +1321,12 @@ class _PlusCard extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: KiwiLensColors.sky.withValues(alpha: .16),
+                  color: WaybiColors.sky.withValues(alpha: .16),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
                   Icons.radar_rounded,
-                  color: KiwiLensColors.sky,
+                  color: WaybiColors.sky,
                   size: 21,
                 ),
               ),
@@ -1314,7 +1336,7 @@ class _PlusCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Kiwi Lens Plus',
+                      'Waybi Plus',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
@@ -1337,7 +1359,7 @@ class _PlusCard extends StatelessWidget {
                 ),
               ),
               if (isPlus)
-                const Icon(Icons.verified_rounded, color: KiwiLensColors.sky),
+                const Icon(Icons.verified_rounded, color: WaybiColors.sky),
             ],
           ),
           const SizedBox(height: 14),
@@ -1399,7 +1421,7 @@ class _PlusCard extends StatelessWidget {
               label: Text(
                 isPlus
                     ? t('Explore your Plus benefits', '查看你的 Plus 权益')
-                    : t('Meet Kiwi Lens Plus', '了解 Kiwi Lens Plus'),
+                    : t('Meet Waybi Plus', '了解 Waybi Plus'),
               ),
             ),
           ),
@@ -1433,7 +1455,7 @@ class _PlusChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: KiwiLensColors.sky, size: 15),
+            Icon(icon, color: WaybiColors.sky, size: 15),
             const SizedBox(width: 6),
             Flexible(
               child: Text(

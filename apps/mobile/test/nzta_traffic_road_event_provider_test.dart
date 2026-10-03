@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kiwi_lens_mobile/data/nzta_traffic_road_event_provider.dart';
-import 'package:kiwi_lens_mobile/domain/road_event.dart';
+import 'package:waybi_mobile/data/nzta_traffic_road_event_provider.dart';
+import 'package:waybi_mobile/domain/road_event.dart';
 
 void main() {
   test('parses normalized NZTA road events from Worker response', () async {
@@ -29,11 +29,11 @@ void main() {
                 'country': 'NZ',
                 'region': 'Auckland',
                 'sourceId': '1',
-                'updatedAt': '2026-09-25T23:00:00Z'
+                'updatedAt': '2026-09-25T23:00:00Z',
               },
-              'metadata': {'description': 'Road works'}
-            }
-          ]
+              'metadata': {'description': 'Road works'},
+            },
+          ],
         }),
         200,
         headers: {'content-type': 'application/json'},

@@ -4,13 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Native MapLibre style. Land use, road hierarchy and POIs remain distinct.
-Map<String, dynamic> kiwiMapStyle(
+Map<String, dynamic> waybiMapStyle(
   Map<String, dynamic> base, {
   required bool dark,
   required String language,
 }) {
   final result = jsonDecode(jsonEncode(base)) as Map<String, dynamic>;
-  result['id'] = 'kiwi-${dark ? "night" : "day"}-$language';
+  result['id'] = 'waybi-${dark ? "night" : "day"}-$language';
   final sources = result['sources'] as Map<String, dynamic>?;
   final openMapTiles = sources?['openmaptiles'] as Map<String, dynamic>?;
   if (openMapTiles != null) {
@@ -20,7 +20,7 @@ Map<String, dynamic> kiwiMapStyle(
         '© OpenStreetMap contributors · © OpenMapTiles · Routing: OSRM';
   }
   final paper = dark ? '#192329' : '#f6f7f8';
-  final park = dark ? '#294333' : '#edf2ea';
+  final park = dark ? '#294333' : '#cfe6bf';
   final water = dark ? '#204557' : '#e5eef3';
   final text = dark ? '#d9e4e8' : '#59636b';
   final names = <dynamic>[
@@ -93,7 +93,7 @@ Map<String, dynamic> kiwiMapStyle(
     (dynamic l) => l['id'] == 'landuse_residential',
   );
   layers.insert(landIndex < 0 ? 1 : landIndex + 1, {
-    'id': 'kiwi-landuse',
+    'id': 'waybi-landuse',
     'type': 'fill',
     'source': 'openmaptiles',
     'source-layer': 'landuse',
@@ -110,11 +110,32 @@ Map<String, dynamic> kiwiMapStyle(
         dark ? '#39344b' : '#f2f1f4',
         ['industrial'],
         dark ? '#383e46' : '#eceef0',
-        ['cemetery', 'recreation_ground', 'allotments'],
+        [
+          'cemetery',
+          'recreation_ground',
+          'allotments',
+          'grass',
+          'meadow',
+          'village_green',
+        ],
         park,
         dark ? '#222e34' : '#efefe8',
       ],
     },
+  });
+  // Grassland is a separate tile class, not only parks and woodland.
+  final firstWater = layers.indexWhere((dynamic l) => l['id'] == 'water');
+  layers.insert(firstWater < 0 ? 1 : firstWater, {
+    'id': 'waybi-grass',
+    'type': 'fill',
+    'source': 'openmaptiles',
+    'source-layer': 'landcover',
+    'filter': [
+      '==',
+      ['get', 'class'],
+      'grass',
+    ],
+    'paint': {'fill-color': dark ? '#2d4634' : '#d9edc9', 'fill-opacity': 1},
   });
   final poiColor = <dynamic>[
     'match',
@@ -157,7 +178,7 @@ Map<String, dynamic> kiwiMapStyle(
   // POIs come from the tiles themselves; no per-frame geocoding or widgets.
   layers.addAll([
     {
-      'id': 'kiwi-poi-dot',
+      'id': 'waybi-poi-dot',
       'type': 'circle',
       'source': 'openmaptiles',
       'source-layer': 'poi',
@@ -171,7 +192,7 @@ Map<String, dynamic> kiwiMapStyle(
       },
     },
     {
-      'id': 'kiwi-poi-label',
+      'id': 'waybi-poi-label',
       'type': 'symbol',
       'source': 'openmaptiles',
       'source-layer': 'poi',
@@ -221,7 +242,7 @@ class IndependentMapStyle {
       _licensesRegistered = true;
       LicenseRegistry.addLicense(() async* {
         yield LicenseEntryWithLineBreaks([
-          'Kiwi map style / Positron / OpenFreeMap',
+          'Waybi map style / Positron / OpenFreeMap',
         ], await rootBundle.loadString('assets/maps/LICENSES.txt'));
       });
     }
@@ -230,7 +251,7 @@ class IndependentMapStyle {
         .loadString('assets/maps/positron_base.json')
         .then((s) => jsonDecode(s) as Map<String, dynamic>);
     return jsonEncode(
-      kiwiMapStyle(await _base!, dark: dark, language: language),
+      waybiMapStyle(await _base!, dark: dark, language: language),
     );
   }
 }

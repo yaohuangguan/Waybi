@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/map_layer_settings.dart';
 import '../domain/map_provider.dart';
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 class MapLayerSheet extends StatefulWidget {
   const MapLayerSheet({
@@ -48,12 +48,12 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
-    final activeBlue = dark ? KiwiLensColors.sky : KiwiLensColors.ocean;
+    final activeBlue = dark ? WaybiColors.sky : WaybiColors.ocean;
     final activeSurface = dark
-        ? KiwiLensColors.deepTeal.withValues(alpha: .20)
-        : KiwiLensColors.sky.withValues(alpha: .10);
+        ? WaybiColors.deepTeal.withValues(alpha: .20)
+        : WaybiColors.sky.withValues(alpha: .10);
     final idleSurface = dark
-        ? KiwiLensColors.darkSurface
+        ? WaybiColors.darkSurface
         : scheme.surfaceContainerLow;
 
     return AnimatedContainer(
@@ -107,25 +107,21 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
               onChanged: onVisible,
               thumbColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.selected)) {
-                  return dark ? KiwiLensColors.midnightOcean : Colors.white;
+                  return dark ? WaybiColors.midnightOcean : Colors.white;
                 }
-                return dark ? KiwiLensColors.darkTextSecondary : Colors.white;
+                return dark ? WaybiColors.darkTextSecondary : Colors.white;
               }),
               trackColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.selected)) {
                   return activeBlue;
                 }
-                return dark
-                    ? KiwiLensColors.darkBorder
-                    : KiwiLensColors.lightBorder;
+                return dark ? WaybiColors.darkBorder : WaybiColors.lightBorder;
               }),
               trackOutlineColor: WidgetStateProperty.resolveWith((states) {
                 if (states.contains(WidgetState.selected)) {
                   return Colors.transparent;
                 }
-                return dark
-                    ? KiwiLensColors.darkBorder
-                    : KiwiLensColors.lightBorder;
+                return dark ? WaybiColors.darkBorder : WaybiColors.lightBorder;
               }),
             ),
           ),
@@ -166,29 +162,29 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
     );
   }
 
-  SwitchThemeData _tasmanLayerSwitchTheme(BuildContext context) {
+  SwitchThemeData _waybiLayerSwitchTheme(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final activeBlue = dark ? KiwiLensColors.sky : KiwiLensColors.ocean;
+    final activeBlue = dark ? WaybiColors.sky : WaybiColors.ocean;
     return SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) {
           return Theme.of(context).disabledColor;
         }
         if (states.contains(WidgetState.selected)) {
-          return dark ? KiwiLensColors.midnightOcean : Colors.white;
+          return dark ? WaybiColors.midnightOcean : Colors.white;
         }
-        return dark ? KiwiLensColors.darkTextSecondary : Colors.white;
+        return dark ? WaybiColors.darkTextSecondary : Colors.white;
       }),
       trackColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) {
           return Theme.of(context).disabledColor.withValues(alpha: .20);
         }
         if (states.contains(WidgetState.selected)) return activeBlue;
-        return dark ? KiwiLensColors.darkBorder : KiwiLensColors.lightBorder;
+        return dark ? WaybiColors.darkBorder : WaybiColors.lightBorder;
       }),
       trackOutlineColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) return Colors.transparent;
-        return dark ? KiwiLensColors.darkBorder : KiwiLensColors.lightBorder;
+        return dark ? WaybiColors.darkBorder : WaybiColors.lightBorder;
       }),
     );
   }
@@ -288,7 +284,7 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                       ListTile(
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(Icons.map_outlined),
-                        title: Text(_text('Kiwi vector map', 'Kiwi 矢量地图')),
+                        title: Text(_text('Waybi Map', 'Waybi 地图')),
                         subtitle: Text(
                           _text(
                             'A calm map with automatic day and night colours.',
@@ -299,7 +295,7 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                     Theme(
                       data: Theme.of(
                         context,
-                      ).copyWith(switchTheme: _tasmanLayerSwitchTheme(context)),
+                      ).copyWith(switchTheme: _waybiLayerSwitchTheme(context)),
                       child: SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         secondary: Icon(
@@ -313,8 +309,8 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                                     ? widget.trafficStatus == 'live' &&
                                               widget.trafficSegmentCount > 0
                                           ? _text(
-                                              '${widget.trafficSegmentCount} live motorway segments',
-                                              '${widget.trafficSegmentCount} 条实时高速路况',
+                                              '${widget.trafficSegmentCount} road-matched sections',
+                                              '${widget.trafficSegmentCount} 段已贴路路况',
                                             )
                                           : widget.trafficStatus == 'stale' &&
                                                 widget.trafficSegmentCount > 0
@@ -329,12 +325,12 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                                               '实时交通暂时不可用',
                                             )
                                           : _text(
-                                              'Loading NZTA motorway flow…',
-                                              '正在加载 NZTA 高速实时路况…',
+                                              'Loading published NZTA traffic…',
+                                              '正在加载 NZTA 公开路况…',
                                             )
                                     : _text(
-                                        'Off by default · turn on for NZTA motorway flow',
-                                        '默认关闭 · 开启后显示 NZTA 高速实时路况',
+                                        'Off by default · turn on for published NZTA traffic',
+                                        '默认关闭 · 开启后显示 NZTA 公开路况',
                                       )
                               : _text(
                                   'Google Maps live traffic overlay',
@@ -350,7 +346,7 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                     Theme(
                       data: Theme.of(
                         context,
-                      ).copyWith(switchTheme: _tasmanLayerSwitchTheme(context)),
+                      ).copyWith(switchTheme: _waybiLayerSwitchTheme(context)),
                       child: SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         secondary: Icon(
@@ -371,6 +367,17 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                             update(current.copyWith(cameras: value)),
                       ),
                     ),
+                    if (widget.mapProvider == MapProvider.independent)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          _text(
+                            'Green: flowing · Amber: slow · Red: congested. Published coverage only; uncoloured roads have no live data.',
+                            '绿色畅通 · 黄色缓行 · 红色拥堵。仅覆盖已公布路段；没有颜色的街道暂无实时数据。',
+                          ),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
                     _cameraToggle(
                       icon: Icons.speed_rounded,
                       en: 'Spot speed',

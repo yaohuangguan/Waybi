@@ -72,15 +72,17 @@ class RoadIntelligenceEngine {
           ? <GeoPoint>[event.location]
           : event.geometry;
       final nearby = candidates
-          .map((point) => (
-                point: point,
-                distance: distanceMeters(
-                  driver.latitude,
-                  driver.longitude,
-                  point.latitude,
-                  point.longitude,
-                ),
-              ))
+          .map(
+            (point) => (
+              point: point,
+              distance: distanceMeters(
+                driver.latitude,
+                driver.longitude,
+                point.latitude,
+                point.longitude,
+              ),
+            ),
+          )
           .where((entry) => entry.distance <= maxDistanceMeters)
           .toList(growable: false);
       if (nearby.isEmpty) continue;
@@ -93,7 +95,8 @@ class RoadIntelligenceEngine {
         double bestOffset = double.infinity;
         for (final entry in nearby) {
           final projected = _routeMatcher.project(entry.point, route.points);
-          if (projected == null || projected.offsetMeters > routeCorridorMeters) {
+          if (projected == null ||
+              projected.offsetMeters > routeCorridorMeters) {
             continue;
           }
           final candidateAlong = projected.alongMeters - progress.alongMeters;
@@ -101,7 +104,8 @@ class RoadIntelligenceEngine {
             continue;
           }
           if (event.headingDegrees != null &&
-              angleDifference(event.headingDegrees!, projected.bearingDegrees) > 55) {
+              angleDifference(event.headingDegrees!, projected.bearingDegrees) >
+                  55) {
             continue;
           }
           if (projected.offsetMeters < bestOffset) {

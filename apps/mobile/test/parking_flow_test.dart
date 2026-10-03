@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kiwi_lens_mobile/data/account_repository.dart';
-import 'package:kiwi_lens_mobile/data/parking_repository.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/theme/kiwi_lens_theme.dart';
-import 'package:kiwi_lens_mobile/widgets/profile_page.dart';
-import 'package:kiwi_lens_mobile/widgets/route_preview_sheet.dart';
+import 'package:waybi_mobile/data/account_repository.dart';
+import 'package:waybi_mobile/data/parking_repository.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/theme/waybi_theme.dart';
+import 'package:waybi_mobile/widgets/profile_page.dart';
+import 'package:waybi_mobile/widgets/route_preview_sheet.dart';
 
 void main() {
   const destination = GeoPoint(-36.8485, 174.7633);
@@ -106,11 +106,11 @@ void main() {
     repository.dispose();
   });
 
-  testWidgets('My Kiwi Lens uses the dark scaffold background', (tester) async {
+  testWidgets('My Waybi uses the dark scaffold background', (tester) async {
     final account = AccountRepository();
     await tester.pumpWidget(
       MaterialApp(
-        theme: KiwiLensTheme.dark,
+        theme: WaybiTheme.dark,
         home: ProfilePage(
           account: account,
           voiceEnabled: true,
@@ -140,7 +140,7 @@ void main() {
       ),
     );
     final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
-    expect(scaffold.backgroundColor, KiwiLensColors.midnightOcean);
+    expect(scaffold.backgroundColor, WaybiColors.midnightOcean);
     await tester.pumpWidget(const SizedBox.shrink());
     account.dispose();
   });
@@ -157,7 +157,7 @@ void main() {
     );
     const route = RouteOption(
       id: 'drive-1',
-      mode: KiwiTravelMode.drive,
+      mode: WaybiTravelMode.drive,
       durationSeconds: 600,
       distanceMeters: 3000,
       points: [destination],
@@ -167,7 +167,7 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
-        theme: KiwiLensTheme.dark,
+        theme: WaybiTheme.dark,
         home: Scaffold(
           body: RoutePreviewSheet(
             destinationTitle: 'City Library',
@@ -178,7 +178,7 @@ void main() {
               provider: 'google',
               stopsApplied: 0,
             ),
-            selectedMode: KiwiTravelMode.drive,
+            selectedMode: WaybiTravelMode.drive,
             selectedRouteId: 'drive-1',
             busy: false,
             stopCount: 0,
@@ -220,7 +220,7 @@ void main() {
     var continued = false;
     await tester.pumpWidget(
       MaterialApp(
-        theme: KiwiLensTheme.dark,
+        theme: WaybiTheme.dark,
         home: Scaffold(
           body: ParkingContinuationCard(
             destinationTitle: 'City Library',

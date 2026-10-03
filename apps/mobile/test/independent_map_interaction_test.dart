@@ -5,13 +5,13 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/map_layer_settings.dart';
-import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
-import 'package:kiwi_lens_mobile/domain/traffic_flow.dart';
-import 'package:kiwi_lens_mobile/providers/independent_map_renderer.dart';
-import 'package:kiwi_lens_mobile/providers/provider_contracts.dart';
-import 'package:kiwi_lens_mobile/providers/location_marker_art.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/map_layer_settings.dart';
+import 'package:waybi_mobile/domain/safety_camera.dart';
+import 'package:waybi_mobile/domain/traffic_flow.dart';
+import 'package:waybi_mobile/providers/independent_map_renderer.dart';
+import 'package:waybi_mobile/providers/provider_contracts.dart';
+import 'package:waybi_mobile/providers/location_marker_art.dart';
 
 class RecordingMapPlatform extends ml.MapLibrePlatform {
   int builds = 0;
@@ -141,6 +141,12 @@ void main() {
                       level: TrafficFlowLevel.heavy,
                       start: GeoPoint(-36.84, 174.75),
                       end: GeoPoint(-36.85, 174.76),
+                      geometryQuality: 'road-matched',
+                      geometry: [
+                        GeoPoint(-36.84, 174.75),
+                        GeoPoint(-36.845, 174.752),
+                        GeoPoint(-36.85, 174.76),
+                      ],
                     ),
                   ],
                   routePaths: const [
@@ -208,14 +214,14 @@ void main() {
       expect(renderer, isNotNull);
       final map = tester.widget<ml.MapLibreMap>(find.byType(ml.MapLibreMap));
       expect(map.attributionButtonMargins, const Point(8, 8));
-      final pins = platform.sources['kiwi-pins']!['features'] as List;
+      final pins = platform.sources['waybi-pins']!['features'] as List;
       final camera = pins.firstWhere(
         (feature) => feature['id'] == 'camera:cam-1',
       );
       expect(camera['properties']['kind'], 'camera');
       expect(
         camera['properties']['icon'].toString(),
-        startsWith('kiwi-camera-'),
+        startsWith('waybi-camera-'),
       );
       expect(
         pins.any(
@@ -226,11 +232,11 @@ void main() {
         isTrue,
       );
       final traffic =
-          platform.sources['kiwi-traffic']!['features'] as List<dynamic>;
+          platform.sources['waybi-traffic']!['features'] as List<dynamic>;
       expect(traffic, hasLength(1));
       expect(traffic.single['properties']['level'], 'heavy');
       final routes =
-          platform.sources['kiwi-route']!['features'] as List<dynamic>;
+          platform.sources['waybi-route']!['features'] as List<dynamic>;
       expect(routes, hasLength(3));
       expect(
         routes.where((feature) => feature['properties']['active'] == true),
@@ -261,7 +267,7 @@ void main() {
       update!(() => location = const GeoPoint(-36.8486, 174.7634));
       await tester.pumpAndSettle();
       expect(platform.moves, isEmpty);
-      expect(platform.updates, ['kiwi-driver']);
+      expect(platform.updates, ['waybi-driver']);
       expect(renderer!.viewport.zoom, 15);
       update!(() {
         following = true;
@@ -270,7 +276,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(platform.padding.bottom, 370);
       expect(platform.moves, isNotEmpty);
-      final features = platform.sources['kiwi-driver']!['features'] as List;
+      final features = platform.sources['waybi-driver']!['features'] as List;
       expect(features.single['geometry']['coordinates'], [174.7634, -36.8486]);
       expect(features.single['properties']['heading'], 45);
       // The renderer queries visible tile POIs, not an external geocoder per tap.

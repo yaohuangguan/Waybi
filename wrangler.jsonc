@@ -1,6 +1,6 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "kiwi-lens",
+	"name": "waybi",
 	"account_id": "cdc04de9bc4c6a41b5003758e505a0d1",
 	"main": "apps/server/src/worker.mjs",
 	"compatibility_date": "2026-08-04",
@@ -24,8 +24,8 @@
 	"d1_databases": [
 		{
 			"binding": "USER_DB",
-			"database_name": "kiwi-lens-users",
-			"database_id": "a073f375-f896-437e-8a2b-2d1e3fedd6d8"
+			"database_name": "waybi-users",
+			"database_id": "cd8e444b-d89e-452d-9ffe-9a0d9d7510f0"
 		}
 	],
 	"triggers": {

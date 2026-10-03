@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/web/public/brand/kiwi-lens-lockup.svg" width="360" alt="Kiwi Lens — A clearer journey" />
+  <img src="apps/web/public/brand/waybi-lockup.svg" width="360" alt="Waybi — A clearer journey" />
 </p>
 
 <p align="center">
@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://kiwi-lens.nzs.workers.dev/">Live web app</a>
+  <a href="https://waybi.nzs.workers.dev/">Live web app</a>
   ·
   <a href="packages/contracts/openapi.yaml">OpenAPI contract</a>
   ·
@@ -17,18 +17,18 @@
   <a href="#development">Development</a>
 </p>
 
-# Kiwi Lens
+# Waybi
 
-Kiwi Lens is a navigation companion built specifically around driving in New Zealand. It combines turn-by-turn navigation with NZTA road intelligence, safety-camera awareness, parking discovery, commute monitoring and a compact driving UI designed to keep the information that matters visible without covering the map.
+Waybi is a navigation companion built specifically around driving in New Zealand. It combines turn-by-turn navigation with NZTA road intelligence, safety-camera awareness, parking discovery, commute monitoring and a compact driving UI designed to keep the information that matters visible without covering the map.
 
-The project ships as both a **Flutter mobile app** and an installable **Vite PWA**, backed by a **Cloudflare Worker**. Mobile supports both **Google Maps** and **Kiwi Practice (OpenFreeMap/OSM)** as map/search/routing providers while keeping provider data boundaries explicit.
+The project ships as both a **Flutter mobile app** and an installable **Vite PWA**, backed by a **Cloudflare Worker**. Mobile supports both **Google Maps** and **Waybi Map (OpenFreeMap/OSM)** as map/search/routing providers while keeping provider data boundaries explicit.
 
-## What Kiwi Lens does
+## What Waybi does
 
 | Area | Current experience |
 | --- | --- |
 | Navigation | Traffic-aware driving routes, rerouting, voice guidance, lane guidance, ETA, speed and compact navigation overlays |
-| Map providers | Google Maps and free Kiwi Practice on mobile, with provider-aware search, routing and content handling |
+| Map providers | Google Maps and free Waybi Map on mobile, with provider-aware search, routing and content handling |
 | Journey Brief | One pre-trip summary for ETA, traffic/delay, matched cameras, parking context and route rationale |
 | Safety cameras | NZTA fixed-camera data, route matching, map visibility and high-confidence approach alerts |
 | Trips | Home / Work shortcuts, recent destinations, route history and stable commute monitoring |
@@ -39,7 +39,7 @@ The project ships as both a **Flutter mobile app** and an installable **Vite PWA
 
 ## Free navigation, paid intelligence
 
-Kiwi Lens deliberately does **not** put basic navigation behind a paywall.
+Waybi deliberately does **not** put basic navigation behind a paywall.
 
 ### Free
 
@@ -51,7 +51,7 @@ Kiwi Lens deliberately does **not** put basic navigation behind a paywall.
 - Parking discovery and park-then-walk flow
 - Core Trips and destination history
 
-### Kiwi Lens Plus
+### Waybi Plus
 
 Plus is for proactive road intelligence and convenience rather than access to the map itself.
 
@@ -66,7 +66,7 @@ Stripe Checkout and Customer Portal backend APIs are retained for a future websi
 
 ## Journey Brief
 
-Before starting a route, Kiwi Lens condenses the most useful decision information into one compact card:
+Before starting a route, Waybi condenses the most useful decision information into one compact card:
 
 - expected arrival time
 - current traffic condition or traffic delay
@@ -81,12 +81,12 @@ Detailed traffic, route options and parking controls remain available underneath
 
 Route Watch monitors a **stable commute**, not a route anchored to wherever the phone happened to be when monitoring was enabled.
 
-Once Home and Work are configured, Kiwi Lens can maintain two independent watches:
+Once Home and Work are configured, Waybi can maintain two independent watches:
 
 - **Home → Work**
 - **Work → Home**
 
-When a watch is created or refreshed, Kiwi Lens stores a sampled route corridor, baseline ETA/distance and route provider. Route geometry expires after **29 days** so stale geometry is not monitored indefinitely.
+When a watch is created or refreshed, Waybi stores a sampled route corridor, baseline ETA/distance and route provider. Route geometry expires after **29 days** so stale geometry is not monitored indefinitely.
 
 A Cloudflare cron evaluates active, non-expired watches every **15 minutes** against official NZTA Traffic and Travel road events. Background checks operate on the saved corridor and do not continuously upload the driver's live GPS position or repeatedly purchase fresh Google routes.
 
@@ -96,17 +96,17 @@ Remote push delivery is a separate layer; the current implementation provides re
 
 ## NZTA camera intelligence
 
-Kiwi Lens maintains a validated snapshot of New Zealand fixed safety-camera data from the official NZTA source.
+Waybi maintains a validated snapshot of New Zealand fixed safety-camera data from the official NZTA source.
 
-The production Worker checks for camera updates every **6 hours** and writes validated snapshots to Workers KV. A new snapshot only replaces the current one when the source date and coordinates pass validation; otherwise Kiwi Lens keeps the last known-good dataset.
+The production Worker checks for camera updates every **6 hours** and writes validated snapshots to Workers KV. A new snapshot only replaces the current one when the source date and coordinates pass validation; otherwise Waybi keeps the last known-good dataset.
 
 During navigation, cameras are projected against the active route rather than treated as simple nearby points. The matcher also uses route geometry and road context to reduce false positives from adjacent roads.
 
-The source data does not include every enforcement-direction or lane attribute, so Kiwi Lens should be treated as supplementary driving information, not a substitute for road signs or traffic law.
+The source data does not include every enforcement-direction or lane attribute, so Waybi should be treated as supplementary driving information, not a substitute for road signs or traffic law.
 
 ## Parking and arrival
 
-For supported New Zealand destinations, Kiwi Lens can surface parking near the destination before navigation starts.
+For supported New Zealand destinations, Waybi can surface parking near the destination before navigation starts.
 
 In Auckland, Auckland Transport Open GIS parking data is preferred where available. Published capacity is treated as **static capacity**, not live space availability.
 
@@ -121,7 +121,7 @@ A parking-assisted journey can be handled as:
 ```text
 ┌──────────────────────────────┐
 │ Flutter mobile               │
-│ Google Maps / Kiwi Practice         │
+│ Google Maps / Waybi Map         │
 │ navigation + road UI         │
 └──────────────┬───────────────┘
                │ HTTPS
@@ -250,7 +250,7 @@ Required runtime secrets and provider credentials should be configured through C
 
 Current production web endpoint:
 
-**https://kiwi-lens.nzs.workers.dev**
+**https://waybi.nzs.workers.dev**
 
 Scheduled jobs:
 
@@ -276,7 +276,7 @@ Authenticated account, Plus and administrative endpoints are intentionally kept 
 
 ## Cost Guard
 
-Kiwi Lens records aggregate provider usage so product growth can be evaluated against real API cost instead of estimates.
+Waybi records aggregate provider usage so product growth can be evaluated against real API cost instead of estimates.
 
 Current tracking includes:
 
@@ -289,15 +289,15 @@ Usage tracking is best-effort and must never interrupt search or active navigati
 
 ## Provider boundaries
 
-Kiwi Lens keeps provider-specific content rules explicit.
+Waybi keeps provider-specific content rules explicit.
 
-Google Places and Routes content stays on Google Maps. Kiwi Practice uses independently sourced OSM data and its own navigation engine; switching maps does not relabel provider content.
+Google Places and Routes content stays on Google Maps. Waybi Map uses independently sourced OSM data and its own navigation engine; switching maps does not relabel provider content.
 
 This separation is intentional: map switching is a UI choice, not a licence bypass.
 
 ## Privacy
 
-Kiwi Lens uses location on the device for navigation, route progress and road-intelligence matching.
+Waybi uses location on the device for navigation, route progress and road-intelligence matching.
 
 - live GPS is not continuously stored by Route Watch
 - Route Watch background checks use the saved route corridor
@@ -309,11 +309,11 @@ Kiwi Lens uses location on the device for navigation, route progress and road-in
 
 ## License
 
-Kiwi Lens is **source-available for noncommercial use** under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+Waybi is **source-available for noncommercial use** under the [PolyForm Noncommercial License 1.0.0](LICENSE).
 
 You may study, run, modify and redistribute the code for permitted noncommercial purposes under that license. **Commercial use, commercial integration, resale, paid services based on this code, or other commercial exploitation is not permitted without a separate written commercial license from the copyright holder.**
 
-This repository is therefore **not licensed under a permissive open-source licence such as MIT or Apache-2.0**. If you want to use Kiwi Lens commercially, contact the repository owner for separate licensing.
+This repository is therefore **not licensed under a permissive open-source licence such as MIT or Apache-2.0**. If you want to use Waybi commercially, contact the repository owner for separate licensing.
 
 ## Current limitations
 
@@ -326,9 +326,9 @@ This repository is therefore **not licensed under a permissive open-source licen
 ---
 
 <p align="center">
-  <img src="apps/web/public/brand/kiwi-lens-icon.png" width="88" alt="Kiwi Lens icon" />
+  <img src="apps/web/public/brand/waybi-icon.png" width="88" alt="Waybi icon" />
   <br />
-  <strong>Kiwi Lens</strong><br />
+  <strong>Waybi</strong><br />
   A clearer journey through New Zealand.
 </p>
 

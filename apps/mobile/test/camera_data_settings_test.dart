@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/data/account_repository.dart';
-import 'package:kiwi_lens_mobile/data/camera_repository.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/safety_camera.dart';
-import 'package:kiwi_lens_mobile/widgets/profile_page.dart';
+import 'package:waybi_mobile/data/account_repository.dart';
+import 'package:waybi_mobile/data/camera_repository.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/safety_camera.dart';
+import 'package:waybi_mobile/widgets/profile_page.dart';
 
 CameraSnapshot _snapshot(int count, {int added = 0}) {
   final cameras = <SafetyCamera>[];

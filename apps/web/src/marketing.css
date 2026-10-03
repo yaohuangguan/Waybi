@@ -33,11 +33,11 @@ em { font-style: normal; color: var(--brand-ocean); }
 .hero-lead { max-width: 445px; font-size: 17px; line-height: 1.75; color: var(--text-secondary); }
 .hero-actions { display: flex; align-items: center; gap: 26px; margin: 28px 0 26px; }
 .hero-note { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--text-secondary); }
-.hero-note .kiwi { width: 40px; height: 36px; }
+.hero-note .waybi { width: 40px; height: 36px; }
 .preview { position: relative; display: flex; justify-content: center; min-height: 620px; padding: 10px 16px 22px; }
 .preview::before { content: ''; position: absolute; width: 520px; height: 520px; top: 68px; border-radius: 50%; background: var(--brand-sky); }
 .preview-sticker { position: absolute; right: -4px; top: 54px; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 110px; height: 110px; transform: rotate(12deg); border-radius: 50%; background: var(--surface-subtle); border: 1px solid var(--brand-ocean); font-size: 12px; font-weight: 500; text-align: center; line-height: 1.5; }
-.preview-sticker .kiwi { width: 51px; height: 46px; }
+.preview-sticker .waybi { width: 51px; height: 46px; }
 .phone { position: relative; width: 334px; height: 604px; flex: none; padding: 12px; border: 6px solid var(--deep-ocean); border-radius: 40px; background: #eaf0df; box-shadow: 0 24px 40px #23351d26; transform: rotate(3deg); overflow: hidden; }
 .phone-status { position: relative; z-index: 1; display: flex; justify-content: space-between; padding: 4px 12px 10px; font-size: 11px; font-weight: 600; }
 .map-art { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -57,11 +57,11 @@ em { font-style: normal; color: var(--brand-ocean); }
 .preview-camera > b { margin-left: auto; white-space: nowrap; font-size: 14px; font-weight: 600; }
 .map-road-label { position: absolute; top: 306px; right: 14px; color: #64705b; font-size: 9px; transform: rotate(-23deg); }
 .map-kiwi { position: absolute; left: 136px; top: 322px; display: grid; place-items: center; width: 53px; height: 53px; border-radius: 50%; background: var(--brand-sky); border: 3px solid white; box-shadow: 0 4px 12px #23351d26; }
-.map-kiwi .kiwi { width: 37px; height: 37px; }
+.map-kiwi .waybi { width: 37px; height: 37px; }
 .preview-deck { position: absolute; left: 0; right: 0; bottom: 0; padding: 15px 19px 22px; border-radius: 23px 23px 0 0; background: white; }
 .deck-handle { display: block; width: 38px; height: 4px; margin: 0 auto 13px; border-radius: 4px; background: var(--border); }
 .deck-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; }
-.deck-title .kiwi { width: 29px; height: 27px; }
+.deck-title .waybi { width: 29px; height: 27px; }
 .deck-stats { display: flex; justify-content: space-between; padding: 13px 0; margin-top: 8px; border-top: 1px solid var(--border); }
 .deck-stats strong, .deck-stats small { display: block; }
 .deck-stats strong { font-weight: 600; font-size: 19px; }
@@ -86,7 +86,7 @@ h2 { margin: 16px 0 0; font-size: clamp(34px, 4vw, 54px); font-weight: 500; line
 .feature.dark .feature-visual { color: var(--brand-sky); }
 .feature-visual span { display: grid; place-items: center; height: 40px; width: 40px; border-radius: 11px; background: #2c4325; color: #ccdabd; }
 .feature-visual span.active { background: var(--brand-sky); color: var(--deep-ocean); }
-.feature-visual .kiwi { height: 52px; width: 56px; margin-left: auto; }
+.feature-visual .waybi { height: 52px; width: 56px; margin-left: auto; }
 h3 { margin: 6px 0 12px; font-size: 23px; font-weight: 500; letter-spacing: -.025em; line-height: 1.3; }
 .feature p { margin: 0; font-size: 14px; line-height: 1.75; color: var(--text-secondary); }
 .feature.dark p { color: #ccdabd; }
@@ -95,7 +95,7 @@ h3 { margin: 6px 0 12px; font-size: 23px; font-weight: 500; letter-spacing: -.02
 .safety-art { position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 420px; padding: 40px; background: #eaf5cf; border-radius: 36px; overflow: hidden; }
 .safety-art::before, .safety-art::after { content: ''; position: absolute; width: 360px; height: 360px; border: 1px solid #bfd69b; border-radius: 50%; }
 .safety-art::after { width: 500px; height: 500px; }
-.safety-art .kiwi { position: relative; width: 162px; height: 153px; z-index: 1; }
+.safety-art .waybi { position: relative; width: 162px; height: 153px; z-index: 1; }
 .camera-demo { display: flex; align-items: center; gap: 12px; width: min(100%, 330px); margin-top: 20px; padding: 17px 20px; border-radius: 20px; background: var(--deep-ocean); color: var(--brand-sky); z-index: 1; box-shadow: 0 10px 30px #23351d26; }
 .camera-demo > span { font-size: 27px; }
 .camera-demo strong, .camera-demo small { display: block; }
@@ -117,14 +117,14 @@ h3 { margin: 6px 0 12px; font-size: 23px; font-weight: 500; letter-spacing: -.02
 .cta { position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 35px; padding: 56px 60px; border-radius: 34px; background: var(--deep-ocean); color: var(--surface-subtle); }
 .cta h2 { max-width: 590px; margin: 0 0 20px; }
 .cta p { color: #ccdabd; line-height: 1.7; font-size: 14px; }
-.cta .kiwi { width: 178px; height: 180px; flex: none; color: var(--brand-sky); transform: rotate(-7deg); }
+.cta .waybi { width: 178px; height: 180px; flex: none; color: var(--brand-sky); transform: rotate(-7deg); }
 .cta .button { margin-top: 12px; }
 .footer { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 26px; padding: 48px 0 30px; font-size: 12px; color: var(--text-secondary); }
 .footer .brand { width: fit-content; }
 .footer-links { display: flex; gap: 24px; align-self: center; }
 .footer p { max-width: 600px; margin: 0; line-height: 1.75; }
 .footer small { align-self: end; text-align: right; }
-.kiwi { color: var(--deep-ocean); overflow: visible; }
+.waybi { color: var(--deep-ocean); overflow: visible; }
 html[lang^='zh'] { font-family: 'Hiragino Sans GB', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei UI', sans-serif; }
 html[lang^='zh'] .hero h1 { font-size: clamp(48px, 5.4vw, 78px); line-height: 1.24; letter-spacing: -.035em; font-weight: 500; }
 html[lang^='zh'] h2 { line-height: 1.3; letter-spacing: -.02em; }
@@ -145,7 +145,7 @@ html[lang^='zh'] h2 { line-height: 1.3; letter-spacing: -.02em; }
   .section-heading { align-items: start; flex-direction: column; gap: 20px; } .section-heading > p { max-width: 520px; }
   .feature-grid { grid-template-columns: 1fr; } .feature { min-height: 240px; } .feature-visual { margin: 18px 0 14px; }
   .safety, .faq { grid-template-columns: 1fr; padding-bottom: 64px; gap: 36px; } .safety-copy { order: -1; } .safety-art { min-height: 370px; }
-  .cta { padding: 36px; gap: 16px; } .cta .kiwi { width: 90px; height: 90px; align-self: end; }
+  .cta { padding: 36px; gap: 16px; } .cta .waybi { width: 90px; height: 90px; align-self: end; }
   .footer { grid-template-columns: 1fr; gap: 24px; padding-top: 36px; } .footer small { text-align: left; }
   html[lang^='zh'] .hero h1 { font-size: clamp(43px, 8vw, 67px); }
 }
@@ -157,11 +157,11 @@ html[lang^='zh'] h2 { line-height: 1.3; letter-spacing: -.02em; }
   .hero-actions .button { padding: 0 20px; gap: 22px; font-size: 13px; } .text-link { font-size: 12px; }
   .preview { padding-left: 0; padding-right: 0; min-height: 586px; } .phone { width: 304px; height: 566px; transform: rotate(2deg); }
   .preview::before { width: 390px; height: 390px; top: 85px; }
-  .preview-sticker { width: 85px; height: 85px; font-size: 10px; right: -9px; top: 72px; } .preview-sticker .kiwi { width: 38px; height: 35px; }
+  .preview-sticker { width: 85px; height: 85px; font-size: 10px; right: -9px; top: 72px; } .preview-sticker .waybi { width: 38px; height: 35px; }
   .preview-turn { padding: 13px; } .map-kiwi { left: 121px; top: 302px; } .map-road-label { top: 282px; }
   .preview-camera { gap: 8px; padding: 10px; } .preview-camera > b { font-size: 12px; } .promise-strip { font-size: 12px; }
   h2 { font-size: 35px; } .safety-art { padding: 26px; } .cta { padding: 30px 25px; }
-  .cta .kiwi { position: absolute; right: -12px; bottom: 12px; width: 87px; height: 87px; opacity: .35; }
+  .cta .waybi { position: absolute; right: -12px; bottom: 12px; width: 87px; height: 87px; opacity: .35; }
   .cta .button { position: relative; z-index: 1; } .cta h2 { font-size: 33px; }
   html[lang^='zh'] .hero h1 { font-size: 42px; }
 }

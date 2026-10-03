@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/navigation_camera_mode.dart';
+import 'package:waybi_mobile/domain/navigation_camera_mode.dart';
 
 void main() {
   test('camera mode cycles heading flat, perspective, north up, then flat', () {

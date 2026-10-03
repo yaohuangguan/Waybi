@@ -5,7 +5,9 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../data/explore_repository.dart';
 import '../domain/geo_math.dart';
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
+import 'waybi_bird.dart';
+import 'place_sources_sheet.dart';
 
 class ExplorePage extends StatefulWidget {
   const ExplorePage({
@@ -13,18 +15,21 @@ class ExplorePage extends StatefulWidget {
     required this.currentLocation,
     required this.language,
     this.mapCompatible = false,
+    this.repository,
   });
 
   final LatLng? currentLocation;
   final String language;
   final bool mapCompatible;
+  final ExploreRepository? repository;
 
   @override
   State<ExplorePage> createState() => _ExplorePageState();
 }
 
 class _ExplorePageState extends State<ExplorePage> {
-  final ExploreRepository _repository = ExploreRepository();
+  late final ExploreRepository _repository =
+      widget.repository ?? ExploreRepository();
   final TextEditingController _search = TextEditingController();
   Timer? _debounce;
   List<ExplorePlace> _places = const [];
@@ -162,6 +167,17 @@ class _ExplorePageState extends State<ExplorePage> {
       appBar: AppBar(
         backgroundColor: theme.scaffoldBackgroundColor,
         surfaceTintColor: Colors.transparent,
+        actions: [
+          IconButton(
+            tooltip: _text('Data & photo credits', '数据与图片来源'),
+            icon: const Icon(Icons.info_outline_rounded),
+            onPressed: () => showPlaceSources(
+              context,
+              language: widget.language,
+              mapCompatible: widget.mapCompatible,
+            ),
+          ),
+        ],
         title: Text(
           _text('Explore', '探索'),
           style: const TextStyle(fontWeight: FontWeight.w700),
@@ -188,8 +204,8 @@ class _ExplorePageState extends State<ExplorePage> {
                     const SizedBox(height: 5),
                     Text(
                       _text(
-                        'Popular places around your current location',
-                        '根据当前位置自动推荐热门地点',
+                        'Sights, green spaces, food and little local finds',
+                        '风景、公园、美食，发现附近的小惊喜',
                       ),
                       style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
@@ -291,16 +307,6 @@ class _ExplorePageState extends State<ExplorePage> {
                   ),
                 ),
               ),
-            if (widget.mapCompatible)
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Text(
-                    'Places: Geoapify · © OpenStreetMap contributors',
-                    style: TextStyle(fontSize: 11),
-                  ),
-                ),
-              ),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 28),
               sliver: SliverList.separated(
@@ -363,14 +369,38 @@ class _ExploreCard extends StatelessWidget {
                 child: Image.network(
                   photo,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const _PhotoFallback(),
+                  cacheWidth: 800,
+                  errorBuilder: (_, _, _) => _PhotoFallback(
+                    category: place.primaryType,
+                    language: language,
+                  ),
                 ),
               )
             else
-              const SizedBox(
+              SizedBox(
                 height: 116,
                 width: double.infinity,
-                child: _PhotoFallback(),
+                child: _PhotoFallback(
+                  category: place.primaryType,
+                  language: language,
+                ),
+              ),
+            if (place.photoCredit != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    textStyle: const TextStyle(fontSize: 10),
+                  ),
+                  onPressed: () => showPlaceSources(
+                    context,
+                    language: language,
+                    photoCredit: place.photoCredit,
+                  ),
+                  icon: const Icon(Icons.photo_camera_outlined, size: 13),
+                  label: Text(isChinese ? '图片来源' : 'Photo credit'),
+                ),
               ),
             Padding(
               padding: const EdgeInsets.fromLTRB(15, 13, 15, 15),
@@ -399,7 +429,8 @@ class _ExploreCard extends StatelessWidget {
                         ),
                       if (place.userRatingCount != null)
                         Text('(${place.userRatingCount})'),
-                      if (place.primaryType.isNotEmpty) Text(place.primaryType),
+                      if (place.primaryType.isNotEmpty)
+                        Text(exploreCategoryLabel(place.primaryType, language)),
                       if (price.isNotEmpty) Text(price),
                       if (distance.isNotEmpty)
                         Text(
@@ -414,7 +445,7 @@ class _ExploreCard extends StatelessWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             color: place.openNow!
-                                ? KiwiLensColors.success
+                                ? WaybiColors.success
                                 : scheme.error,
                           ),
                         ),
@@ -439,22 +470,72 @@ class _ExploreCard extends StatelessWidget {
   }
 }
 
-class _PhotoFallback extends StatelessWidget {
-  const _PhotoFallback();
+String exploreCategoryLabel(String category, String language) =>
+    switch (category) {
+      'activities' => language == 'zh' ? '玩乐与风景' : 'Sights & activities',
+      'parks' => language == 'zh' ? '公园与绿地' : 'Parks & gardens',
+      'food' => language == 'zh' ? '美食' : 'Food',
+      'coffee' => language == 'zh' ? '咖啡' : 'Coffee',
+      'shopping' => language == 'zh' ? '购物' : 'Shopping',
+      _ => category,
+    };
 
+class _PhotoFallback extends StatelessWidget {
+  const _PhotoFallback({required this.category, required this.language});
+  final String category, language;
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final icon = switch (category) {
+      'parks' => Icons.park_rounded,
+      'food' => Icons.restaurant_rounded,
+      'coffee' => Icons.coffee_rounded,
+      'shopping' => Icons.shopping_bag_rounded,
+      _ => Icons.landscape_rounded,
+    };
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [scheme.primaryContainer, scheme.surfaceContainerHighest],
+          colors: [scheme.primaryContainer, scheme.surfaceContainerLow],
         ),
       ),
-      child: Center(
-        child: Icon(Icons.explore_rounded, size: 42, color: scheme.primary),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Row(
+          children: [
+            Icon(icon, size: 36, color: scheme.primary),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    exploreCategoryLabel(category, language),
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    language == 'zh'
+                        ? '跟着 Waybi，去发现'
+                        : 'A little find with Waybi',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const WaybiBird(size: 48),
+          ],
+        ),
       ),
     );
   }

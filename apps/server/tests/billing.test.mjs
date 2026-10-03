@@ -50,8 +50,8 @@ function fixture(t) {
     webhooks: createStripe(env).webhooks
   };
   const request = (path, body, headers = {}) => new Request(`https://kiwi.test/api/billing/${path}`, {
-    method: body ? 'POST' : 'GET', headers: { cookie: `kiwi_session=${token}`, origin: 'https://kiwi.test',
-      'x-kiwi-client': 'web', 'content-type': 'application/json', ...headers }, ...(body ? { body: JSON.stringify(body) } : {})
+    method: body ? 'POST' : 'GET', headers: { cookie: `waybi_session=${token}`, origin: 'https://kiwi.test',
+      'x-waybi-client': 'web', 'content-type': 'application/json', ...headers }, ...(body ? { body: JSON.stringify(body) } : {})
   });
   const call = (path, body, headers) => handleBilling(request(path, body, headers), env, { stripe, now });
   const linkCustomer = () => sqlite.prepare('INSERT OR IGNORE INTO billing_customers VALUES (?, ?, ?)').run('user-1', 'cus_driver', now);
@@ -82,7 +82,7 @@ test('mutations require same-origin authenticated web requests and server-owned 
   const f = fixture(t);
   assert.equal((await f.call('checkout', { plan: 'annual' }, { cookie: '' })).status, 401);
   assert.equal((await f.call('checkout', { plan: 'annual' }, { origin: 'https://evil.test' })).status, 403);
-  assert.equal((await f.call('checkout', { plan: 'annual' }, { 'x-kiwi-client': '' })).status, 403);
+  assert.equal((await f.call('checkout', { plan: 'annual' }, { 'x-waybi-client': '' })).status, 403);
   assert.equal((await f.call('checkout', { plan: 'price_evil' })).status, 400);
   assert.equal(f.checkouts.length, 0);
 });

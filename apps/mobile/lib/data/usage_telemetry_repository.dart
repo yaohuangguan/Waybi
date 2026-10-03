@@ -17,7 +17,7 @@ class UsageTelemetryRepository {
             Uri.parse('$workerBaseUrl/api/telemetry/usage'),
             headers: const {
               'content-type': 'application/json',
-              'x-kiwi-client': 'mobile',
+              'x-waybi-client': 'mobile',
             },
             body: jsonEncode({'event': event, 'units': units.clamp(1, 25)}),
           )

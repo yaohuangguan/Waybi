@@ -1,4 +1,4 @@
-import type { Coordinate } from '@kiwi-lens/core';
+import type { Coordinate } from '@waybi/core';
 
 export type ParkingPlace = {
   id: string;

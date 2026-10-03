@@ -1,20 +1,20 @@
 import 'map_provider.dart';
 
-enum KiwiTravelMode { drive, transit, walk, bicycle }
+enum WaybiTravelMode { drive, transit, walk, bicycle }
 
-extension KiwiTravelModeUi on KiwiTravelMode {
+extension WaybiTravelModeUi on WaybiTravelMode {
   String get apiValue => switch (this) {
-    KiwiTravelMode.drive => 'drive',
-    KiwiTravelMode.transit => 'transit',
-    KiwiTravelMode.walk => 'walk',
-    KiwiTravelMode.bicycle => 'bicycle',
+    WaybiTravelMode.drive => 'drive',
+    WaybiTravelMode.transit => 'transit',
+    WaybiTravelMode.walk => 'walk',
+    WaybiTravelMode.bicycle => 'bicycle',
   };
 
   String get label => switch (this) {
-    KiwiTravelMode.drive => 'Drive',
-    KiwiTravelMode.transit => 'Transit',
-    KiwiTravelMode.walk => 'Walk',
-    KiwiTravelMode.bicycle => 'Bike',
+    WaybiTravelMode.drive => 'Drive',
+    WaybiTravelMode.transit => 'Transit',
+    WaybiTravelMode.walk => 'Walk',
+    WaybiTravelMode.bicycle => 'Bike',
   };
 }
 
@@ -164,7 +164,7 @@ class RouteOption {
   });
 
   final String id;
-  final KiwiTravelMode mode;
+  final WaybiTravelMode mode;
   final int durationSeconds;
   final int? staticDurationSeconds;
   final int? trafficDelaySeconds;
@@ -182,9 +182,9 @@ class RouteOption {
   final String provider;
 
   factory RouteOption.fromJson(Map<String, dynamic> json) {
-    final mode = KiwiTravelMode.values.firstWhere(
+    final mode = WaybiTravelMode.values.firstWhere(
       (value) => value.apiValue == json['mode'],
-      orElse: () => KiwiTravelMode.drive,
+      orElse: () => WaybiTravelMode.drive,
     );
     final coordinates = (json['coordinates'] as List<dynamic>? ?? const [])
         .whereType<List<dynamic>>()
@@ -248,7 +248,7 @@ class RoutePlan {
   final String provider;
   final int stopsApplied;
 
-  Iterable<RouteOption> forMode(KiwiTravelMode mode) =>
+  Iterable<RouteOption> forMode(WaybiTravelMode mode) =>
       options.where((option) => option.mode == mode);
 }
 

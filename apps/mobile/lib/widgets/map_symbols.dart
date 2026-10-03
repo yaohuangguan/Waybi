@@ -1,4 +1,4 @@
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 
 import 'dart:ui' as ui;
 
@@ -71,7 +71,7 @@ class MapSymbols {
     final paint = Paint()..isAntiAlias = true;
     paint.color = Colors.white;
     canvas.drawCircle(const Offset(36, 34), 32, paint);
-    paint.color = KiwiLensColors.ocean;
+    paint.color = WaybiColors.ocean;
     canvas.drawCircle(const Offset(36, 34), 28, paint);
     paint.color = Colors.white;
     final path = Path()
@@ -80,7 +80,7 @@ class MapSymbols {
       ..lineTo(18, 48)
       ..close();
     canvas.drawPath(path, paint);
-    paint.color = KiwiLensColors.ocean;
+    paint.color = WaybiColors.ocean;
     paint.strokeWidth = 4;
     paint.strokeCap = StrokeCap.round;
     canvas.drawLine(const Offset(36, 27), const Offset(36, 37), paint);
@@ -97,9 +97,9 @@ class MapSymbols {
     final paint = Paint()..isAntiAlias = true;
     paint.color = Colors.white;
     canvas.drawCircle(const Offset(36, 36), 30, paint);
-    paint.color = KiwiLensColors.deepOcean;
+    paint.color = WaybiColors.deepOcean;
     canvas.drawCircle(const Offset(36, 36), 26, paint);
-    paint.color = KiwiLensColors.sky;
+    paint.color = WaybiColors.sky;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         const Rect.fromLTWH(17, 29, 38, 19),
@@ -114,7 +114,7 @@ class MapSymbols {
       ),
       paint,
     );
-    paint.color = KiwiLensColors.deepOcean;
+    paint.color = WaybiColors.deepOcean;
     canvas.drawCircle(const Offset(25, 49), 4, paint);
     canvas.drawCircle(const Offset(47, 49), 4, paint);
     final image = await recorder.endRecording().toImage(72, 72);

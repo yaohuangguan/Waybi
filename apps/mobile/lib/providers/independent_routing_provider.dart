@@ -23,12 +23,12 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
   }) async {
     final points = _validatedPoints(origin, destination, stops);
     final driving = _sensibleDrivingAlternatives(
-      await _fetchMode(points, mode: KiwiTravelMode.drive, language: language),
+      await _fetchMode(points, mode: WaybiTravelMode.drive, language: language),
     );
     final responses = [
       driving,
-      await _optionalMode(points, KiwiTravelMode.walk, language),
-      await _optionalMode(points, KiwiTravelMode.bicycle, language),
+      await _optionalMode(points, WaybiTravelMode.walk, language),
+      await _optionalMode(points, WaybiTravelMode.bicycle, language),
     ];
     final options = responses.expand((item) => item).toList(growable: false);
     if (options.isEmpty) throw StateError('No Independent routes available');
@@ -42,7 +42,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
 
   Future<List<RouteOption>> _optionalMode(
     List<GeoPoint> points,
-    KiwiTravelMode mode,
+    WaybiTravelMode mode,
     String language,
   ) async {
     try {
@@ -74,7 +74,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
   Future<RouteOption> reroute({
     required GeoPoint origin,
     required GeoPoint destination,
-    required KiwiTravelMode mode,
+    required WaybiTravelMode mode,
     List<GeoPoint> stops = const [],
     required String language,
   }) async {
@@ -102,7 +102,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
 
   Future<List<RouteOption>> _fetchMode(
     List<GeoPoint> points, {
-    required KiwiTravelMode mode,
+    required WaybiTravelMode mode,
     required String language,
     bool alternatives = true,
   }) async {
@@ -110,19 +110,19 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         .map((point) => '${point.longitude},${point.latitude}')
         .join(';');
     final base = switch (mode) {
-      KiwiTravelMode.drive => const String.fromEnvironment(
+      WaybiTravelMode.drive => const String.fromEnvironment(
         'KIWI_OSRM_CAR_URL',
         defaultValue: 'https://routing.openstreetmap.de/routed-car',
       ),
-      KiwiTravelMode.walk => const String.fromEnvironment(
+      WaybiTravelMode.walk => const String.fromEnvironment(
         'KIWI_OSRM_FOOT_URL',
         defaultValue: 'https://routing.openstreetmap.de/routed-foot',
       ),
-      KiwiTravelMode.bicycle => const String.fromEnvironment(
+      WaybiTravelMode.bicycle => const String.fromEnvironment(
         'KIWI_OSRM_BIKE_URL',
         defaultValue: 'https://routing.openstreetmap.de/routed-bike',
       ),
-      KiwiTravelMode.transit => throw ArgumentError(
+      WaybiTravelMode.transit => throw ArgumentError(
         'Practice has no transit profile',
       ),
     };
@@ -264,7 +264,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
             headers: {
               if (!kIsWeb)
                 'User-Agent':
-                    'KiwiLens/1.0 (+https://github.com/yaohuangguan/kiwi-lens)',
+                    'Waybi/1.0 (+https://github.com/yaohuangguan/Waybi)',
             },
           )
           .timeout(const Duration(seconds: 15));

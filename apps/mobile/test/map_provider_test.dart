@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/providers/place_search_providers.dart';
-import 'package:kiwi_lens_mobile/providers/provider_contracts.dart';
-import 'package:kiwi_lens_mobile/widgets/full_screen_search.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/providers/place_search_providers.dart';
+import 'package:waybi_mobile/providers/provider_contracts.dart';
+import 'package:waybi_mobile/widgets/full_screen_search.dart';
 
 class _DelayedSearch implements SearchProvider {
   final queries = <String>[];

@@ -214,12 +214,12 @@ export async function handleRoadIntelligence(request, env, ctx, readCameras, opt
 }
 
 export const openapi = {
-  openapi: '3.1.0', info: { title: 'Kiwi Lens Road Intelligence', version: '1.0.0-preview', description: capabilities.dataUse.note },
-  servers: [{ url: 'https://kiwi-lens.nzs.workers.dev' }],
+  openapi: '3.1.0', info: { title: 'Waybi Road Intelligence', version: '1.0.0-preview', description: capabilities.dataUse.note },
+  servers: [{ url: 'https://waybi.nzs.workers.dev' }],
   components: {
     securitySchemes: {
       RoadApiKey: { type: 'http', scheme: 'bearer', description: 'klri_ key; 90-day expiry, preview:read scope' },
-      AccountSession: { type: 'apiKey', in: 'cookie', name: 'kiwi_session' },
+      AccountSession: { type: 'apiKey', in: 'cookie', name: 'waybi_session' },
     },
     schemas: {
       Point: { type: 'object', required: ['latitude', 'longitude'], properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },

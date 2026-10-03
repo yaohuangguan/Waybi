@@ -54,7 +54,7 @@ class IndependentTransitRoutingProvider {
             'Accept': 'application/json',
             if (!kIsWeb)
               'User-Agent':
-                  'KiwiLens/1.0 (+https://github.com/yaohuangguan/kiwi-lens)',
+                  'Waybi/1.0 (+https://github.com/yaohuangguan/Waybi)',
           },
         )
         .timeout(const Duration(seconds: 18));
@@ -141,7 +141,7 @@ class IndependentTransitRoutingProvider {
         : '$transfers transfer${transfers == 1 ? '' : 's'}';
     return RouteOption(
       id: 'independent-transit-${_stableId(itinerary)}',
-      mode: KiwiTravelMode.transit,
+      mode: WaybiTravelMode.transit,
       durationSeconds: duration,
       staticDurationSeconds: duration,
       distanceMeters: metres.round(),

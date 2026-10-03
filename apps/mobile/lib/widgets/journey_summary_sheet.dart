@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import '../domain/map_provider.dart';
 import '../drive/journey_tracker.dart';
 import '../drive/navigation_language.dart';
-import '../theme/kiwi_lens_theme.dart';
-import 'kiwi_mascot.dart';
+import '../theme/waybi_theme.dart';
+import 'waybi_bird.dart';
 
 class JourneySummarySheet extends StatelessWidget {
   const JourneySummarySheet({
@@ -25,7 +25,7 @@ class JourneySummarySheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const KiwiMascot(size: 82),
+          const WaybiBird(size: 82),
           const SizedBox(height: 12),
           Text(
             summary.arrived
@@ -111,10 +111,10 @@ class JourneyOverviewPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..isAntiAlias = true
-      ..color = KiwiLensColors.ice;
+      ..color = WaybiColors.ice;
     canvas.drawRect(Offset.zero & size, paint);
     paint
-      ..color = KiwiLensColors.lightBorder
+      ..color = WaybiColors.lightBorder
       ..strokeWidth = 1;
     for (double x = 0; x < size.width; x += 32) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
@@ -157,18 +157,18 @@ class JourneyOverviewPainter extends CustomPainter {
     canvas.drawPath(path, paint);
     paint
       ..strokeWidth = 7
-      ..color = KiwiLensColors.ocean;
+      ..color = WaybiColors.ocean;
     canvas.drawPath(path, paint);
     paint
       ..style = PaintingStyle.fill
-      ..color = KiwiLensColors.deepOcean;
+      ..color = WaybiColors.deepOcean;
     canvas.drawCircle(project(points.first), 7, paint);
-    paint.color = KiwiLensColors.sky;
+    paint.color = WaybiColors.sky;
     canvas.drawCircle(project(points.last), 10, paint);
     paint
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3
-      ..color = KiwiLensColors.deepOcean;
+      ..color = WaybiColors.deepOcean;
     canvas.drawCircle(project(points.last), 10, paint);
   }
 

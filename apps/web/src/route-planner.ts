@@ -1,4 +1,4 @@
-import type { Coordinate, Route } from '@kiwi-lens/core';
+import type { Coordinate, Route } from '@waybi/core';
 
 export type TravelMode = 'drive' | 'transit' | 'walk' | 'bicycle';
 

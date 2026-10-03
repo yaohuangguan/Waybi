@@ -3,13 +3,13 @@ import 'road_intelligence.dart';
 import 'safety_cameras.dart';
 import 'traffic.dart';
 
-/// Composition root for an embeddable Kiwi Lens Map.
+/// Composition root for an embeddable Waybi Map.
 ///
 /// Camera locations are part of the default product surface. Traffic and Road
 /// Intelligence remain replaceable layers so consumer and B2B integrations can
-/// use the same map abstraction without inheriting Kiwi Lens app state.
-class KiwiLensMapStack {
-  KiwiLensMapStack({
+/// use the same map abstraction without inheriting Waybi app state.
+class WaybiMapStack {
+  WaybiMapStack({
     SafetyCameraLayerSource? safetyCameras,
     this.traffic,
     this.roadIntelligence,
@@ -26,7 +26,7 @@ class KiwiLensMapStack {
         b2bEntitlement: 'road-intelligence',
       ),
     ],
-  }) : safetyCameras = safetyCameras ?? KiwiLensSafetyCameraSource();
+  }) : safetyCameras = safetyCameras ?? WaybiSafetyCameraSource();
 
   final SafetyCameraLayerSource safetyCameras;
   final TrafficFlowLayerSource? traffic;

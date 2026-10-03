@@ -1,5 +1,5 @@
-name: kiwi_lens_map
-description: Reusable map contracts and overlay models extracted from Kiwi Lens.
+name: waybi_map
+description: Reusable map contracts and overlay models extracted from Waybi.
 version: 0.2.0
 publish_to: none
 

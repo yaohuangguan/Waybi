@@ -1,11 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-class KiwiLensNotificationService {
-  KiwiLensNotificationService._();
+class WaybiNotificationService {
+  WaybiNotificationService._();
 
-  static final KiwiLensNotificationService instance =
-      KiwiLensNotificationService._();
+  static final WaybiNotificationService instance = WaybiNotificationService._();
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   bool _initialized = false;
@@ -47,9 +46,9 @@ class KiwiLensNotificationService {
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'kiwi_plus_commute_alerts',
-          'Kiwi Lens Plus commute alerts',
+          'Waybi Plus commute alerts',
           channelDescription:
-              'Proactive Route Watch alerts for Kiwi Lens Plus commutes',
+              'Proactive Route Watch alerts for Waybi Plus commutes',
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -71,7 +70,7 @@ class KiwiLensNotificationService {
       body,
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          'tasman_road_alerts',
+          'waybi_road_alerts',
           'Road alerts',
           channelDescription:
               'Safety cameras, closures and important road events',

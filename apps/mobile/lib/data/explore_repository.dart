@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
-import '../domain/map_provider.dart';
-import '../providers/place_search_providers.dart';
 
 class ExplorePlace {
   const ExplorePlace({
@@ -21,6 +19,8 @@ class ExplorePlace {
     required this.photoName,
     required this.photoAttribution,
     this.provider = 'google',
+    this.thumbnailUrl,
+    this.photoCredit,
   });
 
   final String placeId;
@@ -36,15 +36,21 @@ class ExplorePlace {
   final String photoName;
   final String photoAttribution;
   final String provider;
+  final String? thumbnailUrl;
+  final Map<String, dynamic>? photoCredit;
 
-  String? get photoUrl => photoName.isEmpty
-      ? null
-      : Uri.parse('$workerBaseUrl/api/place-photo')
-            .replace(queryParameters: {'name': photoName})
-            .toString();
+  String? get photoUrl =>
+      thumbnailUrl ??
+      (photoName.isEmpty
+          ? null
+          : Uri.parse('$workerBaseUrl/api/place-photo')
+                .replace(queryParameters: {'name': photoName})
+                .toString());
 
   factory ExplorePlace.fromJson(Map<String, dynamic> json) => ExplorePlace(
     placeId: json['placeId']?.toString() ?? '',
+    thumbnailUrl: json['photoUrl']?.toString(),
+    photoCredit: json['photoCredit'] as Map<String, dynamic>?,
     provider: json['provider']?.toString() ?? 'google',
     name: json['name']?.toString() ?? 'Nearby place',
     address: json['address']?.toString() ?? '',
@@ -73,50 +79,19 @@ class ExploreRepository {
     String query = '',
     bool mapCompatible = false,
   }) async {
-    if (mapCompatible) {
-      final categoryQuery = switch (category) {
-        'coffee' => 'cafe',
-        'food' => 'restaurant',
-        'parks' => 'park',
-        'shopping' => 'shop',
-        'activities' => 'museum',
-        _ => 'cafe',
-      };
-      final places = await IndependentSearchProvider(client: _client).search(
-        query.trim().isEmpty ? categoryQuery : query.trim(),
-        proximity: GeoPoint(latitude, longitude),
-        language: language,
-      );
-      return places
-          .map(
-            (p) => ExplorePlace(
-              placeId: p.reference!.id,
-              provider: 'osm',
-              name: p.name,
-              address: p.address,
-              primaryType: p.category,
-              latitude: p.location!.latitude,
-              longitude: p.location!.longitude,
-              rating: null,
-              userRatingCount: null,
-              priceLevel: null,
-              openNow: null,
-              photoName: '',
-              photoAttribution: '',
-            ),
-          )
-          .toList(growable: false);
-    }
     final uri = Uri.parse('$workerBaseUrl/api/explore').replace(
       queryParameters: {
         'at': '$longitude,$latitude',
         'category': category,
+        if (mapCompatible) 'provider': 'osm',
         'lang': language,
         if (query.trim().isNotEmpty) 'q': query.trim(),
       },
     );
-    final response = await _client.get(uri);
-    final decoded = jsonDecode(response.body);
+    final response = await _client
+        .get(uri)
+        .timeout(const Duration(seconds: 45));
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
     if (response.statusCode != 200 || decoded is! List<dynamic>) {
       final message = decoded is Map<String, dynamic>
           ? decoded['error']?.toString()

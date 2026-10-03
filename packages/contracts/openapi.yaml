@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Kiwi Lens API
+  title: Waybi API
   version: 0.1.0
   description: Shared HTTP contract for the PWA and a future iOS client.
 servers:

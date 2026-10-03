@@ -25,7 +25,7 @@ import UserNotifications
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     FlutterMethodChannel(
-      name: "kiwi_lens/navigation_camera",
+      name: "waybi/navigation_camera",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     ).setMethodCallHandler { [weak self] call, result in
       guard call.method == "pauseFollowing" else {
@@ -45,7 +45,7 @@ import UserNotifications
       }
     }
     FlutterMethodChannel(
-      name: "kiwi_lens/map_language",
+      name: "waybi/map_language",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     ).setMethodCallHandler { call, result in
       if call.method == "setLanguage" {
@@ -63,11 +63,11 @@ import UserNotifications
       }
     }
     FlutterEventChannel(
-      name: "kiwi_lens/device_heading",
+      name: "waybi/device_heading",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     ).setStreamHandler(headingHandler)
     FlutterMethodChannel(
-      name: "kiwi_lens/share",
+      name: "waybi/share",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     ).setMethodCallHandler { [weak self] call, result in
       guard call.method == "shareText",

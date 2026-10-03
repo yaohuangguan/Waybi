@@ -1,9 +1,9 @@
+import { clientKind, sessionCookieName } from './brand_compat.mjs';
 import { pbkdf2, scrypt } from 'node:crypto';
 import { syncAppleForUser } from './apple_billing.mjs';
 import { verifyGoogleIdToken } from './google_token.mjs';
 
 const encoder = new TextEncoder();
-const COOKIE_NAME = 'kiwi_session';
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
 const LEGACY_HASH_ITERATIONS = 210_000;
 const PASSWORD_HASH_VERSION = 'scrypt-v1$';
@@ -67,17 +67,17 @@ export async function verifyPassword(password, saltHex, storedHash) {
 
 function cookieHeader(token, request) {
   const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
-  return `${COOKIE_NAME}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_SECONDS}${secure}`;
+  return `${sessionCookieName(request)}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_SECONDS}${secure}`;
 }
 
 function clearCookieHeader(request) {
   const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
-  return `${COOKIE_NAME}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
+  return `${sessionCookieName(request)}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
 }
 
 function sessionToken(request) {
   const cookies = request.headers.get('cookie') || '';
-  const match = cookies.match(/(?:^|;\s*)kiwi_session=([0-9a-f]{64})(?:;|$)/);
+  const match = cookies.match(/(?:^|;\s*)(?:waybi|kiwi)_session=([0-9a-f]{64})(?:;|$)/);
   return match?.[1] || null;
 }
 
@@ -114,7 +114,7 @@ export async function roadReportAuthor(db, request) {
   const displayName = String(profile?.display_name || '').trim();
   return {
     id: user.id,
-    displayName: displayName || 'Kiwi Lens driver'
+    displayName: displayName || 'Waybi driver'
   };
 }
 
@@ -191,7 +191,7 @@ export async function handleAccount(request, env) {
   if (!env.USER_DB) return response({ error: 'Account storage is not configured' }, 503);
   if (['POST', 'PATCH', 'DELETE'].includes(request.method)) {
     const origin = request.headers.get('origin');
-    const client = request.headers.get('x-kiwi-client');
+    const client = clientKind(request);
     if ((origin && origin !== new URL(request.url).origin) || !['web', 'mobile'].includes(client) || (client === 'mobile' && origin)) {
       return response({ error: 'Invalid request origin' }, 403);
     }

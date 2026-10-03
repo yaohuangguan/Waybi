@@ -5,11 +5,11 @@ export default defineConfig({
   server: { port: 5173, proxy: { '/api': 'http://localhost:8787' } },
   plugins: [VitePWA({
     registerType: 'autoUpdate',
-    includeAssets: ['brand/kiwi-lens-icon.png', 'brand/kiwi-lens-lockup.svg'],
+    includeAssets: ['brand/waybi-icon.png', 'brand/waybi-lockup.svg'],
     manifest: {
-      name: 'Kiwi Lens · NZ Navigation', short_name: 'Kiwi Lens', description: 'Route planning and road-safety awareness for New Zealand.',
+      name: 'Waybi · NZ Navigation', short_name: 'Waybi', description: 'Route planning and road-safety awareness for New Zealand.',
       theme_color: '#152510', background_color: '#152510', display: 'standalone', start_url: '/app', scope: '/', orientation: 'portrait',
-      icons: [{ src: '/brand/kiwi-lens-icon.png', sizes: '1024x1024', type: 'image/png', purpose: 'any' }]
+      icons: [{ src: '/brand/waybi-icon.png', sizes: '1024x1024', type: 'image/png', purpose: 'any' }]
     },
     workbox: {
       navigateFallback: '/index.html',

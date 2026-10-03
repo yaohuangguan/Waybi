@@ -1,14 +1,14 @@
 import 'dart:convert';
 
-import 'package:kiwi_lens_mobile/data/explore_repository.dart';
+import 'package:waybi_mobile/data/explore_repository.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/providers/independent_routing_provider.dart';
-import 'package:kiwi_lens_mobile/providers/place_search_providers.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/providers/independent_routing_provider.dart';
+import 'package:waybi_mobile/providers/place_search_providers.dart';
 
 void main() {
   test(
@@ -54,7 +54,7 @@ void main() {
         destination: const GeoPoint(-36.86, 174.78),
         language: 'en',
       );
-      final drive = plan.forMode(KiwiTravelMode.drive).single;
+      final drive = plan.forMode(WaybiTravelMode.drive).single;
       expect(plan.provider, 'independent');
       expect(plan.trafficAvailable, isFalse);
       expect(drive.points.last, const GeoPoint(-36.86, 174.78));
@@ -143,7 +143,7 @@ void main() {
         destination: const GeoPoint(-36.870, 174.778),
         language: 'en',
       );
-      final routes = plan.forMode(KiwiTravelMode.drive).toList();
+      final routes = plan.forMode(WaybiTravelMode.drive).toList();
 
       expect(routes, hasLength(2));
       expect(routes.map((route) => route.id).toSet(), hasLength(2));
@@ -216,7 +216,7 @@ void main() {
       final route = await provider.reroute(
         origin: const GeoPoint(-36.85, 174.76),
         destination: const GeoPoint(-36.86, 174.78),
-        mode: KiwiTravelMode.drive,
+        mode: WaybiTravelMode.drive,
         stops: const [GeoPoint(-36.855, 174.77)],
         language: 'zh',
       );
@@ -274,9 +274,9 @@ void main() {
         language: 'en',
       );
 
-      expect(plan.forMode(KiwiTravelMode.drive), isNotEmpty);
-      expect(plan.forMode(KiwiTravelMode.walk), isNotEmpty);
-      expect(plan.forMode(KiwiTravelMode.bicycle), isNotEmpty);
+      expect(plan.forMode(WaybiTravelMode.drive), isNotEmpty);
+      expect(plan.forMode(WaybiTravelMode.walk), isNotEmpty);
+      expect(plan.forMode(WaybiTravelMode.bicycle), isNotEmpty);
       expect(paths.any((path) => path.startsWith('/routed-car/')), isTrue);
       expect(paths.any((path) => path.startsWith('/routed-foot/')), isTrue);
       expect(paths.any((path) => path.startsWith('/routed-bike/')), isTrue);
@@ -314,7 +314,7 @@ void main() {
       destination: const GeoPoint(-36.86, 174.78),
       language: 'en',
     );
-    expect(plan.options.single.mode, KiwiTravelMode.drive);
+    expect(plan.options.single.mode, WaybiTravelMode.drive);
     provider.dispose();
   });
   test('Independent search declares independent source and rejects mislabeled content', () async {
@@ -348,43 +348,41 @@ void main() {
     expect(results.single.reference?.provider, 'geoapify');
     provider.dispose();
   });
-  test('Practice Explore uses keyless Photon without Google content or invented ratings', () async {
-    final client = MockClient((request) async {
-      expect(request.url.host, 'photon.komoot.io');
-      expect(request.url.queryParameters['q'], 'cafe');
-      expect(double.parse(request.url.queryParameters['lat']!), -36.85);
-      expect(request.url.queryParameters.containsKey('key'), false);
-      return http.Response(
-        jsonEncode({
-          'features': [
+  test(
+    'Waybi Explore uses cached independent places without invented ratings',
+    () async {
+      final client = MockClient((request) async {
+        expect(request.url.path, '/api/explore');
+        expect(request.url.queryParameters['provider'], 'osm');
+        expect(request.url.queryParameters['category'], 'coffee');
+        expect(request.url.queryParameters.containsKey('key'), false);
+        return http.Response(
+          jsonEncode([
             {
-              'properties': {
-                'osm_id': 123,
-                'osm_type': 'N',
-                'name': 'Cafe',
-                'osm_value': 'cafe',
-              },
-              'geometry': {
-                'coordinates': [174.76, -36.85],
-              },
+              'placeId': 'osm:node:123',
+              'provider': 'osm',
+              'name': 'Cafe',
+              'primaryType': 'coffee',
+              'latitude': -36.85,
+              'longitude': 174.76,
             },
-          ],
-        }),
-        200,
+          ]),
+          200,
+        );
+      });
+      final repository = ExploreRepository(client: client);
+      final places = await repository.fetch(
+        latitude: -36.85,
+        longitude: 174.76,
+        category: 'coffee',
+        language: 'zh',
+        mapCompatible: true,
       );
-    });
-    final repository = ExploreRepository(client: client);
-    final places = await repository.fetch(
-      latitude: -36.85,
-      longitude: 174.76,
-      category: 'coffee',
-      language: 'zh',
-      mapCompatible: true,
-    );
-    expect(places.single.provider, 'osm');
-    expect(places.single.rating, isNull);
-    expect(places.single.openNow, isNull);
-    expect(places.single.photoUrl, isNull);
-    repository.dispose();
-  });
+      expect(places.single.provider, 'osm');
+      expect(places.single.rating, isNull);
+      expect(places.single.openNow, isNull);
+      expect(places.single.photoUrl, isNull);
+      repository.dispose();
+    },
+  );
 }

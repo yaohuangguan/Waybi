@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/drive/navigation_location_filter.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/drive/navigation_location_filter.dart';
 
 void main() {
   const home = GeoPoint(-36.8485, 174.7633);

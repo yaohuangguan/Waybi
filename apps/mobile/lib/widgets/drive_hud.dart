@@ -5,7 +5,7 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../drive/camera_alert_lifecycle.dart';
 import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
-import '../theme/kiwi_lens_theme.dart';
+import '../theme/waybi_theme.dart';
 import 'road_event_timeline.dart';
 
 class DriveHud extends StatelessWidget {
@@ -68,14 +68,14 @@ class DriveHud extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: KiwiLensColors.midnightOcean.withValues(alpha: .95),
+                    color: WaybiColors.midnightOcean.withValues(alpha: .95),
                     borderRadius: BorderRadius.circular(18),
                   ),
                   child: Row(
                     children: [
                       const Icon(
                         Icons.directions_car_filled_rounded,
-                        color: KiwiLensColors.sky,
+                        color: WaybiColors.sky,
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -115,14 +115,14 @@ class DriveHud extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
                   decoration: BoxDecoration(
-                    color: KiwiLensColors.midnightOcean.withValues(alpha: .95),
+                    color: WaybiColors.midnightOcean.withValues(alpha: .95),
                     borderRadius: BorderRadius.circular(22),
                   ),
                   child: Row(
                     children: [
                       const Icon(
                         Icons.navigation_rounded,
-                        color: KiwiLensColors.sky,
+                        color: WaybiColors.sky,
                         size: 34,
                       ),
                       const SizedBox(width: 12),
@@ -135,7 +135,7 @@ class DriveHud extends StatelessWidget {
                                 nav?.distanceToCurrentStepMeters?.toDouble(),
                               ),
                               style: const TextStyle(
-                                color: KiwiLensColors.sky,
+                                color: WaybiColors.sky,
                                 fontSize: 20,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -178,8 +178,8 @@ class DriveHud extends StatelessWidget {
                                     ),
                                     decoration: BoxDecoration(
                                       color: recommended
-                                          ? KiwiLensColors.sky
-                                          : KiwiLensColors.darkSurface,
+                                          ? WaybiColors.sky
+                                          : WaybiColors.darkSurface,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
@@ -187,7 +187,7 @@ class DriveHud extends StatelessWidget {
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         color: recommended
-                                            ? KiwiLensColors.midnightOcean
+                                            ? WaybiColors.midnightOcean
                                             : Colors.white70,
                                         fontWeight: FontWeight.w700,
                                       ),
@@ -214,14 +214,14 @@ class DriveHud extends StatelessWidget {
               PointerInterceptor(
                 child: Container(
                   width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: KiwiLensSpacing.x2),
+                  margin: const EdgeInsets.only(bottom: WaybiSpacing.x2),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: KiwiLensSpacing.x4,
-                    vertical: KiwiLensSpacing.x3,
+                    horizontal: WaybiSpacing.x4,
+                    vertical: WaybiSpacing.x3,
                   ),
                   decoration: BoxDecoration(
-                    color: KiwiLensColors.success,
-                    borderRadius: BorderRadius.circular(KiwiLensRadius.panel),
+                    color: WaybiColors.success,
+                    borderRadius: BorderRadius.circular(WaybiRadius.panel),
                   ),
                   child: Row(
                     children: [
@@ -229,7 +229,7 @@ class DriveHud extends StatelessWidget {
                         Icons.check_circle_rounded,
                         color: Colors.white,
                       ),
-                      const SizedBox(width: KiwiLensSpacing.x3),
+                      const SizedBox(width: WaybiSpacing.x3),
                       Expanded(
                         child: Text(
                           'Camera passed - ${passedCamera.location}',
@@ -253,7 +253,7 @@ class DriveHud extends StatelessWidget {
                   margin: const EdgeInsets.symmetric(vertical: 10),
                   padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
-                    color: KiwiLensColors.sky,
+                    color: WaybiColors.sky,
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: const [
                       BoxShadow(
@@ -267,7 +267,7 @@ class DriveHud extends StatelessWidget {
                     children: [
                       const Icon(
                         Icons.speed_rounded,
-                        color: KiwiLensColors.ocean,
+                        color: WaybiColors.ocean,
                         size: 30,
                       ),
                       const SizedBox(width: 12),
@@ -278,7 +278,7 @@ class DriveHud extends StatelessWidget {
                             Text(
                               '${language == 'zh' ? '摄像头' : 'Safety camera'} · ${_formatDistance(cameraDistance, language)}',
                               style: const TextStyle(
-                                color: KiwiLensColors.deepOcean,
+                                color: WaybiColors.deepOcean,
                                 fontSize: 17,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -289,7 +289,7 @@ class DriveHud extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: KiwiLensColors.deepOcean,
+                                color: WaybiColors.deepOcean,
                                 fontSize: 12,
                               ),
                             ),
@@ -303,7 +303,7 @@ class DriveHud extends StatelessWidget {
             const Spacer(),
             if (engine.upcomingRoadEvents.isNotEmpty && camera == null) ...[
               RoadEventTimeline(events: engine.upcomingRoadEvents, dark: dark),
-              const SizedBox(height: KiwiLensSpacing.x2),
+              const SizedBox(height: WaybiSpacing.x2),
             ],
             PointerInterceptor(
               child: Container(
@@ -312,7 +312,7 @@ class DriveHud extends StatelessWidget {
                   vertical: 9,
                 ),
                 decoration: BoxDecoration(
-                  color: KiwiLensColors.midnightOcean.withValues(alpha: .95),
+                  color: WaybiColors.midnightOcean.withValues(alpha: .95),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Row(
@@ -362,7 +362,7 @@ class _SpeedMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = warning ? const Color(0xFFFF6868) : KiwiLensColors.sky;
+    final accent = warning ? const Color(0xFFFF6868) : WaybiColors.sky;
 
     return Expanded(
       child: Container(
@@ -467,7 +467,7 @@ class _Metric extends StatelessWidget {
                 Text(
                   value,
                   style: const TextStyle(
-                    color: KiwiLensColors.sky,
+                    color: WaybiColors.sky,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),

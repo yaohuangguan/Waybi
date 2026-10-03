@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/drive/drive_engine.dart';
-import 'package:kiwi_lens_mobile/widgets/navigation_overlay.dart';
+import 'package:waybi_mobile/drive/drive_engine.dart';
+import 'package:waybi_mobile/widgets/navigation_overlay.dart';
 
 void main() {
   test('navigation distances never show negative metres', () {

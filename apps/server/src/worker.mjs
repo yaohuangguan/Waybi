@@ -1,3 +1,5 @@
+import { clientKind } from './brand_compat.mjs';
+import { handleTrafficTile } from './traffic_tiles.mjs';
 import seed from '../data/cameras.json' with { type: 'json' };
 import { fetchNztaCameras, SOURCE_URL } from './sync.mjs';
 import { handleAccount, roadReportAuthor, userFromRequest, userHasPlus } from './auth.mjs';
@@ -98,7 +100,7 @@ async function upstreamJson(url, headers = {}) {
 async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
   if (url.pathname === '/api/telemetry/usage' && request.method === 'POST') {
-    if (request.headers.get('x-kiwi-client') !== 'mobile') {
+    if (clientKind(request) !== 'mobile') {
       return json({ error: 'Invalid telemetry client' }, 403);
     }
     const body = await request.json().catch(() => null);
@@ -135,14 +137,14 @@ async function handleApi(request, env, ctx) {
   }
   if (url.pathname === '/api/cameras/sync' && request.method === 'POST') {
     if (!env.USER_DB) return json({ error: 'Account storage is not configured' }, 503);
-    if (request.headers.get('x-kiwi-client') !== 'mobile') {
+    if (clientKind(request) !== 'mobile') {
       return json({ error: 'Invalid client' }, 403);
     }
     const user = await userFromRequest(env.USER_DB, request);
     if (!user) return json({ error: 'Sign in required', code: 'SIGN_IN_REQUIRED' }, 401);
     if (!await userHasPlus(env.USER_DB, user.id)) {
       return json({
-        error: 'Kiwi Lens Plus is required to check NZTA camera updates now',
+        error: 'Waybi Plus is required to check NZTA camera updates now',
         code: 'PLUS_REQUIRED'
       }, 403);
     }
@@ -204,6 +206,7 @@ async function handleApi(request, env, ctx) {
     const reports = await readRoadReports(env);
     return json({ ...state, events: [...reports, ...state.events] });
   }
+  if (url.pathname.startsWith('/api/map/traffic/tiles/')) return handleTrafficTile(request, env);
   if (url.pathname === '/api/traffic-flow') {
     return json(await loadTrafficFlowState(env));
   }
@@ -237,7 +240,7 @@ async function handleApi(request, env, ctx) {
       params.toString();
     const result = await upstreamJson(nslrUrl, {
       accept: 'application/json',
-      'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)'
+      'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)'
     });
     const now = Date.now();
     const current = (result.features || [])
@@ -307,7 +310,7 @@ async function handleApi(request, env, ctx) {
     lastSearchAt = Date.now();
     const language = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
     const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&accept-language=${language}&limit=6&viewbox=166,-34,179,-48&bounded=0&q=${encodeURIComponent(query)}`;
-    const results = await upstreamJson(searchUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)', 'referer': 'https://github.com/yaohuangguan/kiwi-lens', accept: 'application/json' });
+    const results = await upstreamJson(searchUrl, { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)', 'referer': 'https://github.com/yaohuangguan/Waybi', accept: 'application/json' });
     return json(results.map((place) => {
       const address = place.address || {};
       const poiClasses = new Set([
@@ -349,7 +352,7 @@ async function handleApi(request, env, ctx) {
     if (stops.length > 23) return json({ error: 'At most 23 intermediate stops are supported' }, 400);
     const points = [from, ...stops, to];
     const routeUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${points.map((point) => point.join(',')).join(';')}?overview=full&geometries=geojson&steps=true`;
-    const result = await upstreamJson(routeUrl, { 'user-agent': 'KiwiLens/0.1 (https://github.com/yaohuangguan/kiwi-lens)', referer: 'https://routing.openstreetmap.de/', accept: 'application/json' });
+    const result = await upstreamJson(routeUrl, { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)', referer: 'https://routing.openstreetmap.de/', accept: 'application/json' });
     if (result.code !== 'Ok' || !result.routes?.length) return json({ error: 'No driving route found' }, 422);
     const selected = result.routes[0];
     const steps = selected.legs.flatMap((leg) => leg.steps.map((step) => {
@@ -378,6 +381,12 @@ export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
+    if (env.WAYBI_MIGRATION_PAUSED === 'true') {
+      return new Response(JSON.stringify({ error: 'Service updating. Please retry shortly.' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '60' }
+      });
+    }
     try {
       const featureResponse =
         await handleRoadIntelligence(request, env, ctx, readCameraState) ||
@@ -400,6 +409,7 @@ export default {
     }
   },
   async scheduled(event, env, ctx) {
+    if (env.WAYBI_MIGRATION_PAUSED === 'true') return;
     if (event.cron === '0 */6 * * *') {
       ctx.waitUntil(syncCameras(env));
     }

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/data/place_details_repository.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/domain/route_option.dart';
-import 'package:kiwi_lens_mobile/widgets/place_details_content.dart';
+import 'package:waybi_mobile/data/place_details_repository.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/widgets/place_details_content.dart';
 
 void main() {
   testWidgets('place deck starts compact and expands for details in Chinese', (
@@ -24,7 +24,7 @@ void main() {
     );
     const quickRoute = RouteOption(
       id: 'drive-fast',
-      mode: KiwiTravelMode.drive,
+      mode: WaybiTravelMode.drive,
       durationSeconds: 720,
       staticDurationSeconds: 480,
       trafficDelaySeconds: 240,

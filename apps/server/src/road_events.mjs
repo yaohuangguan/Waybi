@@ -137,7 +137,7 @@ export async function fetchNztaRoadEvents(fetcher = fetch, now = new Date()) {
   const response = await fetcher(ROAD_EVENTS_SOURCE, {
     headers: {
       accept: 'application/json',
-      'user-agent': 'Kiwi Lens/0.1 (https://github.com/yaohuangguan/kiwi-lens)'
+      'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)'
     },
     signal: AbortSignal.timeout(15000)
   });

@@ -19,7 +19,8 @@ class TrafficFlowRepository {
     if (response.statusCode != 200) {
       throw StateError('Traffic flow unavailable: ${response.statusCode}');
     }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final segments = (body['segments'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(TrafficFlowSegment.fromJson)
@@ -28,7 +29,20 @@ class TrafficFlowRepository {
     if (segments.isEmpty) {
       throw StateError('Traffic flow response contained no usable segments');
     }
+    final overlay = body['tileOverlay'] as Map<String, dynamic>?;
     return TrafficFlowSnapshot(
+      tileOverlay: overlay == null
+          ? null
+          : TrafficTileOverlay(
+              provider: overlay['provider'].toString(),
+              tileTemplate: Uri.decodeFull(
+                Uri.parse(baseUrl)
+                    .resolve(overlay['tileTemplate'].toString())
+                    .toString(),
+              ),
+              attribution: overlay['attribution'].toString(),
+            ),
+      coverage: body['coverage']?.toString() ?? 'published-nzta-sections',
       segments: segments,
       syncStatus: body['syncStatus']?.toString() ?? 'unknown',
       sourceUpdatedAt: DateTime.tryParse(

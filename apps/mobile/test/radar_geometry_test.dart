@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
-import 'package:kiwi_lens_mobile/domain/geo_math.dart';
-import 'package:kiwi_lens_mobile/domain/radar_geometry.dart';
+import 'package:waybi_mobile/domain/geo_math.dart';
+import 'package:waybi_mobile/domain/radar_geometry.dart';
 
 void main() {
   const origin = LatLng(latitude: -36.8485, longitude: 174.7633);

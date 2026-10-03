@@ -1,13 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kiwi_lens_mobile/domain/map_provider.dart';
-import 'package:kiwi_lens_mobile/drive/journey_tracker.dart';
+import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/drive/journey_tracker.dart';
 
 void main() {
   final start = DateTime(2026, 10, 1);
   const target = GeoPoint(-36.85, 174.76);
   JourneyTracker tracker() => JourneyTracker(
     target: target,
-    destination: 'Kiwi Cafe',
+    destination: 'Waybi Cafe',
     startedAt: start,
   );
   test(

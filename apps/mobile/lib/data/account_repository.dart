@@ -80,6 +80,7 @@ class AccountRepository extends ChangeNotifier {
       _storage = storage ?? const FlutterSecureStorage();
 
   static const _storageKey = 'waybi_session';
+  static const _legacyStorageKey = 'kiwi_lens_session';
   static const _googleIosClientId = String.fromEnvironment(
     'GOOGLE_IOS_CLIENT_ID',
     defaultValue: '858928595374-slrbiedfhivmnliv0d4uvpn0n8rh21tu.apps.googleusercontent.com',
@@ -140,14 +141,20 @@ class AccountRepository extends ChangeNotifier {
 
   Future<void> restore() async {
     try {
-      _session =
-          await _storage.read(key: _storageKey) ??
-          await _storage.read(key: 'kiwi_lens_session');
+      _session = await _storage.read(key: _storageKey);
+      if (_session == null) {
+        _session = await _storage.read(key: _legacyStorageKey);
+        if (_session != null) {
+          await _storage.write(key: _storageKey, value: _session);
+          await _storage.delete(key: _legacyStorageKey);
+        }
+      }
       if (_session == null) return;
       final response = await _request('/api/auth/me');
       if (response.statusCode == 401) {
         _session = null;
         await _storage.delete(key: _storageKey);
+        await _storage.delete(key: _legacyStorageKey);
         return;
       }
       profile = AccountProfile.fromJson(_body(response));
@@ -294,6 +301,7 @@ class AccountRepository extends ChangeNotifier {
       } catch (_) {}
     }
     await _storage.delete(key: _storageKey);
+    await _storage.delete(key: _legacyStorageKey);
     notifyListeners();
   }
 

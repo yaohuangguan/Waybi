@@ -171,8 +171,11 @@ class _ExplorePageState extends State<ExplorePage> {
           IconButton(
             tooltip: _text('Data & photo credits', '数据与图片来源'),
             icon: const Icon(Icons.info_outline_rounded),
-            onPressed: () =>
-                showPlaceSources(context, language: widget.language),
+            onPressed: () => showPlaceSources(
+              context,
+              language: widget.language,
+              mapCompatible: widget.mapCompatible,
+            ),
           ),
         ],
         title: Text(

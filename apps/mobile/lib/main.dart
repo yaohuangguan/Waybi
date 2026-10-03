@@ -17,6 +17,7 @@ import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
 import 'data/parking_repository.dart';
 import 'data/route_repository.dart';
+import 'data/quick_location_store.dart';
 import 'data/usage_telemetry_repository.dart';
 import 'domain/radar_geometry.dart';
 import 'domain/map_layer_settings.dart';
@@ -40,6 +41,8 @@ import 'widgets/journey_summary_sheet.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'drive/drive_engine.dart';
+import 'drive/system_navigation.dart';
+import 'drive/location_feed_owner.dart';
 import 'drive/route_camera_matcher.dart';
 import 'providers/google_map_renderer.dart';
 import 'providers/independent_map_renderer.dart';
@@ -340,7 +343,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Brightness? _lastMapBrightness;
   double _navigationTopInset = 125;
   double _navigationBottomInset = 215;
-  StreamSubscription<Position>? _positionSubscription;
+  final _browseLocationFeed = LocationFeedOwner();
+  StreamSubscription<dynamic>? get _positionSubscription =>
+      _browseLocationFeed.subscription;
+  set _positionSubscription(StreamSubscription<dynamic>? value) =>
+      _browseLocationFeed.subscription = value;
   StreamSubscription<double>? _headingSubscription;
   Timer? _mapRefreshTimer;
   LatLng? _gpsLocation;
@@ -389,6 +396,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _keepScreenAwake = true;
   bool _settingsLoaded = false;
   bool _endingNavigation = false;
+  bool _appForeground = true;
+  final _systemNavigation = SystemNavigation();
+  DateTime? _lastDrivePositionAt;
   JourneyTracker? _journey;
   bool _lanesEnabled = true;
   bool _notifySafetyCameras = false;
@@ -464,6 +474,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         mode: previous.mode,
         stops: stops,
         language: _appLanguage,
+        headingDegrees: _driveEngine.speedKph > 10
+            ? _driveEngine.rawHeadingDegrees
+            : null,
       ),
     );
     _independentNavigation.addListener(_onIndependentNavigationChanged);
@@ -601,7 +614,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appForeground = state == AppLifecycleState.resumed;
+    if (!_appForeground) {
+      _mapRefreshTimer?.cancel();
+      _mapRefreshTimer = null;
+    }
     if (state == AppLifecycleState.resumed) {
+      _queueMapRefresh();
+      if (_guidanceRunning) {
+        unawaited(
+          _systemNavigation.update(_systemNavigationState(), force: true),
+        );
+      }
       unawaited(_deliverRouteWatchAlerts());
       unawaited(_refreshQuickCommutes(force: true));
       if (_mapProvider == MapProvider.independent && _layers.traffic) {
@@ -616,6 +640,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _activeNavigationRoute = _independentNavigation.route;
     }
     setState(() {});
+    if (_guidanceRunning) {
+      unawaited(_systemNavigation.update(_systemNavigationState()));
+    }
     _updateArrivalExperience();
     unawaited(_cacheNavigationCorridor());
     if (_following) _queueMapRefresh();
@@ -623,12 +650,28 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _onEngineChanged() {
     if (!mounted) return;
+    final position = _driveEngine.latestPosition;
+    if (position != null && position.timestamp != _lastDrivePositionAt) {
+      _lastDrivePositionAt = position.timestamp;
+      _onPosition(position);
+    }
+    if (_guidanceRunning) {
+      unawaited(_systemNavigation.update(_systemNavigationState()));
+    }
     _journey?.cameraPassed(_driveEngine.passedCamera?.id);
     unawaited(_notifyRoadIntelligence());
     final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
     final signature =
         '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}:${_driveEngine.trafficFlowRevision}';
     if (signature != _markerSignature) {
+      final plan = _routePlan;
+      if (plan != null) {
+        _routeCameraSummaries = _summarizeRouteCameras(plan);
+        _routePreferenceSummaries = _summarizeRoutePreferences(
+          plan,
+          _routeCameraSummaries,
+        );
+      }
       unawaited(_syncCameraMarkers());
       if (_routePlan != null || _mapProvider == MapProvider.independent) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1209,23 +1252,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _useCarMarker = _locationMarker != LocationMarkerStyle.classic;
     _quickActions = prefs.getStringList('waybi.quick_actions') ?? _quickActions;
     if (_mapProvider == MapProvider.google) _restoreGoogleRecent(prefs);
-    for (final action in ['Home', 'Work']) {
-      final record = prefs.getString('waybi.quick_location.$action');
-      if (record == null) continue;
-      try {
-        final item = jsonDecode(record) as Map<String, dynamic>;
-        _quickLocations[action] = PlaceSummary(
-          name: item['name']?.toString() ?? action,
-          address: item['address']?.toString() ?? '',
-          location: GeoPoint(
-            (item['latitude'] as num).toDouble(),
-            (item['longitude'] as num).toDouble(),
-          ),
-        );
-        _quickLocationProviders[action] = MapProvider.google;
-      } catch (_) {
-        // Ignore an invalid old shortcut rather than blocking map startup.
-      }
+    final shortcuts = await QuickLocationStore().load();
+    for (final entry in shortcuts.entries) {
+      _quickLocations[entry.key] = entry.value.place;
+      _quickLocationProviders[entry.key] = entry.value.provider;
     }
     final parkedCarRecord = prefs.getString('waybi.plus.parked_car.v1');
     if (parkedCarRecord != null) {
@@ -1287,7 +1317,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           prefs.getBool('waybi.alerts.dual_red_speed') ?? true,
       alertBusLane: prefs.getBool('waybi.alerts.bus_lane') ?? true,
       alertOther: prefs.getBool('waybi.alerts.other_camera') ?? false,
-      traffic: prefs.getBool('waybi.layers.traffic') ?? false,
+      traffic: prefs.getBool('waybi.layers.traffic') ?? true,
       style: BaseMapStyle.values.firstWhere(
         (value) => value.name == prefs.getString('waybi.layers.style'),
         orElse: () => BaseMapStyle.standard,
@@ -1342,6 +1372,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _mapRefreshTimer?.cancel();
     _account.removeListener(_onAccountChanged);
     _driveEngine.removeListener(_onEngineChanged);
+    unawaited(_systemNavigation.stop());
     _independentNavigation.dispose();
     _exploreMarkerFocus.dispose();
     _workerSearch.dispose();
@@ -1374,10 +1405,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _startTracking() async {
-    if (_positionSubscription != null || !await _ensureLocationPermission()) {
+    if (_driveEngine.active ||
+        _positionSubscription != null ||
+        !await _ensureLocationPermission()) {
       return;
     }
-    _headingSubscription = DeviceHeading.readings.listen(
+    _headingSubscription ??= DeviceHeading.readings.listen(
       (heading) {
         _deviceHeading = heading;
         _queueMapRefresh();
@@ -1517,7 +1550,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       });
     }
     try {
-      final plan = await _routeRepository.fetch(
+      final plan = await _driveRoutePlan(
         origin: origin,
         destination: LatLng(
           latitude: place.location.latitude,
@@ -1563,6 +1596,23 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
+  Future<RoutePlan> _driveRoutePlan({
+    required LatLng origin,
+    required LatLng destination,
+    WaybiTravelMode? mode,
+  }) => _mapProvider == MapProvider.independent
+      ? _independentRoutes.route(
+          origin: GeoPoint(origin.latitude, origin.longitude),
+          destination: GeoPoint(destination.latitude, destination.longitude),
+          language: _appLanguage,
+          mode: mode ?? WaybiTravelMode.drive,
+        )
+      : _routeRepository.fetch(
+          origin: origin,
+          destination: destination,
+          mode: mode ?? WaybiTravelMode.drive,
+        );
+
   Future<void> _refreshQuickCommutes({bool force = false}) async {
     if (!mounted || !_settingsLoaded || _driveEngine.active) return;
     if (_quickCommuteRefreshing && !force) return;
@@ -1603,7 +1653,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       await Future.wait(
         targets.entries.map((entry) async {
           try {
-            final plan = await _routeRepository.fetch(
+            final plan = await _driveRoutePlan(
               origin: origin,
               destination: LatLng(
                 latitude: entry.value.location.latitude,
@@ -1703,7 +1753,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   void _queueMapRefresh() {
-    if (_mapRefreshTimer?.isActive ?? false) return;
+    if (!_appForeground || (_mapRefreshTimer?.isActive ?? false)) return;
     final smoothNavigation =
         _mapProvider == MapProvider.independent &&
         _independentNavigation.active;
@@ -2316,10 +2366,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _selectedPlace != null) {
       unawaited(_loadParking(_selectedPlace!.place));
     }
-    final camerasReady = _driveEngine.loadCameras();
-    final trafficReady = preferredMode == WaybiTravelMode.drive
-        ? _driveEngine.loadTrafficFlow()
-        : Future<void>.value();
+    unawaited(_driveEngine.loadCameras());
+    if (preferredMode == WaybiTravelMode.drive) {
+      unawaited(_driveEngine.loadTrafficFlow());
+    }
     try {
       final plan = _mapProvider == MapProvider.independent
           ? await _independentRoutes.route(
@@ -2334,6 +2384,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   )
                   .toList(growable: false),
               language: _appLanguage,
+              mode: preferredMode,
             )
           : await _routeRepository.fetch(
               origin: origin,
@@ -2341,8 +2392,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               stops: _routeStops
                   .map((stop) => stop.location)
                   .toList(growable: false),
+              mode: preferredMode,
             );
-      await Future.wait([camerasReady, trafficReady]);
+
       final cameraSummaries = _summarizeRouteCameras(plan);
       final preferenceSummaries = _summarizeRoutePreferences(
         plan,
@@ -2731,7 +2783,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ),
       );
 
-      if (_selectedMode == WaybiTravelMode.drive) {
+      if (_layers.traffic && _selectedMode == WaybiTravelMode.drive) {
         final intervals = route.trafficIntervals.isEmpty
             ? <TrafficInterval>[
                 TrafficInterval(
@@ -2850,7 +2902,15 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _mapProvider == MapProvider.independent) {
       routes = await _loadIndependentTransitRoutes();
     }
-    if (routes.isEmpty) return;
+    if (routes.isEmpty) {
+      final poi = _selectedPoi;
+      if (poi != null && mode != WaybiTravelMode.transit) {
+        await _loadRoutePreview(poi, preferredMode: mode);
+      } else if (poi != null && _mapProvider == MapProvider.google) {
+        await _loadRoutePreview(poi, preferredMode: mode);
+      }
+      return;
+    }
 
     final selected = mode == WaybiTravelMode.drive
         ? recommendedRoute(routes, _routePreferenceSummaries) ?? routes.first
@@ -2986,10 +3046,30 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _pauseBrowseLocation() async {
+    await _browseLocationFeed.release();
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        if (await Geolocator.getLocationAccuracy() ==
+            LocationAccuracyStatus.reduced) {
+          await Geolocator.requestTemporaryFullAccuracy(
+            purposeKey: 'WaybiNavigation',
+          );
+        }
+      } catch (_) {
+        /* Navigation can still wait for a usable GPS fix. */
+      }
+    }
+    _lastDrivePositionAt = null;
+  }
+
   Future<bool> _ensureNavigationSession() async {
     final nativeInitialized = await GoogleMapsNavigator.isInitialized();
     if (_navigationSessionInitialized && nativeInitialized) {
-      if (!_driveEngine.active) await _driveEngine.start();
+      if (!_driveEngine.active) {
+        await _pauseBrowseLocation();
+        await _driveEngine.start();
+      }
       return true;
     }
     _navigationSessionInitialized = false;
@@ -3039,6 +3119,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
       return false;
     }
+    await _pauseBrowseLocation();
     try {
       await _driveEngine.start();
     } on SessionNotInitializedException {
@@ -3134,6 +3215,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
       if (_mapProvider == MapProvider.independent) {
         if (!await _ensureLocationPermission()) return;
+        await _pauseBrowseLocation();
         await _independentNavigation.start(selectedRoute);
         // Independent guidance has no paid navigation SKU.
         if (!mounted) return;
@@ -3158,6 +3240,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           _offlineCorridorReady = false;
         });
         _beginJourney(poi);
+        await _startSystemNavigation();
         unawaited(_cacheNavigationCorridor(force: true));
         _queueMapRefresh();
         return;
@@ -3271,6 +3354,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _offlineCorridorReady = false;
       });
       _beginJourney(poi);
+      await _startSystemNavigation();
       unawaited(_cacheNavigationCorridor(force: true));
       final activeNavigationController = _navigationController;
       if (activeNavigationController != null) {
@@ -3282,7 +3366,70 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       setState(() => _message = 'Could not start navigation: $error');
     } finally {
       if (mounted) setState(() => _busy = false);
+      if (mounted && !_driveEngine.active) unawaited(_startTracking());
     }
+  }
+
+  Future<void> _startSystemNavigation() async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      await Permission.notification.request();
+    }
+    await _systemNavigation.start(_systemNavigationState());
+  }
+
+  Map<String, Object?> _systemNavigationState() {
+    final independent = _independentNavigation.active;
+    final step = independent ? _independentNavigation.nextStep : null;
+    final native = _driveEngine.navInfo;
+    final instruction = independent
+        ? routeStepInstruction(step, _appLanguage)
+        : navigationInstruction(native?.currentStep, _appLanguage);
+    final type = independent
+        ? '${step?.maneuverType} ${step?.maneuverModifier}'
+        : native?.currentStep?.maneuver.name.toLowerCase() ?? '';
+    final offRoute = independent
+        ? _independentNavigation.offRoute || _independentNavigation.rerouting
+        : native?.navState == NavState.rerouting;
+    final distance = independent
+        ? _independentNavigation.distanceToStepMeters
+        : native?.distanceToCurrentStepMeters;
+    final remaining = _navigationRemainingMeters;
+    final seconds = independent
+        ? _independentNavigation.remainingSeconds
+        : native?.timeToFinalDestinationSeconds ??
+              _activeNavigationRoute?.durationSeconds ??
+              0;
+    return {
+      'destination': _destinationTitle,
+      'language': _appLanguage,
+      'provider': independent ? 'independent' : 'google',
+      'instruction': offRoute
+          ? _text('Updating route...', '正在重新规划路线…')
+          : instruction,
+      'distance': offRoute
+          ? ''
+          : distance == null
+          ? '—'
+          : navigationMetres(distance, _appLanguage),
+      'remaining': remaining == null
+          ? '—'
+          : navigationMetres(remaining, _appLanguage),
+      'seconds': seconds,
+      'offRoute': offRoute,
+      'maneuver': offRoute
+          ? 'arrow.triangle.swap'
+          : type.contains('arrive')
+          ? 'flag.fill'
+          : type.contains('uturn')
+          ? 'arrow.uturn.left'
+          : type.contains('roundabout')
+          ? 'arrow.triangle.2.circlepath'
+          : type.contains('right')
+          ? 'arrow.turn.up.right'
+          : type.contains('left')
+          ? 'arrow.turn.up.left'
+          : 'arrow.up',
+    };
   }
 
   Future<void> _stopNavigation({
@@ -3291,6 +3438,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }) async {
     if (!_guidanceRunning || _endingNavigation) return;
     _endingNavigation = true;
+    await _systemNavigation.stop();
     final route = _activeNavigationRoute;
     final summary = _journey?.finish(arrived: arrived);
     _journey = null;
@@ -3378,6 +3526,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
     } finally {
       _endingNavigation = false;
+      if (mounted && !_driveEngine.active) unawaited(_startTracking());
     }
   }
 
@@ -3400,6 +3549,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         return;
       }
       if (_mapProvider == MapProvider.independent) {
+        await _pauseBrowseLocation();
         await _driveEngine.startLocal();
         if (mounted) setState(() => _following = true);
         _queueMapRefresh();
@@ -3435,6 +3585,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _stopDriveMode() async {
     if (_guidanceRunning) await _stopNavigation();
     await _driveEngine.stop();
+    if (mounted) unawaited(_startTracking());
     if (_navigationSessionInitialized) {
       await GoogleMapsNavigator.cleanup();
       _navigationSessionInitialized = false;
@@ -5019,18 +5170,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _quickLocations[saveAs] = place;
       _quickLocationProviders[saveAs] = _mapProvider;
       unawaited(_refreshQuickCommutes(force: true));
-      if (_mapProvider == MapProvider.google) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(
-          'waybi.quick_location.$saveAs',
-          jsonEncode({
-            'name': place.name,
-            'address': place.address,
-            'latitude': place.location.latitude,
-            'longitude': place.location.longitude,
-          }),
-        );
-      }
+      await QuickLocationStore().save(saveAs, place, _mapProvider);
     }
     _rememberDestination(
       DestinationSuggestion(
@@ -5622,50 +5762,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _navigationBottomInset,
       ),
     );
-    final activeRoute = _activeNavigationRoute;
-    if (_selectedMode == WaybiTravelMode.drive &&
-        activeRoute != null &&
-        activeRoute.points.length >= 2) {
-      final trafficOptions = <PolylineOptions>[];
-      final intervals = activeRoute.trafficIntervals.isEmpty
-          ? <TrafficInterval>[
-              TrafficInterval(
-                startPolylinePointIndex: 0,
-                endPolylinePointIndex: activeRoute.points.length - 1,
-                speed: 'unknown',
-              ),
-            ]
-          : activeRoute.trafficIntervals;
-      for (final interval in intervals) {
-        final start = interval.startPolylinePointIndex
-            .clamp(0, activeRoute.points.length - 1)
-            .toInt();
-        if (start >= activeRoute.points.length - 1) continue;
-        final end = interval.endPolylinePointIndex
-            .clamp(start + 1, activeRoute.points.length - 1)
-            .toInt();
-        trafficOptions.add(
-          PolylineOptions(
-            points: activeRoute.points
-                .sublist(start, end + 1)
-                .map(
-                  (point) => LatLng(
-                    latitude: point.latitude,
-                    longitude: point.longitude,
-                  ),
-                )
-                .toList(growable: false),
-            strokeColor: _trafficColor(interval.speed, true),
-            strokeWidth: 8,
-            zIndex: 40,
-            clickable: false,
-          ),
-        );
-      }
-      if (trafficOptions.isNotEmpty) {
-        await controller.addPolylines(trafficOptions);
-      }
-    }
+    // The SDK owns the current route and its live traffic colors. A preview
+    // polyline here would conceal congestion and remain stale after reroutes.
     await _syncDestinationMarker(controller);
     await _syncCameraMarkers();
     _queueMapRefresh();
@@ -6236,6 +6334,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 routeCameraSummaries: _routeCameraSummaries,
                 routePreferenceSummaries: _routePreferenceSummaries,
                 canRequestTransit: _mapProvider == MapProvider.independent,
+                canRequestModes: true,
                 customOrigin: _manualOrigin != null,
                 parkingPlaces: _parkingPlaces,
                 selectedParkingId: _selectedParking?.id,

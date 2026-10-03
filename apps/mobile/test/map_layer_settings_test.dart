@@ -14,8 +14,8 @@ SafetyCamera camera(String type) => SafetyCamera(
 );
 
 void main() {
-  test('live traffic is opt-in by default', () {
-    expect(const MapLayerSettings().traffic, isFalse);
+  test('live traffic is enabled by default', () {
+    expect(const MapLayerSettings().traffic, isTrue);
   });
 
   test('NZTA fixed camera categories stay distinct', () {

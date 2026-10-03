@@ -118,6 +118,7 @@ class RoutePreviewSheet extends StatelessWidget {
     this.routeCameraSummaries = const {},
     this.routePreferenceSummaries = const {},
     this.canRequestTransit = false,
+    this.canRequestModes = false,
     required this.customOrigin,
     required this.onModeChanged,
     required this.onRouteSelected,
@@ -148,6 +149,7 @@ class RoutePreviewSheet extends StatelessWidget {
   final Map<String, RouteCameraSummary> routeCameraSummaries;
   final Map<String, RoutePreferenceSummary> routePreferenceSummaries;
   final bool canRequestTransit;
+  final bool canRequestModes;
   final bool customOrigin;
   final ValueChanged<WaybiTravelMode> onModeChanged;
   final ValueChanged<RouteOption> onRouteSelected;
@@ -323,6 +325,7 @@ class RoutePreviewSheet extends StatelessWidget {
                               final hasRoute = plan.forMode(mode).isNotEmpty;
                               final available =
                                   hasRoute ||
+                                  canRequestModes ||
                                   (canRequestTransit &&
                                       mode == WaybiTravelMode.transit);
                               final disabled =

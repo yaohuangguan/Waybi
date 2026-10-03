@@ -129,6 +129,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
   final _headerKey = GlobalKey();
   final _deckKey = GlobalKey();
   double? _reportedBottom;
+  DateTime? _lastBottomReport;
   double? _reportedInset;
   double _headerHeight = 0;
 
@@ -149,13 +150,41 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
     final box = _deckKey.currentContext?.findRenderObject();
     if (box is! RenderBox || !box.hasSize) return;
     final inset = box.size.height + 14;
+    final now = DateTime.now();
+    final settled =
+        _sheetController.isAttached &&
+        ((_sheetController.size - _minExtent).abs() < .002 ||
+            (_sheetController.size - _maxExtent).abs() < .002);
+    if (!settled &&
+        _lastBottomReport != null &&
+        now.difference(_lastBottomReport!).inMilliseconds < 80) {
+      return;
+    }
     if (_reportedBottom == null || (inset - _reportedBottom!).abs() >= 1) {
+      _lastBottomReport = now;
       _reportedBottom = inset;
       widget.onBottomInsetChanged?.call(inset);
     }
   }
 
-  double _sheetDrag = 0;
+  final _sheetController = DraggableScrollableController();
+  double _minExtent = .25;
+  double _maxExtent = .45;
+
+  @override
+  void dispose() {
+    _sheetController.dispose();
+    super.dispose();
+  }
+
+  void _toggleSheet() {
+    _sheetController.animateTo(
+      expanded ? _minExtent : _maxExtent,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   ImageDescriptor? _laneDescriptor;
   Future<Image?>? _laneImage;
   String _text(String en, String zh) => widget.language == 'zh' ? zh : en;
@@ -174,13 +203,6 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
   String _distance(num? metres) => metres == null || !metres.isFinite
       ? '—'
       : navigationMetres(metres, widget.language);
-
-  void _settleSheet(DragEndDetails details) {
-    final velocity = details.primaryVelocity ?? 0;
-    final movement = _sheetDrag.abs() > 24 ? _sheetDrag : velocity / 12;
-    if (movement.abs() > 24) setState(() => expanded = movement < 0);
-    _sheetDrag = 0;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -252,683 +274,698 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
     return SafeArea(
       bottom: false,
       child: LayoutBuilder(
-        builder: (context, constraints) => Stack(
-          children: [
-            Positioned(
-              top: 10,
-              left: 14,
-              right: 14,
-              child: Column(
-                key: _headerKey,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  PointerInterceptor(
-                    child: AnimatedSize(
-                      duration: const Duration(milliseconds: 220),
-                      alignment: Alignment.topCenter,
-                      child: Container(
-                        key: const ValueKey('navigationGuidanceHeader'),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: _ink,
-                          borderRadius: BorderRadius.circular(23),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x36000000),
-                              blurRadius: 18,
-                              offset: Offset(0, 7),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  guidance.maneuverIcon,
-                                  color: _accent,
-                                  size: 38,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        _distance(guidance.stepMeters),
-                                        style: const TextStyle(
-                                          color: _accent,
-                                          fontSize: 25,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      Text(
-                                        guidance.instruction,
-                                        maxLines: 3,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 14,
-                                          height: 1.3,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      arrival,
-                                      style: const TextStyle(
-                                        color: _accent,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    Text(
-                                      _distance(guidance.remainingMeters),
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            if (showLanes) ...[
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 10),
-                                child: Divider(
-                                  color: Colors.white24,
-                                  height: 1,
-                                ),
-                              ),
-                              Row(
-                                children: [
-                                  Text(
-                                    _text('USE LANE', '推荐车道'),
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: guidance.lanes.isNotEmpty
-                                        ? FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            alignment: Alignment.centerRight,
-                                            child: Row(
-                                              children: [
-                                                for (
-                                                  var index = 0;
-                                                  index < guidance.lanes.length;
-                                                  index++
-                                                )
-                                                  Semantics(
-                                                    label: _text(
-                                                      'Lane ${index + 1}',
-                                                      '第 ${index + 1} 车道',
-                                                    ),
-                                                    selected: guidance
-                                                        .lanes[index]
-                                                        .recommended,
-                                                    child: Container(
-                                                      key: ValueKey(
-                                                        'navigation-lane-$index',
-                                                      ),
-                                                      margin:
-                                                          const EdgeInsets.only(
-                                                            left: 5,
-                                                          ),
-                                                      constraints:
-                                                          const BoxConstraints(
-                                                            minWidth: 40,
-                                                          ),
-                                                      alignment:
-                                                          Alignment.center,
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 8,
-                                                            vertical: 5,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color:
-                                                            guidance
-                                                                .lanes[index]
-                                                                .recommended
-                                                            ? _accent
-                                                            : WaybiColors
-                                                                  .darkSurface,
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              10,
-                                                            ),
-                                                      ),
-                                                      child: Text(
-                                                        guidance
-                                                            .lanes[index]
-                                                            .symbol,
-                                                        style: TextStyle(
-                                                          color:
-                                                              guidance
-                                                                  .lanes[index]
-                                                                  .recommended
-                                                              ? _ink
-                                                              : Colors.white54,
-                                                          fontSize: 25,
-                                                          fontWeight:
-                                                              FontWeight.w700,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                          )
-                                        : SizedBox(
-                                            height: 43,
-                                            child: FutureBuilder<Image?>(
-                                              future: _laneImage,
-                                              builder: (_, snapshot) =>
-                                                  snapshot.data == null
-                                                  ? const SizedBox.shrink()
-                                                  : FittedBox(
-                                                      fit: BoxFit.contain,
-                                                      child: snapshot.data!,
-                                                    ),
-                                            ),
-                                          ),
-                                  ),
-                                ],
+        builder: (context, constraints) {
+          final maxHeight = (constraints.maxHeight - _headerHeight - 170).clamp(
+            150.0,
+            constraints.maxHeight * .45,
+          );
+          _maxExtent = maxHeight / constraints.maxHeight;
+          _minExtent =
+              ((widget.arrivalPanel == null ? 225 : 258) + bottomInset).clamp(
+                140.0,
+                maxHeight - 1,
+              ) /
+              constraints.maxHeight;
+          return Stack(
+            children: [
+              Positioned(
+                top: 10,
+                left: 14,
+                right: 14,
+                child: Column(
+                  key: _headerKey,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    PointerInterceptor(
+                      child: AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        alignment: Alignment.topCenter,
+                        child: Container(
+                          key: const ValueKey('navigationGuidanceHeader'),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: _ink,
+                            borderRadius: BorderRadius.circular(23),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x36000000),
+                                blurRadius: 18,
+                                offset: Offset(0, 7),
                               ),
                             ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (camera != null && cameraDistance != null) ...[
-                    const SizedBox(height: 8),
-                    PointerInterceptor(
-                      child: Container(
-                        key: const ValueKey('navigationCameraAlert'),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 11,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _accent,
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x26000000),
-                              blurRadius: 12,
-                              offset: Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.speed_rounded,
-                              color: _ink,
-                              size: 28,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
                                 children: [
-                                  Text(
-                                    '${_text('Camera', '摄像头')} · ${_distance(cameraDistance)}',
-                                    style: const TextStyle(
-                                      color: _ink,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 14,
-                                    ),
+                                  Icon(
+                                    guidance.maneuverIcon,
+                                    color: _accent,
+                                    size: 38,
                                   ),
-                                  Text(
-                                    camera.location,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: WaybiColors.deepOcean,
-                                      fontSize: 12,
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                  if (!expanded) ...[
-                    const SizedBox(height: 16),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        PointerInterceptor(
-                          child: Container(
-                            width: 84,
-                            padding: const EdgeInsets.symmetric(vertical: 9),
-                            decoration: BoxDecoration(
-                              color: _ink,
-                              border: Border.all(
-                                color: speeding
-                                    ? const Color(0xFFFF6767)
-                                    : Colors.white,
-                                width: 3,
-                              ),
-                              borderRadius: BorderRadius.circular(22),
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x33000000),
-                                  blurRadius: 14,
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              children: [
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Flexible(
-                                      child: FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        child: Text(
-                                          '${widget.engine.speedKph.round()}',
-                                          style: TextStyle(
-                                            color: speeding
-                                                ? const Color(0xFFFF6767)
-                                                : _accent,
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 27,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const Padding(
-                                      padding: EdgeInsets.only(bottom: 5),
-                                      child: Text(
-                                        'km/h',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 9,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Text(
-                                  '${_text('LIMIT', '限速')} ${widget.engine.speedLimitKph ?? '—'}',
-                                  style: const TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        PointerInterceptor(
-                          child: _NavigationControlRail(
-                            language: widget.language,
-                            following: widget.following,
-                            overviewMode: widget.overviewMode,
-                            northUp: widget.northUp,
-                            perspectiveTilted: widget.perspectiveTilted,
-                            perspectiveAvailable: widget.perspectiveAvailable,
-                            onCompassToggle: widget.onCompassToggle,
-                            onRecenter: widget.onRecenter,
-                            onLayers: widget.onLayers,
-                            onReport: widget.onReport,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: PointerInterceptor(
-                child: GestureDetector(
-                  key: const Key('navigationSheetSurface'),
-                  behavior: HitTestBehavior.opaque,
-                  onVerticalDragStart: (_) => _sheetDrag = 0,
-                  onVerticalDragUpdate: (details) =>
-                      _sheetDrag += details.delta.dy,
-                  onVerticalDragEnd: _settleSheet,
-                  child: AnimatedSize(
-                    duration: const Duration(milliseconds: 260),
-                    curve: Curves.easeOutCubic,
-                    alignment: Alignment.bottomCenter,
-                    child: ConstrainedBox(
-                      key: _deckKey,
-                      constraints: BoxConstraints(
-                        maxHeight: (constraints.maxHeight - _headerHeight - 170)
-                            .clamp(100.0, constraints.maxHeight * .45),
-                      ),
-                      child: Material(
-                        color: dark ? WaybiColors.darkOcean : scheme.surface,
-                        elevation: 0,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(27),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: SingleChildScrollView(
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              14,
-                              3,
-                              14,
-                              bottomInset + 12,
-                            ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                GestureDetector(
-                                  onVerticalDragStart: (_) => _sheetDrag = 0,
-                                  onVerticalDragUpdate: (details) =>
-                                      _sheetDrag += details.delta.dy,
-                                  onVerticalDragEnd: _settleSheet,
-                                  child: InkWell(
-                                    key: const Key('navigationSheetHandle'),
-                                    onTap: () =>
-                                        setState(() => expanded = !expanded),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 10,
-                                      ),
-                                      child: Container(
-                                        width: 44,
-                                        height: 4,
-                                        decoration: BoxDecoration(
-                                          color: theme.dividerColor,
-                                          borderRadius: BorderRadius.circular(
-                                            5,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Row(
-                                  children: [
-                                    const WaybiBird(size: 32),
-                                    const SizedBox(width: 9),
-                                    Expanded(
-                                      child: Text(
-                                        widget.destinationTitle,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    FilledButton.icon(
-                                      onPressed: widget.onEnd,
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: WaybiColors.danger,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 9,
-                                        ),
-                                      ),
-                                      icon: const Icon(
-                                        Icons.stop_rounded,
-                                        size: 18,
-                                      ),
-                                      label: Text(_text('End', '结束')),
-                                    ),
-                                  ],
-                                ),
-                                if (widget.arrivalPanel != null) ...[
-                                  const SizedBox(height: 10),
-                                  if (expanded)
-                                    widget.arrivalPanel!
-                                  else
-                                    InkWell(
-                                      key: const Key('arrivalSummary'),
-                                      onTap: () =>
-                                          setState(() => expanded = true),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 6,
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            const Icon(
-                                              Icons.flag_rounded,
-                                              size: 19,
-                                              color: WaybiColors.ocean,
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                _text(
-                                                  'Almost there · arrival & parking',
-                                                  '快到了 · 查看到达与停车信息',
-                                                ),
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ),
-                                            const Icon(
-                                              Icons.expand_less_rounded,
-                                              size: 18,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                                const SizedBox(height: 8),
-                                const Divider(height: 1),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 9,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      _TripStat(
-                                        label: _text(
-                                          'Cameras on route',
-                                          '沿途摄像头',
-                                        ),
-                                        value:
-                                            '${widget.engine.routeCameraCount}',
-                                      ),
-                                      _TripStat(
-                                        label: _text('Distance', '剩余距离'),
-                                        value: _distance(
-                                          guidance.remainingMeters,
-                                        ),
-                                      ),
-                                      _TripStat(
-                                        label: _text('Arrival', '预计到达'),
-                                        value: arrival,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const Divider(height: 1),
-                                if (widget
-                                    .engine
-                                    .upcomingRoadEvents
-                                    .isNotEmpty) ...[
-                                  const SizedBox(height: WaybiSpacing.x2),
-                                  RoadEventTimeline(
-                                    events: widget.engine.upcomingRoadEvents,
-                                    language: widget.language,
-                                    dark: dark,
-                                  ),
-                                ],
-                                if (expanded && widget.offlineReady) ...[
-                                  const SizedBox(height: 8),
-                                  Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 7,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: widget.usingOfflineGuidance
-                                          ? WaybiColors.warning.withValues(
-                                              alpha: .12,
-                                            )
-                                          : scheme.surfaceContainerLow,
-                                      borderRadius: BorderRadius.circular(11),
-                                      border: Border.all(
-                                        color: theme.dividerColor,
-                                      ),
-                                    ),
-                                    child: Row(
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(
-                                          widget.usingOfflineGuidance
-                                              ? Icons
-                                                    .signal_wifi_connected_no_internet_4_rounded
-                                              : Icons.offline_pin_rounded,
-                                          size: 16,
-                                          color: widget.usingOfflineGuidance
-                                              ? WaybiColors.warning
-                                              : scheme.primary,
+                                        Text(
+                                          _distance(guidance.stepMeters),
+                                          style: const TextStyle(
+                                            color: _accent,
+                                            fontSize: 25,
+                                            fontWeight: FontWeight.w700,
+                                          ),
                                         ),
-                                        const SizedBox(width: 7),
-                                        Expanded(
-                                          child: Text(
-                                            widget.usingOfflineGuidance
-                                                ? _text(
-                                                    'Weak signal · cached guidance · ${_offlineAge()}',
-                                                    '信号较弱 · 使用缓存导航 · ${_offlineAge()}',
-                                                  )
-                                                : _text(
-                                                    'Next 6 km cached · ${_offlineAge()}',
-                                                    '前方约 6 公里已缓存 · ${_offlineAge()}',
-                                                  ),
-                                            style: TextStyle(
-                                              color: scheme.onSurfaceVariant,
-                                              fontSize: 10.5,
-                                              fontWeight: FontWeight.w600,
-                                            ),
+                                        Text(
+                                          guidance.instruction,
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                            height: 1.3,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                ],
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    _Chip(
-                                      icon: widget.voiceEnabled
-                                          ? Icons.volume_up_rounded
-                                          : Icons.volume_off_rounded,
-                                      label: widget.voiceEnabled
-                                          ? _text('Voice ✓', '语音 ✓')
-                                          : _text('Voice off', '语音关闭'),
-                                      onTap: widget.onVoiceToggle,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    _Chip(
-                                      icon: Icons.alt_route_rounded,
-                                      label: widget.lanesEnabled
-                                          ? _text('Lanes ✓', '车道 ✓')
-                                          : _text('Lanes off', '车道关闭'),
-                                      onTap: widget.onLanesToggle,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    _Chip(
-                                      icon: Icons.gps_fixed_rounded,
-                                      label: widget.gpsAccuracy == null
-                                          ? 'GPS —'
-                                          : 'GPS ±${widget.gpsAccuracy!.round()} ${_text('m', '米')}',
-                                    ),
-                                  ],
-                                ),
-                                if (expanded) ...[
-                                  const SizedBox(height: 15),
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      _text('Trip tools', '行程工具'),
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 9),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
-                                      _ActionButton(
-                                        icon: Icons.add_a_photo_rounded,
-                                        label: _text('Add a report', '添加上报'),
-                                        onTap: widget.onReport,
-                                      ),
-                                      _ActionButton(
-                                        icon: Icons.share_rounded,
-                                        label: _text(
-                                          'Share ETA snapshot',
-                                          '分享预计到达',
+                                      Text(
+                                        arrival,
+                                        style: const TextStyle(
+                                          color: _accent,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
                                         ),
-                                        onTap: widget.onShare,
                                       ),
-                                      _ActionButton(
-                                        icon: Icons.search_rounded,
-                                        label: _text(
-                                          'Search along route',
-                                          '沿途搜索',
+                                      Text(
+                                        _distance(guidance.remainingMeters),
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 11,
                                         ),
-                                        onTap: widget.onSearchAlongRoute,
-                                      ),
-                                      _ActionButton(
-                                        icon: Icons.route_rounded,
-                                        label: _text('Preview route', '路线总览'),
-                                        onTap: widget.onOverview,
-                                      ),
-                                      _ActionButton(
-                                        icon: Icons.list_alt_rounded,
-                                        label: _text('Directions', '路线步骤'),
-                                        onTap: widget.onDirections,
-                                      ),
-                                      _ActionButton(
-                                        icon: Icons.settings_rounded,
-                                        label: _text('Settings', '设置'),
-                                        onTap: widget.onSettings,
                                       ),
                                     ],
                                   ),
                                 ],
+                              ),
+                              if (showLanes) ...[
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                  child: Divider(
+                                    color: Colors.white24,
+                                    height: 1,
+                                  ),
+                                ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      _text('USE LANE', '推荐车道'),
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: guidance.lanes.isNotEmpty
+                                          ? FittedBox(
+                                              fit: BoxFit.scaleDown,
+                                              alignment: Alignment.centerRight,
+                                              child: Row(
+                                                children: [
+                                                  for (
+                                                    var index = 0;
+                                                    index <
+                                                        guidance.lanes.length;
+                                                    index++
+                                                  )
+                                                    Semantics(
+                                                      label: _text(
+                                                        'Lane ${index + 1}',
+                                                        '第 ${index + 1} 车道',
+                                                      ),
+                                                      selected: guidance
+                                                          .lanes[index]
+                                                          .recommended,
+                                                      child: Container(
+                                                        key: ValueKey(
+                                                          'navigation-lane-$index',
+                                                        ),
+                                                        margin:
+                                                            const EdgeInsets.only(
+                                                              left: 5,
+                                                            ),
+                                                        constraints:
+                                                            const BoxConstraints(
+                                                              minWidth: 40,
+                                                            ),
+                                                        alignment:
+                                                            Alignment.center,
+                                                        padding:
+                                                            const EdgeInsets.symmetric(
+                                                              horizontal: 8,
+                                                              vertical: 5,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          color:
+                                                              guidance
+                                                                  .lanes[index]
+                                                                  .recommended
+                                                              ? _accent
+                                                              : WaybiColors
+                                                                    .darkSurface,
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                10,
+                                                              ),
+                                                        ),
+                                                        child: Text(
+                                                          guidance
+                                                              .lanes[index]
+                                                              .symbol,
+                                                          style: TextStyle(
+                                                            color:
+                                                                guidance
+                                                                    .lanes[index]
+                                                                    .recommended
+                                                                ? _ink
+                                                                : Colors
+                                                                      .white54,
+                                                            fontSize: 25,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            )
+                                          : SizedBox(
+                                              height: 43,
+                                              child: FutureBuilder<Image?>(
+                                                future: _laneImage,
+                                                builder: (_, snapshot) =>
+                                                    snapshot.data == null
+                                                    ? const SizedBox.shrink()
+                                                    : FittedBox(
+                                                        fit: BoxFit.contain,
+                                                        child: snapshot.data!,
+                                                      ),
+                                              ),
+                                            ),
+                                    ),
+                                  ],
+                                ),
                               ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (camera != null && cameraDistance != null) ...[
+                      const SizedBox(height: 8),
+                      PointerInterceptor(
+                        child: Container(
+                          key: const ValueKey('navigationCameraAlert'),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 11,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _accent,
+                            borderRadius: BorderRadius.circular(18),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x26000000),
+                                blurRadius: 12,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.speed_rounded,
+                                color: _ink,
+                                size: 28,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${_text('Camera', '摄像头')} · ${_distance(cameraDistance)}',
+                                      style: const TextStyle(
+                                        color: _ink,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Text(
+                                      camera.location,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: WaybiColors.deepOcean,
+                                        fontSize: 12,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (!expanded) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          PointerInterceptor(
+                            child: Container(
+                              width: 84,
+                              padding: const EdgeInsets.symmetric(vertical: 9),
+                              decoration: BoxDecoration(
+                                color: _ink,
+                                border: Border.all(
+                                  color: speeding
+                                      ? const Color(0xFFFF6767)
+                                      : Colors.white,
+                                  width: 3,
+                                ),
+                                borderRadius: BorderRadius.circular(22),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x33000000),
+                                    blurRadius: 14,
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Flexible(
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            '${widget.engine.speedKph.round()}',
+                                            style: TextStyle(
+                                              color: speeding
+                                                  ? const Color(0xFFFF6767)
+                                                  : _accent,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 27,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const Padding(
+                                        padding: EdgeInsets.only(bottom: 5),
+                                        child: Text(
+                                          'km/h',
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 9,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    '${_text('LIMIT', '限速')} ${widget.engine.speedLimitKph ?? '—'}',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          PointerInterceptor(
+                            child: _NavigationControlRail(
+                              language: widget.language,
+                              following: widget.following,
+                              overviewMode: widget.overviewMode,
+                              northUp: widget.northUp,
+                              perspectiveTilted: widget.perspectiveTilted,
+                              perspectiveAvailable: widget.perspectiveAvailable,
+                              onCompassToggle: widget.onCompassToggle,
+                              onRecenter: widget.onRecenter,
+                              onLayers: widget.onLayers,
+                              onReport: widget.onReport,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Positioned(
+                top: 0,
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: SizedBox(
+                  child: NotificationListener<DraggableScrollableNotification>(
+                    onNotification: (notification) {
+                      final open = notification.extent > _minExtent + .01;
+                      if (open != expanded) setState(() => expanded = open);
+                      WidgetsBinding.instance.addPostFrameCallback(
+                        (_) => _reportBottomInset(),
+                      );
+                      return false;
+                    },
+                    child: DraggableScrollableSheet(
+                      controller: _sheetController,
+                      expand: false,
+                      initialChildSize: _minExtent,
+                      minChildSize: _minExtent,
+                      maxChildSize: _maxExtent,
+                      snap: true,
+                      snapAnimationDuration: const Duration(milliseconds: 180),
+                      shouldCloseOnMinExtent: false,
+                      builder: (context, scrollController) => PointerInterceptor(
+                        key: _deckKey,
+                        child: Material(
+                          color: dark ? WaybiColors.darkOcean : scheme.surface,
+                          elevation: 0,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(27),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: SingleChildScrollView(
+                            key: const Key('navigationSheetSurface'),
+                            controller: scrollController,
+                            physics: const ClampingScrollPhysics(),
+                            child: Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                14,
+                                3,
+                                14,
+                                bottomInset + 12,
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  InkWell(
+                                    key: const Key('navigationSheetHandle'),
+                                    onTap: _toggleSheet,
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      height: 44,
+                                      child: Center(
+                                        child: Container(
+                                          width: 44,
+                                          height: 4,
+                                          decoration: BoxDecoration(
+                                            color: theme.dividerColor,
+                                            borderRadius: BorderRadius.circular(
+                                              5,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  Row(
+                                    children: [
+                                      const WaybiBird(size: 32),
+                                      const SizedBox(width: 9),
+                                      Expanded(
+                                        child: Text(
+                                          widget.destinationTitle,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      FilledButton.icon(
+                                        onPressed: widget.onEnd,
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: WaybiColors.danger,
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 9,
+                                          ),
+                                        ),
+                                        icon: const Icon(
+                                          Icons.stop_rounded,
+                                          size: 18,
+                                        ),
+                                        label: Text(_text('End', '结束')),
+                                      ),
+                                    ],
+                                  ),
+                                  if (widget.arrivalPanel != null) ...[
+                                    const SizedBox(height: 10),
+                                    if (expanded)
+                                      widget.arrivalPanel!
+                                    else
+                                      InkWell(
+                                        key: const Key('arrivalSummary'),
+                                        onTap: () => _toggleSheet(),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 6,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              const Icon(
+                                                Icons.flag_rounded,
+                                                size: 19,
+                                                color: WaybiColors.ocean,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  _text(
+                                                    'Almost there · arrival & parking',
+                                                    '快到了 · 查看到达与停车信息',
+                                                  ),
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                              const Icon(
+                                                Icons.expand_less_rounded,
+                                                size: 18,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  const Divider(height: 1),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 9,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        _TripStat(
+                                          label: _text(
+                                            'Cameras on route',
+                                            '沿途摄像头',
+                                          ),
+                                          value:
+                                              '${widget.engine.routeCameraCount}',
+                                        ),
+                                        _TripStat(
+                                          label: _text('Distance', '剩余距离'),
+                                          value: _distance(
+                                            guidance.remainingMeters,
+                                          ),
+                                        ),
+                                        _TripStat(
+                                          label: _text('Arrival', '预计到达'),
+                                          value: arrival,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const Divider(height: 1),
+                                  if (widget
+                                      .engine
+                                      .upcomingRoadEvents
+                                      .isNotEmpty) ...[
+                                    const SizedBox(height: WaybiSpacing.x2),
+                                    RoadEventTimeline(
+                                      events: widget.engine.upcomingRoadEvents,
+                                      language: widget.language,
+                                      dark: dark,
+                                    ),
+                                  ],
+                                  if (expanded && widget.offlineReady) ...[
+                                    const SizedBox(height: 8),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 7,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: widget.usingOfflineGuidance
+                                            ? WaybiColors.warning.withValues(
+                                                alpha: .12,
+                                              )
+                                            : scheme.surfaceContainerLow,
+                                        borderRadius: BorderRadius.circular(11),
+                                        border: Border.all(
+                                          color: theme.dividerColor,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            widget.usingOfflineGuidance
+                                                ? Icons
+                                                      .signal_wifi_connected_no_internet_4_rounded
+                                                : Icons.offline_pin_rounded,
+                                            size: 16,
+                                            color: widget.usingOfflineGuidance
+                                                ? WaybiColors.warning
+                                                : scheme.primary,
+                                          ),
+                                          const SizedBox(width: 7),
+                                          Expanded(
+                                            child: Text(
+                                              widget.usingOfflineGuidance
+                                                  ? _text(
+                                                      'Weak signal · cached guidance · ${_offlineAge()}',
+                                                      '信号较弱 · 使用缓存导航 · ${_offlineAge()}',
+                                                    )
+                                                  : _text(
+                                                      'Next 6 km cached · ${_offlineAge()}',
+                                                      '前方约 6 公里已缓存 · ${_offlineAge()}',
+                                                    ),
+                                              style: TextStyle(
+                                                color: scheme.onSurfaceVariant,
+                                                fontSize: 10.5,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      _Chip(
+                                        icon: widget.voiceEnabled
+                                            ? Icons.volume_up_rounded
+                                            : Icons.volume_off_rounded,
+                                        label: widget.voiceEnabled
+                                            ? _text('Voice ✓', '语音 ✓')
+                                            : _text('Voice off', '语音关闭'),
+                                        onTap: widget.onVoiceToggle,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _Chip(
+                                        icon: Icons.alt_route_rounded,
+                                        label: widget.lanesEnabled
+                                            ? _text('Lanes ✓', '车道 ✓')
+                                            : _text('Lanes off', '车道关闭'),
+                                        onTap: widget.onLanesToggle,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      _Chip(
+                                        icon: Icons.gps_fixed_rounded,
+                                        label: widget.gpsAccuracy == null
+                                            ? 'GPS —'
+                                            : 'GPS ±${widget.gpsAccuracy!.round()} ${_text('m', '米')}',
+                                      ),
+                                    ],
+                                  ),
+                                  if (expanded) ...[
+                                    const SizedBox(height: 15),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        _text('Trip tools', '行程工具'),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 9),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        _ActionButton(
+                                          icon: Icons.add_a_photo_rounded,
+                                          label: _text('Add a report', '添加上报'),
+                                          onTap: widget.onReport,
+                                        ),
+                                        _ActionButton(
+                                          icon: Icons.share_rounded,
+                                          label: _text(
+                                            'Share ETA snapshot',
+                                            '分享预计到达',
+                                          ),
+                                          onTap: widget.onShare,
+                                        ),
+                                        _ActionButton(
+                                          icon: Icons.search_rounded,
+                                          label: _text(
+                                            'Search along route',
+                                            '沿途搜索',
+                                          ),
+                                          onTap: widget.onSearchAlongRoute,
+                                        ),
+                                        _ActionButton(
+                                          icon: Icons.route_rounded,
+                                          label: _text('Preview route', '路线总览'),
+                                          onTap: widget.onOverview,
+                                        ),
+                                        _ActionButton(
+                                          icon: Icons.list_alt_rounded,
+                                          label: _text('Directions', '路线步骤'),
+                                          onTap: widget.onDirections,
+                                        ),
+                                        _ActionButton(
+                                          icon: Icons.settings_rounded,
+                                          label: _text('Settings', '设置'),
+                                          onTap: widget.onSettings,
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -937,9 +974,9 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }

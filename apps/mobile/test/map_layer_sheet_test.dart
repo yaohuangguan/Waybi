@@ -5,7 +5,7 @@ import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/widgets/map_layer_sheet.dart';
 
 void main() {
-  testWidgets('independent map can enable opt-in live traffic', (tester) async {
+  testWidgets('independent map can disable live traffic', (tester) async {
     MapLayerSettings? changed;
 
     await tester.pumpWidget(
@@ -25,17 +25,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Live traffic'), findsOneWidget);
-    expect(find.textContaining('Off by default'), findsOneWidget);
+    expect(find.textContaining('Traffic colors'), findsOneWidget);
 
     final trafficTile = tester.widget<SwitchListTile>(
       find.widgetWithText(SwitchListTile, 'Live traffic'),
     );
-    expect(trafficTile.value, isFalse);
+    expect(trafficTile.value, isTrue);
     expect(trafficTile.onChanged, isNotNull);
 
     await tester.tap(find.text('Live traffic'));
     await tester.pumpAndSettle();
 
-    expect(changed?.traffic, isTrue);
+    expect(changed?.traffic, isFalse);
   });
 }

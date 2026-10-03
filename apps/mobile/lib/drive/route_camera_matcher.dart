@@ -10,10 +10,12 @@ class RouteProjection {
     required this.alongMeters,
     required this.offsetMeters,
     required this.bearingDegrees,
+    this.point,
   });
   final double alongMeters;
   final double offsetMeters;
   final double bearingDegrees;
+  final GeoPoint? point;
 }
 
 class RouteCameraMatch {
@@ -39,11 +41,29 @@ class RouteCameraMatcher {
     List<GeoPoint> route, {
     double minAlongMeters = 0,
     double maxAlongMeters = double.infinity,
+    List<double>? cumulativeMeters,
+    double? headingDegrees,
   }) {
     if (route.length < 2) return null;
     RouteProjection? best;
     var travelled = 0.0;
-    for (var index = 0; index < route.length - 1; index++) {
+    var bestScore = double.infinity;
+    var firstSegment = 0;
+    if (cumulativeMeters != null) {
+      var low = 0, high = cumulativeMeters.length - 1;
+      while (low < high) {
+        final middle = (low + high) ~/ 2;
+        if (cumulativeMeters[middle] < minAlongMeters) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      firstSegment = math.max(0, low - 1);
+    }
+    for (var index = firstSegment; index < route.length - 1; index++) {
+      if (cumulativeMeters != null) travelled = cumulativeMeters[index];
+      if (travelled > maxAlongMeters) break;
       final start = route[index];
       final end = route[index + 1];
       final latitudeRadians = (start.latitude + end.latitude) * math.pi / 360;
@@ -53,12 +73,14 @@ class RouteCameraMatcher {
       final y = (point.latitude - start.latitude) * metresPerLatitude;
       final dx = (end.longitude - start.longitude) * metresPerLongitude;
       final dy = (end.latitude - start.latitude) * metresPerLatitude;
-      final segmentLength = distanceMeters(
-        start.latitude,
-        start.longitude,
-        end.latitude,
-        end.longitude,
-      );
+      final segmentLength = cumulativeMeters != null
+          ? cumulativeMeters[index + 1] - travelled
+          : distanceMeters(
+              start.latitude,
+              start.longitude,
+              end.latitude,
+              end.longitude,
+            );
       if (segmentLength <= 0 ||
           travelled + segmentLength < minAlongMeters ||
           travelled > maxAlongMeters) {
@@ -81,17 +103,28 @@ class RouteCameraMatcher {
         math.pow(x - fraction * dx, 2) + math.pow(y - fraction * dy, 2),
       );
       final along = travelled + segmentLength * fraction;
+      final bearing = bearingDegrees(
+        start.latitude,
+        start.longitude,
+        end.latitude,
+        end.longitude,
+      );
+      final score =
+          offset +
+          (headingDegrees == null
+              ? 0
+              : angleDifference(headingDegrees, bearing) / 180 * 25);
       if (along >= minAlongMeters &&
           along <= maxAlongMeters &&
-          (best == null || offset < best.offsetMeters)) {
+          score < bestScore) {
+        bestScore = score;
         best = RouteProjection(
           alongMeters: travelled + segmentLength * fraction,
           offsetMeters: offset,
-          bearingDegrees: bearingDegrees(
-            start.latitude,
-            start.longitude,
-            end.latitude,
-            end.longitude,
+          bearingDegrees: bearing,
+          point: GeoPoint(
+            start.latitude + (end.latitude - start.latitude) * fraction,
+            start.longitude + (end.longitude - start.longitude) * fraction,
           ),
         );
       }

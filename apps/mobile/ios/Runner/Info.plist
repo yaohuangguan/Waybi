@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -45,9 +49,12 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
+				<string>waybi</string>
 			</array>
 		</dict>
 	</array>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict><key>WaybiNavigation</key><string>Precise location keeps your navigation position on the correct road.</string></dict>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Waybi uses background location during active navigation so guidance can continue when the screen is locked.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
@@ -80,6 +87,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<string>audio</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

@@ -83,7 +83,19 @@ void main() {
     await tester.pump();
     expect(recenterCount, 1);
 
-    await tester.tap(find.byKey(const Key('navigationSheetHandle')));
+    // Drag from destination content, well outside the small handle.
+    final start = tester.getCenter(
+      find.text('Te Whatu Stardome Observatory & Planetarium'),
+    );
+    final gesture = await tester.startGesture(start);
+    await gesture.moveBy(const Offset(0, -45));
+    await tester.pump();
+    expect(
+      tester.getRect(find.byKey(const Key('navigationSheetHandle'))).top,
+      lessThan(start.dy - 40),
+    );
+    await gesture.moveBy(const Offset(0, -110));
+    await gesture.up();
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('Add a report'), findsOneWidget);

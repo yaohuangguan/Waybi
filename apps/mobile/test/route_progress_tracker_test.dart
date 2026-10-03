@@ -4,6 +4,32 @@ import 'package:waybi_mobile/drive/route_progress_tracker.dart';
 
 void main() {
   test(
+    'visible road projection follows curved geometry instead of GPS offset',
+    () {
+      final tracker = RouteProgressTracker(const [
+        GeoPoint(-36.86, 174.76),
+        GeoPoint(-36.859, 174.76),
+        GeoPoint(-36.859, 174.761),
+      ]);
+      final now = DateTime(2026, 10, 3);
+      final first = tracker.update(
+        const GeoPoint(-36.8595, 174.7601),
+        time: now,
+        speedKph: 30,
+      )!;
+      expect(first.offsetMeters, greaterThan(5));
+      expect(first.point!.longitude, closeTo(174.76, .000001));
+      final bend = tracker.update(
+        const GeoPoint(-36.85905, 174.7605),
+        time: now.add(const Duration(seconds: 5)),
+        speedKph: 30,
+      )!;
+      expect(bend.point!.latitude, closeTo(-36.859, .000001));
+      expect(bend.bearingDegrees, closeTo(90, 1));
+    },
+  );
+
+  test(
     'route crossing stays on current traversal instead of jumping ahead',
     () {
       final tracker = RouteProgressTracker(const [

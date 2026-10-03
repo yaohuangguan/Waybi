@@ -309,8 +309,8 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                                     ? widget.trafficStatus == 'live' &&
                                               widget.trafficSegmentCount > 0
                                           ? _text(
-                                              '${widget.trafficSegmentCount} road-matched sections',
-                                              '${widget.trafficSegmentCount} 段已贴路路况',
+                                              'Traffic colors · ${widget.trafficSegmentCount} covered road sections',
+                                              '交通颜色 · ${widget.trafficSegmentCount} 段路况',
                                             )
                                           : widget.trafficStatus == 'stale' &&
                                                 widget.trafficSegmentCount > 0
@@ -325,12 +325,12 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                                               '实时交通暂时不可用',
                                             )
                                           : _text(
-                                              'Loading published NZTA traffic…',
-                                              '正在加载 NZTA 公开路况…',
+                                              'Loading live traffic…',
+                                              '正在加载实时交通…',
                                             )
                                     : _text(
-                                        'Off by default · turn on for published NZTA traffic',
-                                        '默认关闭 · 开启后显示 NZTA 公开路况',
+                                        'Turn on to show traffic colors',
+                                        '开启后显示交通颜色',
                                       )
                               : _text(
                                   'Google Maps live traffic overlay',

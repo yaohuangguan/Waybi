@@ -84,6 +84,7 @@ class DriveEngine extends ChangeNotifier {
   RouteProjection? routeProgress;
   double locationAccuracyMeters = 10;
   int locationRevision = 0;
+  Position? latestPosition;
   Set<String> _highConfidenceCameraIds = const {};
   List<RouteCameraMatch> routeCameras = const [];
   List<SafetyCamera> get cameras => _cameras;
@@ -99,6 +100,11 @@ class DriveEngine extends ChangeNotifier {
   bool get roadIntelligenceStale => roadIntelligenceStatus == 'stale';
   int get routeCameraCount => routeCameras.length;
   LatLng? get snappedLocation => _lastSnappedLocation;
+  LatLng? get rawLocation => _lastRawLocation;
+  double? get rawHeadingDegrees => _rawHeadingDegrees;
+  LatLng? _lastRawLocation;
+  double? _rawHeadingDegrees;
+  bool _localNavigation = false;
   double? get snappedHeadingDegrees => _headingDegrees;
   LatLng? _lastSnappedLocation;
   LatLng? _lastSpeedLimitLocation;
@@ -171,7 +177,7 @@ class DriveEngine extends ChangeNotifier {
     error = null;
 
     await _voiceEngine.initialize();
-    await loadCameras(force: true);
+    unawaited(loadCameras(force: true));
 
     final snapped =
         await GoogleMapsNavigator.setRoadSnappedLocationUpdatedListener(
@@ -207,11 +213,21 @@ class DriveEngine extends ChangeNotifier {
 
     _subscriptions.add(
       Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
-          distanceFilter: 0,
-        ),
+        locationSettings: defaultTargetPlatform == TargetPlatform.iOS
+            ? AppleSettings(
+                accuracy: LocationAccuracy.bestForNavigation,
+                distanceFilter: 0,
+                activityType: ActivityType.automotiveNavigation,
+                pauseLocationUpdatesAutomatically: false,
+                showBackgroundLocationIndicator: true,
+                allowBackgroundLocationUpdates: true,
+              )
+            : const LocationSettings(
+                accuracy: LocationAccuracy.bestForNavigation,
+                distanceFilter: 0,
+              ),
       ).listen((position) {
+        latestPosition = position;
         final metresPerSecond = position.speed.isFinite && position.speed > 0
             ? position.speed
             : 0;
@@ -236,6 +252,7 @@ class DriveEngine extends ChangeNotifier {
   Future<void> startLocal() async {
     if (active || _disposed) return;
     ++_locationSession;
+    _localNavigation = true;
     if (!await Geolocator.isLocationServiceEnabled()) {
       throw StateError('Turn on location services to start driving');
     }
@@ -265,13 +282,16 @@ class DriveEngine extends ChangeNotifier {
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 0,
         intervalDuration: const Duration(seconds: 1),
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'Waybi Drive',
-          notificationText: 'Navigation and safety-camera alerts are active',
-          notificationChannelName: 'Waybi navigation',
-          enableWakeLock: true,
-          setOngoing: true,
-        ),
+        foregroundNotificationConfig: _route != null
+            ? null
+            : const ForegroundNotificationConfig(
+                notificationTitle: 'Waybi Drive',
+                notificationText:
+                    'Navigation and safety-camera alerts are active',
+                notificationChannelName: 'Waybi navigation',
+                enableWakeLock: true,
+                setOngoing: true,
+              ),
       ),
       TargetPlatform.iOS => AppleSettings(
         accuracy: LocationAccuracy.bestForNavigation,
@@ -310,11 +330,13 @@ class DriveEngine extends ChangeNotifier {
           }
 
           error = null;
+          latestPosition = position;
           locationAccuracyMeters = accepted.accuracyMeters;
           speedKph = metresPerSecond * 3.6;
           if (speedKph > 5 &&
               position.heading.isFinite &&
               position.heading >= 0) {
+            _rawHeadingDegrees = position.heading;
             _headingDegrees = position.heading;
           }
           _onLocation(
@@ -462,7 +484,8 @@ class DriveEngine extends ChangeNotifier {
     if (!active || _disposed) return;
     final fix = _roadSnappedFixCompleter;
     if (fix != null && !fix.isCompleted) fix.complete();
-    final previous = _lastSnappedLocation;
+    final previous = _lastRawLocation;
+    _lastRawLocation = current;
 
     if (previous != null) {
       final travelled = distanceMeters(
@@ -481,7 +504,35 @@ class DriveEngine extends ChangeNotifier {
       }
     }
 
-    _lastSnappedLocation = current;
+    // Keep raw GPS for deviation detection and rerouting. Only the display
+    // puck is snapped: otherwise a genuine missed turn would be concealed.
+    final routeForFix = _route;
+    routeProgress = routeForFix == null
+        ? null
+        : _progressTracker?.update(
+            GeoPoint(current.latitude, current.longitude),
+            time: DateTime.now(),
+            accuracyMeters: locationAccuracyMeters,
+            speedKph: speedKph,
+            headingDegrees: _rawHeadingDegrees,
+          );
+    final projection = routeProgress;
+    final aligned =
+        _rawHeadingDegrees == null ||
+        speedKph < 15 ||
+        projection == null ||
+        angleDifference(_rawHeadingDegrees!, projection.bearingDegrees) < 80;
+    final snapped = projection?.point;
+    final canSnap =
+        _localNavigation &&
+        aligned &&
+        snapped != null &&
+        projection!.offsetMeters <=
+            (locationAccuracyMeters * 1.4).clamp(12, 30);
+    _lastSnappedLocation = canSnap
+        ? LatLng(latitude: snapped.latitude, longitude: snapped.longitude)
+        : current;
+    if (canSnap && speedKph >= 5) _headingDegrees = projection.bearingDegrees;
     locationRevision++;
     final country = CountryProfiles.at(
       GeoPoint(current.latitude, current.longitude),
@@ -506,12 +557,7 @@ class DriveEngine extends ChangeNotifier {
     if (route != null) {
       final point = GeoPoint(current.latitude, current.longitude);
       final progress =
-          _progressTracker?.update(
-            point,
-            time: DateTime.now(),
-            accuracyMeters: locationAccuracyMeters,
-            speedKph: speedKph,
-          ) ??
+          routeProgress ??
           (_progressTracker == null
               ? _routeMatcher.project(point, route.points)
               : null);
@@ -782,6 +828,10 @@ class DriveEngine extends ChangeNotifier {
     speedLimitZoneName = null;
     _lastSpeedLimitLocation = null;
     _lastSnappedLocation = null;
+    _lastRawLocation = null;
+    latestPosition = null;
+    _rawHeadingDegrees = null;
+    _localNavigation = false;
     _roadSnappedFixCompleter = null;
     _lastSpeedLimitLookup = null;
     _lastRoadEventEvaluationAt = null;

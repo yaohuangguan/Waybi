@@ -30,11 +30,14 @@ class RouteRepository {
         if (mode != null) 'mode': mode.apiValue,
       },
     );
-    final response = await _client.get(uri);
+    final response = await _client
+        .get(uri)
+        .timeout(const Duration(seconds: 12));
     if (response.statusCode != 200) {
       throw StateError('Route preview failed: ${response.statusCode}');
     }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final options = (body['options'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(RouteOption.fromJson)

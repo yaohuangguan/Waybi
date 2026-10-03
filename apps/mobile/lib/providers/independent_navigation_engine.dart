@@ -107,6 +107,10 @@ class IndependentNavigationEngine extends ChangeNotifier
     _lastReroute = null;
     rerouting = false;
     error = null;
+    // Geolocator keeps the settings of its first active stream. Restart an
+    // existing Drive session before installing the route so Android uses the
+    // single navigation service rather than retaining a second notification.
+    if (drive.active) await drive.stop();
     _setRoute(route);
     try {
       await drive.startLocal();
@@ -131,7 +135,7 @@ class IndependentNavigationEngine extends ChangeNotifier
 
   void _onLocation() {
     final route = _route;
-    final location = drive.snappedLocation;
+    final location = drive.rawLocation ?? drive.snappedLocation;
     if (route == null ||
         !drive.active ||
         location == null ||
@@ -146,16 +150,21 @@ class IndependentNavigationEngine extends ChangeNotifier
     final now = _clock();
     offRoute =
         progress.offsetMeters >
-        math.max(35, drive.locationAccuracyMeters * 1.5);
+            math.max(30, drive.locationAccuracyMeters * 1.4) ||
+        (drive.speedKph >= 20 &&
+            drive.rawHeadingDegrees != null &&
+            progress.offsetMeters < 30 &&
+            angleDifference(drive.rawHeadingDegrees!, progress.bearingDegrees) >
+                120);
     if (offRoute) {
       _offRouteSince ??= now;
       _offRouteFixes++;
-      if (_offRouteFixes >= 3 &&
-          now.difference(_offRouteSince!).inSeconds >= 3 &&
+      if (_offRouteFixes >= 2 &&
+          now.difference(_offRouteSince!).inMilliseconds >= 1500 &&
           !rerouting &&
           reroute != null &&
           (_lastReroute == null ||
-              now.difference(_lastReroute!).inSeconds >= 15)) {
+              now.difference(_lastReroute!).inSeconds >= 5)) {
         unawaited(_reroute(point));
       }
       notifyListeners();
@@ -265,8 +274,12 @@ class IndependentNavigationEngine extends ChangeNotifier
     error = null;
     notifyListeners();
     try {
-      final replacement = await reroute!(point, previous, stops);
-      if (session != _session || _route == null) return;
+      final replacement = await reroute!(
+        point,
+        previous,
+        stops,
+      ).timeout(const Duration(seconds: 10));
+      if (session != _session || _route == null || !offRoute || arrived) return;
       if (replacement.provider != 'independent' ||
           replacement.mode != previous.mode ||
           replacement.points.length < 2) {
@@ -274,6 +287,8 @@ class IndependentNavigationEngine extends ChangeNotifier
       }
       _setRoute(replacement, preserveAlerts: true);
       _lastLocationRevision = -1;
+      rerouting = false;
+      _onLocation();
     } catch (_) {
       if (session == _session && _route != null) {
         error = 'Could not update route. Retrying when connected.';

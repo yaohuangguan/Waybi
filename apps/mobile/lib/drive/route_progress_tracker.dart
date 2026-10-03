@@ -7,9 +7,22 @@ import 'route_camera_matcher.dart';
 /// Tracks the local route corridor so a crossing or GPS jitter cannot jump
 /// straight to a later occurrence of the same road.
 class RouteProgressTracker {
-  RouteProgressTracker(this.points) : totalMeters = geometryLength(points);
+  RouteProgressTracker(this.points) : _cumulative = [0] {
+    for (var i = 1; i < points.length; i++) {
+      _cumulative.add(
+        _cumulative.last +
+            distanceMeters(
+              points[i - 1].latitude,
+              points[i - 1].longitude,
+              points[i].latitude,
+              points[i].longitude,
+            ),
+      );
+    }
+  }
   final List<GeoPoint> points;
-  final double totalMeters;
+  final List<double> _cumulative;
+  double get totalMeters => _cumulative.last;
   final RouteCameraMatcher _matcher = const RouteCameraMatcher();
   RouteProjection? _previous;
   GeoPoint? _lastPoint;
@@ -33,6 +46,7 @@ class RouteProgressTracker {
     required DateTime time,
     double accuracyMeters = 10,
     double speedKph = 0,
+    double? headingDegrees,
   }) {
     if (!point.isValid || !accuracyMeters.isFinite || accuracyMeters > 65) {
       return null;
@@ -63,6 +77,8 @@ class RouteProgressTracker {
       points,
       minAlongMeters: minAlong,
       maxAlongMeters: maxAlong,
+      cumulativeMeters: _cumulative,
+      headingDegrees: speedKph >= 15 ? headingDegrees : null,
     );
     if (projected == null) return null;
     if (projected.offsetMeters > math.max(35, accuracyMeters * 1.5)) {
@@ -72,6 +88,9 @@ class RouteProgressTracker {
       alongMeters: math.max(previous?.alongMeters ?? 0, projected.alongMeters),
       offsetMeters: projected.offsetMeters,
       bearingDegrees: projected.bearingDegrees,
+      point: projected.alongMeters < (previous?.alongMeters ?? 0)
+          ? previous?.point
+          : projected.point,
     );
     _previous = progress;
     _lastPoint = point;

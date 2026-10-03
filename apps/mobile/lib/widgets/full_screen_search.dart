@@ -1,4 +1,5 @@
 import 'place_sources_sheet.dart';
+import 'companion_search_prompt.dart';
 import '../theme/waybi_theme.dart';
 
 import 'dart:async';
@@ -19,6 +20,7 @@ class FullScreenSearch extends StatefulWidget {
     this.currentLocation,
     this.initialQuery = '',
     this.onDriveMode,
+    this.marker = LocationMarkerStyle.kiwi,
   });
 
   final SearchProvider provider;
@@ -28,6 +30,7 @@ class FullScreenSearch extends StatefulWidget {
   final GeoPoint? currentLocation;
   final String initialQuery;
   final VoidCallback? onDriveMode;
+  final LocationMarkerStyle marker;
 
   @override
   State<FullScreenSearch> createState() => _FullScreenSearchState();
@@ -195,7 +198,11 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                   width: 1.8,
                 ),
               ),
-              hintText: _text('Where to?', '去哪儿？'),
+              hintText: _text('Where to?', '去哪里？'),
+              prefixIcon: Padding(
+                padding: const EdgeInsets.all(8),
+                child: CompanionAvatar(marker: widget.marker, size: 32),
+              ),
             ),
             onChanged: _search,
             onSubmitted: (value) => _search(value, immediate: true),

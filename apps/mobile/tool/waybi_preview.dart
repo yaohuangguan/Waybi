@@ -80,9 +80,9 @@ class _PreviewState extends State<_Preview> {
                     ),
                     ButtonSegment(
                       value: LocationMarkerStyle.cat,
-                      label: const Text('Caity'),
+                      label: const Text('Clover'),
                       icon: Image.asset(
-                        'assets/markers/caity.png',
+                        'assets/markers/clover.png',
                         width: 40,
                         height: 40,
                       ),

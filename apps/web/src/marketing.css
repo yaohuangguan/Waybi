@@ -166,3 +166,21 @@ html[lang^='zh'] h2 { line-height: 1.3; letter-spacing: -.02em; }
   html[lang^='zh'] .hero h1 { font-size: 42px; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .button { transition: none; } }
+
+.download { scroll-margin-top: 30px; }
+.download .eyebrow { color: #d0f58a; margin-bottom: 20px; }
+.release-note { display: block; max-width: 440px; color: #ccdabd; margin-top: 16px; line-height: 1.7; }
+.store-button:disabled { opacity: .9; cursor: default; }
+.companions { padding: 84px 0 16px; }
+.companions > p { color: var(--text-secondary); line-height: 1.8; }
+.companion-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 32px; }
+.companion { display: flex; align-items: center; gap: 24px; padding: 28px; border-radius: 28px; min-width: 0; }
+.companion.clover { background: #f6e8dc; }
+.companion.sett { background: #e9efd9; }
+.companion img { width: 145px; height: 145px; object-fit: contain; flex: none; }
+.companion span { color: var(--text-secondary); font-size: 11px; letter-spacing: .05em; }
+.companion h3 { font-size: 30px; margin: 8px 0 10px; }
+.companion p { font-size: 14px; line-height: 1.7; margin: 0; color: var(--text-secondary); }
+@media (max-width: 1000px) { .companion { flex-direction: column; align-items: flex-start; gap: 16px; } }
+@media (max-width: 640px) { .companion-grid { grid-template-columns: 1fr; } .companion { flex-direction: row; padding: 22px; gap: 18px; } .companion img { width: 100px; height: 100px; } .companions { padding-top: 60px; } }
+@media (max-width: 380px) { .companion { flex-direction: column; } }

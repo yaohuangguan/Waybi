@@ -60,6 +60,7 @@ import 'widgets/drive_hud.dart';
 import 'widgets/explore_search.dart';
 import 'widgets/explore_page.dart';
 import 'widgets/full_screen_search.dart';
+import 'widgets/companion_search_prompt.dart';
 import 'widgets/navigation_overlay.dart';
 import 'widgets/place_details_content.dart';
 import 'widgets/profile_page.dart';
@@ -2135,7 +2136,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final height = MediaQuery.sizeOf(context).height;
     final deckHeight = expanded
         ? (height * .72).clamp(430.0, 660.0)
-        : (height * .36).clamp(245.0, 310.0);
+        : (height * .38).clamp(285.0, 340.0);
     return deckHeight + MediaQuery.paddingOf(context).bottom + 24;
   }
 
@@ -3631,6 +3632,30 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _loadIndependentPlaceDetails(PlaceSummary place) async {
+    final request = ++_placeDetailsRequest;
+    setState(() {
+      _placeDetails = null;
+      _placeDetailsLoading = true;
+      _placeDetailsError = null;
+    });
+    try {
+      final details = await _placeDetailsRepository.fetchIndependent(place);
+      if (!mounted ||
+          request != _placeDetailsRequest ||
+          _mapProvider != MapProvider.independent) {
+        return;
+      }
+      setState(() {
+        _placeDetails = details;
+        _placeDetailsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || request != _placeDetailsRequest) return;
+      setState(() => _placeDetailsLoading = false);
+    }
+  }
+
   void _onPoiClicked(PointOfInterest poi) {
     if (_driveEngine.active || _transitTripRunning) return;
     _selectPlace(
@@ -3645,7 +3670,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
-  void _selectPlace(PlaceSummary place, SelectionSource source) {
+  void _selectPlace(
+    PlaceSummary place,
+    SelectionSource source, {
+    PlaceDetails? seedDetails,
+  }) {
     if (_driveEngine.active || _transitTripRunning) return;
     if (!const ProviderPolicy(MapProvider.google).canDisplay(place.reference) &&
         _mapProvider == MapProvider.google) {
@@ -3681,9 +3710,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     });
     if (place.reference?.provider == 'google') {
       unawaited(_loadPlaceDetails(_selectedPoi!));
+    } else if (_mapProvider == MapProvider.independent && seedDetails == null) {
+      unawaited(_loadIndependentPlaceDetails(place));
     } else {
       _placeDetailsRequest++;
-      _placeDetails = null;
+      _placeDetails = seedDetails;
       _placeDetailsLoading = false;
       _placeDetailsError = null;
     }
@@ -4679,6 +4710,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             return candidate.toPlace(candidate.location!);
           },
           language: _appLanguage,
+          marker: _locationMarker,
           recent: const [],
           currentLocation: current == null
               ? null
@@ -5118,6 +5150,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             );
           },
           language: _appLanguage,
+          marker: _locationMarker,
           currentLocation: !_following || _showSearchArea
               ? _viewport.center
               : _gpsLocation == null
@@ -5521,6 +5554,24 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         reference: ProviderReference(place.provider, place.placeId),
       ),
       SelectionSource.explore,
+      seedDetails:
+          _mapProvider == MapProvider.independent &&
+              place.photoUrl?.isNotEmpty == true
+          ? PlaceDetails.fromJson({
+              'placeId': place.placeId,
+              'name': place.name,
+              'address': place.address,
+              'primaryType': place.primaryType,
+              'photos': [
+                {
+                  'url': place.photoUrl,
+                  'attribution': place.photoAttribution,
+                  'sourceUrl': place.photoCredit?['sourceUrl'] ?? '',
+                  'licenseUrl': place.photoCredit?['licenseUrl'] ?? '',
+                },
+              ],
+            })
+          : null,
     );
   }
 
@@ -6044,91 +6095,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface
-                            .withValues(alpha: .96),
-                        borderRadius: BorderRadius.circular(19),
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.primary
-                              .withValues(alpha: .25),
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x1820351C),
-                            blurRadius: 18,
-                            offset: Offset(0, 7),
-                          ),
-                        ],
-                      ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(19),
-                        onTap: _showGoSearch,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(9, 8, 12, 8),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 39,
-                                height: 39,
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      WaybiColors.ocean,
-                                      WaybiColors.teal,
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(13),
-                                ),
-                                child: const Icon(
-                                  Icons.explore_rounded,
-                                  color: Colors.white,
-                                  size: 22,
-                                ),
-                              ),
-                              const SizedBox(width: 11),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      _text('Where to?', '去哪儿？'),
-                                      style: TextStyle(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurface,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    Text(
-                                      _text(
-                                        'Navigate Aotearoa with Waybi',
-                                        '用 Waybi 探索新西兰',
-                                      ),
-                                      style: TextStyle(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(
-                                Icons.arrow_forward_rounded,
-                                color: WaybiColors.ocean,
-                                size: 19,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    CompanionSearchPrompt(
+                      marker: _locationMarker,
+                      language: _appLanguage,
+                      onSearch: (query) => unawaited(_openSearch(query: query)),
                     ),
                     const SizedBox(height: 9),
                     _buildQuickActions(),

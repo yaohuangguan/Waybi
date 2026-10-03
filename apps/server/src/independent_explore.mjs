@@ -66,13 +66,13 @@ export function commonsPhoto(page) {
   const licenseUrl = meta.LicenseUrl?.value || '';
   const url = image?.thumburl || image?.url || '';
   // Only known freely reusable licenses and Wikimedia-hosted media are allowed.
-  if (!/^(CC BY(?:-SA)? \d\.\d|CC0(?: 1\.0)?|Public domain)$/i.test(license) || !/^https:\/\/upload\.wikimedia\.org\//.test(url)) return null;
+  if (!/^(CC BY(?:-SA)? \d\.\d(?: [a-z]{2})?|CC0(?: 1\.0)?|Public domain)$/i.test(license) || !/^https:\/\/upload\.wikimedia\.org\//.test(url)) return null;
   if (license.startsWith('CC BY') && !/^https:\/\/creativecommons\.org\//.test(licenseUrl)) return null;
   const author = plain(meta.Artist?.value || meta.Credit?.value) || 'Wikimedia Commons';
   return { photoUrl: url, photoAttribution: `${author} · ${license}`,
     photoCredit: { author, license, licenseUrl, sourceUrl: image.descriptionurl || '', source: 'Wikimedia Commons' } };
 }
-async function addPhotos(places, point, fetcher) {
+export async function enrichPlacePhotos(places, point, fetcher, { radius = RADIUS, includeLandmarks = true } = {}) {
   const files = new Map();
   for (const p of places) if (p.commons) files.set(p.placeId, p.commons);
   const ids = [...new Set(places.map(p => p.wikidata).filter(Boolean))].slice(0, 50);
@@ -84,19 +84,20 @@ async function addPhotos(places, point, fetcher) {
       }
     }) : Promise.resolve();
   const wikiTask = getJson(api('en.wikipedia.org', {
-    generator: 'geosearch', ggscoord: `${point[1]}|${point[0]}`, ggsradius: String(RADIUS), ggslimit: '30', ggsnamespace: '0',
-    prop: 'pageimages|coordinates|pageprops', piprop: 'name', colimit: 'max',
+    generator: 'geosearch', ggscoord: `${point[1]}|${point[0]}`, ggsradius: String(radius), ggslimit: '30', ggsnamespace: '0',
+    prop: 'pageimages|coordinates|pageprops|pageterms', wbptterms: 'label|alias', piprop: 'name', colimit: 'max',
   }), fetcher).then(data => {
     for (const page of data.query?.pages || []) {
       if (!page.pageimage) continue;
       const coordinate = page.coordinates?.find(c => c.primary) || page.coordinates?.[0];
       const normalized = name => String(name || '').split(/[,(]/)[0].toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
       const matches = places.filter(p => (p.wikidata && p.wikidata === page.pageprops?.wikibase_item) || p.wikipedia === `en:${page.title}` ||
-        (coordinate && normalized(p.englishName || p.name).length > 4 && normalized(p.englishName || p.name) === normalized(page.title) &&
+        (coordinate && normalized(p.englishName || p.name).length > 4 &&
+          [page.title, ...(page.terms?.label || []), ...(page.terms?.alias || [])].some(name => normalized(p.englishName || p.name) === normalized(name)) &&
           distance([p.longitude, p.latitude], [coordinate.lon, coordinate.lat]) < 150));
       for (const p of matches) files.set(p.placeId, `File:${page.pageimage}`);
       // Geotagged, photographed landmarks expand discovery beyond businesses.
-      if (!matches.length && coordinate && !page.pageprops?.disambiguation && distance(point, [coordinate.lon, coordinate.lat]) <= RADIUS) {
+      if (includeLandmarks && !matches.length && coordinate && !page.pageprops?.disambiguation && distance(point, [coordinate.lon, coordinate.lat]) <= radius) {
         const place = { placeId: `wikipedia:en:${page.pageid}`, provider: 'osm', name: page.title, address: '', primaryType: 'activities',
           latitude: coordinate.lat, longitude: coordinate.lon, photoUrl: null, photoAttribution: '', photoCredit: null };
         places.push(place); files.set(place.placeId, `File:${page.pageimage}`);
@@ -145,7 +146,7 @@ async function loadNearby(env, point, language, fetcher) {
   places ??= normalizeNearby(raw.elements, cell, language);
   // Bound response/cache size while keeping a useful pool for each category.
   const pool = GROUPS.flatMap(group => selectNearby(places, cell, group).slice(0, 20));
-  await addPhotos(pool, cell, fetcher).catch(() => {});
+  await enrichPlacePhotos(pool, cell, fetcher).catch(() => {});
   if (pool.length) {
     await env.CAMERA_DATA?.put(key, JSON.stringify(pool), { expirationTtl: 86400 });
     await env.CAMERA_DATA?.put(`${key}:previous`, JSON.stringify(pool), { expirationTtl: 2592000 });

@@ -177,12 +177,17 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
     super.dispose();
   }
 
-  void _toggleSheet() {
-    _sheetController.animateTo(
-      expanded ? _minExtent : _maxExtent,
+  Future<void> _toggleSheet() async {
+    final next = !expanded;
+    await _sheetController.animateTo(
+      next ? _maxExtent : _minExtent,
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutCubic,
     );
+    // Header controls can change the available extent while opening. When
+    // closing, the controller may already be at its new minimum and emit no
+    // notification; preserve the user's tap intent in that case as well.
+    if (mounted) setState(() => expanded = next);
   }
 
   ImageDescriptor? _laneDescriptor;
@@ -650,7 +655,14 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                 child: SizedBox(
                   child: NotificationListener<DraggableScrollableNotification>(
                     onNotification: (notification) {
-                      final open = notification.extent > _minExtent + .01;
+                      // On short screens the header can leave only a tiny
+                      // resize range. Tapping the handle must still reveal the
+                      // scrollable trip tools when that range is below 1%.
+                      final threshold = ((_maxExtent - _minExtent) / 2).clamp(
+                        0.0,
+                        .01,
+                      );
+                      final open = notification.extent > _minExtent + threshold;
                       if (open != expanded) setState(() => expanded = open);
                       WidgetsBinding.instance.addPostFrameCallback(
                         (_) => _reportBottomInset(),

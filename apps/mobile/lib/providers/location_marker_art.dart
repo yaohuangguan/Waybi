@@ -197,18 +197,41 @@ class LocationMarkerArt {
     final bytes = await rootBundle.load('assets/markers/$name.png');
     final codec = await ui.instantiateImageCodec(
       bytes.buffer.asUint8List(),
-      targetWidth: 96,
-      targetHeight: 96,
+      targetWidth: 192,
+      targetHeight: 192,
     );
     final frame = await codec.getNextFrame();
     codec.dispose();
-    final png = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    // Keep the source character transparent for settings and the website.
+    // Only the map puck gets a round backdrop, so it stays clear over roads.
+    canvas.drawCircle(const Offset(48, 48), 45, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      const Offset(48, 48),
+      42,
+      Paint()
+        ..color = name == 'clover'
+            ? const Color(0xFFFFE0E5)
+            : const Color(0xFFDDF2FF),
+    );
+    canvas.drawImageRect(
+      frame.image,
+      Rect.fromLTWH(
+        0,
+        0,
+        frame.image.width.toDouble(),
+        frame.image.height.toDouble(),
+      ),
+      const Rect.fromLTWH(8, 8, 80, 80),
+      Paint()..filterQuality = FilterQuality.high,
+    );
     frame.image.dispose();
-    return png!.buffer.asUint8List();
+    return _export(recorder, 96);
   }
 
   static Future<Uint8List> _draw(LocationMarkerStyle style) async {
-    if (style == LocationMarkerStyle.cat) return _drawCompanion('caity');
+    if (style == LocationMarkerStyle.cat) return _drawCompanion('clover');
     if (style == LocationMarkerStyle.dog) return _drawCompanion('sett');
     const size = 96.0;
     final recorder = ui.PictureRecorder();

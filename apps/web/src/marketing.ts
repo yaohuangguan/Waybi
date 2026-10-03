@@ -1,14 +1,24 @@
 import './marketing.css';
 
+function storeLink(value: string | undefined): string {
+  try {
+    const url = new URL(value || '');
+    return url.protocol === 'https:' && url.hostname === 'apps.apple.com'
+      && !url.username && !url.password && !url.port
+      && /\/id\d+(?:\/|$)/.test(url.pathname) ? url.href : '';
+  } catch { return ''; }
+}
+const appStoreUrl = storeLink(import.meta.env.VITE_APP_STORE_URL);
+
 let language = localStorage.getItem('waybi-language') === 'zh' ? 'zh' : 'en';
 const bird = `<svg class="waybi" viewBox="0 0 120 110" aria-hidden="true"><path fill="currentColor" d="M18 57c0-22 16-36 37-36 13 0 23 5 30 15 3-9 10-15 19-15 11 0 17 9 16 18-1 10-8 16-17 18l-16 4C85 79 70 91 48 89 28 88 18 76 18 57Z" transform="translate(-8 0)"/><path d="m98 45 21 8-24 1M44 87l-4 14m0 0-10 3m10-3 8 4m17-19 2 14m0 0-8 4m8-4 10 2" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="94" cy="35" r="3" fill="#F8FBEF"/><path d="M37 48c8-8 17-7 24-2" fill="none" stroke="#F8FBEF" stroke-width="3" stroke-linecap="round"/></svg>`;
 const logo = `<img src="/brand/waybi-lockup.svg" alt="Waybi" width="171" height="44" />`;
 const copy = {
   en: {
-    skip: 'Skip to content', nav: ['The experience', 'Road awareness', 'Good to know'], open: 'Open map', menu: 'Menu',
+    skip: 'Skip to content', nav: ['The experience', 'Road awareness', 'Good to know'], open: 'Get the app', menu: 'Menu',
     eyebrow: 'A little local knowledge. A lot more Waybi.', title: 'Your map.<br>A little more<br><em>Waybi.</em>',
     lead: 'Familiar maps, thoughtful navigation, and a friend who knows what’s ahead. Meet your new travelling companion for New Zealand roads.',
-    start: 'Find your way', discover: 'Meet Waybi', note: 'Open in your browser. No account needed.',
+    start: 'Get Waybi for iPhone', discover: 'Meet Waybi', note: 'For iPhone. Coming soon to the App Store.',
     sticker: 'Small bird.<br>Big adventure.', preview: 'Interface preview · sample route', lane: 'USE LANE', turn: 'Turn left onto Queen Street', camera: 'Safety camera ahead', destination: 'Waybi Cafe', minutes: '6 min', distance: '2.4 km', cameras: '2', labels: ['To go', 'Distance', 'Cameras'], chips: ['Voice ✓', 'Lanes ✓', 'Overview'],
     promises: ['Made for Aotearoa', 'Official NZ camera data', 'English & 中文'],
     featuresLabel: 'A NICER WAY TO GET THERE', featuresTitle: 'A clearer road.<br>A calmer journey.', featuresLead: 'The useful details, right where you need them. With a little Waybi personality along the way.',
@@ -22,18 +32,18 @@ const copy = {
     demo: 'Camera · 300 m', demoRoad: 'Queen Street · sample alert', source: 'Explore the NZTA source', sourceNote: 'Fixed camera data comes from NZ Transport Agency Waka Kotahi. Road signs and current conditions always come first.',
     faqLabel: 'BEFORE YOU SET OFF', faqTitle: 'Good to know.',
     faqs: [
-      ['Can I try it without an account?', 'Yes. Open the map, choose a destination and explore routes as a guest. Sign in to your dashboard when you want saved places and trip history.'],
-      ['Is this Google Maps?', 'Waybi uses Google Maps for mapping and routing, with its own navigation interface and New Zealand camera awareness. Google’s required attribution remains visible.'],
+      ['Can I try it without an account?', 'Yes. Open the app, choose a destination and explore routes as a guest. Sign in to your dashboard when you want saved places and trip history.'],
+      ['Is this Google Maps?', 'Waybi offers Google Maps and its own independent map, with a shared navigation interface and New Zealand camera awareness. Google’s required attribution remains visible.'],
       ['What about lane guidance and camera coverage?', 'Lane guidance appears when the navigation provider supplies it. Camera data covers published fixed safety cameras; it does not describe every road hazard, camera direction or enforcement lane.'],
-      ['Does the screen stay awake?', 'The keep-screen-on setting is enabled by default during navigation. On the web, it works when your browser supports screen wake lock and the page is visible.'],
+      ['Does the screen stay awake?', 'The keep-screen-on setting is enabled by default during navigation. Your iPhone stays awake while navigation is on screen.'],
     ],
-    cta: 'Good roads.<br>Great little companion.', ctaLead: 'Your next adventure starts with a destination.', ctaButton: 'Let’s go, Waybi', footer: 'A little more awareness. A little more Waybi.', links: ['Navigator', 'Dashboard', 'Contact'], disclaimer: 'Navigation and camera information are driving aids. Follow road signs, current conditions and New Zealand law.',
+    cta: 'Good roads.<br>Great little companion.', ctaLead: 'Your next adventure starts with a destination.', ctaButton: 'Let’s go, Waybi', footer: 'A little more awareness. A little more Waybi.', links: ['Get the app', 'Dashboard', 'Contact'], disclaimer: 'Navigation and camera information are driving aids. Follow road signs, current conditions and New Zealand law.',
   },
   zh: {
-    skip: '跳转到正文', nav: ['导航体验', '沿途提醒', '出发前了解'], open: '打开地图', menu: '菜单',
+    skip: '跳转到正文', nav: ['导航体验', '沿途提醒', '出发前了解'], open: '获取 App', menu: '菜单',
     eyebrow: '懂一点本地路况，多一点 Waybi 陪伴。', title: '熟悉的地图，<br><em>多一点 Waybi。</em>',
     lead: '好用的地图，贴心的导航，还有一只知道前方路况的小伙伴。和 Waybi 一起，轻松探索新西兰的每一段路。',
-    start: '规划我的路线', discover: '认识 Waybi', note: '浏览器直接打开，无需注册。',
+    start: '获取 iPhone 版 Waybi', discover: '认识 Waybi', note: 'iPhone 版，即将登陆 App Store。',
     sticker: '小小 Waybi，<br>大大冒险。', preview: '界面示意 · 示例路线', lane: '推荐车道', turn: '左转，驶向 Queen Street', camera: '前方摄像头', destination: 'Waybi 咖啡馆', minutes: '6 分钟', distance: '2.4 公里', cameras: '2', labels: ['剩余时间', '剩余距离', '沿途摄像头'], chips: ['语音 ✓', '车道 ✓', '路线总览'],
     promises: ['为新西兰道路设计', '官方摄像头公开数据', '中文与 English'],
     featuresLabel: '让每一程，都舒服一点', featuresTitle: '看清前方，<br>从容出发。', featuresLead: '有用的信息，放在刚好看得见的位置。再加一点 Waybi 的可爱与陪伴。',
@@ -47,12 +57,12 @@ const copy = {
     demo: '摄像头 · 300 米', demoRoad: 'Queen Street · 示例提醒', source: '查看 NZTA 数据来源', sourceNote: '固定摄像头数据来自新西兰交通局 Waka Kotahi。请始终以道路标志和实际路况为准。',
     faqLabel: '出发之前', faqTitle: '你可能想了解。',
     faqs: [
-      ['不注册也能使用吗？', '可以。直接打开地图，选择目的地，以访客身份探索路线。需要保存地点或查看行程记录时，再登录你的个人面板。'],
-      ['这是 Google Maps 吗？', 'Waybi 使用 Google Maps 的地图与路线服务，配上自己的导航界面和新西兰摄像头提醒。Google 要求的地图署名会保持可见。'],
+      ['不注册也能使用吗？', '可以。打开 App，选择目的地，以访客身份探索路线。需要保存地点或查看行程记录时，再登录你的个人面板。'],
+      ['这是 Google Maps 吗？', 'Waybi 提供 Google Maps 和自研地图两种选择，配上自己的导航界面和新西兰摄像头提醒。Google 要求的地图署名会保持可见。'],
       ['车道信息和摄像头覆盖范围如何？', '导航服务提供车道数据时，界面会展示推荐车道。摄像头数据覆盖官方公布的固定摄像头，不代表所有道路风险，也不包含测速方向或执法车道。'],
-      ['导航时屏幕会保持亮起吗？', '导航常亮设置默认开启。在网页端，需要浏览器支持屏幕唤醒锁，并保持页面可见。'],
+      ['导航时屏幕会保持亮起吗？', '导航常亮设置默认开启。在 iPhone 上显示导航时，屏幕会保持亮起。'],
     ],
-    cta: '好走的路，<br>可爱的小伙伴。', ctaLead: '下一段小冒险，从选个目的地开始。', ctaButton: '走吧，Waybi', footer: '多一点前方信息，多一点 Waybi 陪伴。', links: ['导航地图', '个人面板', '联系我们'], disclaimer: '导航和摄像头信息仅作为驾驶辅助。请遵守道路标志、实际路况和新西兰交通法规。',
+    cta: '好走的路，<br>可爱的小伙伴。', ctaLead: '下一段小冒险，从选个目的地开始。', ctaButton: '走吧，Waybi', footer: '多一点前方信息，多一点 Waybi 陪伴。', links: ['获取 App', '个人面板', '联系我们'], disclaimer: '导航和摄像头信息仅作为驾驶辅助。请遵守道路标志、实际路况和新西兰交通法规。',
   },
 };
 
@@ -76,7 +86,7 @@ function render() {
         </nav>
         <div class="header-actions">
           <button class="language" type="button" aria-label="${language === 'zh' ? 'Switch to English' : '切换到中文'}">${language === 'zh' ? 'EN' : '中文'}</button>
-          <a class="button small" href="/app">${c.open}<span aria-hidden="true">↗</span></a>
+          <a class="button small" href="#download">${c.open}<span aria-hidden="true">↗</span></a>
           <button class="menu" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="${c.menu}">☰</button>
         </div>
       </header>
@@ -86,7 +96,7 @@ function render() {
             <span class="eyebrow"><i></i>${c.eyebrow}</span>
             <h1>${c.title}</h1>
             <p class="hero-lead">${c.lead}</p>
-            <div class="hero-actions"><a class="button" href="/app">${c.start}<span aria-hidden="true">↗</span></a><a class="text-link" href="#experience">${c.discover}<span aria-hidden="true">↓</span></a></div>
+            <div class="hero-actions"><a class="button" href="#download">${c.start}<span aria-hidden="true">↗</span></a><a class="text-link" href="#experience">${c.discover}<span aria-hidden="true">↓</span></a></div>
             <div class="hero-note">${bird}<span>${c.note}</span></div>
           </div>
           <div class="preview" role="img" aria-label="${c.preview}: ${c.turn}; ${c.camera} 300 m">
@@ -111,9 +121,25 @@ function render() {
           <div class="safety-copy"><span class="eyebrow">${c.safetyLabel}</span><h2>${c.safetyTitle}</h2><p>${c.safetyLead}</p><ul class="safety-list">${c.safetyItems.map(item => `<li><b aria-hidden="true">✓</b>${item}</li>`).join('')}</ul><a class="text-link" href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" target="_blank" rel="noopener noreferrer">${c.source}<span aria-hidden="true">↗</span></a><div class="source-note">${c.sourceNote}</div></div>
         </section>
         <section class="faq" id="faq"><div><span class="eyebrow">${c.faqLabel}</span><h2>${c.faqTitle}</h2></div><div>${c.faqs.map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join('')}</div></section>
-        <section class="cta"><div><h2>${c.cta}</h2><p>${c.ctaLead}</p><a class="button lime" href="/app">${c.ctaButton}<span aria-hidden="true">↗</span></a></div>${bird}</section>
+        <section class="download cta" id="download" aria-labelledby="download-title">
+          <div><span class="eyebrow">${language === 'zh' ? 'WAYBI · IPHONE 版' : 'WAYBI FOR IPHONE'}</span>
+            <h2 id="download-title">${language === 'zh' ? '把 Waybi，<br>带上你的下一程。' : 'Your next adventure.<br>With Waybi along.'}</h2>
+            <p>${language === 'zh' ? '熟悉的转向提示，贴心的道路提醒，还有你选的小伙伴。' : 'Clear turns, thoughtful road reminders, and a little companion of your own.'}</p>
+            ${appStoreUrl ? `<a class="button lime store-button" href="${appStoreUrl}" target="_blank" rel="noopener noreferrer">${language === 'zh' ? '在 App Store 下载' : 'Download on the App Store'} <span aria-hidden="true">↗</span></a>` : `<button class="button lime store-button" type="button" disabled>${language === 'zh' ? 'App Store · 即将上线' : 'Coming soon on the App Store'}</button>`}
+            <small class="release-note">${appStoreUrl ? (language === 'zh' ? '在 iPhone 上开启你的下一程。' : 'Start your next journey on iPhone.') : (language === 'zh' ? '目前尚未上架。发布后，这里将直接通往 App Store。' : 'Not listed yet. This will take you straight to the App Store when Waybi launches.')}</small>
+          </div>${bird}
+        </section>
+        <section class="companions" aria-labelledby="companions-title">
+          <span class="eyebrow">${language === 'zh' ? '你的旅途小伙伴' : 'A LITTLE COMPANY FOR THE ROAD'}</span>
+          <h2 id="companions-title">${language === 'zh' ? '认识 Clover 和 Sett。' : 'Meet Clover and Sett.'}</h2>
+          <p>${language === 'zh' ? '一只好奇的猫，一只可靠的狗。选个小伙伴，陪你一路向前。' : 'One curious cat. One loyal dog. Choose a map companion that feels like you.'}</p>
+          <div class="companion-grid">
+            <article class="companion clover"><img src="/brand/clover.png" alt="Clover" width="180" height="180" loading="lazy" /><div><span>${language === 'zh' ? '好奇的小猫' : 'THE CURIOUS CAT'}</span><h3>Clover</h3><p>${language === 'zh' ? '总想看看下一个转角。和你一起，发现路上的小惊喜。' : 'Always wondering what is around the next corner. For the little detours that become good stories.'}</p></div></article>
+            <article class="companion sett"><img src="/brand/sett.png" alt="Sett" width="180" height="180" loading="lazy" /><div><span>${language === 'zh' ? '可靠的小狗' : 'YOUR LOYAL COPILOT'}</span><h3>Sett</h3><p>${language === 'zh' ? '每一段路，都陪在你身边。不管远近，出发就很开心。' : 'Happy to be along for the ride. From everyday errands to the long way home, Sett is right beside you.'}</p></div></article>
+          </div>
+        </section>
       </main>
-      <footer class="footer"><a class="brand" href="/">${logo}</a><div class="footer-links">${c.links.map((label, i) => `<a href="${['/app', '/dashboard', 'https://github.com/yaohuangguan/Waybi/issues'][i]}">${label}</a>`).join('')}</div><p>${c.footer}<br>${c.disclaimer}</p><small>© ${new Date().getFullYear()} Waybi</small></footer>
+      <footer class="footer"><a class="brand" href="/">${logo}</a><div class="footer-links">${c.links.map((label, i) => `<a href="${['#download', '/dashboard', 'https://github.com/yaohuangguan/Waybi/issues'][i]}">${label}</a>`).join('')}</div><p>${c.footer}<br>${c.disclaimer}</p><small>© ${new Date().getFullYear()} Waybi</small></footer>
     </div>`;
   document.querySelector('.language')?.addEventListener('click', () => {
     language = language === 'zh' ? 'en' : 'zh';

@@ -19,10 +19,10 @@ Map<String, dynamic> kiwiMapStyle(
     openMapTiles['attribution'] =
         '© OpenStreetMap contributors · © OpenMapTiles · Routing: OSRM';
   }
-  final paper = dark ? '#192329' : '#f7f7f2';
-  final park = dark ? '#294333' : '#cfe8c1';
-  final water = dark ? '#204557' : '#add5ed';
-  final text = dark ? '#d9e4e8' : '#40505e';
+  final paper = dark ? '#192329' : '#f6f7f8';
+  final park = dark ? '#294333' : '#edf2ea';
+  final water = dark ? '#204557' : '#e5eef3';
+  final text = dark ? '#d9e4e8' : '#59636b';
   final names = <dynamic>[
     'coalesce',
     if (language == 'zh') ['get', 'name:zh'],
@@ -44,12 +44,12 @@ Map<String, dynamic> kiwiMapStyle(
           : id.contains('park') || id.contains('wood')
           ? park
           : id.contains('building')
-          ? (dark ? '#334148' : '#e3e0d8')
+          ? (dark ? '#334148' : '#e9ebed')
           : id.contains('ice') || id.contains('glacier')
-          ? (dark ? '#45555e' : '#e9f1f5')
-          : (dark ? '#222e34' : '#efefe8');
+          ? (dark ? '#45555e' : '#f0f3f5')
+          : (dark ? '#222e34' : '#f1f2f3');
       if (id == 'building') {
-        paint['fill-outline-color'] = dark ? '#405059' : '#d1cdc3';
+        paint['fill-outline-color'] = dark ? '#405059' : '#dde0e3';
       }
     }
     if (type == 'line') {
@@ -59,17 +59,17 @@ Map<String, dynamic> kiwiMapStyle(
       paint['line-color'] = id.contains('water')
           ? water
           : id.contains('boundary') || id.contains('railway')
-          ? (dark ? '#53626a' : '#b8c2c4')
+          ? (dark ? '#53626a' : '#c8cdd1')
           : motorway
           ? (casing
-                ? (dark ? '#424b52' : '#50555b')
-                : (dark ? '#65717a' : '#747a81'))
+                ? (dark ? '#424b52' : '#c9cdd1')
+                : (dark ? '#65717a' : '#e1e4e7'))
           : major
           ? (casing
-                ? (dark ? '#71633f' : '#dfcf92')
-                : (dark ? '#998255' : '#ffedb3'))
+                ? (dark ? '#59656c' : '#d8dce0')
+                : (dark ? '#6f7c84' : '#f7f8f9'))
           : casing
-          ? (dark ? '#34444d' : '#d9d8cf')
+          ? (dark ? '#34444d' : '#e1e4e7')
           : (dark ? '#4d606a' : '#ffffff');
     }
     if (type == 'symbol') {
@@ -103,13 +103,13 @@ Map<String, dynamic> kiwiMapStyle(
         'match',
         ['get', 'class'],
         ['commercial', 'retail'],
-        dark ? '#473b30' : '#fae8cb',
+        dark ? '#473b30' : '#f1f2f3',
         ['hospital'],
-        dark ? '#4a333d' : '#f5dce4',
+        dark ? '#4a333d' : '#f3f0f1',
         ['school', 'university', 'college'],
-        dark ? '#39344b' : '#e9e0f4',
+        dark ? '#39344b' : '#f2f1f4',
         ['industrial'],
-        dark ? '#383e46' : '#e1e5ea',
+        dark ? '#383e46' : '#eceef0',
         ['cemetery', 'recreation_ground', 'allotments'],
         park,
         dark ? '#222e34' : '#efefe8',

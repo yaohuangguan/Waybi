@@ -31,7 +31,7 @@ pnpm mobile:doctor
 pnpm mobile:dev
 ```
 
-实践版无需配置地图 token。可在忽略的 `apps/mobile/.dart-defines.local.json` 覆盖 `KIWI_VECTOR_STYLE_URL`、`KIWI_PHOTON_URL`、`KIWI_OSRM_CAR_URL`、`KIWI_OSRM_FOOT_URL` 和 `KIWI_OSRM_BIKE_URL` 以切换到自建服务。详细说明见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
+实践版无需配置地图 token。可在忽略的 `apps/mobile/.dart-defines.local.json` 覆盖 `KIWI_VECTOR_STYLE_URL`、`KIWI_PHOTON_URL`、`KIWI_OSRM_CAR_URL`、`KIWI_OSRM_FOOT_URL`、`KIWI_OSRM_BIKE_URL` 和 `KIWI_MOTIS_URL` 以切换到自建服务。公交路线现在直接走独立 MOTIS/RAPTOR 路由并绘制在 MapLibre 上，不再切换 Google Maps；公开 Transitous 仅作为开发默认值，正式商业版本应改为自建 MOTIS。详细说明见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
 
 `pnpm mobile:dev` 和 `pnpm mobile:run` 都会自动执行 `flutter pub get` 并选择可用的移动设备。在 macOS 上会自动启用 Flutter Swift Package Manager，优先使用已连接的 iPhone 或已启动的 iOS Simulator；如果没有运行中的 iOS 设备，会尝试自动启动可用的 iPhone Simulator。其他平台优先使用 Android 设备/模拟器，没有运行中的 Android 设备时会从 `flutter emulators` 列表中启动 AVD。
 

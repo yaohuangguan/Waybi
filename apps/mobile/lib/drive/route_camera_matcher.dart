@@ -48,7 +48,20 @@ class RouteCameraMatcher {
     RouteProjection? best;
     var travelled = 0.0;
     var bestScore = double.infinity;
-    for (var index = 0; index < route.length - 1; index++) {
+    var firstSegment = 0;
+    if (cumulativeMeters != null) {
+      var low = 0, high = cumulativeMeters.length - 1;
+      while (low < high) {
+        final middle = (low + high) ~/ 2;
+        if (cumulativeMeters[middle] < minAlongMeters) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      firstSegment = math.max(0, low - 1);
+    }
+    for (var index = firstSegment; index < route.length - 1; index++) {
       if (cumulativeMeters != null) travelled = cumulativeMeters[index];
       if (travelled > maxAlongMeters) break;
       final start = route[index];

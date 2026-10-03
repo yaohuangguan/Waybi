@@ -17,6 +17,7 @@ import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
 import 'data/parking_repository.dart';
 import 'data/route_repository.dart';
+import 'data/quick_location_store.dart';
 import 'data/usage_telemetry_repository.dart';
 import 'domain/radar_geometry.dart';
 import 'domain/map_layer_settings.dart';
@@ -395,6 +396,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _keepScreenAwake = true;
   bool _settingsLoaded = false;
   bool _endingNavigation = false;
+  bool _appForeground = true;
   final _systemNavigation = SystemNavigation();
   DateTime? _lastDrivePositionAt;
   JourneyTracker? _journey;
@@ -612,7 +614,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appForeground = state == AppLifecycleState.resumed;
+    if (!_appForeground) {
+      _mapRefreshTimer?.cancel();
+      _mapRefreshTimer = null;
+    }
     if (state == AppLifecycleState.resumed) {
+      _queueMapRefresh();
       if (_guidanceRunning) {
         unawaited(
           _systemNavigation.update(_systemNavigationState(), force: true),
@@ -656,6 +664,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final signature =
         '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}:${_driveEngine.trafficFlowRevision}';
     if (signature != _markerSignature) {
+      final plan = _routePlan;
+      if (plan != null) {
+        _routeCameraSummaries = _summarizeRouteCameras(plan);
+        _routePreferenceSummaries = _summarizeRoutePreferences(
+          plan,
+          _routeCameraSummaries,
+        );
+      }
       unawaited(_syncCameraMarkers());
       if (_routePlan != null || _mapProvider == MapProvider.independent) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1236,26 +1252,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _useCarMarker = _locationMarker != LocationMarkerStyle.classic;
     _quickActions = prefs.getStringList('waybi.quick_actions') ?? _quickActions;
     if (_mapProvider == MapProvider.google) _restoreGoogleRecent(prefs);
-    for (final action in ['Home', 'Work']) {
-      final record = prefs.getString('waybi.quick_location.$action');
-      if (record == null) continue;
-      try {
-        final item = jsonDecode(record) as Map<String, dynamic>;
-        _quickLocations[action] = PlaceSummary(
-          name: item['name']?.toString() ?? action,
-          address: item['address']?.toString() ?? '',
-          location: GeoPoint(
-            (item['latitude'] as num).toDouble(),
-            (item['longitude'] as num).toDouble(),
-          ),
-        );
-        _quickLocationProviders[action] = MapProvider.values.firstWhere(
-          (provider) => provider.name == item['provider'],
-          orElse: () => MapProvider.google,
-        );
-      } catch (_) {
-        // Ignore an invalid old shortcut rather than blocking map startup.
-      }
+    final shortcuts = await QuickLocationStore().load();
+    for (final entry in shortcuts.entries) {
+      _quickLocations[entry.key] = entry.value.place;
+      _quickLocationProviders[entry.key] = entry.value.provider;
     }
     final parkedCarRecord = prefs.getString('waybi.plus.parked_car.v1');
     if (parkedCarRecord != null) {
@@ -1753,7 +1753,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   void _queueMapRefresh() {
-    if (_mapRefreshTimer?.isActive ?? false) return;
+    if (!_appForeground || (_mapRefreshTimer?.isActive ?? false)) return;
     final smoothNavigation =
         _mapProvider == MapProvider.independent &&
         _independentNavigation.active;
@@ -5170,19 +5170,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _quickLocations[saveAs] = place;
       _quickLocationProviders[saveAs] = _mapProvider;
       unawaited(_refreshQuickCommutes(force: true));
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        'waybi.quick_location.$saveAs',
-        jsonEncode({
-          'name': place.name,
-          'address': place.address,
-          'latitude': place.location.latitude,
-          'longitude': place.location.longitude,
-          'provider': _mapProvider.name,
-        }),
-      );
+      await QuickLocationStore().save(saveAs, place, _mapProvider);
     }
-
     _rememberDestination(
       DestinationSuggestion(
         label: place.name,

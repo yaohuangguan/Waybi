@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:waybi_mobile/data/explore_repository.dart';
@@ -11,6 +12,99 @@ import 'package:waybi_mobile/providers/independent_routing_provider.dart';
 import 'package:waybi_mobile/providers/place_search_providers.dart';
 
 void main() {
+  test(
+    'selected driving mode never waits for optional walking or cycling',
+    () async {
+      final paths = <String>[];
+      final provider = IndependentRoutingProvider(
+        client: MockClient((request) async {
+          paths.add(request.url.path);
+          if (!request.url.path.startsWith('/routed-car/')) {
+            return Completer<http.Response>().future;
+          }
+          return http.Response(
+            jsonEncode({
+              'code': 'Ok',
+              'routes': [
+                {
+                  'distance': 1000,
+                  'duration': 80,
+                  'geometry': {
+                    'coordinates': [
+                      [174.76, -36.85],
+                      [174.78, -36.86],
+                    ],
+                  },
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(provider.dispose);
+      final plan = await provider.route(
+        origin: const GeoPoint(-36.85, 174.76),
+        destination: const GeoPoint(-36.86, 174.78),
+        language: 'en',
+        mode: WaybiTravelMode.drive,
+      );
+      expect(plan.options.single.mode, WaybiTravelMode.drive);
+      expect(paths, hasLength(1));
+    },
+  );
+
+  test('urgent reroute starts while an older preview is still waiting on the network', () async {
+    final previewResponse = Completer<http.Response>();
+    final previewStarted = Completer<void>();
+    final body = jsonEncode({
+      'code': 'Ok',
+      'routes': [
+        {
+          'distance': 1000,
+          'duration': 80,
+          'geometry': {
+            'coordinates': [
+              [174.76, -36.85],
+              [174.78, -36.86],
+            ],
+          },
+        },
+      ],
+    });
+    final provider = IndependentRoutingProvider(
+      client: MockClient((request) async {
+        if (request.url.queryParameters['alternatives'] == '3') {
+          previewStarted.complete();
+          return previewResponse.future;
+        }
+        expect(request.url.queryParameters['bearings'], '45,90;');
+        return http.Response(body, 200);
+      }),
+    );
+    addTearDown(provider.dispose);
+    final preview = provider.route(
+      origin: const GeoPoint(-36.85, 174.76),
+      destination: const GeoPoint(-36.86, 174.78),
+      language: 'en',
+      mode: WaybiTravelMode.drive,
+    );
+    await previewStarted.future;
+    final updated = await provider
+        .reroute(
+          origin: const GeoPoint(-36.851, 174.761),
+          destination: const GeoPoint(-36.86, 174.78),
+          mode: WaybiTravelMode.drive,
+          language: 'en',
+          headingDegrees: 45,
+        )
+        .timeout(const Duration(seconds: 3));
+    expect(updated.mode, WaybiTravelMode.drive);
+    expect(previewResponse.isCompleted, isFalse);
+    previewResponse.complete(http.Response(body, 200));
+    await preview;
+  });
+
   test(
     'Independent routes normalize geometry and maneuver coordinates',
     () async {

@@ -157,8 +157,9 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
             (_sheetController.size - _maxExtent).abs() < .002);
     if (!settled &&
         _lastBottomReport != null &&
-        now.difference(_lastBottomReport!).inMilliseconds < 80)
+        now.difference(_lastBottomReport!).inMilliseconds < 80) {
       return;
+    }
     if (_reportedBottom == null || (inset - _reportedBottom!).abs() >= 1) {
       _lastBottomReport = now;
       _reportedBottom = inset;

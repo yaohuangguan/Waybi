@@ -1,3 +1,5 @@
+import { validCoordinate } from './geo.mjs';
+
 const categoryMap = {
   'for-you': 'tourism,leisure.park,catering',
   food: 'catering.restaurant,catering.fast_food',
@@ -15,8 +17,8 @@ export async function geoapifyExplore(url, env) {
     return result({ error: 'Map-compatible places are not configured' }, 503);
   }
   const [lon, lat] = (url.searchParams.get('at') || '').split(',').map(Number);
-  if (!(lon > 166 && lon < 179 && lat > -48 && lat < -34)) {
-    return result({ error: 'Valid NZ coordinates required' }, 400);
+  if (!validCoordinate(lat, lon)) {
+    return result({ error: 'Valid coordinates required' }, 400);
   }
   const query = (url.searchParams.get('q') || '').trim();
   if (query.length > 120) return result({ error: 'Query is too long' }, 400);
@@ -30,7 +32,6 @@ export async function geoapifyExplore(url, env) {
   upstream.searchParams.set('bias', 'proximity:' + lon + ',' + lat);
   if (textSearch) {
     upstream.searchParams.set('text', query);
-    upstream.searchParams.set('filter', 'countrycode:nz');
   } else {
     upstream.searchParams.set('categories',
         categoryMap[url.searchParams.get('category')] || categoryMap['for-you']);

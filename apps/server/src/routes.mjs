@@ -102,8 +102,7 @@ async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
       : {}),
     travelMode: mode,
     computeAlternativeRoutes: driving && stops.length === 0,
-    languageCode: 'en-NZ',
-    regionCode: 'NZ',
+    languageCode: 'en',
     units: 'METRIC',
     polylineQuality: 'HIGH_QUALITY',
     ...(driving ? { routingPreference: 'TRAFFIC_AWARE_OPTIMAL', extraComputations: ['TRAFFIC_ON_POLYLINE'] } : {})

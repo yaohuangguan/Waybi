@@ -11,10 +11,6 @@ export async function handleTrafficTile(request, env, fetcher = fetch, cache = g
   if (!match) return new Response('Invalid tile', { status: 400 });
   const [z, x, y] = match.slice(1).map(Number), n = 2 ** z;
   if (z < 6 || z > 19 || x >= n || y >= n) return new Response('Invalid tile', { status: 400 });
-  const lon = (x + .5) / n * 360 - 180;
-  const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (y + .5) / n))) * 180 / Math.PI;
-  const half = 180 / n;
-  if (lon + half < 166 || lon - half > 179 || lat + half < -48 || lat - half > -34) return new Response('Outside NZ', { status: 400 });
   const config = trafficTileConfig(env);
   if (!config) return new Response('Street traffic is not configured', { status: 503 });
   const key = new Request(`${url.origin}${url.pathname}`);

@@ -68,7 +68,7 @@ test('independent Explore handles upstream failure and invalid coordinates', asy
   try {
     const env = { GEOAPIFY_API_KEY: 'geo-key' };
     const invalid = await handlePlaces(new Request(
-      'https://example.test/api/explore?at=1,2&provider=geoapify'), env);
+      'https://example.test/api/explore?at=181,91&provider=geoapify'), env);
     assert.equal(invalid.status, 400);
     const response = await handlePlaces(new Request(
       'https://example.test/api/explore?at=174.76,-36.85&provider=geoapify'), env);
@@ -77,7 +77,7 @@ test('independent Explore handles upstream failure and invalid coordinates', asy
 });
 
 
-test('independent search falls back globally after NZ search has no result', async () => {
+test('independent search keeps proximity bias without country locking', async () => {
   const previous = globalThis.fetch;
   const urls = [];
   globalThis.fetch = async (url) => {
@@ -103,7 +103,8 @@ test('independent search falls back globally after NZ search has no result', asy
     assert.equal(place.name, '石家庄市, 河北省, 中国');
     assert.equal(place.latitude, 38.0428);
     assert.equal(urls.length, 2);
-    assert.equal(urls[0].searchParams.get('filter'), 'countrycode:nz');
+    assert.equal(urls[0].searchParams.get('filter'), null);
+    assert.equal(urls[0].searchParams.get('bias'), 'proximity:174.76,-36.85');
     assert.equal(urls[1].searchParams.get('filter'), null);
     assert.equal(urls[1].searchParams.get('bias'), null);
   } finally { globalThis.fetch = previous; }

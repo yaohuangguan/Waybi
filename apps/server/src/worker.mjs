@@ -1,5 +1,7 @@
 import { clientKind } from './brand_compat.mjs';
 import { handleTrafficTile } from './traffic_tiles.mjs';
+import { parseLonLat, parseNzLonLat } from './geo.mjs';
+import { rankPlaces } from './place_search_rank.mjs';
 import seed from '../data/cameras.json' with { type: 'json' };
 import { fetchNztaCameras, SOURCE_URL } from './sync.mjs';
 import { handleAccount, roadReportAuthor, userFromRequest, userHasPlus } from './auth.mjs';
@@ -84,13 +86,8 @@ export async function syncCameras(env, fetcher = fetch) {
   }
 }
 
-function validateCoordinatePair(value) {
-  const match = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(value || '');
-  if (!match) return null;
-  const longitude = Number(match[1]);
-  const latitude = Number(match[2]);
-  return longitude > 166 && longitude < 179 && latitude > -48 && latitude < -34 ? [longitude, latitude] : null;
-}
+function validateCoordinatePair(value) { return parseLonLat(value); }
+function validateNzCoordinatePair(value) { return parseNzLonLat(value); }
 
 async function upstreamJson(url, headers = {}) {
   const response = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
@@ -212,7 +209,7 @@ async function handleApi(request, env, ctx) {
     return json(await loadTrafficFlowState(env));
   }
   if (url.pathname === '/api/parking') {
-    const at = validateCoordinatePair(url.searchParams.get('at'));
+    const at = validateNzCoordinatePair(url.searchParams.get('at'));
     if (!at) return json({ error: 'Valid NZ coordinate required' }, 400);
     try {
       return json({ places: await nearbyAtParking(at), source: 'Auckland Transport Open GIS', sourceUrl: AT_PARKING_SOURCE });
@@ -222,7 +219,7 @@ async function handleApi(request, env, ctx) {
     }
   }
   if (url.pathname === '/api/speed-limit') {
-    const at = validateCoordinatePair(url.searchParams.get('at'));
+    const at = validateNzCoordinatePair(url.searchParams.get('at'));
     if (!at) return json({ error: 'Valid NZ coordinate required' }, 400);
 
     const [longitude, latitude] = at;
@@ -272,7 +269,7 @@ async function handleApi(request, env, ctx) {
   if (url.pathname === '/api/route-options') {
     const from = validateCoordinatePair(url.searchParams.get('from'));
     const to = validateCoordinatePair(url.searchParams.get('to'));
-    if (!from || !to) return json({ error: 'Valid NZ coordinates required' }, 400);
+    if (!from || !to) return json({ error: 'Valid coordinates required' }, 400);
     const stops = (url.searchParams.get('stops') || '')
       .split(';')
       .filter(Boolean)
@@ -308,14 +305,27 @@ async function handleApi(request, env, ctx) {
   }
   if (url.pathname === '/api/search') {
     const query = (url.searchParams.get('q') || '').trim();
-    if (query.length < 3 || query.length > 120) return json({ error: 'Search query must be 3–120 characters' }, 400);
+    if ([...query].length < 2 || query.length > 120) return json({ error: 'Search query must be 2–120 characters' }, 400);
     const wait = Math.max(0, 1050 - (Date.now() - lastSearchAt));
     if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
     lastSearchAt = Date.now();
-    const language = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
-    const searchUrl = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&namedetails=1&accept-language=${language}&limit=6&viewbox=166,-34,179,-48&bounded=0&q=${encodeURIComponent(query)}`;
-    const results = await upstreamJson(searchUrl, { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)', 'referer': 'https://github.com/yaohuangguan/Waybi', accept: 'application/json' });
-    return json(results.map((place) => {
+    const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
+    const near = validateCoordinatePair(url.searchParams.get('near'));
+    const search = new URL('https://nominatim.openstreetmap.org/search');
+    search.searchParams.set('format', 'jsonv2');
+    search.searchParams.set('addressdetails', '1');
+    search.searchParams.set('namedetails', '1');
+    search.searchParams.set('accept-language', prefersChinese ? 'zh,en' : 'en');
+    search.searchParams.set('limit', '12');
+    search.searchParams.set('q', query);
+    if (near) {
+      const lonDelta = 0.75;
+      const latDelta = 0.55;
+      search.searchParams.set('viewbox', [near[0] - lonDelta, near[1] + latDelta, near[0] + lonDelta, near[1] - latDelta].join(','));
+      search.searchParams.set('bounded', '0');
+    }
+    const results = await upstreamJson(search.toString(), { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)', 'referer': 'https://github.com/yaohuangguan/Waybi', accept: 'application/json' });
+    return json(rankPlaces(results.map((place) => {
       const address = place.address || {};
       const poiClasses = new Set([
         'amenity', 'tourism', 'shop', 'office', 'leisure', 'healthcare',
@@ -342,12 +352,12 @@ async function handleApi(request, env, ctx) {
         latitude: Number(place.lat),
         longitude: Number(place.lon)
       };
-    }));
+    }), query, near).slice(0, 8));
   }
   if (url.pathname === '/api/route') {
     const from = validateCoordinatePair(url.searchParams.get('from'));
     const to = validateCoordinatePair(url.searchParams.get('to'));
-    if (!from || !to) return json({ error: 'Valid NZ coordinates required' }, 400);
+    if (!from || !to) return json({ error: 'Valid coordinates required' }, 400);
     const stops = (url.searchParams.get('stops') || '')
       .split(';')
       .filter(Boolean)

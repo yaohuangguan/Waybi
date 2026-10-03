@@ -1,11 +1,12 @@
 import { userFromRequest } from './auth.mjs';
 import { loadRoadEventState, ROAD_EVENTS_SOURCE_PAGE } from './road_events.mjs';
+import { validCoordinate } from './geo.mjs';
 
 const ROOT = '/api/v1/road-intelligence';
 const encoder = new TextEncoder();
 const NZTA_TERMS = 'https://www.nzta.govt.nz/about-us/our-data-and-official-information/use-our-data/terms-of-use';
 export const capabilities = {
-  apiVersion: '1', stage: 'preview', country: 'NZ',
+  apiVersion: '1', stage: 'preview', coverage: 'global', sourceCoverage: { officialRoadEvents: ['NZ'], userReports: 'global' }, cameraCoverage: ['NZ'],
   features: ['bbox', 'nearby', 'route-corridor', 'api-keys', 'quotas', 'source-freshness'],
   limits: { dailyRequests: 1000, requestsPerMinute: 60, resultsPerPage: 100, routePoints: 250 },
   dataUse: { commercialRedistribution: false, attributionRequired: true,
@@ -26,8 +27,7 @@ function number(value) {
 function point(value) {
   if (!Array.isArray(value) || value.length !== 2) return null;
   const [longitude, latitude] = value.map(number);
-  return longitude > 166 && longitude < 179 && latitude > -48 && latitude < -34
-    ? { longitude, latitude } : null;
+  return validCoordinate(latitude, longitude) ? { longitude, latitude } : null;
 }
 function metres(a, b) {
   return Math.hypot((a.latitude - b.latitude) * 111320,

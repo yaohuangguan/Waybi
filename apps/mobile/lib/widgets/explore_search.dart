@@ -180,7 +180,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
     _debounce?.cancel();
     final request = ++_request;
     final query = text.trim();
-    if (query.length < 3) {
+    if (query.runes.length < 2) {
       setState(() {
         _results = const [];
         _error = null;
@@ -201,15 +201,24 @@ class _ExploreSearchState extends State<ExploreSearch> {
           _suggestConfigured
               ? uri
               : Uri.parse('$workerBaseUrl/api/search').replace(
-                  queryParameters: {'q': query, 'lang': widget.language},
+                  queryParameters: {
+                    'q': query,
+                    'lang': widget.language,
+                    if (near != null)
+                      'near': '${near.longitude},${near.latitude}',
+                  },
                 ),
         );
         if (_suggestConfigured && response.statusCode == 503) {
           _suggestConfigured = false;
           response = await _client.get(
-            Uri.parse(
-              '$workerBaseUrl/api/search',
-            ).replace(queryParameters: {'q': query, 'lang': widget.language}),
+            Uri.parse('$workerBaseUrl/api/search').replace(
+              queryParameters: {
+                'q': query,
+                'lang': widget.language,
+                if (near != null) 'near': '${near.longitude},${near.latitude}',
+              },
+            ),
           );
         }
         if (response.statusCode != 200) {

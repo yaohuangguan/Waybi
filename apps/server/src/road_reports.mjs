@@ -1,11 +1,7 @@
+import { validCoordinate } from './geo.mjs';
 const KEY = 'road-reports/current';
 const MAX_REPORTS = 250;
 const ALLOWED = new Set(['incident', 'roadworks', 'roadClosure', 'congestion', 'flooding', 'slip']);
-
-function validCoordinate(latitude, longitude) {
-  return Number.isFinite(latitude) && Number.isFinite(longitude) &&
-    longitude > 166 && longitude < 179 && latitude > -48 && latitude < -34;
-}
 
 export async function readRoadReports(env, now = new Date()) {
   const state = await env.CAMERA_DATA.get(KEY, 'json');
@@ -21,7 +17,7 @@ export async function createRoadReport(env, payload, reporter = null, now = new 
   const longitude = Number(payload?.longitude);
   const type = String(payload?.type || '');
   if (!validCoordinate(latitude, longitude) || !ALLOWED.has(type)) {
-    throw new TypeError('Valid NZ road report required');
+    throw new TypeError('Valid global road report required');
   }
   const heading = Number(payload?.headingDegrees);
   const id = crypto.randomUUID();
@@ -38,7 +34,7 @@ export async function createRoadReport(env, payload, reporter = null, now = new 
     validUntil: new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(),
     source: {
       provider: 'Waybi road reports',
-      country: 'NZ',
+      country: null,
       region: null,
       sourceId: id,
       updatedAt: now.toISOString()

@@ -1,3 +1,4 @@
+import { validCoordinate } from './geo.mjs';
 const UA = 'Waybi/1.0 (https://github.com/yaohuangguan/Waybi)';
 const RADIUS = 8000;
 const GROUPS = ['activities', 'parks', 'food', 'coffee', 'shopping'];
@@ -155,7 +156,7 @@ async function loadNearby(env, point, language, fetcher) {
 }
 export async function independentExplore(url, env, fetcher = fetch) {
   const point = (url.searchParams.get('at') || '').split(',').map(Number);
-  if (point.length !== 2 || !(point[0] > 166 && point[0] < 179 && point[1] > -48 && point[1] < -34)) return response({ error: 'Valid NZ coordinates required' }, 400);
+  if (point.length !== 2 || !validCoordinate(point[1], point[0])) return response({ error: 'Valid coordinates required' }, 400);
   const category = url.searchParams.get('category') || 'for-you', query = (url.searchParams.get('q') || '').trim();
   if (!['for-you', ...GROUPS].includes(category) || query.length > 120) return response({ error: 'Invalid category or query' }, 400);
   try {

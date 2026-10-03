@@ -130,7 +130,7 @@ final class SystemNavigationBridge {
         result(status)
       case "openSettings":
         if let url = URL(string: UIApplication.openSettingsURLString) {
-          UIApplication.shared.open(url)
+          await UIApplication.shared.open(url)
         }
         result(true)
       default:

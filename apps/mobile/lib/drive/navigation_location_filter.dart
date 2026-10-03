@@ -132,7 +132,9 @@ class NavigationLocationFilter {
       if (delta > stationaryTolerance && !muchBetterFix) {
         // Reacquire after a real GPS outage instead of permanently pinning the
         // user to an old fix. Several precise, consistent fixes are required.
-        if (elapsed < 10 || delta > 250 || !_confirmedRelocation(fix)) {
+        if (elapsed < 10 ||
+            (delta > 250 && elapsed < 60) ||
+            !_confirmedRelocation(fix)) {
           return null;
         }
         return _commit(fix);

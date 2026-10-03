@@ -130,4 +130,20 @@ void main() {
     expect(filter.accept(fix(home)), isNull);
     expect(filter.accept(fix(home)), isNull);
   });
+
+  test(
+    'returning after a long background gap can reacquire a different city',
+    () {
+      var now = DateTime(2026, 10, 3, 9);
+      final filter = NavigationLocationFilter(clock: () => now);
+      filter.accept(fix(home, speed: 10));
+      const actual = GeoPoint(-41.2866, 174.7756);
+      for (var i = 3600; i < 3603; i++) {
+        now = DateTime(2026, 10, 3, 9).add(Duration(seconds: i));
+        final accepted = filter.accept(fix(actual, seconds: i, accuracy: 6));
+        expect(accepted != null, i == 3602);
+      }
+      expect(filter.accepted!.point, actual);
+    },
+  );
 }

@@ -263,62 +263,37 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       ]) {
         await c.addGeoJsonSource(source, _collection(const []));
       }
-      await c.addLineLayer(
-        'waybi-route',
-        'waybi-route-edge',
-        ml.LineLayerProperties(
-          lineColor: [
-            'case',
-            ['get', 'active'],
-            '#ffffff',
-            '#f4f5f6',
-          ],
-          lineWidth: [
-            'case',
-            ['get', 'active'],
-            9,
-            6,
-          ],
-          lineOpacity: [
-            'case',
-            ['get', 'active'],
-            1,
-            .82,
-          ],
-          lineCap: 'round',
-          lineJoin: 'round',
-        ),
-        belowLayerId: 'waybi-poi-dot',
-        enableInteraction: false,
-      );
-      await c.addLineLayer(
-        'waybi-route',
-        'waybi-route-line',
-        ml.LineLayerProperties(
-          lineColor: [
-            'case',
-            ['get', 'active'],
-            '#6f9637',
-            '#8c959d',
-          ],
-          lineWidth: [
-            'case',
-            ['get', 'active'],
-            6,
-            4,
-          ],
-          lineOpacity: [
-            'case',
-            ['get', 'active'],
-            1,
-            .78,
-          ],
-          lineCap: 'round',
-          lineJoin: 'round',
-        ),
-        belowLayerId: 'waybi-poi-dot',
-        enableInteraction: false,
-      );
+      for (final active in [false, true]) {
+        final prefix = active ? 'waybi-route' : 'waybi-alternative';
+        await c.addLineLayer(
+          'waybi-route',
+          '$prefix-edge',
+          ml.LineLayerProperties(
+            lineColor: active ? '#486B29' : '#ffffff',
+            lineWidth: active ? 10 : 7,
+            lineOpacity: active ? 1 : .8,
+            lineCap: 'round',
+            lineJoin: 'round',
+          ),
+          filter: ['==', 'active', active],
+          belowLayerId: 'waybi-poi-dot',
+          enableInteraction: false,
+        );
+        await c.addLineLayer(
+          'waybi-route',
+          '$prefix-line',
+          ml.LineLayerProperties(
+            lineColor: active ? '#A8D86A' : '#8c959d',
+            lineWidth: active ? 7 : 4,
+            lineOpacity: active ? 1 : .75,
+            lineCap: 'round',
+            lineJoin: 'round',
+          ),
+          filter: ['==', 'active', active],
+          belowLayerId: 'waybi-poi-dot',
+          enableInteraction: false,
+        );
+      }
       await c.addLineLayer(
         'waybi-traffic',
         'waybi-traffic-casing',
@@ -329,7 +304,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           lineCap: 'round',
           lineJoin: 'round',
         ),
-        belowLayerId: 'waybi-route-edge',
+        belowLayerId: 'waybi-alternative-edge',
         enableInteraction: false,
       );
       await c.addLineLayer(
@@ -352,7 +327,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           lineCap: 'round',
           lineJoin: 'round',
         ),
-        belowLayerId: 'waybi-route-edge',
+        belowLayerId: 'waybi-alternative-edge',
         enableInteraction: false,
       );
       await c.addCircleLayer(
@@ -524,7 +499,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       'waybi-city-traffic',
       'waybi-city-traffic',
       const ml.RasterLayerProperties(rasterOpacity: .85, rasterFadeDuration: 0),
-      belowLayerId: 'waybi-route-edge',
+      belowLayerId: 'waybi-alternative-edge',
     );
     _trafficTileSignature = signature;
   }

@@ -15,7 +15,9 @@ import java.util.Locale
 class MainActivity : FlutterActivity() {
     override fun attachBaseContext(base: Context) {
         val language = base.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            .getString("flutter.kiwi.app.language", null)
+            .getString("flutter.waybi.app.language", null)
+            ?: base.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                .getString("flutter.kiwi.app.language", null)
         if (language == null) { super.attachBaseContext(base); return }
         val locale = Locale.forLanguageTag(if (language == "zh") "zh-CN" else "en-NZ")
         val config = Configuration(base.resources.configuration)
@@ -25,6 +27,29 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "waybi/system_navigation")
+            .setMethodCallHandler { call, result ->
+                val args = call.arguments as? Map<*, *> ?: emptyMap<Any, Any>()
+                val intent = Intent(this, NavigationService::class.java)
+                when (call.method) {
+                    "start", "update" -> {
+                        // Google's own navigator already owns its system notification.
+                        if (args["provider"] == "google") { result.success(true); return@setMethodCallHandler }
+                        for (key in listOf("destination", "instruction", "distance", "remaining")) {
+                            intent.putExtra(key, args[key] as? String ?: "")
+                        }
+                        try {
+                            if (call.method == "start") startForegroundService(intent)
+                            else startService(intent)
+                            result.success(true)
+                        } catch (error: RuntimeException) {
+                            result.error("NAVIGATION_SERVICE_UNAVAILABLE", error.javaClass.simpleName, null)
+                        }
+                    }
+                    "stop" -> { stopService(intent); result.success(true) }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "waybi/map_language")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

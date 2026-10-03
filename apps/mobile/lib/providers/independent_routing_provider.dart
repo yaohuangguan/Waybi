@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -10,8 +11,9 @@ import 'provider_contracts.dart';
 class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
   IndependentRoutingProvider({http.Client? client})
     : _client = client ?? http.Client();
-  DateTime? _lastRequest;
-  Future<void> _queue = Future<void>.value();
+  final _slots = <String, Future<void>>{};
+  final _lastRequest = <String, DateTime>{};
+  final _pending = <Uri, Future<http.Response>>{};
   final http.Client _client;
 
   @override
@@ -20,17 +22,26 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     required GeoPoint destination,
     List<GeoPoint> stops = const [],
     required String language,
+    WaybiTravelMode? mode,
   }) async {
     final points = _validatedPoints(origin, destination, stops);
-    final driving = _sensibleDrivingAlternatives(
-      await _fetchMode(points, mode: WaybiTravelMode.drive, language: language),
-    );
-    final responses = [
-      driving,
-      await _optionalMode(points, WaybiTravelMode.walk, language),
-      await _optionalMode(points, WaybiTravelMode.bicycle, language),
-    ];
-    final options = responses.expand((item) => item).toList(growable: false);
+    final modes = mode == null
+        ? [WaybiTravelMode.drive, WaybiTravelMode.walk, WaybiTravelMode.bicycle]
+        : [mode];
+    final responses = await Future.wait([
+      for (final selected in modes)
+        selected == WaybiTravelMode.drive
+            ? _fetchMode(points, mode: selected, language: language)
+            : _optionalMode(points, selected, language),
+    ]);
+    final options = responses.expand((item) => item).toList();
+    if (modes.contains(WaybiTravelMode.drive)) {
+      final driving = _sensibleDrivingAlternatives(
+        options.where((route) => route.mode == WaybiTravelMode.drive).toList(),
+      );
+      options.removeWhere((route) => route.mode == WaybiTravelMode.drive);
+      options.insertAll(0, driving);
+    }
     if (options.isEmpty) throw StateError('No Independent routes available');
     return RoutePlan(
       options: options,
@@ -77,12 +88,14 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     required WaybiTravelMode mode,
     List<GeoPoint> stops = const [],
     required String language,
+    double? headingDegrees,
   }) async {
     final options = await _fetchMode(
       _validatedPoints(origin, destination, stops),
       mode: mode,
       language: language,
       alternatives: false,
+      headingDegrees: headingDegrees,
     );
     if (options.isEmpty) throw StateError('No route from current location');
     return options.first;
@@ -105,6 +118,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     required WaybiTravelMode mode,
     required String language,
     bool alternatives = true,
+    double? headingDegrees,
   }) async {
     final path = points
         .map((point) => '${point.longitude},${point.latitude}')
@@ -133,15 +147,24 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         'overview': 'full',
         'steps': 'true',
         'alternatives': alternatives && points.length == 2 ? '3' : 'false',
+        if (headingDegrees != null && headingDegrees.isFinite)
+          'bearings': [
+            '${(headingDegrees % 360).round() % 360},90',
+            for (var i = 1; i < points.length; i++) '',
+          ].join(';'),
       },
     );
-    final response = await _limitedGet(uri);
+    final response = await _limitedGet(
+      uri,
+      timeout: Duration(seconds: alternatives ? 10 : 8),
+    );
     if (response.statusCode != 200) {
       throw StateError(
         'Independent directions unavailable: ${response.statusCode}',
       );
     }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     if (body['code'] != null && body['code'] != 'Ok') {
       throw StateError('Independent could not find a route');
     }
@@ -250,27 +273,44 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         .toList(growable: false);
   }
 
-  Future<http.Response> _limitedGet(Uri uri) {
-    final task = _queue.then((_) async {
-      final previous = _lastRequest;
+  Future<http.Response> _limitedGet(Uri uri, {required Duration timeout}) {
+    return _pending.putIfAbsent(uri, () {
+      final request = _get(uri, timeout);
+      unawaited(
+        request.then<void>(
+          (_) => _pending.remove(uri),
+          onError: (Object _) {
+            _pending.remove(uri);
+          },
+        ),
+      );
+      return request;
+    });
+  }
+
+  Future<http.Response> _get(Uri uri, Duration timeout) async {
+    // Reserve request starts per host, never wait for another request's network
+    // response. A slow walking preview cannot hold up an urgent driving reroute.
+    final slot = (_slots[uri.host] ?? Future<void>.value()).then((_) async {
+      final previous = _lastRequest[uri.host];
       if (previous != null) {
         final wait = 1100 - DateTime.now().difference(previous).inMilliseconds;
         if (wait > 0) await Future<void>.delayed(Duration(milliseconds: wait));
       }
-      _lastRequest = DateTime.now();
-      return _client
-          .get(
-            uri,
-            headers: {
-              if (!kIsWeb)
-                'User-Agent':
-                    'Waybi/1.0 (+https://github.com/yaohuangguan/Waybi)',
-            },
-          )
-          .timeout(const Duration(seconds: 15));
+      _lastRequest[uri.host] = DateTime.now();
     });
-    _queue = task.then<void>((_) {}, onError: (Object _) {});
-    return task;
+    _slots[uri.host] = slot;
+    await slot;
+    return _client
+        .get(
+          uri,
+          headers: {
+            if (!kIsWeb)
+              'User-Agent':
+                  'Waybi/1.0 (+https://github.com/yaohuangguan/Waybi)',
+          },
+        )
+        .timeout(timeout);
   }
 
   void dispose() => _client.close();

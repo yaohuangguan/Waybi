@@ -96,6 +96,7 @@ class NavigationLocationFilter {
       return fix;
     }
 
+    if (!fix.timestamp.isAfter(previous.timestamp)) return null;
     final delta = distanceMeters(
       previous.point.latitude,
       previous.point.longitude,

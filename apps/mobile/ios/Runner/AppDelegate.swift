@@ -7,6 +7,7 @@ import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private var systemNavigation: AnyObject?
   private let headingHandler = DeviceHeadingStreamHandler()
 
   override func application(
@@ -24,6 +25,17 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    FlutterMethodChannel(
+      name: "waybi/system_navigation",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    ).setMethodCallHandler { [weak self] call, result in
+      DispatchQueue.main.async {
+        guard #available(iOS 16.2, *), let self else { result(false); return }
+        let bridge = self.systemNavigation as? SystemNavigationBridge ?? SystemNavigationBridge()
+        self.systemNavigation = bridge
+        bridge.handle(call, result: result)
+      }
+    }
     FlutterMethodChannel(
       name: "waybi/navigation_camera",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()

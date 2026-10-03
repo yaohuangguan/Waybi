@@ -4,6 +4,12 @@
   "account_id": "cdc04de9bc4c6a41b5003758e505a0d1",
   "main": "apps/server/src/legacy_redirect.mjs",
   "compatibility_date": "2026-08-04",
+  "services": [
+    {
+      "binding": "WAYBI",
+      "service": "waybi"
+    }
+  ],
   "observability": {
     "enabled": true
   }

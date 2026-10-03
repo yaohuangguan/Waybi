@@ -176,58 +176,59 @@ Map<String, dynamic> waybiMapStyle(
     ],
   ];
   // POIs come from the tiles themselves; no per-frame geocoding or widgets.
-  layers.addAll([
-    {
-      'id': 'waybi-poi-dot',
-      'type': 'circle',
-      'source': 'openmaptiles',
-      'source-layer': 'poi',
-      'minzoom': 13,
-      'filter': filter,
-      'paint': {
-        'circle-radius': 3.5,
-        'circle-color': poiColor,
-        'circle-stroke-color': paper,
-        'circle-stroke-width': 1.5,
-      },
+  // The renderer inserts routes and traffic below this anchor. Keep every
+  // base road shield, street name and place label above those road overlays.
+  final firstLabel = layers.indexWhere((dynamic l) => l['type'] == 'symbol');
+  layers.insert(firstLabel < 0 ? layers.length : firstLabel, {
+    'id': 'waybi-poi-dot',
+    'type': 'circle',
+    'source': 'openmaptiles',
+    'source-layer': 'poi',
+    'minzoom': 13,
+    'filter': filter,
+    'paint': {
+      'circle-radius': 3.5,
+      'circle-color': poiColor,
+      'circle-stroke-color': paper,
+      'circle-stroke-width': 1.5,
     },
-    {
-      'id': 'waybi-poi-label',
-      'type': 'symbol',
-      'source': 'openmaptiles',
-      'source-layer': 'poi',
-      'minzoom': 13,
-      'filter': filter,
-      'layout': {
-        'text-field': names,
-        'text-font': ['Noto Sans Regular'],
-        'text-size': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          13,
-          11,
-          17,
-          13,
-        ],
-        'text-anchor': 'top',
-        'text-offset': [0, .6],
-        'text-max-width': 9,
-        'text-padding': 3,
-        'text-allow-overlap': false,
-        'symbol-sort-key': [
-          'coalesce',
-          ['get', 'rank'],
-          1,
-        ],
-      },
-      'paint': {
-        'text-color': poiColor,
-        'text-halo-color': paper,
-        'text-halo-width': 1.5,
-      },
+  });
+  layers.add({
+    'id': 'waybi-poi-label',
+    'type': 'symbol',
+    'source': 'openmaptiles',
+    'source-layer': 'poi',
+    'minzoom': 13,
+    'filter': filter,
+    'layout': {
+      'text-field': names,
+      'text-font': ['Noto Sans Regular'],
+      'text-size': [
+        'interpolate',
+        ['linear'],
+        ['zoom'],
+        13,
+        11,
+        17,
+        13,
+      ],
+      'text-anchor': 'top',
+      'text-offset': [0, .6],
+      'text-max-width': 9,
+      'text-padding': 3,
+      'text-allow-overlap': false,
+      'symbol-sort-key': [
+        'coalesce',
+        ['get', 'rank'],
+        1,
+      ],
     },
-  ]);
+    'paint': {
+      'text-color': poiColor,
+      'text-halo-color': paper,
+      'text-halo-width': 1.5,
+    },
+  });
   return result;
 }
 

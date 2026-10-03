@@ -44,6 +44,7 @@ import 'providers/google_map_renderer.dart';
 import 'providers/independent_map_renderer.dart';
 import 'providers/independent_navigation_engine.dart';
 import 'providers/independent_routing_provider.dart';
+import 'providers/independent_transit_routing_provider.dart';
 import 'providers/place_search_providers.dart';
 import 'providers/provider_contracts.dart';
 import 'services/notification_service.dart';
@@ -306,6 +307,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       IndependentSearchProvider();
   final IndependentRoutingProvider _independentRoutes =
       IndependentRoutingProvider();
+  final IndependentTransitRoutingProvider _independentTransitRoutes =
+      IndependentTransitRoutingProvider();
   MapProvider _mapProvider = MapProvider.google;
   MapProvider? _requestedMapProvider;
   Future<void> _providerSwitchQueue = Future<void>.value();
@@ -1343,6 +1346,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _workerSearch.dispose();
     _independentSearch.dispose();
     _independentRoutes.dispose();
+    _independentTransitRoutes.dispose();
     _plusBilling.dispose();
     _account.dispose();
     _usageTelemetry.dispose();
@@ -2785,29 +2789,68 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
+  Future<List<RouteOption>> _loadIndependentTransitRoutes() async {
+    final poi = _selectedPoi;
+    final origin = _manualOrigin?.location ?? _gpsLocation;
+    final current = _routePlan;
+    if (poi == null || origin == null || current == null) return const [];
+
+    setState(() {
+      _routePreviewLoading = true;
+      _message = _text('Calculating public transport…', '正在计算公交路线…');
+    });
+    try {
+      final transitPlan = await _independentTransitRoutes.route(
+        origin: GeoPoint(origin.latitude, origin.longitude),
+        destination: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
+        language: _appLanguage,
+      );
+      final transit = transitPlan
+          .forMode(KiwiTravelMode.transit)
+          .take(3)
+          .toList(growable: false);
+      if (!mounted || transit.isEmpty) return transit;
+      setState(() {
+        _routePlan = RoutePlan(
+          options: [
+            ...current.options.where(
+              (route) => route.mode != KiwiTravelMode.transit,
+            ),
+            ...transit,
+          ],
+          trafficAvailable: current.trafficAvailable,
+          provider: current.provider,
+          stopsApplied: current.stopsApplied,
+        );
+        _message = null;
+      });
+      return transit;
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _message = _text(
+            'Could not calculate public transport: $error',
+            '公交路线计算失败：$error',
+          );
+        });
+      }
+      return const [];
+    } finally {
+      if (mounted) setState(() => _routePreviewLoading = false);
+    }
+  }
+
   Future<void> _selectMode(KiwiTravelMode mode) async {
     final plan = _routePlan;
     if (plan == null) return;
-    final routes = plan.forMode(mode).take(3).toList(growable: false);
-    if (routes.isEmpty) {
-      if (mode == KiwiTravelMode.transit &&
-          _mapProvider == MapProvider.independent &&
-          _selectedPoi != null) {
-        setState(() {
-          _selectedMode = KiwiTravelMode.transit;
-          _message = _text(
-            'Transit uses Google routing. Switching map…',
-            '公交路线使用 Google 路线服务，正在切换地图…',
-          );
-        });
-        await _setMapProvider(MapProvider.google);
-        final poi = _selectedPoi;
-        if (poi != null) {
-          await _loadRoutePreview(poi, preferredMode: KiwiTravelMode.transit);
-        }
-      }
-      return;
+    var routes = plan.forMode(mode).take(3).toList(growable: false);
+    if (routes.isEmpty &&
+        mode == KiwiTravelMode.transit &&
+        _mapProvider == MapProvider.independent) {
+      routes = await _loadIndependentTransitRoutes();
     }
+    if (routes.isEmpty) return;
+
     final selected = mode == KiwiTravelMode.drive
         ? recommendedRoute(routes, _routePreferenceSummaries) ?? routes.first
         : routes.first;
@@ -2821,7 +2864,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _selectRoute(RouteOption route) {
     setState(() => _selectedRouteId = route.id);
-    _driveEngine.setRoute(route);
+    _driveEngine.setRoute(route.mode == KiwiTravelMode.drive ? route : null);
     unawaited(_renderRoutePreview());
   }
 
@@ -3083,6 +3126,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     });
 
     try {
+      if (_selectedMode == KiwiTravelMode.transit) {
+        await _startTransitTrip(poi, selectedRoute);
+        return;
+      }
+
       if (_mapProvider == MapProvider.independent) {
         if (!await _ensureLocationPermission()) return;
         await _independentNavigation.start(selectedRoute);
@@ -3111,10 +3159,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _beginJourney(poi);
         unawaited(_cacheNavigationCorridor(force: true));
         _queueMapRefresh();
-        return;
-      }
-      if (_selectedMode == KiwiTravelMode.transit) {
-        await _startTransitTrip(poi, selectedRoute);
         return;
       }
 

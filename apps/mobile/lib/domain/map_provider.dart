@@ -53,7 +53,7 @@ class ProviderPolicy {
     ),
     MapProvider.independent => const ProviderCapabilities(
       trafficAwareRouting: false,
-      transitRouting: false,
+      transitRouting: true,
       nativeTurnGuidance: false,
       persistProviderPlaces: true,
     ),

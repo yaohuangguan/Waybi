@@ -63,13 +63,14 @@ void main() {
     },
   );
   test(
-    'Independent driving preview fills up to three sensible alternatives',
+    'Independent driving preview keeps only OSRM-provided alternatives',
     () async {
+      final requests = <Uri>[];
       final provider = IndependentRoutingProvider(
         client: MockClient((request) async {
+          requests.add(request.url);
           final isCar = request.url.path.startsWith('/routed-car/');
-          final via = request.url.path.split(';').length > 2;
-          if (isCar && !via) {
+          if (isCar) {
             expect(request.url.queryParameters['alternatives'], '3');
             return http.Response(
               jsonEncode({
@@ -98,23 +99,13 @@ void main() {
                     },
                     'legs': const [],
                   },
-                ],
-              }),
-              200,
-            );
-          }
-          if (isCar && via) {
-            return http.Response(
-              jsonEncode({
-                'code': 'Ok',
-                'routes': [
                   {
-                    'distance': 4400,
-                    'duration': 540,
+                    'distance': 11000,
+                    'duration': 1200,
                     'geometry': {
                       'coordinates': [
                         [174.766, -36.844],
-                        [174.769, -36.858],
+                        [174.700, -36.900],
                         [174.778, -36.870],
                       ],
                     },
@@ -154,9 +145,12 @@ void main() {
       );
       final routes = plan.forMode(KiwiTravelMode.drive).toList();
 
-      expect(routes, hasLength(3));
-      expect(routes.map((route) => route.id).toSet(), hasLength(3));
-      expect(routes.last.waypoints, hasLength(2));
+      expect(routes, hasLength(2));
+      expect(routes.map((route) => route.id).toSet(), hasLength(2));
+      expect(
+        requests.where((uri) => uri.path.startsWith('/routed-car/')),
+        hasLength(1),
+      );
       provider.dispose();
     },
   );

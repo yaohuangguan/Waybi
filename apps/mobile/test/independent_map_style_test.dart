@@ -61,6 +61,32 @@ void main() {
       );
     },
   );
+  test(
+    'road overlays stay below street names, motorway shields and place labels',
+    () {
+      for (final dark in [false, true]) {
+        final layers =
+            (waybiMapStyle(base, dark: dark, language: 'zh')['layers'] as List)
+                .cast<Map<String, dynamic>>();
+        final anchor = layers.indexWhere((l) => l['id'] == 'waybi-poi-dot');
+        expect(
+          anchor,
+          greaterThan(
+            layers.indexWhere(
+              (l) => l['id'] == 'highway_motorway_bridge_inner',
+            ),
+          ),
+        );
+        for (final label in layers.where((l) => l['type'] == 'symbol')) {
+          expect(
+            layers.indexOf(label),
+            greaterThan(anchor),
+            reason: label['id'] as String,
+          );
+        }
+      }
+    },
+  );
   test('local language changes preserve highway reference shields', () {
     final custom = <String, dynamic>{
       'layers': [

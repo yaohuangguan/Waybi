@@ -24,8 +24,10 @@ import 'domain/country_profile.dart';
 import 'domain/navigation_camera_mode.dart';
 import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
+import 'domain/route_preference.dart';
 import 'domain/road_event.dart';
 import 'domain/safety_camera.dart';
+import 'domain/traffic_flow.dart';
 import 'drive/device_heading.dart';
 import 'drive/journey_tracker.dart';
 import 'drive/navigation_language.dart';
@@ -392,6 +394,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   String _destinationTitle = 'Destination';
   RoutePlan? _routePlan;
   Map<String, RouteCameraSummary> _routeCameraSummaries = const {};
+  Map<String, RoutePreferenceSummary> _routePreferenceSummaries = const {};
   KiwiTravelMode _selectedMode = KiwiTravelMode.drive;
   String? _selectedRouteId;
   bool _routePreviewLoading = false;
@@ -2297,6 +2300,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _routePreviewLoading = true;
       _routePlan = null;
       _routeCameraSummaries = const {};
+      _routePreferenceSummaries = const {};
       _selectedMode = preferredMode;
       _selectedRouteId = null;
       _following = false;
@@ -2308,6 +2312,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       unawaited(_loadParking(_selectedPlace!.place));
     }
     final camerasReady = _driveEngine.loadCameras();
+    final trafficReady = preferredMode == KiwiTravelMode.drive
+        ? _driveEngine.loadTrafficFlow()
+        : Future<void>.value();
     try {
       final plan = _mapProvider == MapProvider.independent
           ? await _independentRoutes.route(
@@ -2330,18 +2337,29 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   .map((stop) => stop.location)
                   .toList(growable: false),
             );
-      await camerasReady;
-      final firstRoute = plan.forMode(preferredMode).firstOrNull;
+      await Future.wait([camerasReady, trafficReady]);
       final cameraSummaries = _summarizeRouteCameras(plan);
+      final preferenceSummaries = _summarizeRoutePreferences(
+        plan,
+        cameraSummaries,
+      );
+      final preferredRoutes = plan
+          .forMode(preferredMode)
+          .take(3)
+          .toList(growable: false);
+      final preferredRoute = preferredMode == KiwiTravelMode.drive
+          ? recommendedRoute(preferredRoutes, preferenceSummaries)
+          : preferredRoutes.firstOrNull;
       if (!mounted || request != _routeRequest) return;
       setState(() {
         _routePlan = plan;
         _routeCameraSummaries = cameraSummaries;
-        _selectedRouteId = firstRoute?.id;
+        _routePreferenceSummaries = preferenceSummaries;
+        _selectedRouteId = preferredRoute?.id;
         _journeyPhase = JourneyPhase.routePreview;
       });
       _driveEngine.setRoute(
-        preferredMode == KiwiTravelMode.drive ? firstRoute : null,
+        preferredMode == KiwiTravelMode.drive ? preferredRoute : null,
       );
       await _renderRoutePreview();
     } catch (error) {
@@ -2376,6 +2394,51 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     return summaries;
   }
 
+  Map<String, RoutePreferenceSummary> _summarizeRoutePreferences(
+    RoutePlan plan,
+    Map<String, RouteCameraSummary> cameraSummaries,
+  ) {
+    final summaries = <String, RoutePreferenceSummary>{};
+    final matcher = const RouteCameraMatcher();
+    for (final route in plan.options) {
+      if (route.mode != KiwiTravelMode.drive) continue;
+      var congestionScore =
+          (route.trafficDelaySeconds ?? 0) +
+          route.traffic.trafficJam * 300 +
+          route.traffic.slow * 90;
+      if (route.provider == 'independent' && route.points.length >= 2) {
+        for (final segment in _driveEngine.trafficFlowSegments) {
+          final midpoint = GeoPoint(
+            (segment.start.latitude + segment.end.latitude) / 2,
+            (segment.start.longitude + segment.end.longitude) / 2,
+          );
+          final projection = matcher.project(midpoint, route.points);
+          if (projection == null || projection.offsetMeters > 130) continue;
+          final flowBearing = bearingDegrees(
+            segment.start.latitude,
+            segment.start.longitude,
+            segment.end.latitude,
+            segment.end.longitude,
+          );
+          if (angleDifference(flowBearing, projection.bearingDegrees) > 75) {
+            continue;
+          }
+          congestionScore += switch (segment.level) {
+            TrafficFlowLevel.heavy => 600,
+            TrafficFlowLevel.moderate => 180,
+            TrafficFlowLevel.unknown => 30,
+            TrafficFlowLevel.free => 0,
+          };
+        }
+      }
+      summaries[route.id] = RoutePreferenceSummary(
+        cameraCount: cameraSummaries[route.id]?.count ?? 0,
+        congestionScore: congestionScore,
+      );
+    }
+    return summaries;
+  }
+
   RouteOption? get _selectedRoute {
     final plan = _routePlan;
     if (plan == null) return null;
@@ -2383,6 +2446,32 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       if (route.id == _selectedRouteId) return route;
     }
     return plan.forMode(_selectedMode).firstOrNull;
+  }
+
+  List<MapRoutePath> get _visibleIndependentRoutePaths {
+    final navigationRoute = _independentNavigation.route;
+    if (navigationRoute != null) {
+      return [
+        MapRoutePath(
+          id: navigationRoute.id,
+          points: navigationRoute.points,
+          active: true,
+        ),
+      ];
+    }
+    final plan = _routePlan;
+    if (plan == null) return const [];
+    return plan
+        .forMode(_selectedMode)
+        .take(3)
+        .map(
+          (route) => MapRoutePath(
+            id: route.id,
+            points: route.points,
+            active: route.id == _selectedRouteId,
+          ),
+        )
+        .toList(growable: false);
   }
 
   Color _trafficColor(String speed, bool active) {
@@ -2696,17 +2785,38 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  void _selectMode(KiwiTravelMode mode) {
+  Future<void> _selectMode(KiwiTravelMode mode) async {
     final plan = _routePlan;
     if (plan == null) return;
-    final routes = plan.forMode(mode).toList(growable: false);
-    if (routes.isEmpty) return;
+    final routes = plan.forMode(mode).take(3).toList(growable: false);
+    if (routes.isEmpty) {
+      if (mode == KiwiTravelMode.transit &&
+          _mapProvider == MapProvider.independent &&
+          _selectedPoi != null) {
+        setState(() {
+          _selectedMode = KiwiTravelMode.transit;
+          _message = _text(
+            'Transit uses Google routing. Switching map…',
+            '公交路线使用 Google 路线服务，正在切换地图…',
+          );
+        });
+        await _setMapProvider(MapProvider.google);
+        final poi = _selectedPoi;
+        if (poi != null) {
+          await _loadRoutePreview(poi, preferredMode: KiwiTravelMode.transit);
+        }
+      }
+      return;
+    }
+    final selected = mode == KiwiTravelMode.drive
+        ? recommendedRoute(routes, _routePreferenceSummaries) ?? routes.first
+        : routes.first;
     setState(() {
       _selectedMode = mode;
-      _selectedRouteId = routes.first.id;
+      _selectedRouteId = selected.id;
     });
-    _driveEngine.setRoute(mode == KiwiTravelMode.drive ? _selectedRoute : null);
-    unawaited(_renderRoutePreview());
+    _driveEngine.setRoute(mode == KiwiTravelMode.drive ? selected : null);
+    await _renderRoutePreview();
   }
 
   void _selectRoute(RouteOption route) {
@@ -5619,14 +5729,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     onRoadEvent: (event) =>
                         unawaited(_showRoadEventDetails(event)),
                     trafficSegments: _driveEngine.trafficFlowSegments,
-                    route:
-                        (_independentNavigation.route ?? _selectedRoute)?.points
-                            .map(
-                              (point) =>
-                                  GeoPoint(point.latitude, point.longitude),
-                            )
-                            .toList(growable: false) ??
-                        const [],
+                    routePaths: _visibleIndependentRoutePaths,
                     selectedPlace: _selectedPlace?.place,
                     explorePlaces: _exploreResults,
                     onExplorePlace: (place) =>
@@ -6092,6 +6195,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 stopCount: _routeStops.length,
                 cameraCount: _driveEngine.routeCameraCount,
                 routeCameraSummaries: _routeCameraSummaries,
+                routePreferenceSummaries: _routePreferenceSummaries,
+                canRequestTransit: _mapProvider == MapProvider.independent,
                 customOrigin: _manualOrigin != null,
                 parkingPlaces: _parkingPlaces,
                 selectedParkingId: _selectedParking?.id,
@@ -6103,7 +6208,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 onDirectDestination: _parkingOriginalPlace == null
                     ? null
                     : () => unawaited(_restoreDirectDestination()),
-                onModeChanged: _selectMode,
+                onModeChanged: (mode) => unawaited(_selectMode(mode)),
                 onRouteSelected: _selectRoute,
                 onStart: () => unawaited(_navigateToSelectedPoi()),
                 onAddStop: () => unawaited(_addStop()),

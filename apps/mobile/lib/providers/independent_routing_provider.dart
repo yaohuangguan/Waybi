@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 
+import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import 'provider_contracts.dart';
@@ -22,8 +24,16 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     required String language,
   }) async {
     final points = _validatedPoints(origin, destination, stops);
+    var driving = await _fetchMode(
+      points,
+      mode: KiwiTravelMode.drive,
+      language: language,
+    );
+    if (stops.isEmpty && driving.length < 3) {
+      driving = await _supplementDrivingAlternatives(points, driving, language);
+    }
     final responses = [
-      await _fetchMode(points, mode: KiwiTravelMode.drive, language: language),
+      driving,
       await _optionalMode(points, KiwiTravelMode.walk, language),
       await _optionalMode(points, KiwiTravelMode.bicycle, language),
     ];
@@ -47,6 +57,131 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     } catch (_) {
       return const [];
     }
+  }
+
+  Future<List<RouteOption>> _supplementDrivingAlternatives(
+    List<GeoPoint> logicalPoints,
+    List<RouteOption> existing,
+    String language,
+  ) async {
+    if (logicalPoints.length != 2 || existing.length >= 3) {
+      return existing.take(3).toList(growable: false);
+    }
+    final origin = logicalPoints.first;
+    final destination = logicalPoints.last;
+    final directMeters = distanceMeters(
+      origin.latitude,
+      origin.longitude,
+      destination.latitude,
+      destination.longitude,
+    );
+    final lateralMeters = (directMeters * .16).clamp(280.0, 1600.0);
+    final forwardBearing = bearingDegrees(
+      origin.latitude,
+      origin.longitude,
+      destination.latitude,
+      destination.longitude,
+    );
+    final midpoint = GeoPoint(
+      (origin.latitude + destination.latitude) / 2,
+      (origin.longitude + destination.longitude) / 2,
+    );
+    final result = existing.take(3).toList(growable: true);
+    final fastest = result
+        .map((route) => route.durationSeconds)
+        .reduce(math.min);
+    final shortest = result
+        .map((route) => route.distanceMeters)
+        .reduce(math.min);
+
+    for (final factor in [1.0, -1.0, 1.65, -1.65]) {
+      if (result.length >= 3) break;
+      final via = _destinationPoint(
+        midpoint,
+        forwardBearing + (factor > 0 ? 90 : -90),
+        lateralMeters * factor.abs(),
+      );
+      try {
+        final candidateRoutes = await _fetchMode(
+          [origin, via, destination],
+          mode: KiwiTravelMode.drive,
+          language: language,
+          alternatives: false,
+        );
+        if (candidateRoutes.isEmpty) continue;
+        final candidate = candidateRoutes.first;
+        if (candidate.durationSeconds > fastest * 1.40 ||
+            candidate.distanceMeters > shortest * 1.48) {
+          continue;
+        }
+        final distinct = result.every(
+          (route) =>
+              (route.distanceMeters - candidate.distanceMeters).abs() >= 120 ||
+              (route.durationSeconds - candidate.durationSeconds).abs() >= 25 ||
+              _routeMidpointDistance(route, candidate) >= 100,
+        );
+        if (!distinct) continue;
+        result.add(
+          RouteOption(
+            id: 'independent-drive-${result.length}',
+            mode: candidate.mode,
+            durationSeconds: candidate.durationSeconds,
+            distanceMeters: candidate.distanceMeters,
+            points: candidate.points,
+            provider: candidate.provider,
+            traffic: candidate.traffic,
+            trafficIntervals: candidate.trafficIntervals,
+            staticDurationSeconds: candidate.staticDurationSeconds,
+            trafficDelaySeconds: candidate.trafficDelaySeconds,
+            routeToken: candidate.routeToken,
+            description: candidate.description.isEmpty
+                ? 'Alternative ${result.length + 1}'
+                : candidate.description,
+            labels: candidate.labels,
+            warnings: candidate.warnings,
+            transit: candidate.transit,
+            steps: candidate.steps,
+            // The generated shaping point is not a user stop and must not be
+            // preserved during rerouting.
+            waypoints: List.unmodifiable(logicalPoints),
+          ),
+        );
+      } catch (_) {
+        // Public OSRM may reject a shaping point. Try the opposite side.
+      }
+    }
+    return result.take(3).toList(growable: false);
+  }
+
+  GeoPoint _destinationPoint(GeoPoint start, double bearing, double distance) {
+    const earthRadius = 6371008.8;
+    final angular = distance / earthRadius;
+    final theta = bearing * math.pi / 180;
+    final lat1 = start.latitude * math.pi / 180;
+    final lon1 = start.longitude * math.pi / 180;
+    final lat2 = math.asin(
+      math.sin(lat1) * math.cos(angular) +
+          math.cos(lat1) * math.sin(angular) * math.cos(theta),
+    );
+    final lon2 =
+        lon1 +
+        math.atan2(
+          math.sin(theta) * math.sin(angular) * math.cos(lat1),
+          math.cos(angular) - math.sin(lat1) * math.sin(lat2),
+        );
+    return GeoPoint(lat2 * 180 / math.pi, lon2 * 180 / math.pi);
+  }
+
+  double _routeMidpointDistance(RouteOption a, RouteOption b) {
+    if (a.points.isEmpty || b.points.isEmpty) return double.infinity;
+    final aPoint = a.points[a.points.length ~/ 2];
+    final bPoint = b.points[b.points.length ~/ 2];
+    return distanceMeters(
+      aPoint.latitude,
+      aPoint.longitude,
+      bPoint.latitude,
+      bPoint.longitude,
+    );
   }
 
   Future<RouteOption> reroute({
@@ -110,7 +245,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         'geometries': 'geojson',
         'overview': 'full',
         'steps': 'true',
-        'alternatives': alternatives && points.length == 2 ? 'true' : 'false',
+        'alternatives': alternatives && points.length == 2 ? '3' : 'false',
       },
     );
     final response = await _limitedGet(uri);

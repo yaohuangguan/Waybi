@@ -30,7 +30,7 @@ class IndependentMapRenderer extends StatefulWidget {
     required this.roadEvents,
     required this.onRoadEvent,
     required this.trafficSegments,
-    required this.route,
+    required this.routePaths,
     required this.selectedPlace,
     required this.explorePlaces,
     required this.onExplorePlace,
@@ -55,7 +55,7 @@ class IndependentMapRenderer extends StatefulWidget {
   final List<RoadEvent> roadEvents;
   final ValueChanged<RoadEvent> onRoadEvent;
   final List<TrafficFlowSegment> trafficSegments;
-  final List<GeoPoint> route;
+  final List<MapRoutePath> routePaths;
   final PlaceSummary? selectedPlace;
   final List<PlaceSummary> explorePlaces;
   final ValueChanged<PlaceSummary> onExplorePlace;
@@ -252,9 +252,25 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       await c.addLineLayer(
         'kiwi-route',
         'kiwi-route-edge',
-        const ml.LineLayerProperties(
-          lineColor: '#ffffff',
-          lineWidth: 9,
+        ml.LineLayerProperties(
+          lineColor: [
+            'case',
+            ['get', 'active'],
+            '#ffffff',
+            '#f4f5f6',
+          ],
+          lineWidth: [
+            'case',
+            ['get', 'active'],
+            9,
+            6,
+          ],
+          lineOpacity: [
+            'case',
+            ['get', 'active'],
+            1,
+            .82,
+          ],
           lineCap: 'round',
           lineJoin: 'round',
         ),
@@ -264,9 +280,25 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       await c.addLineLayer(
         'kiwi-route',
         'kiwi-route-line',
-        const ml.LineLayerProperties(
-          lineColor: '#6f9637',
-          lineWidth: 6,
+        ml.LineLayerProperties(
+          lineColor: [
+            'case',
+            ['get', 'active'],
+            '#6f9637',
+            '#8c959d',
+          ],
+          lineWidth: [
+            'case',
+            ['get', 'active'],
+            6,
+            4,
+          ],
+          lineOpacity: [
+            'case',
+            ['get', 'active'],
+            1,
+            .78,
+          ],
           lineCap: 'round',
           lineJoin: 'round',
         ),
@@ -528,24 +560,37 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
               },
           ]),
         );
-        final routeHash = Object.hashAll(widget.route);
+        final routeHash = Object.hashAll(
+          widget.routePaths.map(
+            (route) => Object.hash(
+              route.id,
+              route.active,
+              Object.hashAll(route.points),
+            ),
+          ),
+        );
         await _setSource(
           'kiwi-route',
           routeHash,
           () => _collection([
-            if (widget.route.length > 1)
-              {
-                'type': 'Feature',
-                'geometry': {
-                  'type': 'LineString',
-                  'coordinates': [
-                    for (final p in widget.route) [p.longitude, p.latitude],
-                  ],
+            for (final route in widget.routePaths)
+              if (route.points.length > 1)
+                {
+                  'type': 'Feature',
+                  'id': route.id,
+                  'geometry': {
+                    'type': 'LineString',
+                    'coordinates': [
+                      for (final p in route.points) [p.longitude, p.latitude],
+                    ],
+                  },
+                  'properties': <String, dynamic>{'active': route.active},
                 },
-                'properties': <String, dynamic>{},
-              },
           ]),
         );
+        final activeRoute = widget.routePaths
+            .where((route) => route.active)
+            .firstOrNull;
         final cameras = widget.cameras
             .where(widget.layers.shows)
             .toList(growable: false);
@@ -554,7 +599,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           Object.hashAll(widget.roadEvents),
           Object.hashAll(widget.explorePlaces),
           widget.selectedPlace,
-          widget.route.lastOrNull,
+          activeRoute?.points.lastOrNull,
         );
         await _setSource(
           'kiwi-pins',
@@ -572,8 +617,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
               ),
             if (widget.selectedPlace case final p?)
               _pin('selected', p.location, 'selected', p.name),
-            if (widget.route.isNotEmpty)
-              _pin('destination', widget.route.last, 'destination', ''),
+            if (activeRoute != null && activeRoute.points.isNotEmpty)
+              _pin('destination', activeRoute.points.last, 'destination', ''),
           ]),
         );
         final driverHash = Object.hash(

@@ -150,12 +150,18 @@ class _PreviewState extends State<_Preview> {
                   roadEvents: const [],
                   onRoadEvent: (_) {},
                   trafficSegments: const [],
-                  route: _browse
+                  routePaths: _browse
                       ? const []
                       : const [
-                          GeoPoint(-36.8470, 174.7641),
-                          _location,
-                          GeoPoint(-36.8500, 174.7625),
+                          MapRoutePath(
+                            id: 'preview-route',
+                            active: true,
+                            points: [
+                              GeoPoint(-36.8470, 174.7641),
+                              _location,
+                              GeoPoint(-36.8500, 174.7625),
+                            ],
+                          ),
                         ],
                   selectedPlace: _selected,
                   explorePlaces: const [],

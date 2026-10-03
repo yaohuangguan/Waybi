@@ -143,9 +143,29 @@ void main() {
                       end: GeoPoint(-36.85, 174.76),
                     ),
                   ],
-                  route: const [
-                    GeoPoint(-36.8485, 174.7633),
-                    GeoPoint(-36.8518, 174.7634),
+                  routePaths: const [
+                    MapRoutePath(
+                      id: 'route-1',
+                      active: true,
+                      points: [
+                        GeoPoint(-36.8485, 174.7633),
+                        GeoPoint(-36.8518, 174.7634),
+                      ],
+                    ),
+                    MapRoutePath(
+                      id: 'route-2',
+                      points: [
+                        GeoPoint(-36.8485, 174.7633),
+                        GeoPoint(-36.8520, 174.7650),
+                      ],
+                    ),
+                    MapRoutePath(
+                      id: 'route-3',
+                      points: [
+                        GeoPoint(-36.8485, 174.7633),
+                        GeoPoint(-36.8522, 174.7618),
+                      ],
+                    ),
                   ],
                   selectedPlace: null,
                   explorePlaces: const [],
@@ -209,6 +229,13 @@ void main() {
           platform.sources['kiwi-traffic']!['features'] as List<dynamic>;
       expect(traffic, hasLength(1));
       expect(traffic.single['properties']['level'], 'heavy');
+      final routes =
+          platform.sources['kiwi-route']!['features'] as List<dynamic>;
+      expect(routes, hasLength(3));
+      expect(
+        routes.where((feature) => feature['properties']['active'] == true),
+        hasLength(1),
+      );
       final builds = platform.builds;
       platform.updates.clear();
       for (var i = 0; i < 120; i++) {

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#F8FBEF" />
+  <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+  <meta name="description" content="Route Watch by Waybi monitors saved Home ↔ Work commute corridors against official NZTA road events, without continuously uploading your live GPS location." />
+  <link rel="canonical" href="https://waybi.nzs.workers.dev/route-watch/" />
+  <link rel="alternate" hreflang="en-NZ" href="https://waybi.nzs.workers.dev/route-watch/" />
+  <link rel="alternate" hreflang="x-default" href="https://waybi.nzs.workers.dev/route-watch/" />
+  <link rel="icon" type="image/png" href="/brand/waybi-icon.png" />
+  <link rel="stylesheet" href="/seo.css" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Waybi" />
+  <meta property="og:title" content="Route Watch — New Zealand Commute Monitoring | Waybi" />
+  <meta property="og:description" content="Monitor a stable Home ↔ Work route against official NZTA road events without continuously uploading live GPS." />
+  <meta property="og:url" content="https://waybi.nzs.workers.dev/route-watch/" />
+  <meta property="og:image" content="https://waybi.nzs.workers.dev/og-waybi.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Waybi — A clearer journey" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <title>Route Watch — New Zealand Commute Monitoring | Waybi</title>
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@graph":[
+      {
+        "@type":"WebPage",
+        "@id":"https://waybi.nzs.workers.dev/route-watch/#webpage",
+        "url":"https://waybi.nzs.workers.dev/route-watch/",
+        "name":"Route Watch — New Zealand Commute Monitoring | Waybi",
+        "description":"Waybi Route Watch monitors saved commute corridors against official NZTA road events.",
+        "inLanguage":"en-NZ",
+        "isPartOf":{"@id":"https://waybi.nzs.workers.dev/#website"}
+      },
+      {
+        "@type":"BreadcrumbList",
+        "itemListElement":[
+          {"@type":"ListItem","position":1,"name":"Waybi","item":"https://waybi.nzs.workers.dev/"},
+          {"@type":"ListItem","position":2,"name":"Route Watch","item":"https://waybi.nzs.workers.dev/route-watch/"}
+        ]
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/"><img src="/brand/waybi-lockup.svg" width="268" height="84" alt="Waybi — A clearer journey" /></a>
+      <nav aria-label="Main navigation">
+        <a href="/new-zealand-navigation/">NZ navigation</a>
+        <a href="/safety-camera-navigation/">Safety cameras</a>
+        <a href="/route-watch/" aria-current="page">Route Watch</a>
+        <a href="/zh/" lang="zh-CN">中文</a>
+        <a class="primary" href="/app">Open Waybi</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="wrap">
+        <span class="kicker">WAYBI PLUS · ROUTE WATCH</span>
+        <h1>Know when your regular route is having a bad day.</h1>
+        <p class="lead">Route Watch monitors a saved Home → Work or Work → Home corridor against official NZTA Traffic and Travel road events. It is designed for the route you actually repeat, not wherever your phone happened to be when you switched monitoring on.</p>
+        <div class="hero-actions">
+          <a class="button" href="/app">Open Waybi</a>
+          <a class="button secondary" href="/new-zealand-navigation/">Explore Waybi navigation</a>
+        </div>
+        <div class="proof">
+          <div><strong>Every 15 minutes</strong><span>Active, valid watches are evaluated on a Cloudflare schedule.</span></div>
+          <div><strong>Official NZTA events</strong><span>Saved corridors are checked against New Zealand road-event data.</span></div>
+          <div><strong>No continuous GPS upload</strong><span>Background checks use the stored route corridor, not a live location stream.</span></div>
+        </div>
+      </div>
+    </section>
+    <div class="wrap content">
+      <article class="article">
+        <h2>A commute watch should stay attached to the commute</h2>
+        <p>A common failure mode for route monitoring is anchoring the watch to the phone's location at the exact moment the feature is enabled. That turns a regular commute into a moving target. Waybi instead stores a sampled route corridor between configured Home and Work places, together with baseline distance, ETA and the route provider.</p>
+        <p>Home → Work and Work → Home are independent watches. That matters because the two directions can use different roads, encounter different incidents and behave differently at different times of day.</p>
+
+        <h2>Background checks use the saved corridor</h2>
+        <p>The Waybi backend evaluates active, non-expired route watches every 15 minutes against official NZTA Traffic and Travel road events. The background process works from the saved corridor and does not need to continuously upload the driver's live GPS position.</p>
+        <div class="callout">
+          <strong>Route Watch is not continuous location tracking.</strong>
+          The monitoring job checks the route geometry saved for the watch. Live GPS remains a navigation-time input on the device rather than a requirement for the scheduled background check.
+        </div>
+
+        <h2>Route geometry is allowed to expire</h2>
+        <p>A route is not permanent. Road networks, provider responses and a driver's preferred path can change, so Route Watch does not keep treating old geometry as authoritative forever. Saved geometry expires after 29 days and must be refreshed before monitoring can continue normally.</p>
+        <p>Waybi normalises watch state into practical categories such as healthy, advisory, warning, disrupted and unknown. An unknown state can be used when the route itself needs refreshing rather than pretending the corridor is definitely clear.</p>
+
+        <h2>Why not buy a fresh route every 15 minutes?</h2>
+        <p>Repeatedly requesting a paid provider route for every watch would create unnecessary API cost and can still make the monitored corridor drift. Waybi uses the stored route geometry for background event matching. Fresh route planning can happen when the user actually refreshes or uses the route, while periodic monitoring stays lightweight and predictable.</p>
+
+        <h2>What Route Watch can say today</h2>
+        <p>The current implementation provides real server-side monitoring and in-app route-watch status. Remote push delivery is a separate layer and is not presented as complete until APNs or FCM delivery is wired end to end. That distinction keeps the product honest: monitoring can be real without claiming a notification channel that is not yet finished.</p>
+
+        <h2>Route Watch is a Plus feature</h2>
+        <p>Waybi keeps basic navigation outside the subscription wall. Core maps, search, route planning, turn-by-turn navigation, automatic fixed-camera data refresh, Journey Brief, parking discovery and core trip history are designed to remain available without Plus. Route Watch belongs in Plus because it performs recurring proactive monitoring on behalf of the driver.</p>
+
+        <section class="faq" aria-labelledby="faq-title">
+          <h2 id="faq-title">Route Watch questions</h2>
+          <details><summary>Does Route Watch track my live location all day?</summary><p>No. Scheduled background checks use the stored route corridor. Waybi does not need a continuous live GPS stream to compare that corridor with road events.</p></details>
+          <details><summary>How often is a route watch checked?</summary><p>The production schedule evaluates active, non-expired route watches every 15 minutes against official NZTA road events.</p></details>
+          <details><summary>Will Route Watch always send a push notification?</summary><p>Not yet. The current implementation has real server-side monitoring and in-app status. Remote push delivery remains a separate integration and is not claimed as complete.</p></details>
+          <details><summary>Why does a watch expire?</summary><p>Saved route geometry expires after 29 days so Waybi does not silently monitor an increasingly stale corridor forever.</p></details>
+        </section>
+      </article>
+      <aside class="aside" aria-label="Route Watch links">
+        <section><h2>Waybi navigation</h2><p>See the route-planning and driving experience that Route Watch builds on.</p><a href="/new-zealand-navigation/">New Zealand navigation →</a></section>
+        <section><h2>Road awareness</h2><p>Learn how published NZTA fixed-camera data is validated and matched to routes.</p><a href="/safety-camera-navigation/">Safety-camera navigation →</a></section>
+        <section><h2>Open Waybi</h2><p>Use the web experience for route planning and account-linked features.</p><a href="/app">Open the web app →</a></section>
+      </aside>
+    </div>
+    <section class="related">
+      <div class="wrap">
+        <h2>Explore Waybi</h2>
+        <div class="cards">
+          <a class="card" href="/new-zealand-navigation/"><span>Navigation</span><strong>New Zealand route planning</strong><p>Routes, traffic context, parking, multiple map providers and bilingual guidance.</p></a>
+          <a class="card" href="/safety-camera-navigation/"><span>Road awareness</span><strong>NZ safety-camera guidance</strong><p>Route-aware reminders based on the published NZTA fixed-camera list.</p></a>
+          <a class="card" href="/zh/" lang="zh-CN"><span>中文</span><strong>Waybi 中文介绍</strong><p>中文了解导航、摄像头提醒、停车与 Route Watch。</p></a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="wrap"><span>© 2026 Waybi · A clearer journey</span><nav><a href="/">Home</a><a href="/app">Web app</a><a href="https://github.com/yaohuangguan/kiwi-lens">GitHub</a></nav></div>
+  </footer>
+</body>
+</html>

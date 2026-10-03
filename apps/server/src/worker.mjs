@@ -384,7 +384,22 @@ async function handleApi(request, env, ctx) {
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
-    if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
+    if (!pathname.startsWith('/api/')) {
+      const response = await env.ASSETS.fetch(request);
+      const productSurface =
+        pathname === '/app' || pathname.startsWith('/app/') ||
+        pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+      if (!productSurface) return response;
+
+      const headers = new Headers(response.headers);
+      headers.set('x-robots-tag', 'noindex, follow');
+      headers.set('cache-control', 'private, no-cache');
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      });
+    }
     if (env.WAYBI_MIGRATION_PAUSED === 'true') {
       return new Response(JSON.stringify({ error: 'Service updating. Please retry shortly.' }), {
         status: 503,

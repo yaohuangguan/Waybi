@@ -1,5 +1,4 @@
 @import './tokens.css';
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
 :root { font-family: var(--font-ui); color: var(--text-primary); background: var(--surface-subtle); font-synthesis: none; }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 100px; }
@@ -184,3 +183,14 @@ html[lang^='zh'] h2 { line-height: 1.3; letter-spacing: -.02em; }
 @media (max-width: 1000px) { .companion { flex-direction: column; align-items: flex-start; gap: 16px; } }
 @media (max-width: 640px) { .companion-grid { grid-template-columns: 1fr; } .companion { flex-direction: row; padding: 22px; gap: 18px; } .companion img { width: 100px; height: 100px; } .companions { padding-top: 60px; } }
 @media (max-width: 380px) { .companion { flex-direction: column; } }
+
+.seo-guides { padding: 72px 0 84px; border-top: 1px solid var(--border); }
+.seo-guide-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 34px; }
+.seo-guide-card { min-height: 286px; display: flex; flex-direction: column; padding: 28px; border: 1px solid var(--border); border-radius: 24px; background: #fff; color: var(--text-primary); text-decoration: none; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+.seo-guide-card:hover, .seo-guide-card:focus-visible { transform: translateY(-3px); border-color: #b9d38d; box-shadow: 0 18px 45px rgba(35,53,29,.09); outline: none; }
+.seo-guide-card > span { color: var(--text-secondary); font-size: 12px; font-weight: 800; letter-spacing: .11em; }
+.seo-guide-card h3 { margin: 40px 0 12px; font-size: 26px; line-height: 1.2; letter-spacing: -.025em; }
+.seo-guide-card p { margin: 0; color: var(--text-secondary); font-size: 16px; line-height: 1.7; }
+.seo-guide-card b { margin-top: auto; padding-top: 24px; color: var(--brand-ocean); font-size: 15px; }
+@media (max-width: 900px) { .seo-guide-grid { grid-template-columns: 1fr; } .seo-guide-card { min-height: 230px; } }
+@media (max-width: 430px) { .seo-guides { padding: 58px 0 66px; } .seo-guide-card { padding: 24px; } .seo-guide-card h3 { margin-top: 28px; font-size: 24px; } .seo-guide-card p { font-size: 16px; } }

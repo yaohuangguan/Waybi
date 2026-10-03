@@ -4,9 +4,126 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#F8FBEF" />
-    <meta name="description" content="Thoughtful navigation for New Zealand, with official safety-camera reminders and a little Waybi personality." />
-    <link rel="icon" type="image/png" href="/brand/waybi-icon.png" />
-    <title>Waybi · Your map. A little more Waybi.</title>
+    <meta name="application-name" content="Waybi" />
+    <meta name="apple-mobile-web-app-title" content="Waybi" />
+    <meta name="description" content="Waybi is a New Zealand navigation app with route planning, traffic-aware guidance, NZTA fixed safety-camera reminders, parking discovery, and English or Chinese navigation." />
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+    <link rel="canonical" href="https://waybi.nzs.workers.dev/" />
+    <link rel="alternate" hreflang="en-NZ" href="https://waybi.nzs.workers.dev/" />
+    <link rel="alternate" hreflang="zh-CN" href="https://waybi.nzs.workers.dev/zh/" />
+    <link rel="alternate" hreflang="x-default" href="https://waybi.nzs.workers.dev/" />
+    <link rel="icon" type="image/png" sizes="1024x1024" href="/brand/waybi-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Waybi" />
+    <meta property="og:locale" content="en_NZ" />
+    <meta property="og:locale:alternate" content="zh_CN" />
+    <meta property="og:title" content="Waybi — New Zealand Navigation App" />
+    <meta property="og:description" content="A clearer way to navigate New Zealand: route planning, traffic-aware guidance, official fixed safety-camera reminders, parking context, and bilingual navigation." />
+    <meta property="og:url" content="https://waybi.nzs.workers.dev/" />
+    <meta property="og:image" content="https://waybi.nzs.workers.dev/og-waybi.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Waybi — A clearer journey" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Waybi — New Zealand Navigation App" />
+    <meta name="twitter:description" content="Route planning, traffic-aware guidance, NZTA fixed safety-camera reminders, parking context, and bilingual navigation for New Zealand." />
+    <meta name="twitter:image" content="https://waybi.nzs.workers.dev/og-waybi.png" />
+    <title>Waybi — New Zealand Navigation App | Traffic &amp; Safety Camera Alerts</title>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://waybi.nzs.workers.dev/#organization",
+            "name": "Waybi",
+            "url": "https://waybi.nzs.workers.dev/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://waybi.nzs.workers.dev/brand/waybi-icon.png",
+              "width": 1024,
+              "height": 1024
+            },
+            "sameAs": ["https://github.com/yaohuangguan/kiwi-lens"]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://waybi.nzs.workers.dev/#website",
+            "url": "https://waybi.nzs.workers.dev/",
+            "name": "Waybi",
+            "alternateName": "Waybi Maps & Navigation",
+            "description": "Navigation for New Zealand with route planning, traffic-aware guidance, official fixed safety-camera reminders, parking context, and bilingual navigation.",
+            "inLanguage": ["en-NZ", "zh-CN"],
+            "publisher": { "@id": "https://waybi.nzs.workers.dev/#organization" }
+          },
+          {
+            "@type": ["SoftwareApplication", "MobileApplication"],
+            "@id": "https://waybi.nzs.workers.dev/#app",
+            "name": "Waybi",
+            "url": "https://waybi.nzs.workers.dev/",
+            "applicationCategory": "TravelApplication",
+            "operatingSystem": "iOS",
+            "description": "A New Zealand navigation app with route planning, traffic-aware guidance, NZTA fixed safety-camera reminders, parking discovery, route monitoring, and English or Chinese guidance.",
+            "image": "https://waybi.nzs.workers.dev/brand/waybi-icon.png",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "NZD"
+            },
+            "featureList": [
+              "Turn-by-turn navigation",
+              "Traffic-aware route context",
+              "NZTA fixed safety-camera reminders",
+              "Multiple route alternatives",
+              "Parking discovery",
+              "Route Watch commute monitoring",
+              "English and Chinese guidance"
+            ],
+            "inLanguage": ["en-NZ", "zh-CN"],
+            "areaServed": { "@type": "Country", "name": "New Zealand" },
+            "publisher": { "@id": "https://waybi.nzs.workers.dev/#organization" }
+          }
+        ]
+      }
+    </script>
+    <script>
+      (() => {
+        const path = location.pathname.replace(/\/+$/, '') || '/';
+        document.documentElement.dataset.initialRoute =
+          path === '/app' || path === '/dashboard' ? 'product' : 'marketing';
+      })();
+    </script>
+    <style>
+      html[data-initial-route="product"] #seo-home{display:none}
+      #seo-home{min-height:100vh;background:#f8fbef;color:#152510;font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+      #seo-home *{box-sizing:border-box}
+      #seo-home a{color:#29441f}
+      .seo-wrap{width:min(1120px,calc(100% - 40px));margin:auto}
+      .seo-nav{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px 0}
+      .seo-nav img{width:172px;height:auto}
+      .seo-nav nav{display:flex;flex-wrap:wrap;gap:18px;font-weight:700}
+      .seo-hero{padding:76px 0 56px}
+      .seo-kicker{font-size:12px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#64705b}
+      .seo-hero h1{max-width:850px;margin:14px 0 20px;font-size:clamp(42px,7vw,80px);line-height:1.02;letter-spacing:-.05em}
+      .seo-hero>p{max-width:760px;margin:0;font-size:20px;color:#52604d}
+      .seo-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+      .seo-actions a{padding:13px 18px;border-radius:12px;background:#29441f;color:#fff;text-decoration:none;font-weight:800}
+      .seo-actions a+ a{background:#d0f58a;color:#29441f}
+      .seo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:24px 0 68px}
+      .seo-card{padding:30px;border:1px solid #dbe5cb;border-radius:20px;background:#fff}
+      .seo-card h2{margin:0 0 10px;font-size:28px;line-height:1.15;letter-spacing:-.025em}
+      .seo-card p{margin:0;color:#5d6959}
+      .seo-card a{display:inline-block;margin-top:16px;font-weight:800}
+      .seo-faq{padding:18px 0 72px;border-top:1px solid #dbe5cb}
+      .seo-faq h2{font-size:34px}
+      .seo-faq h3{margin:26px 0 7px}
+      .seo-footer{padding:28px 0 40px;border-top:1px solid #dbe5cb;color:#64705b}
+      @media(max-width:760px){.seo-nav{align-items:flex-start;flex-direction:column}.seo-grid{grid-template-columns:1fr}.seo-hero{padding-top:52px}.seo-hero>p{font-size:18px}}
+    </style>
   </head>
   <body>
     <div id="app" hidden>
@@ -204,6 +321,75 @@
         </section>
       </div>
     </div>
+
+    <div id="seo-home">
+      <header class="seo-wrap seo-nav">
+        <a href="/" aria-label="Waybi home"><img src="/brand/waybi-lockup.svg" alt="Waybi — A clearer journey" width="268" height="84" /></a>
+        <nav aria-label="Explore Waybi">
+          <a href="/new-zealand-navigation/">New Zealand navigation</a>
+          <a href="/safety-camera-navigation/">Safety-camera guidance</a>
+          <a href="/route-watch/">Route Watch</a>
+          <a href="/zh/" lang="zh-CN">中文</a>
+        </nav>
+      </header>
+      <main class="seo-wrap">
+        <section class="seo-hero">
+          <span class="seo-kicker">WAYBI · MAPS &amp; NAVIGATION FOR NEW ZEALAND</span>
+          <h1>New Zealand navigation, with a little more local knowledge.</h1>
+          <p>Waybi is a navigation app designed around driving in Aotearoa New Zealand. Plan routes, compare alternatives, see traffic-aware road context when available, discover parking near your destination, and get route-aware reminders for published NZTA fixed safety cameras — in English or Chinese.</p>
+          <div class="seo-actions">
+            <a href="/app">Open Waybi on the web</a>
+            <a href="/new-zealand-navigation/">Explore how Waybi navigates</a>
+          </div>
+        </section>
+        <section class="seo-grid" aria-label="Waybi navigation features">
+          <article class="seo-card">
+            <h2>Navigation built around New Zealand roads</h2>
+            <p>Waybi combines clear turn guidance, lane information when the route provider supplies it, multiple route choices, traffic context, walking and transit options, and a compact driving interface designed to keep the road visible.</p>
+            <a href="/new-zealand-navigation/">New Zealand navigation guide →</a>
+          </article>
+          <article class="seo-card">
+            <h2>NZTA fixed safety-camera awareness</h2>
+            <p>Published fixed safety-camera locations from NZ Transport Agency Waka Kotahi are matched to your route so Waybi can give useful advance reminders. The data is checked regularly and remains a driving aid, never a replacement for road signs or current conditions.</p>
+            <a href="/safety-camera-navigation/">How safety-camera reminders work →</a>
+          </article>
+          <article class="seo-card">
+            <h2>Route choices, traffic and parking context</h2>
+            <p>Compare sensible route alternatives instead of forcing a different route just for variety. Where live traffic data is available, Waybi uses it as road context. For supported destinations, parking discovery helps you plan the final part of the trip before you set off.</p>
+            <a href="/new-zealand-navigation/#routes">Explore route planning →</a>
+          </article>
+          <article class="seo-card">
+            <h2>Route Watch for the journeys you repeat</h2>
+            <p>Waybi Plus can keep an eye on saved commutes such as Home ↔ Work and surface meaningful travel-time changes. Route geometry is refreshed instead of being treated as permanent, so monitoring stays tied to the route you actually use.</p>
+            <a href="/route-watch/">Learn about Route Watch →</a>
+          </article>
+          <article class="seo-card">
+            <h2>English and Chinese navigation</h2>
+            <p>Waybi supports an English or Chinese interface and guidance. Search remains location-aware rather than assuming a hard-coded city, while New Zealand-specific road intelligence layers add local context on top.</p>
+            <a href="/zh/" lang="zh-CN">查看中文介绍 →</a>
+          </article>
+          <article class="seo-card">
+            <h2>A travelling companion, not another dashboard</h2>
+            <p>Waybi keeps the map central and adds only the information that helps with the next decision. The Waybi bird, Clover the cat and Sett the corgi add personality without getting in the way of navigation.</p>
+            <a href="/#download">Meet Waybi →</a>
+          </article>
+        </section>
+        <section class="seo-faq">
+          <span class="seo-kicker">GOOD TO KNOW</span>
+          <h2>About Waybi navigation</h2>
+          <h3>Is Waybi a Google Maps replacement?</h3>
+          <p>Waybi supports Google Maps as well as its own independent map and routing layers. The product is being built so map providers can be changed without changing the overall Waybi navigation experience.</p>
+          <h3>Does Waybi show every speed camera in New Zealand?</h3>
+          <p>No. Waybi uses published fixed safety-camera information from NZ Transport Agency Waka Kotahi. Coverage does not represent every road hazard, mobile enforcement activity, camera direction or lane. Always follow road signs, current conditions and New Zealand law.</p>
+          <h3>Can I use Waybi without an account?</h3>
+          <p>Yes. Core route exploration can be used as a guest. An account adds saved places, history and account-linked features such as Route Watch where available.</p>
+        </section>
+      </main>
+      <footer class="seo-footer">
+        <div class="seo-wrap">Waybi · A clearer journey · <a href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" rel="noopener noreferrer">NZTA safety-camera source</a></div>
+      </footer>
+    </div>
+
     <script type="module" src="/src/router.ts"></script>
   </body>
 </html>

@@ -20,6 +20,8 @@ class FakeDrive extends DriveEngine {
   LatLng? fix;
   RouteProgressTracker? tracker;
   final spoken = <String>[];
+  int stops = 0;
+  RouteProgressTracker? trackerAtStart;
   @override
   LatLng? get snappedLocation => fix;
   @override
@@ -30,6 +32,7 @@ class FakeDrive extends DriveEngine {
 
   @override
   Future<void> startLocal() async {
+    trackerAtStart = tracker;
     active = true;
   }
 
@@ -40,6 +43,7 @@ class FakeDrive extends DriveEngine {
 
   @override
   Future<void> stop() async {
+    stops++;
     active = false;
     setRoute(null);
   }
@@ -204,6 +208,53 @@ void main() {
       expect(nav.offRoute, isFalse);
     },
   );
+
+  test(
+    'navigation restarts an existing Drive stream with the new route',
+    () async {
+      final drive = FakeDrive()..active = true;
+      final nav = IndependentNavigationEngine(drive);
+      addTearDown(() {
+        nav.dispose();
+        drive.dispose();
+      });
+      final route = makeRoute();
+      await nav.start(route);
+      expect(drive.stops, 1);
+      expect(drive.trackerAtStart, isNotNull);
+      expect(nav.route, same(route));
+      expect(nav.active, isTrue);
+    },
+  );
+
+  test('returning to the route discards a pending recalculation', () async {
+    final drive = FakeDrive();
+    var now = DateTime(2026, 9, 30);
+    final pending = Completer<RouteOption>();
+    final nav = IndependentNavigationEngine(
+      drive,
+      clock: () => now,
+      reroute: (_, _, _) => pending.future,
+    );
+    addTearDown(() {
+      nav.dispose();
+      drive.dispose();
+    });
+    final original = makeRoute();
+    await nav.start(original);
+    for (var i = 0; i < 3; i++) {
+      now = now.add(const Duration(seconds: 2));
+      drive.emit(const GeoPoint(-36.859, 174.7615), now);
+    }
+    expect(nav.rerouting, isTrue);
+    now = now.add(const Duration(seconds: 1));
+    drive.emit(origin, now);
+    expect(nav.offRoute, isFalse);
+    pending.complete(makeRoute());
+    await Future<void>.delayed(Duration.zero);
+    expect(nav.route, same(original));
+    expect(nav.rerouting, isFalse);
+  });
 
   test('a stopped trip ignores a late reroute response', () async {
     final drive = FakeDrive();

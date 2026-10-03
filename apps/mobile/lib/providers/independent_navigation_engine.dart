@@ -107,6 +107,10 @@ class IndependentNavigationEngine extends ChangeNotifier
     _lastReroute = null;
     rerouting = false;
     error = null;
+    // Geolocator keeps the settings of its first active stream. Restart an
+    // existing Drive session before installing the route so Android uses the
+    // single navigation service rather than retaining a second notification.
+    if (drive.active) await drive.stop();
     _setRoute(route);
     try {
       await drive.startLocal();
@@ -275,7 +279,7 @@ class IndependentNavigationEngine extends ChangeNotifier
         previous,
         stops,
       ).timeout(const Duration(seconds: 10));
-      if (session != _session || _route == null) return;
+      if (session != _session || _route == null || !offRoute || arrived) return;
       if (replacement.provider != 'independent' ||
           replacement.mode != previous.mode ||
           replacement.points.length < 2) {

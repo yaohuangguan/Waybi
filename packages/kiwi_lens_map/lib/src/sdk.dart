@@ -15,7 +15,11 @@ class KiwiLensMapStack {
     this.roadIntelligence,
     this.layers = const [
       MapLayerDescriptor(id: 'safety-cameras', label: 'Safety cameras'),
-      MapLayerDescriptor(id: 'traffic', label: 'Traffic'),
+      MapLayerDescriptor(
+        id: 'traffic',
+        label: 'Traffic',
+        enabledByDefault: false,
+      ),
       MapLayerDescriptor(
         id: 'road-intelligence',
         label: 'Road Intelligence',

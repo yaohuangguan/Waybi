@@ -466,8 +466,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _plusBilling.initialize();
     unawaited(_account.restore());
     unawaited(_driveEngine.loadCameras());
-    unawaited(_driveEngine.loadTrafficFlow());
-    unawaited(_restoreMapSettings().then((_) => _maybeShowCoreOnboarding()));
+    unawaited(
+      _restoreMapSettings().then((_) async {
+        if (_mapProvider == MapProvider.independent && _layers.traffic) {
+          await _driveEngine.loadTrafficFlow();
+        }
+        await _maybeShowCoreOnboarding();
+      }),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_startTracking());
     });
@@ -591,6 +597,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(_deliverRouteWatchAlerts());
       unawaited(_refreshQuickCommutes(force: true));
+      if (_mapProvider == MapProvider.independent && _layers.traffic) {
+        unawaited(_driveEngine.loadTrafficFlow(force: true));
+      }
     }
   }
 
@@ -1271,7 +1280,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           prefs.getBool('tasman.alerts.dual_red_speed') ?? true,
       alertBusLane: prefs.getBool('tasman.alerts.bus_lane') ?? true,
       alertOther: prefs.getBool('tasman.alerts.other_camera') ?? false,
-      traffic: prefs.getBool('kiwi.layers.traffic') ?? true,
+      traffic: prefs.getBool('kiwi.layers.traffic') ?? false,
       style: BaseMapStyle.values.firstWhere(
         (value) => value.name == prefs.getString('kiwi.layers.style'),
         orElse: () => BaseMapStyle.standard,
@@ -3839,6 +3848,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('kiwi.map.provider', provider.name);
     if (provider == MapProvider.google) _restoreGoogleRecent(prefs);
+    if (provider == MapProvider.independent && _layers.traffic) {
+      unawaited(_driveEngine.loadTrafficFlow(force: true));
+    }
     if (wasPreviewing && _selectedPoi != null) {
       unawaited(_loadRoutePreview(_selectedPoi!));
     }
@@ -3885,6 +3897,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _setMapLayers(MapLayerSettings value) async {
+    final trafficJustEnabled = value.traffic && !_layers.traffic;
     setState(() => _layers = value);
     _driveEngine.setCameraAlertFilter(value.alerts);
     final prefs = await SharedPreferences.getInstance();
@@ -3908,6 +3921,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       prefs.setBool('kiwi.layers.traffic', value.traffic),
       prefs.setString('kiwi.layers.style', value.style.name),
     ]);
+    if (trafficJustEnabled && _mapProvider == MapProvider.independent) {
+      await _driveEngine.loadTrafficFlow(force: true);
+    }
     final controller = _driveEngine.active
         ? _navigationController
         : _browseController;
@@ -3930,6 +3946,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         settings: _layers,
         mapProvider: _mapProvider,
         language: _appLanguage,
+        trafficStatus: _driveEngine.trafficFlowStatus,
+        trafficSegmentCount: _driveEngine.trafficFlowSegments.length,
         onChanged: (value) => unawaited(_setMapLayers(value)),
       ),
     );

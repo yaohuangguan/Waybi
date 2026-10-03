@@ -224,6 +224,94 @@ class LocationMarkerArt {
         paint.strokeWidth = 4;
         canvas.drawLine(const Offset(37, 68), const Offset(33, 76), paint);
         canvas.drawLine(const Offset(56, 68), const Offset(60, 76), paint);
+      case LocationMarkerStyle.cat:
+        final catHead = Path()
+          ..moveTo(32, 42)
+          ..lineTo(31, 24)
+          ..lineTo(42, 31)
+          ..quadraticBezierTo(48, 27, 54, 31)
+          ..lineTo(65, 24)
+          ..lineTo(64, 42)
+          ..quadraticBezierTo(62, 55, 48, 56)
+          ..quadraticBezierTo(34, 55, 32, 42)
+          ..close();
+        canvas.drawPath(catHead, paint);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTWH(37, 52, 22, 25),
+            const Radius.circular(10),
+          ),
+          paint,
+        );
+        paint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 5
+          ..strokeCap = StrokeCap.round;
+        final catTail = Path()
+          ..moveTo(57, 67)
+          ..cubicTo(72, 70, 74, 55, 67, 51);
+        canvas.drawPath(catTail, paint);
+        paint
+          ..style = PaintingStyle.fill
+          ..color = const Color(0xFF23351D);
+        canvas.drawCircle(const Offset(42, 41), 2.4, paint);
+        canvas.drawCircle(const Offset(54, 41), 2.4, paint);
+        final catNose = Path()
+          ..moveTo(48, 45)
+          ..lineTo(44.5, 48.5)
+          ..lineTo(51.5, 48.5)
+          ..close();
+        canvas.drawPath(catNose, paint);
+        paint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8
+          ..strokeCap = StrokeCap.round;
+        canvas.drawLine(const Offset(48, 49), const Offset(48, 52), paint);
+        canvas.drawLine(const Offset(48, 52), const Offset(44, 54), paint);
+        canvas.drawLine(const Offset(48, 52), const Offset(52, 54), paint);
+        paint.style = PaintingStyle.fill;
+      case LocationMarkerStyle.dog:
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            const Rect.fromLTWH(35, 49, 26, 28),
+            const Radius.circular(11),
+          ),
+          paint,
+        );
+        canvas.drawCircle(const Offset(48, 37), 16, paint);
+        final leftEar = Path()
+          ..moveTo(36, 29)
+          ..cubicTo(27, 27, 26, 45, 35, 50)
+          ..cubicTo(39, 44, 39, 35, 36, 29)
+          ..close();
+        final rightEar = Path()
+          ..moveTo(60, 29)
+          ..cubicTo(69, 27, 70, 45, 61, 50)
+          ..cubicTo(57, 44, 57, 35, 60, 29)
+          ..close();
+        canvas.drawPath(leftEar, paint);
+        canvas.drawPath(rightEar, paint);
+        paint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 5
+          ..strokeCap = StrokeCap.round;
+        final dogTail = Path()
+          ..moveTo(59, 65)
+          ..cubicTo(72, 62, 73, 52, 68, 49);
+        canvas.drawPath(dogTail, paint);
+        paint
+          ..style = PaintingStyle.fill
+          ..color = const Color(0xFF23351D);
+        canvas.drawCircle(const Offset(42, 37), 2.4, paint);
+        canvas.drawCircle(const Offset(54, 37), 2.4, paint);
+        canvas.drawOval(const Rect.fromLTWH(44, 42, 8, 6), paint);
+        paint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8
+          ..strokeCap = StrokeCap.round;
+        canvas.drawLine(const Offset(48, 48), const Offset(44, 51), paint);
+        canvas.drawLine(const Offset(48, 48), const Offset(52, 51), paint);
+        paint.style = PaintingStyle.fill;
       case LocationMarkerStyle.arrow:
         final arrow = Path()
           ..moveTo(48, 14)

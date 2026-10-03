@@ -880,7 +880,15 @@ class _ProfilePageState extends State<ProfilePage> {
                   items: [
                     DropdownMenuItem(
                       value: LocationMarkerStyle.kiwi,
-                      child: Text(_text('Kiwi bird', 'kiwi 鸟标')),
+                      child: Text(_text('Kiwi bird', 'Kiwi 鸟标')),
+                    ),
+                    DropdownMenuItem(
+                      value: LocationMarkerStyle.cat,
+                      child: Text(_text('Kiwi cat', 'Kiwi 猫')),
+                    ),
+                    DropdownMenuItem(
+                      value: LocationMarkerStyle.dog,
+                      child: Text(_text('Kiwi dog', 'Kiwi 狗')),
                     ),
                     DropdownMenuItem(
                       value: LocationMarkerStyle.arrow,

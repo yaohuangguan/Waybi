@@ -14,10 +14,23 @@ SafetyCamera camera(String type) => SafetyCamera(
 );
 
 void main() {
+  test('live traffic is opt-in by default', () {
+    expect(const MapLayerSettings().traffic, isFalse);
+  });
+
   test('NZTA fixed camera categories stay distinct', () {
-    expect(CameraKindLabel.fromCamera(camera('Spot speed')), CameraKind.spotSpeed);
-    expect(CameraKindLabel.fromCamera(camera('Average speed')), CameraKind.averageSpeed);
-    expect(CameraKindLabel.fromCamera(camera('Red light')), CameraKind.redLight);
+    expect(
+      CameraKindLabel.fromCamera(camera('Spot speed')),
+      CameraKind.spotSpeed,
+    );
+    expect(
+      CameraKindLabel.fromCamera(camera('Average speed')),
+      CameraKind.averageSpeed,
+    );
+    expect(
+      CameraKindLabel.fromCamera(camera('Red light')),
+      CameraKind.redLight,
+    );
     expect(
       CameraKindLabel.fromCamera(camera('Dual red light or speed')),
       CameraKind.dualRedLightSpeed,
@@ -30,7 +43,10 @@ void main() {
       CameraKindLabel.fromCamera(camera('Special Vehicle Lane CCTV')),
       CameraKind.busLane,
     );
-    expect(CameraKindLabel.fromCamera(camera('Future camera')), CameraKind.other);
+    expect(
+      CameraKindLabel.fromCamera(camera('Future camera')),
+      CameraKind.other,
+    );
   });
 
   test('visibility and alert switches are independent', () {

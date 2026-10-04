@@ -12,7 +12,7 @@ import { independentPlaceDetails } from './independent_place_details.mjs';
 import { routeOptions } from './routes.mjs';
 import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.mjs';
 import { loadRoadEventState } from './road_events.mjs';
-import { loadTrafficFlowState } from './traffic_flow.mjs';
+import { readTrafficFlowState, refreshTrafficFlowState } from './traffic_flow.mjs';
 import { handleRoadIntelligence } from './road_intelligence_api.mjs';
 import { createRoadReport, readRoadReports } from './road_reports.mjs';
 import { recordApiUsage, readUsageSummary } from './cost_guard.mjs';
@@ -208,7 +208,8 @@ async function handleApi(request, env, ctx) {
   }
   if (url.pathname.startsWith('/api/map/traffic/tiles/')) return handleTrafficTile(request, env);
   if (url.pathname === '/api/traffic-flow') {
-    return json(await loadTrafficFlowState(env));
+    const state = await readTrafficFlowState(env);
+    return json(state ?? await refreshTrafficFlowState(env));
   }
   if (url.pathname === '/api/parking') {
     const at = validateNzCoordinatePair(url.searchParams.get('at'));
@@ -459,6 +460,10 @@ export default {
   },
   async scheduled(event, env, ctx) {
     if (env.WAYBI_MIGRATION_PAUSED === 'true') return;
+    if (event.cron === '*/10 * * * *') {
+      ctx.waitUntil(refreshTrafficFlowState(env));
+      return;
+    }
     if (event.cron === '0 */6 * * *') {
       ctx.waitUntil(syncCameras(env));
     }

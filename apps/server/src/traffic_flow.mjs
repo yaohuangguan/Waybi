@@ -7,7 +7,7 @@ export const TRAFFIC_FLOW_SOURCE_PAGE =
   'https://www.nzta.govt.nz/about-us/our-data-and-official-information/use-our-data/about-the-apis';
 
 const CACHE_KEY = 'waybi:traffic-flow/v2';
-const FRESH_MS = 60 * 1000;
+const FRESH_MS = 10 * 60 * 1000;
 
 function finite(value) {
   const parsed = Number(value);
@@ -248,34 +248,49 @@ export function withRoadGeometry(state, env = {}, now = new Date()) {
   };
 }
 
-export async function loadTrafficFlowState(
+async function storedTrafficFlow(env) {
+  return env.CAMERA_DATA.get(CACHE_KEY, 'json');
+}
+
+export async function readTrafficFlowState(env, now = new Date()) {
+  const stored = await storedTrafficFlow(env);
+  if (!Array.isArray(stored?.segments) || !stored.segments.length) return null;
+  return withRoadGeometry(stored, env, now);
+}
+
+export async function refreshTrafficFlowState(
   env,
   fetcher = fetch,
   now = new Date(),
 ) {
-  const stored = await env.CAMERA_DATA.get(CACHE_KEY, 'json');
-  const checked = Date.parse(stored?.checkedAt || '');
-  const fresh =
-    Number.isFinite(checked) && now.getTime() - checked < FRESH_MS;
-  if (fresh && Array.isArray(stored?.segments) && stored.segments.length) {
-    return withRoadGeometry(stored, env, now);
-  }
-
+  const stored = await storedTrafficFlow(env);
   try {
     const live = await fetchNztaTrafficFlow(fetcher, now);
     await env.CAMERA_DATA.put(CACHE_KEY, JSON.stringify(live));
     return withRoadGeometry(live, env, now);
   } catch (error) {
     if (Array.isArray(stored?.segments) && stored.segments.length) {
-      const stale = {
+      return withRoadGeometry({
         ...stored,
-        checkedAt: now.toISOString(),
         syncStatus: 'stale',
         syncError: String(error?.message || error),
-      };
-      await env.CAMERA_DATA.put(CACHE_KEY, JSON.stringify(stale));
-      return withRoadGeometry(stale, env, now);
+      }, env, now);
     }
     throw error;
   }
+}
+
+export async function loadTrafficFlowState(
+  env,
+  fetcher = fetch,
+  now = new Date(),
+) {
+  const stored = await storedTrafficFlow(env);
+  const checked = Date.parse(stored?.checkedAt || '');
+  const fresh =
+    Number.isFinite(checked) && now.getTime() - checked < FRESH_MS;
+  if (fresh && Array.isArray(stored?.segments) && stored.segments.length) {
+    return withRoadGeometry(stored, env, now);
+  }
+  return refreshTrafficFlowState(env, fetcher, now);
 }

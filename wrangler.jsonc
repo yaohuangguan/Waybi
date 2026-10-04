@@ -13,7 +13,24 @@
 		"directory": "apps/web/dist",
 		"binding": "ASSETS",
 		"not_found_handling": "404-page",
-		"run_worker_first": true
+		"run_worker_first": [
+			"/*",
+			"!/assets/*",
+			"!/brand/*",
+			"!/previews/*",
+			"!/favicon.svg",
+			"!/favicon.png",
+			"!/og-waybi.png",
+			"!/manifest.webmanifest",
+			"!/sw.js",
+			"!/registerSW.js",
+			"!/workbox-*.js",
+			"!/seo.css",
+			"!/robots.txt",
+			"!/sitemap.xml",
+			"!/llms.txt",
+			"!/waybi-indexnow-*"
+		]
 	},
 	"vars": {
 		"GOOGLE_MAP_ID": "ea4a0f74663866d5ba79ca1d"
@@ -33,6 +50,7 @@
 	],
 	"triggers": {
 		"crons": [
+			"*/10 * * * *",
 			"*/15 * * * *",
 			"0 */6 * * *"
 		]

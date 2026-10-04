@@ -225,7 +225,7 @@ export async function handleRoadIntelligence(request, env, ctx, readCameras, opt
 
 export const openapi = {
   openapi: '3.1.0', info: { title: 'Waybi Road Intelligence', version: '1.0.0-preview', description: capabilities.dataUse.note },
-  servers: [{ url: 'https://waybi.nzs.workers.dev' }],
+  servers: [{ url: 'https://waybi.co' }],
   components: {
     securitySchemes: {
       RoadApiKey: { type: 'http', scheme: 'bearer', description: 'klri_ key; 90-day expiry, preview:read scope' },

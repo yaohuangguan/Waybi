@@ -3,18 +3,17 @@
 	"name": "waybi",
 	"account_id": "cdc04de9bc4c6a41b5003758e505a0d1",
 	"main": "apps/server/src/worker.mjs",
+	"workers_dev": true,
+	"routes": [
+		{ "pattern": "waybi.co", "custom_domain": true },
+		{ "pattern": "www.waybi.co", "custom_domain": true }
+	],
 	"compatibility_date": "2026-08-04",
 	"assets": {
 		"directory": "apps/web/dist",
 		"binding": "ASSETS",
 		"not_found_handling": "404-page",
-		"run_worker_first": [
-			"/api/*",
-			"/app",
-			"/app/*",
-			"/dashboard",
-			"/dashboard/*"
-		]
+		"run_worker_first": true
 	},
 	"vars": {
 		"GOOGLE_MAP_ID": "ea4a0f74663866d5ba79ca1d"

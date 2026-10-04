@@ -4,7 +4,7 @@ Waybi 的原生移动端使用 Flutter，支持在设置中切换 Google Maps �
 
 - `google_navigation_flutter`：地图浏览、POI 点击、路线与 turn-by-turn 导航
 - `maplibre_gl`：原生 GPU 矢量底图、地点标注、Waybi 分区配色与共享定位光晕
-- Cloudflare Worker `https://waybi.nzs.workers.dev`：地址自动补全、摄像头及限速 API
+- Cloudflare Worker `https://waybi.co`：地址自动补全、摄像头及限速 API
 - iOS Core Location：手机顶部罗盘朝向；地图与柔和前方光晕跟随该方向，GPS course 仅为无罗盘时的行驶中回退
 - 自定义 Flutter 导航顶栏、速度/摄像头浮层和紧凑行程卡；Google Navigation SDK 保留真实路线与转弯数据
 

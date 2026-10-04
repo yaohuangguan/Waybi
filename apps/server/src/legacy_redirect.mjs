@@ -1,4 +1,4 @@
-const WAYBI_ORIGIN = 'https://waybi.nzs.workers.dev';
+const WAYBI_ORIGIN = 'https://waybi.co';
 
 export default {
   async fetch(request, env) {

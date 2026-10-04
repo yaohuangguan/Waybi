@@ -10,7 +10,7 @@ test('legacy public URLs permanently redirect to the matching Waybi URL', async 
   assert.equal(response.status, 308);
   assert.equal(
     response.headers.get('location'),
-    'https://waybi.nzs.workers.dev/safety-camera-navigation/?from=legacy'
+    'https://waybi.co/safety-camera-navigation/?from=legacy'
   );
 });
 
@@ -31,5 +31,5 @@ test('legacy API requests proxy through the Waybi service binding', async () => 
 
   assert.equal(response.status, 200);
   assert.equal(await response.text(), 'ok');
-  assert.equal(forwarded.url, 'https://waybi.nzs.workers.dev/api/health?legacy=1');
+  assert.equal(forwarded.url, 'https://waybi.co/api/health?legacy=1');
 });

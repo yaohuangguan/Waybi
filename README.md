@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://waybi.nzs.workers.dev/">Live web app</a>
+  <a href="https://waybi.co/">Live web app</a>
   ·
   <a href="packages/contracts/openapi.yaml">OpenAPI contract</a>
   ·
@@ -250,7 +250,7 @@ Required runtime secrets and provider credentials should be configured through C
 
 Current production web endpoint:
 
-**https://waybi.nzs.workers.dev**
+**https://waybi.co**
 
 Scheduled jobs:
 

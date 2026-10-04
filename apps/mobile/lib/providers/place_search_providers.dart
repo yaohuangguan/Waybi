@@ -167,7 +167,7 @@ class IndependentSearchProvider
             headers: {
               'Accept': 'application/json',
               if (!kIsWeb)
-                'User-Agent': 'Waybi/1.0 (+https://waybi.nzs.workers.dev)',
+                'User-Agent': 'Waybi/1.0 (+https://waybi.co)',
             },
           )
           .timeout(const Duration(seconds: 12));

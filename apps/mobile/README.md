@@ -106,7 +106,7 @@ MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 生产 Key 应限制到 Android application：
 
 ```text
-package: me.samyao.waybi
+package: co.waybi.android
 SHA-1: <release signing certificate SHA-1>
 ```
 
@@ -127,19 +127,20 @@ MAPS_API_KEY=YOUR_GOOGLE_MAPS_API_KEY
 Bundle ID：
 
 ```text
-me.samyao.waybi
+co.waybi.ios
 ```
 
 `Secrets.xcconfig` 已被 Git 忽略。
 
 ### Google 登录
 
-Google 登录需要在同一 Google Cloud 项目的 Auth Platform 中创建两个 OAuth 2.0 客户端：
+Google 登录需要在同一 Google Cloud 项目的 Auth Platform 中配置移动端与 Web OAuth 客户端：
 
-1. **iOS 客户端**：Bundle ID 使用 `me.samyao.waybi`。复制 Client ID，并按 Google 提供的 reversed client ID 填写 URL scheme。
-2. **Web application 客户端**：作为服务端 ID token 的 audience。这里不需要将 client secret 放入移动端或仓库。
+1. **iOS 客户端**：Bundle ID 使用 `co.waybi.ios`。复制 Client ID，并按 Google 提供的 reversed client ID 填写 URL scheme。
+2. **Android 客户端**：Package name 使用 `co.waybi.android`，并登记实际签名证书 SHA-1。
+3. **Web application 客户端**：作为服务端 ID token 的 audience。这里不需要将 client secret 放入移动端或仓库。
 
-仓库中的 `Secrets.xcconfig.example` 已填入 Waybi 的三个公开 OAuth 标识；复制为被 Git 忽略的 `Secrets.xcconfig` 后，只需再填写 Maps API Key。若将来更换 OAuth 客户端，iOS Client ID、Web/Server Client ID 和 reversed URL scheme 必须同步更新。
+复制 `Secrets.xcconfig.example` 为被 Git 忽略的 `Secrets.xcconfig`。Bundle ID 切到 `co.waybi.ios` 后，需要把新建的 iOS Client ID 和对应 reversed URL scheme 填进去；Web/Server Client ID 如果继续复用现有 Web OAuth client 可以保持不变。`Secrets.xcconfig` 会覆盖仓库里的公开默认值。
 
 Cloudflare Worker 的 `GOOGLE_OAUTH_CLIENT_IDS` 已配置为当前 Web 与 iOS Client ID，D1 迁移 `0004_google_identity.sql` 已应用。更换客户端时也需同步更新 Worker binding。Worker 会验证 Google ID token 的签名、发行方、有效期、邮箱验证状态和 audience；请勿填写或提交 OAuth client secret。
 

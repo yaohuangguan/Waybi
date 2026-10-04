@@ -7,7 +7,7 @@ import 'package:waybi_mobile/data/app_store_billing.dart';
 import 'package:waybi_mobile/data/plus_billing.dart';
 
 const userId = '729db2f1-5891-4b09-9b2c-72ba7a8f271b';
-const productId = 'me.samyao.waybi.plus.annual';
+const productId = 'co.waybi.ios.plus.annual';
 
 class BillingAccount extends AccountRepository {
   BillingAccount() {
@@ -40,7 +40,7 @@ class BillingAccount extends AccountRepository {
       await configuration ??
       {
         'ready': true,
-        'monthly': 'me.samyao.waybi.plus.monthly',
+        'monthly': 'co.waybi.ios.plus.monthly',
         'annual': productId,
       };
   @override

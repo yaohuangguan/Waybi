@@ -81,10 +81,6 @@ class AccountRepository extends ChangeNotifier {
 
   static const _storageKey = 'waybi_session';
   static const _legacyStorageKey = 'kiwi_lens_session';
-  static const _googleIosClientId = String.fromEnvironment(
-    'GOOGLE_IOS_CLIENT_ID',
-    defaultValue: '858928595374-slrbiedfhivmnliv0d4uvpn0n8rh21tu.apps.googleusercontent.com',
-  );
   static const _googleServerClientId = String.fromEnvironment(
     'GOOGLE_SERVER_CLIENT_ID',
     defaultValue: '858928595374-ht0e455sfe58a2cfgovjka7t40cku2ss.apps.googleusercontent.com',
@@ -92,9 +88,8 @@ class AccountRepository extends ChangeNotifier {
   Future<void>? _googleReady;
   Future<void> _initializeGoogle() =>
       _googleReady ??= GoogleSignIn.instance.initialize(
-        clientId: defaultTargetPlatform == TargetPlatform.iOS
-            ? _googleIosClientId
-            : null,
+        // iOS reads GIDClientID from Info.plist so changing the native OAuth
+        // client does not require a second Dart compile-time identifier.
         serverClientId: _googleServerClientId,
       );
   final http.Client _client;

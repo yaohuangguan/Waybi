@@ -53,8 +53,8 @@ class AppStoreBillingGateway extends PlusBillingGateway {
   final _pending = <String, PurchaseDetails>{};
   final _processing = <String>{};
   final _ids = <String>{
-    'me.samyao.waybi.plus.monthly',
-    'me.samyao.waybi.plus.annual',
+    'co.waybi.ios.plus.monthly',
+    'co.waybi.ios.plus.annual',
   };
   Future<void> _updates = Future.value();
   Future<void>? _configuration;
@@ -85,8 +85,8 @@ class AppStoreBillingGateway extends PlusBillingGateway {
     _ids
       ..clear()
       ..addAll([
-        config['monthly'] as String? ?? 'me.samyao.waybi.plus.monthly',
-        config['annual'] as String? ?? 'me.samyao.waybi.plus.annual',
+        config['monthly'] as String? ?? 'co.waybi.ios.plus.monthly',
+        config['annual'] as String? ?? 'co.waybi.ios.plus.annual',
       ]);
     _configured = true;
     return config;
@@ -180,7 +180,7 @@ class AppStoreBillingGateway extends PlusBillingGateway {
     final config = await _readConfiguration();
     _ready = config['ready'] == true;
     final annual =
-        config['annual'] as String? ?? 'me.samyao.waybi.plus.annual';
+        config['annual'] as String? ?? 'co.waybi.ios.plus.annual';
     if (!_supported || !_ready || !await _store.available()) {
       return PlusOffering(
         available: false,

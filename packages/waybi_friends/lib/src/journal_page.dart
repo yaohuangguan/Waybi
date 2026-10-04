@@ -4,6 +4,10 @@ import 'game_controller.dart';
 import 'journey_engine.dart';
 import 'postcard_dialog.dart';
 import 'theme.dart';
+import 'friend_strings.dart';
+import 'souvenir_art.dart';
+import 'souvenir_collection.dart';
+import 'souvenirs.dart';
 
 class JournalPage extends StatelessWidget {
   const JournalPage({super.key, required this.controller});
@@ -21,7 +25,26 @@ class JournalPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Journal', style: Theme.of(context).textTheme.headlineMedium),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    friendText(context, 'Journal', '旅行册'),
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          SouvenirCollectionPage(controller: controller),
+                    ),
+                  ),
+                  icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                  label: Text(friendText(context, 'Souvenirs', '纪念品')),
+                ),
+              ],
+            ),
             const SizedBox(height: 6),
             Text(
               memories.isEmpty
@@ -63,23 +86,11 @@ class JournalPage extends StatelessWidget {
                                     color: _toneFor(destination.id),
                                     borderRadius: BorderRadius.circular(17),
                                   ),
-                                  child: Stack(
-                                    children: [
-                                      Center(
-                                        child: Text(
-                                          destination.emoji,
-                                          style: const TextStyle(fontSize: 34),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        left: -2,
-                                        bottom: -7,
-                                        child: Image.asset(
-                                          'packages/waybi_friends/assets/characters/waybi.png',
-                                          width: 48,
-                                        ),
-                                      ),
-                                    ],
+                                  child: Center(
+                                    child: SouvenirIllustration(
+                                      item: souvenirForMemory(memory),
+                                      size: 72,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 14),
@@ -110,9 +121,13 @@ class JournalPage extends StatelessWidget {
                                       const SizedBox(height: 9),
                                       Row(
                                         children: [
-                                          const Text(
-                                            '🎒 ',
-                                            style: TextStyle(fontSize: 13),
+                                          const Padding(
+                                            padding: EdgeInsets.only(right: 5),
+                                            child: Icon(
+                                              Icons.card_giftcard_rounded,
+                                              size: 16,
+                                              color: WwhColors.moss,
+                                            ),
                                           ),
                                           Expanded(
                                             child: Text(

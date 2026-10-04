@@ -6,7 +6,9 @@ import 'game_controller.dart';
 import 'friend_strings.dart';
 import 'living_room_scene.dart';
 import 'journey_engine.dart';
+import 'packing_status.dart';
 import 'theme.dart';
+import 'travel_item_art.dart';
 
 class RoomPage extends StatefulWidget {
   const RoomPage({
@@ -174,19 +176,34 @@ class _RoomPageState extends State<RoomPage> {
                       ),
                       const SizedBox(height: 7),
                       const Text(
-                        'Choose up to two things. You can influence the journey, but you do not get to control it.',
+                        'Bring up to two things, or let Waybi travel light. Each item adds a little something to the story.',
                         style: TextStyle(color: WwhColors.muted, height: 1.45),
                       ),
+                      const SizedBox(height: 8),
+                      PackingStatus(count: selected.length),
                       const SizedBox(height: 20),
                       ...travelItems.map((item) {
                         final isSelected = selected.contains(item.id);
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: InkWell(
+                            key: ValueKey('pack-item-${item.id}'),
                             borderRadius: BorderRadius.circular(18),
                             onTap: () async {
-                              await widget.controller.toggleItem(item.id);
-                              if (context.mounted) setSheetState(() {});
+                              final changed = await widget.controller
+                                  .toggleItem(item.id);
+                              if (context.mounted) {
+                                setSheetState(() {});
+                                if (!changed) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'The bag is full. Remove an item first.',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              }
                             },
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 160),
@@ -204,10 +221,7 @@ class _RoomPageState extends State<RoomPage> {
                               ),
                               child: Row(
                                 children: [
-                                  Text(
-                                    item.emoji,
-                                    style: const TextStyle(fontSize: 30),
-                                  ),
+                                  TravelItemArt(item: item),
                                   const SizedBox(width: 13),
                                   Expanded(
                                     child: Column(

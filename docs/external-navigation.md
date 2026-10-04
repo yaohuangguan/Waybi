@@ -24,7 +24,9 @@ Google Calendar's own **Open with** list is controlled by Google Calendar. No pu
 
 ## Apple's system default navigation
 
-The Runner target declares `com.apple.developer.navigation-app = true`, registers `geo-navigation`, and retains background location. Supported incoming forms:
+Runner registers `geo-navigation` and retains background location. Ordinary device builds use `Runner/Runner.entitlements`, without restricted capabilities, so they also work with a Personal Team. Custom URLs and the Navigate with Waybi shortcut work in these builds.
+
+For a paid-team build whose App ID and provisioning profile support Default Navigation App, set the Runner build setting `WAYBI_CODE_SIGN_ENTITLEMENTS` to `Runner/Navigation.entitlements` (or pass that build setting to `xcodebuild`). That file declares `com.apple.developer.navigation-app = true`. Only that appropriately provisioned build can appear as a system default navigation app. Personal development teams cannot sign this capability. The default phone installation keeps the ordinary entitlements. Supported incoming forms:
 
 ```
 geo-navigation://directions?destination=Westfield%20Newmarket

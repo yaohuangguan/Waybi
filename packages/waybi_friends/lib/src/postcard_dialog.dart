@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'journey_engine.dart';
 import 'models.dart';
 import 'theme.dart';
+import 'souvenir_collection.dart';
 
 Future<void> showPostcardDialog(
   BuildContext context,
@@ -116,30 +117,7 @@ class _Postcard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(15),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3EBDD),
-                        borderRadius: BorderRadius.circular(17),
-                      ),
-                      child: Row(
-                        children: [
-                          const Text('🎒', style: TextStyle(fontSize: 24)),
-                          const SizedBox(width: 11),
-                          Expanded(
-                            child: Text(
-                              'Waybi brought home ${memory.souvenir}.',
-                              style: const TextStyle(
-                                color: WwhColors.ink,
-                                fontWeight: FontWeight.w700,
-                                height: 1.35,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    SouvenirReward(memory: memory),
                     const SizedBox(height: 18),
                     SizedBox(
                       width: double.infinity,
@@ -214,9 +192,11 @@ class _PostcardScene extends StatelessWidget {
                     color: WwhColors.ink.withValues(alpha: .16),
                   ),
                 ),
-                child: Text(
-                  destination.emoji,
-                  style: const TextStyle(fontSize: 34),
+                child: Image.asset(
+                  'packages/waybi_friends/assets/souvenirs/stamp.png',
+                  width: 44,
+                  height: 44,
+                  semanticLabel: 'Postcard stamp',
                 ),
               ),
             ),

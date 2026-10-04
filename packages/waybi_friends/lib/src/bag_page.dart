@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'game_controller.dart';
 import 'journey_engine.dart';
+import 'packing_status.dart';
 import 'theme.dart';
+import 'travel_item_art.dart';
 
 class BagPage extends StatelessWidget {
   const BagPage({super.key, required this.controller});
@@ -27,13 +29,17 @@ class BagPage extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              locked ? 'Waybi took this bag along for the journey.' : 'Pick up to two things. Tiny choices can bend a journey in different directions.',
+              locked ? 'Waybi took this bag along for the journey.' : 'Bring up to two things, or let Waybi travel light. Each item adds a little something to the story.',
               style: const TextStyle(
                 color: WwhColors.muted,
                 fontSize: 14,
                 height: 1.45,
               ),
             ),
+            if (!locked) ...[
+              const SizedBox(height: 8),
+              PackingStatus(count: selected.length),
+            ],
             const SizedBox(height: 18),
             Container(
               width: double.infinity,
@@ -51,16 +57,35 @@ class BagPage extends StatelessWidget {
                   ),
                   const SizedBox(width: 14),
                   Expanded(
-                    child: Text(
-                      selected.isEmpty
-                          ? 'The bag is almost empty. That is allowed.'
-                          : 'Packed: ${selected.map((id) => itemById(id).emoji).join('  ')}',
-                      style: const TextStyle(
-                        color: WwhColors.ink,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        height: 1.35,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (selected.isNotEmpty) ...[
+                          Wrap(
+                            spacing: 8,
+                            children: selected
+                                .map(
+                                  (id) => TravelItemArt(
+                                    item: itemById(id),
+                                    size: 30,
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                          const SizedBox(height: 6),
+                        ],
+                        Text(
+                          selected.isEmpty
+                              ? 'The bag is almost empty. That is allowed.'
+                              : 'Packed: ${selected.map((id) => itemById(id).name).join(', ')}',
+                          style: const TextStyle(
+                            color: WwhColors.ink,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -81,7 +106,20 @@ class BagPage extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                       onTap: locked
                           ? null
-                          : () => controller.toggleItem(item.id),
+                          : () async {
+                              final changed = await controller.toggleItem(
+                                item.id,
+                              );
+                              if (!changed && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'The bag is full. Remove an item first.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         padding: const EdgeInsets.all(16),
@@ -105,12 +143,7 @@ class BagPage extends StatelessWidget {
                                 color: WwhColors.cream,
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              child: Center(
-                                child: Text(
-                                  item.emoji,
-                                  style: const TextStyle(fontSize: 28),
-                                ),
-                              ),
+                              child: Center(child: TravelItemArt(item: item)),
                             ),
                             const SizedBox(width: 14),
                             Expanded(

@@ -1,6 +1,6 @@
 # Waybi
 
-> Waybi is a maps and navigation product built around driving in New Zealand.
+> Waybi is a maps and navigation product with worldwide destinations and a companion room. Provider coverage varies by location.
 
 Canonical site: https://waybi.nzs.workers.dev/
 Web app: https://waybi.nzs.workers.dev/app
@@ -8,7 +8,7 @@ Source repository: https://github.com/yaohuangguan/Waybi
 
 ## Product
 
-Waybi combines route planning and turn-by-turn navigation with New Zealand road context. The mobile app supports Google Maps and an independent Waybi Map path based on OpenFreeMap / OpenStreetMap. The web experience is backed by Cloudflare Workers.
+Waybi combines route planning and turn-by-turn navigation with route-based and community road context. Official camera and speed-limit sources currently cover New Zealand. The mobile app supports Google Maps and an independent Waybi Map path based on OpenFreeMap / OpenStreetMap. The web experience is backed by Cloudflare Workers.
 
 Core navigation includes place search, route planning, route alternatives, voice and lane guidance where provider data is available, Journey Brief, parking discovery, trip history and route-aware fixed safety-camera reminders.
 
@@ -36,3 +36,9 @@ Core navigation is designed to remain available without Waybi Plus. Route Watch 
 Waybi's primary mascot is the Waybi kiwi bird. Clover is the cat companion and Sett is the corgi companion.
 
 Tagline: A clearer journey.
+
+## Waybi & Friends
+
+The iPhone app includes a persistent animated companion room under Me → Waybi & Friends, accessible to guests. Waybi, Clover and Sett walk, rest and react in their room. Pack zero, one or two items for a short companion trip; returning trips add a postcard and souvenir. Real navigation completion does not yet generate companion souvenirs.
+
+Independent navigation follows heading and adjusts the camera by speed and upcoming turns. External waybi links and the Navigate with Waybi iPhone Shortcuts action open a destination for review. Google Calendar controls its own Open with picker; inclusion is not promised.

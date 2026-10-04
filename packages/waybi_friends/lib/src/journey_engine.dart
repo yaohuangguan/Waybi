@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'models.dart';
+import 'souvenirs.dart';
 
 const travelItems = <TravelItem>[
   TravelItem(
@@ -186,6 +187,24 @@ class JourneyEngine {
       'Waybi came home tired in the good way.',
     ][_random.nextInt(4)];
 
+    final choices = souvenirsForDestination(destination.id);
+    final weighted = [
+      ...choices,
+      if (hasCamera)
+        ...choices.where(
+          (item) =>
+              item.kind == SouvenirKind.map ||
+              item.kind == SouvenirKind.scroll ||
+              item.kind == SouvenirKind.stamp,
+        ),
+      if (hasSnack)
+        ...choices.where(
+          (item) =>
+              item.kind == SouvenirKind.cookie || item.kind == SouvenirKind.bun,
+        ),
+    ];
+    final souvenir = weighted[_random.nextInt(weighted.length)];
+
     return JourneyMemory(
       id: '${active.departedAt.microsecondsSinceEpoch}-${active.destinationId}',
       destinationId: destination.id,
@@ -194,8 +213,8 @@ class JourneyEngine {
       title: 'A little trip to ${destination.name}',
       story:
           'Today Waybi found ${destination.memory}. ${details[_random.nextInt(details.length)]} $ending',
-      souvenir:
-          destination.souvenirs[_random.nextInt(destination.souvenirs.length)],
+      souvenir: souvenir.name,
+      souvenirId: souvenir.id,
     );
   }
 

@@ -8,6 +8,7 @@ import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
 import 'waybi_bird.dart';
 import 'road_event_timeline.dart';
+import 'navigation_camera_alert.dart';
 
 const _ink = WaybiColors.darkOcean;
 const _accent = WaybiColors.sky;
@@ -265,8 +266,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
           ? null
           : getRegisteredImage(_laneDescriptor!).catchError((Object _) => null);
     }
-    final camera = widget.engine.upcomingCamera;
-    final cameraDistance = widget.engine.upcomingCameraDistanceMeters;
+    final cameraNotice = upcomingNavigationCamera(widget.engine);
     final remainingSeconds = guidance.remainingSeconds;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final arrival = remainingSeconds == null
@@ -515,62 +515,12 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                         ),
                       ),
                     ),
-                    if (camera != null && cameraDistance != null) ...[
+                    if (cameraNotice != null) ...[
                       const SizedBox(height: 8),
                       PointerInterceptor(
-                        child: Container(
-                          key: const ValueKey('navigationCameraAlert'),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 11,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _accent,
-                            borderRadius: BorderRadius.circular(18),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x26000000),
-                                blurRadius: 12,
-                                offset: Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.speed_rounded,
-                                color: _ink,
-                                size: 28,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${_text('Camera', '摄像头')} · ${_distance(cameraDistance)}',
-                                      style: const TextStyle(
-                                        color: _ink,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    Text(
-                                      camera.location,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: WaybiColors.deepOcean,
-                                        fontSize: 12,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
+                        child: NavigationCameraAlert(
+                          notice: cameraNotice,
+                          language: widget.language,
                         ),
                       ),
                     ],

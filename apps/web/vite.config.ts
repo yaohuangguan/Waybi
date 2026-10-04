@@ -7,9 +7,9 @@ export default defineConfig({
     registerType: 'autoUpdate',
     includeAssets: ['brand/waybi-icon.png', 'brand/waybi-lockup.svg'],
     manifest: {
-      name: 'Waybi · New Zealand Navigation',
+      name: 'Waybi · Navigation & Friends',
       short_name: 'Waybi',
-      description: 'New Zealand navigation with route planning, traffic-aware guidance, fixed safety-camera reminders, parking discovery and bilingual guidance.',
+      description: 'Navigation, road awareness and Waybi & Friends. Official fixed-camera data currently covers New Zealand.',
       lang: 'en-NZ',
       categories: ['navigation', 'travel'],
       theme_color: '#152510',

@@ -883,7 +883,22 @@ class _ProfilePageState extends State<ProfilePage> {
                   items: [
                     DropdownMenuItem(
                       value: LocationMarkerStyle.kiwi,
-                      child: Text(_text('Waybi bird', 'Waybi 鸟标')),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Image.asset(
+                            'packages/waybi_friends/assets/characters/waybi.png',
+                            width: 28,
+                            height: 28,
+                            semanticLabel: _text(
+                              'Waybi, the kiwi bird',
+                              'Waybi 几维鸟',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text('Waybi'),
+                        ],
+                      ),
                     ),
                     DropdownMenuItem(
                       value: LocationMarkerStyle.cat,

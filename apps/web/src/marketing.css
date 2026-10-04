@@ -192,5 +192,29 @@ html[lang^='zh'] h2 { line-height: 1.3; letter-spacing: -.02em; }
 .seo-guide-card h3 { margin: 40px 0 12px; font-size: 26px; line-height: 1.2; letter-spacing: -.025em; }
 .seo-guide-card p { margin: 0; color: var(--text-secondary); font-size: 16px; line-height: 1.7; }
 .seo-guide-card b { margin-top: auto; padding-top: 24px; color: var(--brand-ocean); font-size: 15px; }
+.friends-world { display: grid; grid-template-columns: 1.15fr 1fr; gap: 38px 68px; align-items: center; padding: 74px 0 86px; border-top: 1px solid var(--border); }
+.friends-lead { max-width: 490px; margin: 24px 0 30px; font-size: 17px; color: var(--text-secondary); line-height: 1.8; }
+.friends-steps { display: grid; gap: 22px; }
+.friends-steps article { display: flex; gap: 16px; align-items: start; }
+.friends-steps article > span { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #e3edd5; color: var(--brand-ocean); font-size: 12px; font-weight: 600; }
+.friends-steps h3 { margin: 3px 0 7px; font-size: 18px; }
+.friends-steps p { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 1.75; }
+.friends-entry { margin: 28px 0 4px; color: var(--brand-ocean); font-size: 13px; font-weight: 600; }
+.friends-preview { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0; padding: 42px 26px 24px; background: #efe8d8; border: 1px solid #e5dfcc; border-radius: 40px; overflow: hidden; }
+.friends-preview::before { content: ''; position: absolute; width: 360px; height: 360px; border-radius: 50%; background: #d8e3c7; top: 130px; }
+.friends-preview-tag { z-index: 1; margin-bottom: 24px; border-radius: 24px; padding: 9px 16px; background: #fafbf2; color: var(--brand-ocean); font-size: 11px; letter-spacing: .08em; }
+.friends-preview img { position: relative; display: block; width: min(100%, 252px); height: auto; border: 8px solid var(--deep-ocean); border-radius: 27px; box-shadow: 0 20px 50px #23351d26; transform: rotate(-2deg); }
+.friends-preview figcaption { position: relative; margin-top: 24px; font-size: 11px; color: var(--text-secondary); }
+.friend-introductions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 8px; }
+.friend-introduction { padding: 26px; border-radius: 26px; background: #eaf0df; min-width: 0; }
+.friend-clover { background: #f3e8df; } .friend-sett { background: #eee9d8; }
+.friend-portrait { display: flex; align-items: center; height: 126px; margin-bottom: 15px; }
+.friend-portrait img { width: 126px; height: 126px; object-fit: contain; } .friend-portrait .waybi { width: 107px; height: 104px; }
+.friend-introduction > span { font-size: 10px; letter-spacing: .05em; color: var(--text-secondary); }
+.friend-introduction h3 { font-size: 29px; margin: 8px 0 12px; }
+.friend-introduction p { font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin: 0; }
+@media (max-width: 950px) { .friends-world { gap: 32px; } .friends-preview { padding: 30px 20px 24px; } }
+@media (max-width: 820px) { .friends-world { grid-template-columns: 1fr; padding: 58px 0 64px; } .friends-preview { max-width: 500px; width: 100%; justify-self: center; } .friends-lead { max-width: 620px; } .friend-introductions { gap: 12px; } .friend-introduction { padding: 20px; } }
+@media (max-width: 540px) { .friend-introductions { grid-template-columns: 1fr; } .friend-introduction { display: grid; grid-template-columns: 95px 1fr; gap: 0 18px; } .friend-portrait { grid-row: 1 / 4; height: 100%; margin: 0; } .friend-portrait img, .friend-portrait .waybi { width: 95px; height: 100px; } .friend-introduction h3 { margin: 5px 0 9px; font-size: 25px; } .friend-introduction p { font-size: 13px; } .friends-lead { font-size: 16px; } }
 @media (max-width: 900px) { .seo-guide-grid { grid-template-columns: 1fr; } .seo-guide-card { min-height: 230px; } }
 @media (max-width: 430px) { .seo-guides { padding: 58px 0 66px; } .seo-guide-card { padding: 24px; } .seo-guide-card h3 { margin-top: 28px; font-size: 24px; } .seo-guide-card p { font-size: 16px; } }

@@ -111,7 +111,7 @@ class RoadEventTimeline extends StatelessWidget {
     return Semantics(
       label: _text('Upcoming road events', '前方道路事件'),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 58),
+        constraints: const BoxConstraints(minHeight: 78),
         padding: const EdgeInsets.symmetric(
           horizontal: WaybiSpacing.x3,
           vertical: WaybiSpacing.x2,
@@ -184,18 +184,18 @@ class _TimelineNode extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ConstrainedBox(
-    constraints: const BoxConstraints(minWidth: 60, maxWidth: 112),
+    constraints: const BoxConstraints(minWidth: 88, maxWidth: 150),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 29,
-          height: 29,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
             color: color.withValues(alpha: .13),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: color, size: 18),
+          child: Icon(icon, color: color, size: 24),
         ),
         const SizedBox(height: 2),
         Text(
@@ -204,8 +204,8 @@ class _TimelineNode extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: foreground,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
           ),
         ),
         if (detail.isNotEmpty)
@@ -213,7 +213,11 @@ class _TimelineNode extends StatelessWidget {
             detail,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: muted, fontSize: 10),
+            style: TextStyle(
+              color: foreground,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
           ),
       ],
     ),

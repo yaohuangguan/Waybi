@@ -24,6 +24,7 @@ class GameController extends ChangeNotifier {
   bool _disposed = false;
 
   bool get waybiAway => state.activeJourney != null;
+  static const bagCapacity = 2;
   RoomLife get roomLife => state.roomLife ?? RoomLife(startedAt: clock());
 
   Future<void> load() => _loading ??= _load().catchError((Object error) {
@@ -50,18 +51,21 @@ class GameController extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> toggleItem(String id) async {
-    if (!ready || waybiAway) return;
+  Future<bool> toggleItem(String id) async {
+    if (!ready || waybiAway || !travelItems.any((item) => item.id == id)) {
+      return false;
+    }
     final selected = [...state.selectedItemIds];
     if (selected.contains(id)) {
       selected.remove(id);
     } else {
-      if (selected.length >= 2) selected.removeAt(0);
+      if (selected.length >= bagCapacity) return false;
       selected.add(id);
     }
     state = state.copyWith(selectedItemIds: selected);
     await _save();
     _notify();
+    return true;
   }
 
   Future<void> startJourney() async {

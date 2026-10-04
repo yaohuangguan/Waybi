@@ -125,9 +125,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(tester.takeException(), isNull);
-    await tester.ensureVisible(find.text('Send Waybi out'));
+    await tester.ensureVisible(find.text('Let Waybi wander'));
     await tester.pump(const Duration(milliseconds: 100));
-    await tester.tap(find.text('Send Waybi out'));
+    await tester.tap(find.text('Let Waybi wander'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(controller.waybiAway, isTrue);

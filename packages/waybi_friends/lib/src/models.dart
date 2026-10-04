@@ -71,6 +71,7 @@ class JourneyMemory {
     required this.title,
     required this.story,
     required this.souvenir,
+    this.souvenirId,
   });
 
   final String id;
@@ -80,6 +81,7 @@ class JourneyMemory {
   final String title;
   final String story;
   final String souvenir;
+  final String? souvenirId;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -89,6 +91,7 @@ class JourneyMemory {
     'title': title,
     'story': story,
     'souvenir': souvenir,
+    'souvenirId': souvenirId,
   };
 
   factory JourneyMemory.fromJson(Map<String, dynamic> json) => JourneyMemory(
@@ -99,6 +102,7 @@ class JourneyMemory {
     title: json['title'] as String,
     story: json['story'] as String,
     souvenir: json['souvenir'] as String,
+    souvenirId: json['souvenirId'] as String?,
   );
 }
 
@@ -107,7 +111,7 @@ class SavedGame {
     this.activeJourney,
     this.roomLife,
     this.memories = const [],
-    this.selectedItemIds = const ['camera', 'snack'],
+    this.selectedItemIds = const [],
   });
 
   final ActiveJourney? activeJourney;
@@ -158,7 +162,7 @@ class SavedGame {
           )
           .toList(),
       selectedItemIds: List<String>.from(
-        json['selectedItemIds'] as List? ?? const ['camera', 'snack'],
+        json['selectedItemIds'] as List? ?? const [],
       ),
     );
   }

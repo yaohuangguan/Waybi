@@ -350,6 +350,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   ];
   final Map<String, PlaceSummary> _quickLocations = {};
   final Map<String, MapProvider> _quickLocationProviders = {};
+  bool _syncingQuickLocations = false;
   GoogleMapViewController? _browseController;
   GoogleNavigationViewController? _navigationController;
   Brightness? _lastMapBrightness;
@@ -821,8 +822,124 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _onAccountChanged() {
     if (mounted) setState(() {});
+    if (_settingsLoaded && _account.signedIn && _account.profile != null) {
+      unawaited(_syncQuickLocationsWithAccount());
+    } else if (_settingsLoaded && !_account.signedIn) {
+      unawaited(_restoreGuestQuickLocations());
+    }
     if (_account.profile?.isPlus == true && _account.signedIn) {
       unawaited(_deliverRouteWatchAlerts());
+    }
+  }
+
+  Future<void> _restoreGuestQuickLocations() async {
+    final shortcuts = await QuickLocationStore().load();
+    if (!mounted || _account.signedIn) return;
+    setState(() {
+      for (final label in const ['Home', 'Work']) {
+        _quickLocations.remove(label);
+        _quickLocationProviders.remove(label);
+      }
+      for (final entry in shortcuts.entries) {
+        _quickLocations[entry.key] = entry.value.place;
+        _quickLocationProviders[entry.key] = entry.value.provider;
+      }
+    });
+    unawaited(_refreshQuickCommutes(force: true));
+  }
+
+  Future<void> _syncQuickLocationsWithAccount() async {
+    if (_syncingQuickLocations ||
+        !_settingsLoaded ||
+        !_account.signedIn ||
+        _account.profile == null) {
+      return;
+    }
+    _syncingQuickLocations = true;
+    try {
+      final profile = _account.profile!;
+      final store = QuickLocationStore();
+      final cachedOwner = await store.ownerUserId();
+      final cached = await store.load(ownerUserId: profile.id);
+      final remote = <String, ({PlaceSummary place, MapProvider provider})>{};
+      for (final item in profile.quickLocations) {
+        final label = item['label']?.toString();
+        final latitude = item['latitude'];
+        final longitude = item['longitude'];
+        if ((label != 'Home' && label != 'Work') ||
+            latitude is! num ||
+            longitude is! num) {
+          continue;
+        }
+        final point = GeoPoint(latitude.toDouble(), longitude.toDouble());
+        if (!point.isValid) continue;
+        final provider = MapProvider.values.firstWhere(
+          (value) => value.name == item['provider']?.toString(),
+          orElse: () => MapProvider.google,
+        );
+        remote[label!] = (
+          place: PlaceSummary(
+            name: item['name']?.toString() ?? label,
+            address: item['address']?.toString() ?? '',
+            location: point,
+          ),
+          provider: provider,
+        );
+      }
+
+      var changed = false;
+      if (cachedOwner != null && cachedOwner != profile.id) {
+        for (final label in const ['Home', 'Work']) {
+          changed = _quickLocations.remove(label) != null || changed;
+          _quickLocationProviders.remove(label);
+        }
+      }
+
+      for (final label in const ['Home', 'Work']) {
+        final remoteValue = remote[label];
+        if (remoteValue != null) {
+          _quickLocations[label] = remoteValue.place;
+          _quickLocationProviders[label] = remoteValue.provider;
+          await store.save(
+            label,
+            remoteValue.place,
+            remoteValue.provider,
+            ownerUserId: profile.id,
+          );
+          changed = true;
+          continue;
+        }
+
+        final localValue = cached[label];
+        if (localValue == null) continue;
+        _quickLocations[label] = localValue.place;
+        _quickLocationProviders[label] = localValue.provider;
+        try {
+          await _account.saveQuickLocation(
+            label: label,
+            name: localValue.place.name,
+            address: localValue.place.address,
+            latitude: localValue.place.location.latitude,
+            longitude: localValue.place.location.longitude,
+            provider: localValue.provider.name,
+          );
+          await store.save(
+            label,
+            localValue.place,
+            localValue.provider,
+            ownerUserId: profile.id,
+          );
+          changed = true;
+        } catch (_) {
+          // Keep local shortcuts usable offline; the next account refresh retries sync.
+        }
+      }
+      if (changed && mounted) {
+        setState(() {});
+        unawaited(_refreshQuickCommutes(force: true));
+      }
+    } finally {
+      _syncingQuickLocations = false;
     }
   }
 
@@ -1483,7 +1600,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
     _useCarMarker = _locationMarker != LocationMarkerStyle.classic;
     _quickActions = prefs.getStringList('waybi.quick_actions') ?? _quickActions;
-    if (_mapProvider == MapProvider.google) _restoreGoogleRecent(prefs);
+    _restoreGoogleRecent(prefs);
     final shortcuts = await QuickLocationStore().load();
     for (final entry in shortcuts.entries) {
       _quickLocations[entry.key] = entry.value.place;
@@ -1570,15 +1687,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _queueMapRefresh();
     }
     if (mounted) setState(() {});
+    if (_account.signedIn && _account.profile != null) {
+      unawaited(_syncQuickLocationsWithAccount());
+    }
     unawaited(_refreshQuickCommutes(force: true));
     unawaited(_deliverRouteWatchAlerts());
   }
 
   List<DestinationSuggestion> get _recentDestinations {
     final profile = _account.profile;
-    if (profile == null || _mapProvider == MapProvider.independent) {
-      return _guestRecent;
-    }
+    if (profile == null) return _guestRecent;
     return profile.recentDestinations
         .map((item) {
           final latitude = item['latitude'];
@@ -4113,10 +4231,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _guestRecent.removeWhere((item) => item.label == suggestion.label);
     _guestRecent.insert(0, suggestion);
     if (_guestRecent.length > 12) _guestRecent.removeLast();
-    if (_mapProvider == MapProvider.google) {
-      unawaited(_persistGoogleRecent());
-    }
-    if (_account.profile != null && _mapProvider == MapProvider.google) {
+    unawaited(_persistGoogleRecent());
+    if (_account.profile != null) {
       unawaited(
         _account
             .recordDestination(
@@ -5554,7 +5670,26 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _quickLocations[saveAs] = place;
       _quickLocationProviders[saveAs] = _mapProvider;
       unawaited(_refreshQuickCommutes(force: true));
-      await QuickLocationStore().save(saveAs, place, _mapProvider);
+      await QuickLocationStore().save(
+        saveAs,
+        place,
+        _mapProvider,
+        ownerUserId: _account.signedIn ? _account.profile?.id : null,
+      );
+      if (_account.signedIn) {
+        try {
+          await _account.saveQuickLocation(
+            label: saveAs,
+            name: place.name,
+            address: place.address,
+            latitude: place.location.latitude,
+            longitude: place.location.longitude,
+            provider: _mapProvider.name,
+          );
+        } catch (_) {
+          // Local shortcut remains available and will retry on the next account sync.
+        }
+      }
     }
     _rememberDestination(
       DestinationSuggestion(

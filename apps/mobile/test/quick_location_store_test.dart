@@ -50,4 +50,68 @@ void main() {
       expect(restored['Home']!.provider, MapProvider.google);
     },
   );
+
+  test(
+    'account-owned shortcuts are hidden from guest or another account',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final store = QuickLocationStore();
+      await store.save(
+        'Home',
+        const PlaceSummary(
+          name: 'Home',
+          address: 'Queen Street',
+          location: GeoPoint(-36.85, 174.76),
+        ),
+        MapProvider.independent,
+        ownerUserId: 'user-a',
+      );
+
+      expect(await store.load(), isEmpty);
+      expect(await store.load(ownerUserId: 'user-b'), isEmpty);
+      expect((await store.load(ownerUserId: 'user-a'))['Home'], isNotNull);
+      expect(await store.ownerUserId(), 'user-a');
+    },
+  );
+
+  test('switching owners clears the previous account cache', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = QuickLocationStore();
+    await store.save(
+      'Home',
+      const PlaceSummary(
+        name: 'A Home',
+        address: 'A Street',
+        location: GeoPoint(-36.85, 174.76),
+      ),
+      MapProvider.independent,
+      ownerUserId: 'user-a',
+    );
+    await store.save(
+      'Work',
+      const PlaceSummary(
+        name: 'A Work',
+        address: 'B Street',
+        location: GeoPoint(-36.84, 174.77),
+      ),
+      MapProvider.google,
+      ownerUserId: 'user-a',
+    );
+
+    await store.save(
+      'Home',
+      const PlaceSummary(
+        name: 'B Home',
+        address: 'C Street',
+        location: GeoPoint(-36.83, 174.78),
+      ),
+      MapProvider.google,
+      ownerUserId: 'user-b',
+    );
+
+    final restored = await store.load(ownerUserId: 'user-b');
+    expect(restored.keys, ['Home']);
+    expect(restored['Home']!.place.name, 'B Home');
+    expect(await store.ownerUserId(), 'user-b');
+  });
 }

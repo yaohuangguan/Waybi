@@ -119,6 +119,31 @@ export async function roadReportAuthor(db, request) {
   };
 }
 
+const QUICK_LOCATION_IDS = {
+  Home: 'waybi:quick:home',
+  Work: 'waybi:quick:work',
+};
+
+export function quickLocationsFromBookmarks(rows = []) {
+  return rows.flatMap((place) => {
+    const label = place.placeId === QUICK_LOCATION_IDS.Home
+      ? 'Home'
+      : place.placeId === QUICK_LOCATION_IDS.Work
+        ? 'Work'
+        : null;
+    if (!label) return [];
+    return [{
+      label,
+      name: place.name,
+      address: place.address || '',
+      latitude: place.latitude,
+      longitude: place.longitude,
+      provider: place.note === 'independent' ? 'independent' : 'google',
+      updatedAt: place.updatedAt,
+    }];
+  });
+}
+
 async function userProfile(db, user, env) {
   try { await syncAppleForUser(db, env || {}, user.id); } catch { /* retain last verified expiry */ }
   const profile = await db.prepare('SELECT language, voice_enabled, display_name FROM profiles WHERE user_id = ?').bind(user.id).first();
@@ -130,7 +155,13 @@ async function userProfile(db, user, env) {
       is_favorite AS isFavorite, note, updated_at AS updatedAt
     FROM place_bookmarks
     WHERE user_id = ? AND (is_favorite = 1 OR note <> '')
+      AND place_id NOT IN ('waybi:quick:home', 'waybi:quick:work')
     ORDER BY updated_at DESC LIMIT 100`).bind(user.id).all();
+  const quick = await db.prepare(`SELECT place_id AS placeId, name, address, latitude, longitude,
+      note, updated_at AS updatedAt
+    FROM place_bookmarks
+    WHERE user_id = ? AND place_id IN ('waybi:quick:home', 'waybi:quick:work')
+    ORDER BY updated_at DESC`).bind(user.id).all();
   const routes = await db.prepare(`SELECT id, destination_name AS destinationName,
     destination_latitude AS latitude, destination_longitude AS longitude, mode,
     distance_meters AS distanceMeters, duration_seconds AS durationSeconds, started_at AS startedAt
@@ -151,6 +182,7 @@ async function userProfile(db, user, env) {
       ...place,
       isFavorite: place.isFavorite === 1
     })),
+    quickLocations: quickLocationsFromBookmarks(quick.results || []),
     routeHistory: routes.results || [],
     reviews: reviews.results || []
   };
@@ -329,6 +361,35 @@ export async function handleAccount(request, env) {
     await db.prepare(`DELETE FROM recent_destinations WHERE user_id = ? AND (latitude, longitude) NOT IN
       (SELECT latitude, longitude FROM recent_destinations WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20)`)
       .bind(user.id, user.id).run();
+    return response(await userProfile(db, user, env));
+  }
+  if (path === '/api/profile/quick-locations' && request.method === 'POST') {
+    const body = await readBody(request);
+    const label = body?.label;
+    const placeId = QUICK_LOCATION_IDS[label];
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    const address = typeof body?.address === 'string' ? body.address.trim() : '';
+    const provider = body?.provider === 'independent'
+      ? 'independent'
+      : body?.provider === 'google'
+        ? 'google'
+        : null;
+    if (!placeId || !name || name.length > 200 || address.length > 500 || !provider ||
+      !validCoordinate(body.latitude, body.longitude)) {
+      return response({ error: 'Invalid quick location' }, 400);
+    }
+    await db.prepare(`INSERT INTO place_bookmarks
+      (user_id, place_id, name, address, latitude, longitude, is_favorite, note, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+      ON CONFLICT(user_id, place_id) DO UPDATE SET
+        name = excluded.name,
+        address = excluded.address,
+        latitude = excluded.latitude,
+        longitude = excluded.longitude,
+        is_favorite = 0,
+        note = excluded.note,
+        updated_at = excluded.updated_at`)
+      .bind(user.id, placeId, name, address, body.latitude, body.longitude, provider, Date.now()).run();
     return response(await userProfile(db, user, env));
   }
   if (path === '/api/profile/places' && request.method === 'POST') {

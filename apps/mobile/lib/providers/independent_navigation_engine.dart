@@ -52,6 +52,26 @@ class IndependentNavigationEngine extends ChangeNotifier
 
   RouteOption? get route => _route;
   RouteStepInfo? get nextStep => _nextStep;
+  RouteStepInfo? get followingStep {
+    final route = _route;
+    final next = _nextStep;
+    if (route == null ||
+        next == null ||
+        _distanceToStep > 200 ||
+        offRoute ||
+        arrived) {
+      return null;
+    }
+    final index = route.steps.indexOf(next);
+    if (index < 0 || index + 1 >= route.steps.length) return null;
+    final following = route.steps[index + 1];
+    if (following.maneuverType == 'arrive' ||
+        _stepPositions[index + 1] - _stepPositions[index] > 350) {
+      return null;
+    }
+    return following;
+  }
+
   double get distanceToStepMeters => _distanceToStep;
   double get remainingDistanceMeters => _remainingMeters;
   int get remainingSeconds => _remainingSeconds;

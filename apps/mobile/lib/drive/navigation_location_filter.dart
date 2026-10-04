@@ -21,13 +21,18 @@ class NavigationLocationFix {
 /// or advance route progress. The filter is intentionally conservative while
 /// stationary and relaxes naturally once the device reports real movement.
 class NavigationLocationFilter {
-  NavigationLocationFilter({GeoPoint? anchor}) : this._(anchor);
+  NavigationLocationFilter({GeoPoint? anchor, DateTime Function()? clock})
+    : this._(anchor, clock ?? DateTime.now);
 
-  NavigationLocationFilter._(this._anchor);
+  NavigationLocationFilter._(this._anchor, this._clock);
+
+  final DateTime Function() _clock;
 
   GeoPoint? _anchor;
   NavigationLocationFix? _accepted;
   NavigationLocationFix? _candidate;
+  int _relocationFixes = 0;
+  DateTime? _relocationSince;
 
   NavigationLocationFix? get accepted => _accepted;
 
@@ -35,14 +40,20 @@ class NavigationLocationFilter {
     _anchor = anchor;
     _accepted = null;
     _candidate = null;
+    _relocationFixes = 0;
+    _relocationSince = null;
   }
 
   NavigationLocationFix? accept(NavigationLocationFix fix) {
+    final age = _clock().difference(fix.timestamp);
     if (!fix.point.isValid ||
         !fix.accuracyMeters.isFinite ||
         fix.accuracyMeters <= 0 ||
         fix.accuracyMeters > 35 ||
-        !fix.speedMetresPerSecond.isFinite) {
+        !fix.speedMetresPerSecond.isFinite ||
+        fix.speedMetresPerSecond > 70 ||
+        age > const Duration(seconds: 10) ||
+        age < const Duration(seconds: -5)) {
       return null;
     }
 
@@ -59,7 +70,11 @@ class NavigationLocationFilter {
         );
         final stationary = speed < 1.5;
         final anchorTolerance = math.max(28.0, fix.accuracyMeters * 1.35);
-        if (stationary && fromAnchor > anchorTolerance) return null;
+        if (stationary && fromAnchor > anchorTolerance) {
+          if (!_confirmedRelocation(fix)) return null;
+          _anchor = fix.point;
+          return _commit(fix);
+        }
       } else if (fix.accuracyMeters > 25) {
         return null;
       }
@@ -73,6 +88,7 @@ class NavigationLocationFilter {
           _candidate = fix;
           return null;
         }
+        if (!fix.timestamp.isAfter(candidate.timestamp)) return null;
         final separation = distanceMeters(
           candidate.point.latitude,
           candidate.point.longitude,
@@ -91,9 +107,7 @@ class NavigationLocationFilter {
         }
       }
 
-      _candidate = null;
-      _accepted = fix;
-      return fix;
+      return _commit(fix);
     }
 
     if (!fix.timestamp.isAfter(previous.timestamp)) return null;
@@ -115,7 +129,16 @@ class NavigationLocationFilter {
       );
       final muchBetterFix =
           fix.accuracyMeters + 8 < previous.accuracyMeters && delta <= 40;
-      if (delta > stationaryTolerance && !muchBetterFix) return null;
+      if (delta > stationaryTolerance && !muchBetterFix) {
+        // Reacquire after a real GPS outage instead of permanently pinning the
+        // user to an old fix. Several precise, consistent fixes are required.
+        if (elapsed < 10 ||
+            (delta > 250 && elapsed < 60) ||
+            !_confirmedRelocation(fix)) {
+          return null;
+        }
+        return _commit(fix);
+      }
     }
 
     final plausibleTravel =
@@ -124,6 +147,46 @@ class NavigationLocationFilter {
         previous.accuracyMeters;
     if (delta > math.max(55.0, plausibleTravel)) return null;
 
+    return _commit(fix);
+  }
+
+  bool _confirmedRelocation(NavigationLocationFix fix) {
+    if (fix.accuracyMeters > 12) {
+      _candidate = null;
+      _relocationFixes = 0;
+      _relocationSince = null;
+      return false;
+    }
+    final previous = _candidate;
+    if (previous != null && !fix.timestamp.isAfter(previous.timestamp)) {
+      return false;
+    }
+    final consistent =
+        previous != null &&
+        fix.timestamp.difference(previous.timestamp) <=
+            const Duration(seconds: 5) &&
+        distanceMeters(
+              previous.point.latitude,
+              previous.point.longitude,
+              fix.point.latitude,
+              fix.point.longitude,
+            ) <=
+            math.max(10, fix.accuracyMeters * 1.25);
+    if (!consistent || _relocationSince == null) {
+      _relocationFixes = 0;
+      _relocationSince = fix.timestamp;
+    }
+    _candidate = fix;
+    _relocationFixes++;
+    return _relocationFixes >= 3 &&
+        fix.timestamp.difference(_relocationSince!) >=
+            const Duration(seconds: 2);
+  }
+
+  NavigationLocationFix _commit(NavigationLocationFix fix) {
+    _candidate = null;
+    _relocationFixes = 0;
+    _relocationSince = null;
     _accepted = fix;
     return fix;
   }

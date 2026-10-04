@@ -44,6 +44,7 @@ class NavigationGuidance {
     this.remainingSeconds,
     this.lanes = const [],
     this.lanesImage,
+    this.thenInstruction,
   });
   final String instruction;
   final IconData maneuverIcon;
@@ -52,6 +53,7 @@ class NavigationGuidance {
   final int? remainingSeconds;
   final List<NavigationLane> lanes;
   final ImageDescriptor? lanesImage;
+  final String? thenInstruction;
 }
 
 class NavigationOverlay extends StatefulWidget {
@@ -87,6 +89,7 @@ class NavigationOverlay extends StatefulWidget {
     this.offlineReady = false,
     this.usingOfflineGuidance = false,
     this.offlineCachedAt,
+    this.systemStatus,
   });
 
   final DriveEngine engine;
@@ -119,6 +122,7 @@ class NavigationOverlay extends StatefulWidget {
   final bool offlineReady;
   final bool usingOfflineGuidance;
   final DateTime? offlineCachedAt;
+  final Widget? systemStatus;
 
   @override
   State<NavigationOverlay> createState() => _NavigationOverlayState();
@@ -355,6 +359,20 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
+                                        if (guidance.thenInstruction !=
+                                            null) ...[
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            '${_text('Then', '然后')} · ${guidance.thenInstruction}',
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: _accent,
+                                              fontSize: 11.5,
+                                              height: 1.3,
+                                            ),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -837,6 +855,8 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                       dark: dark,
                                     ),
                                   ],
+                                  if (expanded && widget.systemStatus != null)
+                                    widget.systemStatus!,
                                   if (expanded && widget.offlineReady) ...[
                                     const SizedBox(height: 8),
                                     Container(

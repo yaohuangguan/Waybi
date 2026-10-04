@@ -14,11 +14,11 @@ struct WaybiNavigationLiveActivity: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: NavigationAttributes.self) { context in
       HStack(spacing: 14) {
-        Image(systemName: context.state.maneuver)
+        Image(systemName: context.isStale || context.state.gpsReliable == false ? "location.slash" : context.state.maneuver)
           .font(.system(size: 32, weight: .bold)).foregroundStyle(lime)
         VStack(alignment: .leading, spacing: 5) {
-          Text(context.state.distance).font(.title2.bold()).foregroundStyle(lime)
-          Text(context.isStale ? waiting(context) : context.state.instruction)
+          Text(context.isStale || context.state.gpsReliable == false ? "GPS" : context.state.distance).font(.title2.bold()).foregroundStyle(lime)
+          Text((context.isStale || context.state.gpsReliable == false) ? waiting(context) : context.state.instruction)
             .font(.subheadline.weight(.semibold)).lineLimit(2)
           Text(context.attributes.destination).font(.caption).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
         }
@@ -35,17 +35,17 @@ struct WaybiNavigationLiveActivity: Widget {
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          Image(systemName: context.state.maneuver).font(.title).foregroundStyle(lime)
+          Image(systemName: context.isStale || context.state.gpsReliable == false ? "location.slash" : context.state.maneuver).font(.title).foregroundStyle(lime)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          Text(context.state.distance).font(.title3.bold()).foregroundStyle(lime)
+          Text(context.isStale || context.state.gpsReliable == false ? "GPS" : context.state.distance).font(.title3.bold()).foregroundStyle(lime)
         }
         DynamicIslandExpandedRegion(.center) {
           Text(context.attributes.destination).font(.caption.weight(.semibold)).lineLimit(1)
         }
         DynamicIslandExpandedRegion(.bottom) {
           VStack(spacing: 6) {
-            Text(context.isStale ? waiting(context) : context.state.instruction)
+            Text((context.isStale || context.state.gpsReliable == false) ? waiting(context) : context.state.instruction)
               .font(.subheadline.weight(.semibold)).lineLimit(2)
             HStack {
               Text(context.state.remaining)
@@ -56,11 +56,11 @@ struct WaybiNavigationLiveActivity: Widget {
           }
         }
       } compactLeading: {
-        Image(systemName: context.state.maneuver).foregroundStyle(lime)
+        Image(systemName: context.isStale || context.state.gpsReliable == false ? "location.slash" : context.state.maneuver).foregroundStyle(lime)
       } compactTrailing: {
-        Text(context.isStale ? "GPS" : context.state.distance).font(.caption2.bold()).foregroundStyle(lime)
+        Text((context.isStale || context.state.gpsReliable == false) ? "GPS" : context.state.distance).font(.caption2.bold()).foregroundStyle(lime)
       } minimal: {
-        Image(systemName: context.isStale ? "location.slash" : context.state.maneuver).foregroundStyle(lime)
+        Image(systemName: (context.isStale || context.state.gpsReliable == false) ? "location.slash" : context.state.maneuver).foregroundStyle(lime)
       }
       .widgetURL(URL(string: "waybi://navigation"))
       .keylineTint(lime)

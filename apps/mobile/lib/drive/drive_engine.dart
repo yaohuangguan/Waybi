@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -105,6 +106,14 @@ class DriveEngine extends ChangeNotifier {
   LatLng? _lastRawLocation;
   double? _rawHeadingDegrees;
   bool _localNavigation = false;
+  String? locationIssue;
+  Timer? _locationWatchdog;
+  bool get hasReliableLocation => !_localNavigation
+      ? _lastSnappedLocation != null
+      : latestPosition != null &&
+            locationIssue == null &&
+            DateTime.now().difference(latestPosition!.timestamp).inSeconds <=
+                10;
   double? get snappedHeadingDegrees => _headingDegrees;
   LatLng? _lastSnappedLocation;
   LatLng? _lastSpeedLimitLocation;
@@ -271,10 +280,18 @@ class DriveEngine extends ChangeNotifier {
     // a trustworthy fix. This prevents an indoor 50–100 m GPS jump from
     // instantly moving the Waybi onto a nearby motorway.
     if (routeStart != null) {
-      locationAccuracyMeters = 20;
-      _onLocation(
-        LatLng(latitude: routeStart.latitude, longitude: routeStart.longitude),
+      // This is only a visual anchor, never a GPS observation. Synthetic fixes
+      // must not advance turns, ETA, camera alerts or arrival confirmation.
+      _lastSnappedLocation = LatLng(
+        latitude: routeStart.latitude,
+        longitude: routeStart.longitude,
       );
+      _lastRawLocation = null;
+      latestPosition = null;
+      routeProgress = null;
+      locationAccuracyMeters = double.infinity;
+      error = 'Waiting for an accurate GPS fix';
+      locationIssue = error;
     }
 
     final settings = switch (defaultTargetPlatform) {
@@ -296,7 +313,11 @@ class DriveEngine extends ChangeNotifier {
       TargetPlatform.iOS => AppleSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 0,
-        activityType: ActivityType.automotiveNavigation,
+        activityType:
+            _route?.mode == WaybiTravelMode.walk ||
+                _route?.mode == WaybiTravelMode.bicycle
+            ? ActivityType.fitness
+            : ActivityType.automotiveNavigation,
         pauseLocationUpdatesAutomatically: false,
         showBackgroundLocationIndicator: true,
         allowBackgroundLocationUpdates: true,
@@ -322,22 +343,29 @@ class DriveEngine extends ChangeNotifier {
             ),
           );
           if (accepted == null) {
-            error = !position.accuracy.isFinite || position.accuracy > 35
+            locationIssue =
+                !position.accuracy.isFinite || position.accuracy > 35
                 ? 'Waiting for an accurate GPS fix'
                 : 'GPS unstable — holding the last reliable position';
+            error = locationIssue;
             notifyListeners();
             return;
           }
 
           error = null;
+          locationIssue = null;
           latestPosition = position;
           locationAccuracyMeters = accepted.accuracyMeters;
           speedKph = metresPerSecond * 3.6;
           if (speedKph > 5 &&
               position.heading.isFinite &&
-              position.heading >= 0) {
+              position.heading >= 0 &&
+              (!position.headingAccuracy.isFinite ||
+                  position.headingAccuracy <= 35)) {
             _rawHeadingDegrees = position.heading;
             _headingDegrees = position.heading;
+          } else {
+            _rawHeadingDegrees = null;
           }
           _onLocation(
             LatLng(
@@ -351,12 +379,29 @@ class DriveEngine extends ChangeNotifier {
         },
         onError: (Object _) {
           if (!active || _disposed) return;
-          error = 'Location unavailable. Check GPS and location permission.';
+          locationIssue =
+              'Location unavailable. Check GPS and location permission.';
+          error = locationIssue;
           notifyListeners();
         },
       ),
     );
     await _updateWakeLock();
+    _locationWatchdog?.cancel();
+    _locationWatchdog = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!active ||
+          _disposed ||
+          !_localNavigation ||
+          latestPosition == null ||
+          locationIssue != null) {
+        return;
+      }
+      if (DateTime.now().difference(latestPosition!.timestamp) >
+          const Duration(seconds: 10)) {
+        locationIssue = 'Waiting for a fresh GPS fix';
+        notifyListeners();
+      }
+    });
     _startRoadIntelligenceRefreshTimer();
     notifyListeners();
     // Provider refreshes must not delay entering Drive.
@@ -494,7 +539,9 @@ class DriveEngine extends ChangeNotifier {
         current.latitude,
         current.longitude,
       );
-      if (travelled >= 8) {
+      if (_rawHeadingDegrees == null &&
+          speedKph > 5 &&
+          travelled >= math.max(8, locationAccuracyMeters)) {
         _headingDegrees = bearingDegrees(
           previous.latitude,
           previous.longitude,
@@ -511,7 +558,9 @@ class DriveEngine extends ChangeNotifier {
         ? null
         : _progressTracker?.update(
             GeoPoint(current.latitude, current.longitude),
-            time: DateTime.now(),
+            time: _localNavigation
+                ? latestPosition?.timestamp ?? DateTime.now()
+                : DateTime.now(),
             accuracyMeters: locationAccuracyMeters,
             speedKph: speedKph,
             headingDegrees: _rawHeadingDegrees,
@@ -797,6 +846,9 @@ class DriveEngine extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    _locationWatchdog?.cancel();
+    _locationWatchdog = null;
+    locationIssue = null;
     ++_locationSession;
     active = false;
     guidanceRunning = false;
@@ -842,6 +894,7 @@ class DriveEngine extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _locationWatchdog?.cancel();
     active = false;
     ++_locationSession;
     unawaited(WakelockPlus.disable().catchError((Object _) {}));

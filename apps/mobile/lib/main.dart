@@ -42,6 +42,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'drive/drive_engine.dart';
 import 'drive/system_navigation.dart';
+import 'widgets/system_navigation_status.dart';
 import 'drive/location_feed_owner.dart';
 import 'drive/route_camera_matcher.dart';
 import 'providers/google_map_renderer.dart';
@@ -1374,6 +1375,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _account.removeListener(_onAccountChanged);
     _driveEngine.removeListener(_onEngineChanged);
     unawaited(_systemNavigation.stop());
+    _systemNavigation.dispose();
     _independentNavigation.dispose();
     _exploreMarkerFocus.dispose();
     _workerSearch.dispose();
@@ -3395,6 +3397,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ? _independentNavigation.distanceToStepMeters
         : native?.distanceToCurrentStepMeters;
     final remaining = _navigationRemainingMeters;
+    final gpsReliable = !independent || _driveEngine.hasReliableLocation;
     final seconds = independent
         ? _independentNavigation.remainingSeconds
         : native?.timeToFinalDestinationSeconds ??
@@ -3404,10 +3407,15 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       'destination': _destinationTitle,
       'language': _appLanguage,
       'provider': independent ? 'independent' : 'google',
-      'instruction': offRoute
+      'gpsReliable': gpsReliable,
+      'instruction': !gpsReliable
+          ? _text('Waiting for accurate GPS', '正在等待准确定位')
+          : offRoute
           ? _text('Updating route...', '正在重新规划路线…')
           : instruction,
-      'distance': offRoute
+      'distance': !gpsReliable
+          ? '—'
+          : offRoute
           ? ''
           : distance == null
           ? '—'
@@ -5151,9 +5159,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           },
           language: _appLanguage,
           marker: _locationMarker,
-          currentLocation: !_following || _showSearchArea
-              ? _viewport.center
-              : _gpsLocation == null
+          currentLocation: _gpsLocation == null
               ? _viewport.center
               : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude),
           recent: _recentDestinations
@@ -6124,6 +6130,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 animation: _driveEngine,
                 builder: (context, _) => _guidanceRunning
                     ? NavigationOverlay(
+                        systemStatus: SystemNavigationStatus(
+                          navigation: _systemNavigation,
+                          language: _appLanguage,
+                        ),
                         engine: _driveEngine,
                         guidance: cachedGoogleGuidance,
                         onTopInsetChanged: _updateNavigationTopInset,
@@ -6164,6 +6174,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           if (_independentNavigation.active)
             Positioned.fill(
               child: IndependentNavigationOverlay(
+                systemStatus: SystemNavigationStatus(
+                  navigation: _systemNavigation,
+                  language: _appLanguage,
+                ),
                 onTopInsetChanged: _updateNavigationTopInset,
                 onBottomInsetChanged: _updateNavigationBottomInset,
                 engine: _independentNavigation,

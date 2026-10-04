@@ -24,6 +24,15 @@ abstract interface class SearchProvider {
   });
 }
 
+/// A deliberate wider search, separate from everyday nearby suggestions.
+abstract interface class ExpandedSearchProvider implements SearchProvider {
+  Future<List<PlaceCandidate>> searchFurther(
+    String query, {
+    GeoPoint? proximity,
+    required String language,
+  });
+}
+
 abstract interface class PlaceProvider {
   Future<PlaceSummary> resolve(
     ProviderReference reference, {

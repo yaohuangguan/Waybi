@@ -48,6 +48,7 @@ class IndependentNavigationOverlay extends StatelessWidget {
     this.arrivalPanel,
     this.offlineReady = false,
     this.offlineCachedAt,
+    this.systemStatus,
     this.onTopInsetChanged,
     this.onBottomInsetChanged,
   });
@@ -65,6 +66,7 @@ class IndependentNavigationOverlay extends StatelessWidget {
   final Widget? arrivalPanel;
   final bool offlineReady;
   final DateTime? offlineCachedAt;
+  final Widget? systemStatus;
   final ValueChanged<double>? onTopInsetChanged, onBottomInsetChanged;
   final VoidCallback onEnd,
       onRecenter,
@@ -94,7 +96,7 @@ class IndependentNavigationOverlay extends StatelessWidget {
           ? _text('Off route · finding your way', '已偏离路线，正在更新')
           : engine.error != null
           ? _text('Route update unavailable · retrying', '路线更新暂不可用，正在重试')
-          : drive.error != null
+          : drive.locationIssue != null
           ? _text('Waiting for accurate GPS', '正在等待准确定位')
           : null;
       return NavigationOverlay(
@@ -104,12 +106,17 @@ class IndependentNavigationOverlay extends StatelessWidget {
         language: language,
         guidance: NavigationGuidance(
           instruction: status ?? routeStepInstruction(next, language),
+          thenInstruction: status == null && engine.followingStep != null
+              ? routeStepInstruction(engine.followingStep, language)
+              : null,
           maneuverIcon: engine.arrived
               ? Icons.flag_rounded
               : engine.rerouting || engine.offRoute
               ? Icons.alt_route_rounded
               : independentManeuverIcon(next),
-          stepMeters: engine.offRoute ? null : engine.distanceToStepMeters,
+          stepMeters: engine.offRoute || drive.locationIssue != null
+              ? null
+              : engine.distanceToStepMeters,
           remainingMeters: engine.remainingDistanceMeters,
           remainingSeconds: engine.remainingSeconds,
           lanes:
@@ -161,6 +168,7 @@ class IndependentNavigationOverlay extends StatelessWidget {
         offlineReady: offlineReady,
         usingOfflineGuidance: engine.error != null,
         offlineCachedAt: offlineCachedAt,
+        systemStatus: systemStatus,
       );
     },
   );

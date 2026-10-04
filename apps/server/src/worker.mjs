@@ -400,12 +400,14 @@ export default {
   async fetch(request, env, ctx) {
     const requestUrl = new URL(request.url);
     const pathname = requestUrl.pathname;
-    const shouldCanonicalizeHost =
+    const canonicalHost =
       requestUrl.hostname === 'www.waybi.co' ||
-      (requestUrl.hostname === 'waybi.nzs.workers.dev' && !pathname.startsWith('/api/'));
-    if (shouldCanonicalizeHost) {
+      (requestUrl.hostname === 'waybi.nzs.workers.dev' && !pathname.startsWith('/api/'))
+        ? 'waybi.co'
+        : requestUrl.hostname;
+    if (requestUrl.protocol !== 'https:' || canonicalHost !== requestUrl.hostname) {
       requestUrl.protocol = 'https:';
-      requestUrl.hostname = 'waybi.co';
+      requestUrl.hostname = canonicalHost;
       requestUrl.port = '';
       return Response.redirect(requestUrl.toString(), 301);
     }

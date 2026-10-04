@@ -31,6 +31,14 @@ test('legacy public hosts canonicalize to waybi.co without breaking API clients'
   const env = { ASSETS: { fetch: async () => new Response('site') } };
   const ctx = { waitUntil() {} };
 
+  const httpApex = await worker.fetch(
+    new Request('http://waybi.co/route-watch/?from=http'),
+    env,
+    ctx
+  );
+  assert.equal(httpApex.status, 301);
+  assert.equal(httpApex.headers.get('location'), 'https://waybi.co/route-watch/?from=http');
+
   const www = await worker.fetch(
     new Request('https://www.waybi.co/route-watch/?from=www'),
     env,

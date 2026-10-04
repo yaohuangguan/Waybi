@@ -103,7 +103,21 @@ jobs:
             exit 1
           fi
       - run: pnpm install --no-frozen-lockfile
+      - name: Check for D1 migration changes
+        id: d1_changes
+        shell: bash
+        run: |
+          git fetch --no-tags --depth=2 origin main
+          BEFORE_SHA="${{ github.event.before }}"
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BEFORE_SHA" "${{ github.sha }}" -- apps/server/migrations; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Apply D1 migrations
+        if: steps.d1_changes.outputs.changed == 'true'
         run: pnpm db:migrate:remote
       - name: Deploy Cloudflare Worker
         run: pnpm deploy

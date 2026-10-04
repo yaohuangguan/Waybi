@@ -106,6 +106,19 @@ test('stale source timestamps never become fresh on a failed refresh', () => {
   assert.equal(snapshot.events.some((e) => e.metadata.author), false);
 });
 
+test('overseas reports retain community provenance without reporter identity', () => {
+  const report = {id:'world-report',type:'congestion',location:{latitude:40.71,longitude:-74},
+    source:{provider:'Waybi road reports'},observation:'observed',metadata:{userReported:true,
+      reporterId:'private-id',reporterName:'private-name',description:'Traffic'}};
+  const snapshot = normalizeSnapshot(cameras,{...roads,events:[report]},NOW);
+  const found = queryEvents(snapshot.events,{near:report.location,radius:500},NOW);
+  assert.equal(found.length,1);
+  assert.equal(found[0].sourceId,'waybi-reports');
+  assert.equal(found[0].metadata.reporterId,undefined);
+  assert.equal(found[0].metadata.reporterName,undefined);
+  assert.equal(snapshot.sources.find(s=>s.id==='waybi-reports').coverage,'global');
+});
+
 test('corridor projection, geometry and validity avoid unrelated parallel-road events', () => {
   const route = [{ longitude: 174.76, latitude: -36.85 }, { longitude: 174.80, latitude: -36.85 }];
   assert.ok(project({ longitude: 174.77, latitude: -36.85 }, route).offset < 1);

@@ -3,6 +3,15 @@ import assert from 'node:assert/strict';
 import worker, { readCameraState, syncCameras } from '../src/worker.mjs';
 import seed from '../data/cameras.json' with { type: 'json' };
 
+test('valid overseas coordinates have unknown limits rather than rejecting navigation', async () => {
+  for (const coordinate of ['-74,40.71','139.7,35.69','121.47,31.23','18.4,-33.9']) {
+    const response = await worker.fetch(new Request('https://waybi.test/api/speed-limit?at='+coordinate),
+      {}, {waitUntil(){}});
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).speedLimitKph,null);
+  }
+});
+
 test('identity migration pauses API and scheduled writes while keeping assets available', async () => {
   const env = {
     WAYBI_MIGRATION_PAUSED: 'true',

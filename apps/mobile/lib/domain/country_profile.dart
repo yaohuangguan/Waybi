@@ -30,17 +30,27 @@ abstract final class CountryProfiles {
     roadIntelligenceAvailable: true,
   );
 
-  /// Australia is a configuration target, not a live intelligence region.
+  /// Community reports and route intelligence are available worldwide.
   static const au = CountryProfile(
     code: 'AU',
     locale: 'en-AU',
     distanceUnit: 'km',
     speedUnit: 'km/h',
     drivingSide: 'left',
-    roadIntelligenceAvailable: false,
+    roadIntelligenceAvailable: true,
+  );
+
+  static const global = CountryProfile(
+    code: 'GLOBAL',
+    locale: 'en',
+    distanceUnit: 'km',
+    speedUnit: 'km/h',
+    drivingSide: 'unknown',
+    roadIntelligenceAvailable: true,
   );
 
   static CountryProfile? at(GeoPoint point) {
+    if (!point.isValid) return null;
     if (point.latitude >= -48 &&
         point.latitude <= -34 &&
         point.longitude >= 166 &&
@@ -53,6 +63,6 @@ abstract final class CountryProfiles {
         point.longitude <= 154) {
       return au;
     }
-    return null;
+    return global;
   }
 }

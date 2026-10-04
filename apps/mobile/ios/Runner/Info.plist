@@ -50,6 +50,7 @@
 			<array>
 				<string>$(GOOGLE_REVERSED_CLIENT_ID)</string>
 				<string>waybi</string>
+				<string>geo-navigation</string>
 			</array>
 		</dict>
 	</array>

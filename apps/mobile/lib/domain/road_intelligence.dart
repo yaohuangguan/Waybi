@@ -18,7 +18,10 @@ class RoadEventProviderRegistry {
   List<Object> lastErrors = const [];
 
   Future<List<RoadEvent>> load(CountryProfile country) async {
-    if (!country.roadIntelligenceAvailable) return const [];
+    if (!country.roadIntelligenceAvailable) {
+      lastErrors = const [];
+      return const [];
+    }
     final available = providers.where((p) => p.supports(country));
     final events = <RoadEvent>[];
     final errors = <Object>[];
@@ -45,6 +48,38 @@ class RoadIntelligenceEngine {
   final double routeCorridorMeters;
   final int maxResults;
   static const _routeMatcher = RouteCameraMatcher();
+
+  /// Derived from actual provider maneuvers, never fabricated live incidents.
+  static List<RoadEvent> routeEvents(RouteOption? route) {
+    if (route == null || route.mode == WaybiTravelMode.transit) return const [];
+    final events = <RoadEvent>[];
+    for (var i = 0; i < route.steps.length; i++) {
+      final step = route.steps[i];
+      final type = step.maneuverType == 'merge'
+          ? RoadEventType.laneMerge
+          : step.maneuverModifier.startsWith('sharp ')
+          ? RoadEventType.sharpCurve
+          : null;
+      if (type == null || !step.location.isValid) continue;
+      events.add(
+        RoadEvent(
+          id: 'route:${route.id}:$i',
+          type: type,
+          location: step.location,
+          roadName: step.roadName,
+          source: RoadEventSource(
+            provider: route.provider,
+            country: CountryProfiles.at(step.location)?.code ?? 'GLOBAL',
+            sourceId: '${route.id}:$i',
+          ),
+          observation: RoadEventObservation.inferred,
+          severity: RoadEventSeverity.advisory,
+          confidence: .8,
+        ),
+      );
+    }
+    return events;
+  }
 
   List<RoadEvent> relevant({
     required GeoPoint driver,

@@ -5,8 +5,43 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:waybi_mobile/data/nzta_traffic_road_event_provider.dart';
 import 'package:waybi_mobile/domain/road_event.dart';
+import 'package:waybi_mobile/domain/country_profile.dart';
 
 void main() {
+  test(
+    'worldwide congestion keeps its type, source and directional heading',
+    () async {
+      final provider = NztaTrafficRoadEventProvider(
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'events': [
+                {
+                  'id': 'world-report',
+                  'type': 'congestion',
+                  'location': {'latitude': 40.71, 'longitude': -74},
+                  'source': {
+                    'provider': 'Waybi road reports',
+                    'country': null,
+                    'sourceId': 'world',
+                  },
+                  'headingDegrees': 90,
+                  'metadata': {'userReported': true},
+                },
+              ],
+            }),
+            200,
+          ),
+        ),
+      );
+      expect(provider.supports(CountryProfiles.global), isTrue);
+      expect(provider.supports(CountryProfiles.au), isTrue);
+      final event = (await provider.load()).single;
+      expect(event.type, RoadEventType.congestion);
+      expect(event.headingDegrees, 90);
+      expect(event.source.country, 'GLOBAL');
+    },
+  );
   test('parses normalized NZTA road events from Worker response', () async {
     final client = MockClient((request) async {
       expect(request.url.path, '/api/road-events');

@@ -44,14 +44,54 @@ class FailingProvider implements RoadEventProvider {
 }
 
 void main() {
-  test('NZ profile selects live provider; AU stays unsupported', () async {
-    final provider = CountingProvider();
-    final registry = RoadEventProviderRegistry([provider]);
-    expect((await registry.load(CountryProfiles.nz)).length, 1);
-    expect(await registry.load(CountryProfiles.au), isEmpty);
-    expect(provider.calls, 1);
-    expect(CountryProfiles.at(const GeoPoint(-36.85, 174.76))?.code, 'NZ');
-    expect(CountryProfiles.at(const GeoPoint(-33.87, 151.21))?.code, 'AU');
+  test(
+    'NZ selects its official provider; other regions allow global providers',
+    () async {
+      final provider = CountingProvider();
+      final registry = RoadEventProviderRegistry([provider]);
+      expect((await registry.load(CountryProfiles.nz)).length, 1);
+      expect(await registry.load(CountryProfiles.au), isEmpty);
+      expect(provider.calls, 1);
+      expect(CountryProfiles.at(const GeoPoint(-36.85, 174.76))?.code, 'NZ');
+      expect(CountryProfiles.at(const GeoPoint(-33.87, 151.21))?.code, 'AU');
+    },
+  );
+
+  test('all valid world regions support route intelligence', () async {
+    for (final point in const [
+      GeoPoint(51.5, -.12),
+      GeoPoint(40.71, -74),
+      GeoPoint(35.68, 139.76),
+      GeoPoint(-23.55, -46.63),
+      GeoPoint(31.23, 121.47),
+      GeoPoint(-33.9, 18.4),
+      GeoPoint(0, 179.99),
+    ]) {
+      expect(CountryProfiles.at(point)!.roadIntelligenceAvailable, isTrue);
+      final route = RouteOption(
+        id: 'world',
+        mode: WaybiTravelMode.drive,
+        durationSeconds: 60,
+        distanceMeters: 200,
+        points: [point, point],
+        provider: 'test',
+        traffic: const TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
+        trafficIntervals: const [],
+        steps: [
+          RouteStepInfo(
+            instruction: 'Merge',
+            distanceMeters: 100,
+            location: point,
+            maneuverType: 'merge',
+          ),
+        ],
+      );
+      final events = RoadIntelligenceEngine.routeEvents(route);
+      expect(events.single.type, RoadEventType.laneMerge);
+      expect(events.single.observation, RoadEventObservation.inferred);
+      expect(events.single.source.country, 'GLOBAL');
+    }
+    expect(CountryProfiles.at(const GeoPoint(91, 0)), isNull);
   });
 
   test('route corridor keeps events ahead on route and removes stale data', () {

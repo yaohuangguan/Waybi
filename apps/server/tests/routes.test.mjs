@@ -2,6 +2,27 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { routeOptions } from '../src/routes.mjs';
 
+test('overseas fallback respects walking and cycling modes and retains maneuvers', async () => {
+  const previous = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return Response.json({code:'Ok',routes:[{duration:60,distance:200,
+      geometry:{coordinates:[[139.7,35.69],[139.71,35.7]]},
+      legs:[{steps:[{distance:200,maneuver:{type:'merge',location:[139.7,35.69]}}]}]}]});
+  };
+  try {
+    for (const [mode,profile] of [['WALK','foot'],['BICYCLE','bike']]) {
+      const result = await routeOptions([139.7,35.69],[139.71,35.7],{},[],[mode]);
+      assert.equal(result.options[0].mode,mode.toLowerCase());
+      assert.equal(result.options[0].steps[0].maneuver,'merge');
+      assert.match(urls.at(-1),new RegExp('routed-'+profile));
+      assert.match(urls.at(-1),/steps=true/);
+    }
+    await assert.rejects(routeOptions([139.7,35.69],[139.71,35.7],{},[],['TRANSIT']), /requested travel mode/);
+  } finally {globalThis.fetch=previous;}
+});
+
 test('Google driving alternatives request traffic on the polyline', async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];

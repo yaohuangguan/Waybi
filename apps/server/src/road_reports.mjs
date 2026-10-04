@@ -4,6 +4,7 @@ const MAX_REPORTS = 250;
 const ALLOWED = new Set(['incident', 'roadworks', 'roadClosure', 'congestion', 'flooding', 'slip']);
 
 export async function readRoadReports(env, now = new Date()) {
+  if (!env.CAMERA_DATA) return [];
   const state = await env.CAMERA_DATA.get(KEY, 'json');
   const reports = Array.isArray(state?.reports) ? state.reports : [];
   return reports.filter((report) => {

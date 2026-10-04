@@ -86,6 +86,9 @@ void main() {
     expect(find.text('Less traffic'), findsOneWidget);
     expect(find.text('0 cameras'), findsWidgets);
     expect(find.text('Load'), findsOneWidget);
+    expect(find.text('No traffic data'), findsWidgets);
+    expect(find.text('Light traffic'), findsNothing);
+    expect(find.text('Clear'), findsNothing);
 
     await tester.tap(find.text('Transit'));
     await tester.pump();

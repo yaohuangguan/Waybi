@@ -1,6 +1,7 @@
 import { userFromRequest } from './auth.mjs';
 import { loadRoadEventState, ROAD_EVENTS_SOURCE_PAGE } from './road_events.mjs';
 import { validCoordinate } from './geo.mjs';
+import { readRoadReports } from './road_reports.mjs';
 
 const ROOT = '/api/v1/road-intelligence';
 const encoder = new TextEncoder();
@@ -149,6 +150,10 @@ export function normalizeSnapshot(cameras, roads, now = Date.now()) {
       stale: roads.syncStatus !== 'live' || !Number.isFinite(Date.parse(roadTime)) || now - Date.parse(roadTime) > 600000,
       commercialRedistribution: false, termsUrl: NZTA_TERMS },
   ];
+  if (roads.events?.some((event) => event.metadata?.userReported)) {
+    sources.push({ id: 'waybi-reports', attribution: 'Waybi drivers', coverage: 'global',
+      status: 'community', stale: false, commercialRedistribution: false });
+  }
   const events = [
     ...(cameras.cameras ?? []).map((c) => ({ id: `nzta:camera:${c.id}`, type: 'safetyCamera',
       location: { latitude: c.latitude, longitude: c.longitude }, geometry: [], roadName: c.location || c.name,
@@ -157,7 +162,10 @@ export function normalizeSnapshot(cameras, roads, now = Date.now()) {
     ...(roads.events ?? []).map((e) => ({ id: e.id, type: e.type, location: e.location,
       geometry: e.geometry ?? [], roadName: e.roadName, severity: e.severity, observation: e.observation,
       confidence: e.confidence ?? null, validFrom: e.validFrom, validUntil: e.validUntil,
-      sourceId: 'nzta-road-events', sourceUpdatedAt: e.source?.updatedAt ?? null, metadata: e.metadata ?? {} })),
+      sourceId: e.metadata?.userReported ? 'waybi-reports' : 'nzta-road-events',
+      sourceUpdatedAt: e.source?.updatedAt ?? null,
+      metadata: Object.fromEntries(Object.entries(e.metadata ?? {}).filter(([key]) =>
+        !['reporterId', 'reporterName'].includes(key))) })),
   ].filter((e) => point([e.location?.longitude, e.location?.latitude]));
   return { events, sources };
 }
@@ -184,14 +192,14 @@ export async function handleRoadIntelligence(request, env, ctx, readCameras, opt
     const route = Array.isArray(input?.coordinates) ? input.coordinates.map(point) : [];
     const buffer = input?.bufferMeters == null ? 180 : number(input.bufferMeters);
     if (route.length < 2 || route.length > 250 || !route.every(Boolean) || buffer == null || buffer < 25 || buffer > 500)
-      return failure('invalid-request', 'Provide 2–250 NZ [longitude, latitude] coordinates and bufferMeters 25–500', 400);
+      return failure('invalid-request', 'Provide 2–250 [longitude, latitude] coordinates and bufferMeters 25–500', 400);
     query = { route, buffer };
   } else {
     const bbox = url.searchParams.get('bbox')?.split(',').map(number);
     const near = point(url.searchParams.get('near')?.split(',') ?? []);
     const radius = url.searchParams.has('radiusMeters') ? number(url.searchParams.get('radiusMeters')) : 1500;
     if (bbox && (url.searchParams.has('near') || bbox.length !== 4 || !point(bbox.slice(0, 2)) || !point(bbox.slice(2)) || bbox[0] >= bbox[2] || bbox[1] >= bbox[3] || bbox[2] - bbox[0] > 2 || bbox[3] - bbox[1] > 2))
-      return failure('invalid-request', 'bbox must be west,south,east,north in NZ, at most 2° wide/high', 400);
+      return failure('invalid-request', 'bbox must be west,south,east,north, at most 2° wide/high', 400);
     if (!bbox && (!near || radius == null || radius < 50 || radius > 10000))
       return failure('invalid-request', 'Provide bbox or near=longitude,latitude with radiusMeters 50–10000', 400);
     query = bbox ? { bbox } : { near, radius };
@@ -205,6 +213,8 @@ export async function handleRoadIntelligence(request, env, ctx, readCameras, opt
   let roads;
   try { roads = await (options.loadRoads ?? loadRoadEventState)(env); }
   catch { roads = { events: [], syncStatus: 'unavailable', checkedAt: null }; }
+  const reports = await (options.loadReports ?? readRoadReports)(env, new Date(now));
+  roads = { ...roads, events: [...reports, ...(roads.events ?? [])] };
   const snapshot = normalizeSnapshot(cameraState, roads, now);
   const matches = queryEvents(snapshot.events, query, now);
   ctx.waitUntil(env.USER_DB.prepare('DELETE FROM road_api_usage WHERE window_start < ?').bind(now - 7 * 86400000).run());

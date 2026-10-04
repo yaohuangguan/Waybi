@@ -26,6 +26,17 @@ import 'route_progress_tracker.dart';
 import 'voice_engine.dart';
 import 'navigation_language.dart';
 import 'navigation_location_filter.dart';
+import 'reliable_location_feed.dart';
+import 'navigation_motion.dart';
+
+enum NavigationGpsIssue {
+  acquiring,
+  stale,
+  unstable,
+  unavailable,
+  servicesDisabled,
+  permissionDenied,
+}
 
 class DriveEngine extends ChangeNotifier {
   DriveEngine({
@@ -78,6 +89,7 @@ class DriveEngine extends ChangeNotifier {
   final RouteCameraMatcher _routeMatcher = const RouteCameraMatcher();
   final NavigationLocationFilter _localLocationFilter =
       NavigationLocationFilter();
+  final _localMotion = NavigationMotionEstimator();
 
   List<SafetyCamera> _cameras = const [];
   RouteOption? _route;
@@ -91,6 +103,7 @@ class DriveEngine extends ChangeNotifier {
   List<SafetyCamera> get cameras => _cameras;
   CameraSnapshot? get cameraSnapshot => _nztaProvider.lastSnapshot;
   List<RoadEvent> roadEvents = const [];
+  List<RoadEvent> _routeRoadEvents = const [];
   List<RoadEvent> upcomingRoadEvents = const [];
   List<TrafficFlowSegment> trafficFlowSegments = const [];
   DateTime? trafficFlowUpdatedAt;
@@ -107,7 +120,8 @@ class DriveEngine extends ChangeNotifier {
   double? _rawHeadingDegrees;
   bool _localNavigation = false;
   String? locationIssue;
-  Timer? _locationWatchdog;
+  NavigationGpsIssue? gpsIssue;
+  ReliableLocationFeed? _localLocationFeed;
   bool get hasReliableLocation => !_localNavigation
       ? _lastSnappedLocation != null
       : latestPosition != null &&
@@ -258,21 +272,38 @@ class DriveEngine extends ChangeNotifier {
 
   /// Local location feed for a non-Google map renderer. Camera alerts keep
   /// using the same matching and voice logic, without starting Google SDK.
-  Future<void> startLocal() async {
+  Future<void> startLocal({Position? initialPosition}) async {
     if (active || _disposed) return;
-    ++_locationSession;
+    final session = ++_locationSession;
     _localNavigation = true;
+    _localMotion.reset();
     if (!await Geolocator.isLocationServiceEnabled()) {
       throw StateError('Turn on location services to start driving');
     }
     _roadSnappedFixCompleter = Completer<void>();
     error = null;
     await _voiceEngine.initialize();
+    if (_disposed || session != _locationSession) return;
 
     final routeStart = _route != null && _route!.points.isNotEmpty
         ? _route!.points.first
         : null;
-    _localLocationFilter.reset(anchor: routeStart);
+    _localLocationFilter.reset(
+      anchor: routeStart,
+      trustedFix: initialPosition == null
+          ? null
+          : NavigationLocationFix(
+              point: GeoPoint(
+                initialPosition.latitude,
+                initialPosition.longitude,
+              ),
+              accuracyMeters: initialPosition.accuracy,
+              speedMetresPerSecond: initialPosition.speed.isFinite
+                  ? initialPosition.speed.clamp(0.0, 70.0)
+                  : 0,
+              timestamp: initialPosition.timestamp,
+            ),
+    );
     active = true;
     guidanceRunning = _route != null;
 
@@ -292,6 +323,7 @@ class DriveEngine extends ChangeNotifier {
       locationAccuracyMeters = double.infinity;
       error = 'Waiting for an accurate GPS fix';
       locationIssue = error;
+      gpsIssue = NavigationGpsIssue.acquiring;
     }
 
     final settings = switch (defaultTargetPlatform) {
@@ -327,86 +359,130 @@ class DriveEngine extends ChangeNotifier {
         distanceFilter: 0,
       ),
     };
-    _subscriptions.add(
-      Geolocator.getPositionStream(locationSettings: settings).listen(
-        (position) {
-          if (!active || _disposed) return;
-          final metresPerSecond = position.speed.isFinite && position.speed > 0
-              ? position.speed
-              : 0.0;
-          final accepted = _localLocationFilter.accept(
-            NavigationLocationFix(
-              point: GeoPoint(position.latitude, position.longitude),
-              accuracyMeters: position.accuracy,
-              speedMetresPerSecond: metresPerSecond,
-              timestamp: position.timestamp,
-            ),
-          );
-          if (accepted == null) {
-            locationIssue =
-                !position.accuracy.isFinite || position.accuracy > 35
-                ? 'Waiting for an accurate GPS fix'
-                : 'GPS unstable — holding the last reliable position';
+    _localLocationFeed =
+        ReliableLocationFeed(
+          settings: settings,
+          onPosition: _consumeLocalPosition,
+          onIssue: (issue) {
+            if (!active || _disposed) return;
+            if (issue == null) {
+              locationIssue = null;
+              gpsIssue = null;
+              error = null;
+            } else if (issue is LocationServiceDisabledException) {
+              gpsIssue = NavigationGpsIssue.servicesDisabled;
+              locationIssue =
+                  'Location services are off. Enable them in Settings.';
+            } else if (issue is PermissionDeniedException) {
+              gpsIssue = NavigationGpsIssue.permissionDenied;
+              locationIssue =
+                  'Location permission is disabled. Enable it in Settings.';
+            } else {
+              gpsIssue = issue is TimeoutException
+                  ? NavigationGpsIssue.stale
+                  : NavigationGpsIssue.unavailable;
+              locationIssue = 'Waiting for a fresh GPS fix';
+            }
             error = locationIssue;
             notifyListeners();
-            return;
-          }
-
-          error = null;
-          locationIssue = null;
-          latestPosition = position;
-          locationAccuracyMeters = accepted.accuracyMeters;
-          speedKph = metresPerSecond * 3.6;
-          if (speedKph > 5 &&
-              position.heading.isFinite &&
-              position.heading >= 0 &&
-              (!position.headingAccuracy.isFinite ||
-                  position.headingAccuracy <= 35)) {
-            _rawHeadingDegrees = position.heading;
-            _headingDegrees = position.heading;
-          } else {
-            _rawHeadingDegrees = null;
-          }
-          _onLocation(
-            LatLng(
-              latitude: accepted.point.latitude,
-              longitude: accepted.point.longitude,
-            ),
-          );
-          speedSeverity = speedLimitKph != null && speedKph > speedLimitKph!
-              ? SpeedAlertSeverity.minor
-              : SpeedAlertSeverity.notSpeeding;
-        },
-        onError: (Object _) {
-          if (!active || _disposed) return;
-          locationIssue =
-              'Location unavailable. Check GPS and location permission.';
-          error = locationIssue;
-          notifyListeners();
-        },
-      ),
-    );
+          },
+        )..start(
+          initialPosition: _localLocationFilter.accepted == null
+              ? null
+              : initialPosition,
+        );
     await _updateWakeLock();
-    _locationWatchdog?.cancel();
-    _locationWatchdog = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!active ||
-          _disposed ||
-          !_localNavigation ||
-          latestPosition == null ||
-          locationIssue != null) {
-        return;
-      }
-      if (DateTime.now().difference(latestPosition!.timestamp) >
-          const Duration(seconds: 10)) {
-        locationIssue = 'Waiting for a fresh GPS fix';
-        notifyListeners();
-      }
-    });
     _startRoadIntelligenceRefreshTimer();
     notifyListeners();
     // Provider refreshes must not delay entering Drive.
     unawaited(loadCameras(force: true));
     unawaited(loadTrafficFlow(force: true));
+  }
+
+  Future<void> recoverLocalLocation() async {
+    if (active && _localNavigation) {
+      await _localLocationFeed?.recover(force: true);
+    }
+  }
+
+  bool _consumeLocalPosition(Position position) {
+    if (!active || _disposed) return false;
+    final observation = NavigationLocationFix(
+      point: GeoPoint(position.latitude, position.longitude),
+      accuracyMeters: position.accuracy,
+      speedMetresPerSecond: position.speed.isFinite && position.speed > 0
+          ? position.speed
+          : 0,
+      timestamp: position.timestamp,
+    );
+    final motion = _localMotion.update(
+      observation,
+      heading:
+          position.headingAccuracy.isFinite && position.headingAccuracy > 35
+          ? null
+          : position.heading,
+    );
+    final speed = motion.speedMetresPerSecond;
+    final accepted = _localLocationFilter.accept(
+      NavigationLocationFix(
+        point: GeoPoint(position.latitude, position.longitude),
+        accuracyMeters: position.accuracy,
+        speedMetresPerSecond: speed,
+        timestamp: position.timestamp,
+      ),
+    );
+    final previous = _localLocationFilter.accepted;
+    assert(() {
+      if (const bool.fromEnvironment('WAYBI_NAVIGATION_DIAGNOSTICS')) {
+        debugPrint(
+          'WAYBI_NAV_FIX accuracy=${position.accuracy} '
+          'sensorSpeed=${position.speed} motionSpeed=$speed '
+          'course=${motion.heading} accepted=${accepted != null}',
+        );
+      }
+      return true;
+    }());
+    final duplicate =
+        previous?.timestamp == position.timestamp &&
+        DateTime.now().difference(position.timestamp) <=
+            const Duration(seconds: 10);
+    if (accepted == null && !duplicate) {
+      // A rejected jump must not conceal a still-fresh reliable observation.
+      if (latestPosition == null ||
+          DateTime.now().difference(latestPosition!.timestamp) >
+              const Duration(seconds: 10)) {
+        locationIssue = !position.accuracy.isFinite || position.accuracy > 35
+            ? 'Waiting for an accurate GPS fix'
+            : 'GPS unstable — holding the last reliable position';
+        gpsIssue = !position.accuracy.isFinite || position.accuracy > 35
+            ? NavigationGpsIssue.acquiring
+            : NavigationGpsIssue.unstable;
+        error = locationIssue;
+        notifyListeners();
+      }
+      return false;
+    }
+    if (latestPosition?.timestamp == position.timestamp) return true;
+    final fix = accepted ?? previous!;
+    error = null;
+    locationIssue = null;
+    gpsIssue = null;
+    latestPosition = position;
+    locationAccuracyMeters = fix.accuracyMeters;
+    speedKph = speed * 3.6;
+    if (speedKph >= 2 && motion.heading != null) {
+      _rawHeadingDegrees = motion.heading;
+      _headingDegrees = motion.heading;
+    } else {
+      _rawHeadingDegrees = null;
+    }
+    _onLocation(
+      LatLng(latitude: fix.point.latitude, longitude: fix.point.longitude),
+    );
+    speedSeverity = speedLimitKph != null && speedKph > speedLimitKph!
+        ? SpeedAlertSeverity.minor
+        : SpeedAlertSeverity.notSpeeding;
+    return true;
   }
 
   Future<void> loadTrafficFlow({bool force = false}) async {
@@ -493,6 +569,7 @@ class DriveEngine extends ChangeNotifier {
     ++_turnRevision;
     unawaited(_voiceEngine.stop());
     _route = route;
+    _routeRoadEvents = RoadIntelligenceEngine.routeEvents(route);
     navInfoUpdatedAt = null;
     _progressTracker = route != null && route.points.length >= 2
         ? RouteProgressTracker(route.points)
@@ -581,23 +658,17 @@ class DriveEngine extends ChangeNotifier {
     _lastSnappedLocation = canSnap
         ? LatLng(latitude: snapped.latitude, longitude: snapped.longitude)
         : current;
-    if (canSnap && speedKph >= 5) _headingDegrees = projection.bearingDegrees;
+    if (canSnap && speedKph >= 2) _headingDegrees = projection.bearingDegrees;
     locationRevision++;
     final country = CountryProfiles.at(
       GeoPoint(current.latitude, current.longitude),
     );
     if (country?.code != 'NZ') {
-      roadIntelligenceStatus = 'unsupported';
       _cameraLifecycle.reset();
-      upcomingRoadEvents = const [];
       upcomingCamera = null;
       upcomingCameraDistanceMeters = null;
       passedCamera = null;
       cameraAlertState = const CameraAlertState.idle();
-      speedLimitKph = null;
-      speedLimitZoneName = null;
-      notifyListeners();
-      return;
     }
     unawaited(_refreshSpeedLimit(current));
 
@@ -667,6 +738,7 @@ class DriveEngine extends ChangeNotifier {
                           event.source.sourceId,
                         ),
                   )
+                  .followedBy(_routeRoadEvents)
                   .toList(growable: false),
         headingDegrees: _headingDegrees,
         route: route,
@@ -797,10 +869,7 @@ class DriveEngine extends ChangeNotifier {
                 latest.latitude,
                 latest.longitude,
               ) <
-              100 &&
-          CountryProfiles.at(GeoPoint(latest.latitude, latest.longitude))
-                  ?.code ==
-              'NZ') {
+              100) {
         speedLimitKph = info.speedLimitKph;
         speedLimitZoneName = info.zoneName;
         notifyListeners();
@@ -846,9 +915,11 @@ class DriveEngine extends ChangeNotifier {
   }
 
   Future<void> stop() async {
-    _locationWatchdog?.cancel();
-    _locationWatchdog = null;
+    final localFeed = _localLocationFeed;
+    _localLocationFeed = null;
+    await localFeed?.stop();
     locationIssue = null;
+    gpsIssue = null;
     ++_locationSession;
     active = false;
     guidanceRunning = false;
@@ -866,6 +937,7 @@ class DriveEngine extends ChangeNotifier {
     _spokenAlerts.clear();
     _cameraLifecycle.reset();
     _route = null;
+    _routeRoadEvents = const [];
     routeCameras = const [];
     upcomingRoadEvents = const [];
     active = false;
@@ -894,7 +966,7 @@ class DriveEngine extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _locationWatchdog?.cancel();
+    unawaited(_localLocationFeed?.stop());
     active = false;
     ++_locationSession;
     unawaited(WakelockPlus.disable().catchError((Object _) {}));

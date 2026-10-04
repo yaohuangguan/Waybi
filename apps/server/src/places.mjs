@@ -276,7 +276,6 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     if (!/^[A-Za-z0-9_-]{8,300}$/.test(placeId)) return json({ error: 'Valid Google Place ID required' }, 400);
     const provider = new URL(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`);
     provider.searchParams.set('languageCode', url.searchParams.get('lang') === 'zh' ? 'zh-CN' : 'en');
-    provider.searchParams.set('regionCode', 'NZ');
     const fieldMask = [
       'id', 'displayName', 'formattedAddress', 'primaryTypeDisplayName', 'rating',
       'userRatingCount', 'businessStatus', 'priceLevel', 'nationalPhoneNumber',
@@ -356,7 +355,6 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     });
     if (!upstream.ok) return json({ error: 'Current-place lookup unavailable' }, 502);
     const data = await upstream.json();
-    if (data.address?.country_code !== 'nz') return json({ error: 'Location is outside New Zealand' }, 422);
     const address = data.address || {};
     return json({ label: [address.road || address.suburb || address.neighbourhood,
       address.suburb || address.city || address.town || address.village,

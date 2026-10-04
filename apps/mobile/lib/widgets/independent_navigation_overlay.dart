@@ -83,6 +83,30 @@ class IndependentNavigationOverlay extends StatelessWidget {
 
   String _text(String en, String zh) => language == 'zh' ? zh : en;
 
+  String get _gpsStatus => switch (drive.gpsIssue) {
+    NavigationGpsIssue.servicesDisabled => _text(
+      'Turn on Location Services in Settings',
+      '请在系统设置中开启定位服务',
+    ),
+    NavigationGpsIssue.permissionDenied => _text(
+      'Allow location access for Waybi in Settings',
+      '请在系统设置中允许 Waybi 使用定位',
+    ),
+    NavigationGpsIssue.unstable => _text(
+      'GPS unstable · holding your last position',
+      '定位不稳定，保留上次可靠位置',
+    ),
+    NavigationGpsIssue.stale => _text(
+      'GPS signal lost · reconnecting',
+      '定位信号中断，正在恢复',
+    ),
+    NavigationGpsIssue.unavailable => _text(
+      'Location unavailable · retrying',
+      '定位暂不可用，正在重试',
+    ),
+    _ => _text('Getting an accurate GPS fix…', '正在获取准确位置…'),
+  };
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: Listenable.merge([engine, drive]),
@@ -90,14 +114,14 @@ class IndependentNavigationOverlay extends StatelessWidget {
       final next = engine.nextStep;
       final status = engine.arrived
           ? _text('Arrived at $destination', '已抵达 $destination')
+          : drive.locationIssue != null
+          ? _gpsStatus
           : engine.rerouting
           ? _text('Updating route…', '正在重新规划路线…')
           : engine.offRoute
           ? _text('Off route · finding your way', '已偏离路线，正在更新')
           : engine.error != null
           ? _text('Route update unavailable · retrying', '路线更新暂不可用，正在重试')
-          : drive.locationIssue != null
-          ? _text('Waiting for accurate GPS', '正在等待准确定位')
           : null;
       return NavigationOverlay(
         onTopInsetChanged: onTopInsetChanged,

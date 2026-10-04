@@ -19,6 +19,7 @@ class FullScreenSearch extends StatefulWidget {
     required this.recent,
     this.currentLocation,
     this.initialQuery = '',
+    this.purpose,
     this.onDriveMode,
     this.marker = LocationMarkerStyle.kiwi,
   });
@@ -29,6 +30,7 @@ class FullScreenSearch extends StatefulWidget {
   final List<PlaceSummary> recent;
   final GeoPoint? currentLocation;
   final String initialQuery;
+  final String? purpose;
   final VoidCallback? onDriveMode;
   final LocationMarkerStyle marker;
 
@@ -175,6 +177,15 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
+        bottom: widget.purpose == null
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(30),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(widget.purpose!),
+                ),
+              ),
         backgroundColor: theme.scaffoldBackgroundColor,
         titleSpacing: 0,
         title: Material(

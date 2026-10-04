@@ -200,8 +200,10 @@ async function handleApi(request, env, ctx) {
     return json({ ...state, source: SOURCE_URL });
   }
   if (url.pathname === '/api/road-events') {
-    const state = await loadRoadEventState(env);
     const reports = await readRoadReports(env);
+    let state;
+    try { state = await loadRoadEventState(env); }
+    catch { state = { events: [], syncStatus: 'unavailable' }; }
     return json({ ...state, events: [...reports, ...state.events] });
   }
   if (url.pathname.startsWith('/api/map/traffic/tiles/')) return handleTrafficTile(request, env);
@@ -219,8 +221,11 @@ async function handleApi(request, env, ctx) {
     }
   }
   if (url.pathname === '/api/speed-limit') {
-    const at = validateNzCoordinatePair(url.searchParams.get('at'));
-    if (!at) return json({ error: 'Valid NZ coordinate required' }, 400);
+    const at = validateCoordinatePair(url.searchParams.get('at'));
+    if (!at) return json({ error: 'Valid coordinate required' }, 400);
+    if (!parseNzLonLat(url.searchParams.get('at'))) {
+      return json({ speedLimitKph: null, available: false, coverage: ['NZ'], source: null });
+    }
 
     const [longitude, latitude] = at;
     const params = new URLSearchParams({

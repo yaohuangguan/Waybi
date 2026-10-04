@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
@@ -115,7 +116,7 @@ class IndependentNavigationEngine extends ChangeNotifier
   }
 
   @override
-  Future<void> start(RouteOption route) async {
+  Future<void> start(RouteOption route, {Position? initialPosition}) async {
     if (route.provider != 'independent' || route.points.length < 2) {
       throw StateError(
         'Independent navigation requires a valid Independent route',
@@ -133,7 +134,7 @@ class IndependentNavigationEngine extends ChangeNotifier
     if (drive.active) await drive.stop();
     _setRoute(route);
     try {
-      await drive.startLocal();
+      await drive.startLocal(initialPosition: initialPosition);
       drive.addListener(_onLocation);
       if (drive.voiceEnabled) {
         final opening = routeStepInstruction(

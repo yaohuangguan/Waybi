@@ -12,6 +12,7 @@ import '../domain/safety_camera.dart';
 import '../domain/traffic_flow.dart';
 import '../domain/road_event.dart';
 import 'location_marker_art.dart';
+import 'road_event_marker_art.dart';
 import 'independent_map_style.dart';
 import 'provider_contracts.dart';
 
@@ -43,6 +44,7 @@ class IndependentMapRenderer extends StatefulWidget {
     this.heading = 0,
     this.contentPadding = EdgeInsets.zero,
     this.following = false,
+    this.navigating = false,
     this.trafficTileOverlay,
     this.trafficFresh = true,
     this.styleLoader = IndependentMapStyle.load,
@@ -69,6 +71,7 @@ class IndependentMapRenderer extends StatefulWidget {
   final double heading;
   final EdgeInsets contentPadding;
   final bool following;
+  final bool navigating;
   final TrafficTileOverlay? trafficTileOverlay;
   final bool trafficFresh;
   final Future<String> Function({required bool dark, required String language})
@@ -129,6 +132,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   void didUpdateWidget(covariant IndependentMapRenderer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.language != widget.language) _loadStyle();
+    if (widget.navigating && !oldWidget.navigating) _placePadding = null;
     _queueSync();
     if (oldWidget.contentPadding != widget.contentPadding) {
       unawaited(_updatePadding());
@@ -163,7 +167,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           tilt: viewport.pitch,
         ),
       ),
-      duration: const Duration(milliseconds: 650),
+      duration: Duration(milliseconds: widget.navigating ? 850 : 650),
       interpolation: ml.CameraAnimationInterpolation.linear,
     );
   }
@@ -245,6 +249,12 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         );
       }
       await c.addImage('waybi-light', await LocationMarkerArt.glowPng());
+      for (final type in RoadEventType.values) {
+        await c.addImage(
+          'waybi-event-${type.name}',
+          await RoadEventMarkerArt.png(type),
+        );
+      }
       for (final kind in CameraKind.values) {
         await c.addImage(
           'waybi-camera-${kind.name}',
@@ -426,6 +436,23 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           '==',
           ['get', 'kind'],
           'camera',
+        ],
+        enableInteraction: false,
+      );
+      await c.addSymbolLayer(
+        'waybi-pins',
+        'waybi-event-icon',
+        ml.SymbolLayerProperties(
+          iconImage: ['get', 'icon'],
+          iconSize: 38 / 96 * imageScale,
+          iconAllowOverlap: true,
+          iconIgnorePlacement: true,
+          iconAnchor: 'center',
+        ),
+        filter: [
+          '==',
+          ['get', 'kind'],
+          'event',
         ],
         enableInteraction: false,
       );
@@ -685,7 +712,14 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           () => _collection([
             for (final c in cameras) _cameraPin(c),
             for (final e in widget.roadEvents)
-              _pin('event:${e.id}', e.location, 'event', e.roadName ?? ''),
+              {
+                ..._pin('event:${e.id}', e.location, 'event', e.roadName ?? ''),
+                'properties': {
+                  'kind': 'event',
+                  'name': e.roadName ?? '',
+                  'icon': 'waybi-event-${e.type.name}',
+                },
+              },
             for (var i = 0; i < widget.explorePlaces.length; i++)
               _pin(
                 'explore:$i',
@@ -756,6 +790,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         ),
         [
           'waybi-camera-icon',
+          'waybi-event-icon',
           'waybi-pins-dot',
           'waybi-pins-label',
           'waybi-poi-dot',

@@ -567,6 +567,7 @@ class _RouteOptionTile extends StatelessWidget {
   final VoidCallback onTap;
 
   String get _trafficLabel {
+    if (!route.hasTrafficData) return isChinese ? '暂无路况数据' : 'No traffic data';
     if (route.traffic.trafficJam > 0) {
       return isChinese ? '拥堵较重' : 'Heavier traffic';
     }
@@ -575,6 +576,7 @@ class _RouteOptionTile extends StatelessWidget {
   }
 
   Color _trafficColor() {
+    if (!route.hasTrafficData) return Colors.grey;
     if (route.traffic.trafficJam > 0) return WaybiColors.danger;
     if (route.traffic.slow > 0) return WaybiColors.warning;
     return WaybiColors.ocean;
@@ -599,6 +601,7 @@ class _RouteOptionTile extends StatelessWidget {
   }
 
   List<Color> _trafficBars() {
+    if (!route.hasTrafficData) return List.filled(5, Colors.grey);
     if (route.traffic.trafficJam > 0) {
       return const [
         WaybiColors.ocean,
@@ -852,6 +855,7 @@ class _JourneyBrief extends StatelessWidget {
   }
 
   String _trafficLabel() {
+    if (!route.hasTrafficData) return isChinese ? '暂无数据' : 'Unavailable';
     final delay = route.trafficDelaySeconds ?? 0;
     if (delay > 60) {
       return isChinese

@@ -10,6 +10,8 @@ import '../domain/map_provider.dart';
 import '../providers/camera_marker_art.dart';
 import '../providers/destination_marker_art.dart';
 import '../providers/location_marker_art.dart';
+import '../providers/road_event_marker_art.dart';
+import '../domain/road_event.dart';
 
 class MapSymbols {
   static final Map<CameraKind, ImageDescriptor> _normal = {};
@@ -17,6 +19,8 @@ class MapSymbols {
   static ImageDescriptor? car;
   static ImageDescriptor? finish;
   static ImageDescriptor? roadReport;
+  static final _events = <RoadEventType, ImageDescriptor>{};
+  static ImageDescriptor? roadEvent(RoadEventType type) => _events[type];
   static final Map<LocationMarkerStyle, ImageDescriptor> _location = {};
   static Future<void>? _registration;
 
@@ -44,6 +48,13 @@ class MapSymbols {
       imagePixelRatio: 2,
     );
     roadReport = await _registerRoadReport();
+    for (final type in RoadEventType.values) {
+      final bytes = await RoadEventMarkerArt.png(type);
+      _events[type] = await registerBitmapImage(
+        bitmap: bytes.buffer.asByteData(),
+        imagePixelRatio: 2.5,
+      );
+    }
     for (final style in LocationMarkerStyle.values) {
       if (style == LocationMarkerStyle.classic) continue;
       final bytes = await LocationMarkerArt.png(style);

@@ -168,11 +168,13 @@ async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
   });
 }
 
-async function fallbackDrivingRoutes(from, to, stops = []) {
+async function fallbackDrivingRoutes(from, to, stops = [], mode = 'DRIVE') {
+  const profile = ({ DRIVE: 'car', WALK: 'foot', BICYCLE: 'bike' })[mode];
+  if (!profile) throw new Error('Transit routes require a transit provider');
   const points = [from, ...stops.slice(0, 23), to];
   const routeUrl =
-    `https://routing.openstreetmap.de/routed-car/route/v1/driving/${points.map((point) => point.join(',')).join(';')}` +
-    `?overview=full&geometries=geojson&steps=false&alternatives=${stops.length ? 'false' : '3'}`;
+    `https://routing.openstreetmap.de/routed-${profile}/route/v1/driving/${points.map((point) => point.join(',')).join(';')}` +
+    `?overview=full&geometries=geojson&steps=true&alternatives=${stops.length ? 'false' : '3'}`;
   const response = await fetch(routeUrl, {
     headers: {
       'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)',
@@ -185,8 +187,8 @@ async function fallbackDrivingRoutes(from, to, stops = []) {
   const payload = await response.json();
   if (payload.code !== 'Ok') throw new Error('Fallback route unavailable');
   return (payload.routes || []).slice(0, 3).map((route, index) => ({
-    id: `drive-${index}`,
-    mode: 'drive',
+    id: `${mode.toLowerCase()}-${index}`,
+    mode: mode.toLowerCase(),
     durationSeconds: Number(route.duration || 0),
     staticDurationSeconds: Number(route.duration || 0),
     trafficDelaySeconds: null,
@@ -199,7 +201,13 @@ async function fallbackDrivingRoutes(from, to, stops = []) {
     warnings: [],
     traffic: { normal: 0, slow: 0, trafficJam: 0 },
     trafficIntervals: [],
-    steps: [],
+    steps: (route.legs || []).flatMap((leg) => (leg.steps || []).map((step) => ({
+      distance: Number(step.distance || 0), duration: Number(step.duration || 0),
+      name: step.name || '', maneuver: step.maneuver?.type || '',
+      modifier: step.maneuver?.modifier || '', location: step.maneuver?.location || [],
+      instruction: step.maneuver?.instruction || '',
+      lanes: (step.intersections || []).flatMap((intersection) => intersection.lanes || [])
+    }))),
     transit: [],
     provider: 'osm-fallback'
   }));
@@ -227,7 +235,10 @@ export async function routeOptions(from, to, env, stops = [], requestedModes = n
     }
   }
 
-  const driving = await fallbackDrivingRoutes(from, to, stops);
+  const modes = requestedModes?.length ? requestedModes : ['DRIVE'];
+  const settled = await Promise.allSettled(modes.map((mode) => fallbackDrivingRoutes(from, to, stops, mode)));
+  const driving = settled.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+  if (!driving.length) throw new Error('No routes available for the requested travel mode');
   return {
     provider: 'osm-fallback',
     trafficAvailable: false,

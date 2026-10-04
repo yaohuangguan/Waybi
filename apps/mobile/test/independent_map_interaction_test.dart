@@ -9,6 +9,7 @@ import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/map_layer_settings.dart';
 import 'package:waybi_mobile/domain/safety_camera.dart';
 import 'package:waybi_mobile/domain/traffic_flow.dart';
+import 'package:waybi_mobile/domain/road_event.dart';
 import 'package:waybi_mobile/providers/independent_map_renderer.dart';
 import 'package:waybi_mobile/providers/provider_contracts.dart';
 import 'package:waybi_mobile/providers/location_marker_art.dart';
@@ -96,6 +97,17 @@ void main() {
       var bottom = 215.0;
       var location = const GeoPoint(-36.8485, 174.7633);
       var panCalls = 0;
+      RoadEvent? tappedEvent;
+      const report = RoadEvent(
+        id: 'report-1',
+        type: RoadEventType.roadClosure,
+        location: GeoPoint(-36.849, 174.764),
+        source: RoadEventSource(
+          provider: 'Waybi drivers',
+          country: 'GLOBAL',
+          sourceId: 'report-1',
+        ),
+      );
       MapRenderer? renderer;
       StateSetter? update;
       PlaceSummary? selected;
@@ -129,8 +141,8 @@ void main() {
                     ),
                   ],
                   onCamera: (_) {},
-                  roadEvents: const [],
-                  onRoadEvent: (_) {},
+                  roadEvents: const [report],
+                  onRoadEvent: (event) => tappedEvent = event,
                   trafficSegments: const [
                     TrafficFlowSegment(
                       id: 'nzta:traffic:2',
@@ -215,6 +227,18 @@ void main() {
       final map = tester.widget<ml.MapLibreMap>(find.byType(ml.MapLibreMap));
       expect(map.attributionButtonMargins, const Point(8, 8));
       final pins = platform.sources['waybi-pins']!['features'] as List;
+      final eventPin = pins.firstWhere(
+        (feature) => feature['id'] == 'event:report-1',
+      );
+      expect(eventPin['properties']['icon'], 'waybi-event-roadClosure');
+      platform.features = [Map<String, dynamic>.from(eventPin as Map)];
+      map.onMapClick!(
+        Point<double>(190, 400),
+        const ml.LatLng(-36.849, 174.764),
+      );
+      await tester.pumpAndSettle();
+      expect(tappedEvent, report);
+      platform.features = [];
       final camera = pins.firstWhere(
         (feature) => feature['id'] == 'camera:cam-1',
       );

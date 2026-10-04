@@ -36,12 +36,26 @@ class NavigationLocationFilter {
 
   NavigationLocationFix? get accepted => _accepted;
 
-  void reset({GeoPoint? anchor}) {
+  void reset({GeoPoint? anchor, NavigationLocationFix? trustedFix}) {
     _anchor = anchor;
     _accepted = null;
     _candidate = null;
     _relocationFixes = 0;
     _relocationSince = null;
+    // Transfer a real fix already confirmed by the browse filter. Never use
+    // route origins or cached coordinates as observations.
+    if (trustedFix != null &&
+        trustedFix.point.isValid &&
+        trustedFix.accuracyMeters > 0 &&
+        trustedFix.accuracyMeters <= 35 &&
+        trustedFix.speedMetresPerSecond.isFinite &&
+        trustedFix.speedMetresPerSecond <= 70 &&
+        _clock().difference(trustedFix.timestamp) <=
+            const Duration(seconds: 10) &&
+        _clock().difference(trustedFix.timestamp) >=
+            const Duration(seconds: -5)) {
+      _accepted = trustedFix;
+    }
   }
 
   NavigationLocationFix? accept(NavigationLocationFix fix) {

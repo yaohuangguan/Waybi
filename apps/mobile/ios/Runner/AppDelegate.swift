@@ -20,11 +20,24 @@ import UserNotifications
       GMSServices.provideAPIKey(apiKey)
     }
     UNUserNotificationCenter.current().delegate = self as UNUserNotificationCenterDelegate
+    if let url = launchOptions?[.url] as? URL {
+      ExternalNavigationBridge.shared.receive(url)
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func application(
+    _ application: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    if ExternalNavigationBridge.shared.receive(url) { return true }
+    return super.application(application, open: url, options: options)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    ExternalNavigationBridge.shared.attach(to: engineBridge.applicationRegistrar.messenger())
     FlutterMethodChannel(
       name: "waybi/system_navigation",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()

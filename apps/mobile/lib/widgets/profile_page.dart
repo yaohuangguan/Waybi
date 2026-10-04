@@ -1,6 +1,7 @@
 import '../theme/waybi_theme.dart';
 
 import 'package:flutter/material.dart';
+import 'package:waybi_friends/waybi_friends.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../data/account_repository.dart';
@@ -546,6 +547,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ),
+              const SizedBox(height: 16),
+              FriendsEntry(chinese: _appLanguage == 'zh'),
               const SizedBox(height: 16),
               _PlusCard(
                 isPlus: profile?.isPlus ?? false,

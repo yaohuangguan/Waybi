@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/route_option.dart';
@@ -31,7 +32,7 @@ class FakeDrive extends DriveEngine {
   }
 
   @override
-  Future<void> startLocal() async {
+  Future<void> startLocal({Position? initialPosition}) async {
     trackerAtStart = tracker;
     active = true;
   }

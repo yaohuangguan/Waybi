@@ -9,6 +9,7 @@ import '../domain/road_event.dart';
 import '../domain/road_intelligence.dart';
 import 'api_config.dart';
 
+/// The feed combines regional official events and worldwide Waybi reports.
 class NztaTrafficRoadEventProvider implements RoadEventProvider {
   NztaTrafficRoadEventProvider({
     http.Client? client,
@@ -21,7 +22,7 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
   DateTime? lastCheckedAt;
 
   @override
-  bool supports(CountryProfile country) => country.code == 'NZ';
+  bool supports(CountryProfile country) => country.roadIntelligenceAvailable;
 
   static const _cacheKey = 'waybi.cache.road_events.v1';
 
@@ -77,7 +78,11 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
     }
     final latitude = (location['latitude'] as num?)?.toDouble();
     final longitude = (location['longitude'] as num?)?.toDouble();
-    if (latitude == null || longitude == null) return null;
+    if (latitude == null ||
+        longitude == null ||
+        !GeoPoint(latitude, longitude).isValid) {
+      return null;
+    }
 
     final geometry = (json['geometry'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
@@ -96,7 +101,7 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
       geometry: geometry,
       source: RoadEventSource(
         provider: source['provider']?.toString() ?? 'NZTA Traffic and Travel',
-        country: source['country']?.toString() ?? 'NZ',
+        country: source['country']?.toString() ?? 'GLOBAL',
         sourceId: source['sourceId']?.toString() ?? '',
         region: source['region']?.toString(),
         updatedAt: DateTime.tryParse(source['updatedAt']?.toString() ?? ''),
@@ -104,6 +109,7 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
       severity: _severity(json['severity']?.toString()),
       observation: _observation(json['observation']?.toString()),
       roadName: json['roadName']?.toString(),
+      headingDegrees: (json['headingDegrees'] as num?)?.toDouble(),
       confidence: (json['confidence'] as num?)?.toDouble() ?? 1,
       validFrom: DateTime.tryParse(json['validFrom']?.toString() ?? ''),
       validUntil: DateTime.tryParse(json['validUntil']?.toString() ?? ''),
@@ -116,6 +122,7 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
     'roadworks' => RoadEventType.roadworks,
     'flooding' => RoadEventType.flooding,
     'slip' => RoadEventType.slip,
+    'congestion' => RoadEventType.congestion,
     _ => RoadEventType.incident,
   };
 

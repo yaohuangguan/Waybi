@@ -2,6 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handlePlaces } from '../src/places.mjs';
 
+test('reverse geocoding accepts overseas locations without NZ restriction', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({address: {country_code:'jp',
+    road:'Shinjuku Street',city:'Tokyo'},display_name:'Tokyo, Japan'});
+  try {
+    const result = await handlePlaces(new Request('https://example.test/api/reverse?at=139.7,35.69'), {});
+    assert.equal(result.status,200);
+    assert.match((await result.json()).label,/Tokyo/);
+  } finally {globalThis.fetch=previous;}
+});
+
 test('Mapbox-compatible suggestions bypass configured Google Places', async () => {
   const previous = globalThis.fetch;
   const urls = [];

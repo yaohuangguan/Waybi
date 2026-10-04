@@ -87,6 +87,21 @@ class RouteStepInfo {
     return RouteStepInfo(
       instruction: json['instruction'] as String? ?? '',
       distanceMeters: (json['distance'] as num?)?.round() ?? 0,
+      durationSeconds: (json['duration'] as num?)?.toDouble() ?? 0,
+      maneuverType: json['maneuver']?.toString() ?? '',
+      maneuverModifier: json['modifier']?.toString() ?? '',
+      roadName: json['name']?.toString() ?? '',
+      lanes: (json['lanes'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(
+            (lane) => RouteLane(
+              indications: (lane['indications'] as List<dynamic>? ?? const [])
+                  .whereType<String>()
+                  .toList(),
+              recommended: lane['valid'] == true,
+            ),
+          )
+          .toList(),
       location: GeoPoint(
         pair.length > 1 ? (pair[1] as num).toDouble() : 0,
         pair.isNotEmpty ? (pair[0] as num).toDouble() : 0,
@@ -180,6 +195,13 @@ class RouteOption {
   final TrafficSummary traffic;
   final List<TrafficInterval> trafficIntervals;
   final String provider;
+
+  bool get hasTrafficData =>
+      trafficIntervals.isNotEmpty ||
+      trafficDelaySeconds != null ||
+      traffic.normal > 0 ||
+      traffic.slow > 0 ||
+      traffic.trafficJam > 0;
 
   factory RouteOption.fromJson(Map<String, dynamic> json) {
     final mode = WaybiTravelMode.values.firstWhere(

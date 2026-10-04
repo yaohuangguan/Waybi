@@ -144,6 +144,31 @@ void main() {
   });
 
   test(
+    'confirmed fresh browse fix transfers without another stationary wait',
+    () {
+      final now = DateTime(2026, 10, 3, 9);
+      final filter = NavigationLocationFilter(clock: () => now);
+      final reliable = fix(home, seconds: -1, accuracy: 7);
+      filter.reset(anchor: home, trustedFix: reliable);
+      final next = fix(home, accuracy: 8);
+      expect(filter.accept(next), same(next));
+    },
+  );
+
+  test(
+    'stale and imprecise transferred fixes cannot bypass GPS validation',
+    () {
+      final now = DateTime(2026, 10, 3, 9);
+      for (final seed in [fix(home, seconds: -11), fix(home, accuracy: 80)]) {
+        final filter = NavigationLocationFilter(clock: () => now);
+        filter.reset(anchor: home, trustedFix: seed);
+        expect(filter.accepted, isNull);
+        expect(filter.accept(fix(home)), isNull);
+      }
+    },
+  );
+
+  test(
     'returning after a long background gap can reacquire a different city',
     () {
       var now = DateTime(2026, 10, 3, 9);

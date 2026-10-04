@@ -11,4 +11,7 @@ apps/mobile/.dart_tool/
 apps/mobile/build/
 packages/waybi_map/.dart_tool/
 packages/waybi_map/pubspec.lock
+packages/waybi_friends/.dart_tool/
+packages/waybi_friends/build/
+packages/waybi_friends/pubspec.lock
 apps/mobile/.dart-defines.local.json

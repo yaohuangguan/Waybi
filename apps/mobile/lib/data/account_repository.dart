@@ -17,6 +17,7 @@ class AccountProfile {
     required this.reviews,
     required this.recentDestinations,
     required this.plan,
+    this.quickLocations = const [],
     this.id = '',
     this.subscriptionSource,
     this.subscriptionExpiresAt,
@@ -29,6 +30,7 @@ class AccountProfile {
   final List<Map<String, dynamic>> places;
   final List<Map<String, dynamic>> reviews;
   final List<Map<String, dynamic>> recentDestinations;
+  final List<Map<String, dynamic>> quickLocations;
   final String plan;
   final String id;
   final String? subscriptionSource;
@@ -56,6 +58,7 @@ class AccountProfile {
       places: list('savedPlaces'),
       reviews: list('reviews'),
       recentDestinations: list('recentDestinations'),
+      quickLocations: list('quickLocations'),
       id: (json['user'] as Map<String, dynamic>?)?['id'] as String? ?? '',
       subscriptionSource:
           (json['subscription'] as Map<String, dynamic>?)?['source'] as String?,
@@ -358,6 +361,41 @@ class AccountRepository extends ChangeNotifier {
             'mode': mode,
             'distanceMeters': distanceMeters,
             'durationSeconds': durationSeconds,
+          },
+        ),
+      ),
+    );
+    notifyListeners();
+  }
+
+  Future<void> saveQuickLocation({
+    required String label,
+    required String name,
+    required String address,
+    required double latitude,
+    required double longitude,
+    required String provider,
+  }) async {
+    if (_session == null) return;
+    if (label != 'Home' && label != 'Work') {
+      throw ArgumentError.value(
+        label,
+        'label',
+        'Only Home and Work are supported',
+      );
+    }
+    profile = AccountProfile.fromJson(
+      _body(
+        await _request(
+          '/api/profile/quick-locations',
+          method: 'POST',
+          body: {
+            'label': label,
+            'name': name,
+            'address': address,
+            'latitude': latitude,
+            'longitude': longitude,
+            'provider': provider,
           },
         ),
       ),

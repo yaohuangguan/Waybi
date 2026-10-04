@@ -176,7 +176,7 @@ test('cached traffic endpoint is read-only even when clients poll repeatedly', a
   }
 });
 
-test('10-minute traffic cron refreshes KV without running other scheduled jobs', async () => {
+test('3-minute traffic cron refreshes KV without running other scheduled jobs', async () => {
   const { default: worker } = await import('../src/worker.mjs');
   let writes = 0;
   const pending = [];
@@ -192,7 +192,7 @@ test('10-minute traffic cron refreshes KV without running other scheduled jobs',
   });
   try {
     await worker.scheduled(
-      { cron: '*/10 * * * *' },
+      { cron: '*/3 * * * *' },
       env,
       { waitUntil(promise) { pending.push(promise); } },
     );

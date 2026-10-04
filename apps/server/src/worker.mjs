@@ -460,7 +460,7 @@ export default {
   },
   async scheduled(event, env, ctx) {
     if (env.WAYBI_MIGRATION_PAUSED === 'true') return;
-    if (event.cron === '*/10 * * * *') {
+    if (event.cron === '*/3 * * * *') {
       ctx.waitUntil(refreshTrafficFlowState(env));
       return;
     }

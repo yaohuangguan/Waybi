@@ -7,7 +7,7 @@ export const TRAFFIC_FLOW_SOURCE_PAGE =
   'https://www.nzta.govt.nz/about-us/our-data-and-official-information/use-our-data/about-the-apis';
 
 const CACHE_KEY = 'waybi:traffic-flow/v2';
-const FRESH_MS = 10 * 60 * 1000;
+const FRESH_MS = 3 * 60 * 1000;
 
 function finite(value) {
   const parsed = Number(value);

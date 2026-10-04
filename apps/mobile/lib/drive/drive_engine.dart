@@ -85,6 +85,7 @@ class DriveEngine extends ChangeNotifier {
 
   Timer? _roadIntelligenceRefreshTimer;
   Timer? _trafficFlowRefreshTimer;
+  Duration? _trafficFlowRefreshInterval;
   final Set<String> _spokenAlerts = <String>{};
   final RouteCameraMatcher _routeMatcher = const RouteCameraMatcher();
   final NavigationLocationFilter _localLocationFilter =
@@ -514,8 +515,17 @@ class DriveEngine extends ChangeNotifier {
 
   Future<void> startTrafficFlowRefresh({bool force = false}) async {
     await loadTrafficFlow(force: force);
-    _trafficFlowRefreshTimer ??= Timer.periodic(
-      const Duration(minutes: 5),
+    final interval = active
+        ? const Duration(seconds: 30)
+        : const Duration(minutes: 1);
+    if (_trafficFlowRefreshTimer != null &&
+        _trafficFlowRefreshInterval == interval) {
+      return;
+    }
+    _trafficFlowRefreshTimer?.cancel();
+    _trafficFlowRefreshInterval = interval;
+    _trafficFlowRefreshTimer = Timer.periodic(
+      interval,
       (_) => unawaited(loadTrafficFlow(force: true)),
     );
   }
@@ -523,6 +533,7 @@ class DriveEngine extends ChangeNotifier {
   void stopTrafficFlowRefresh() {
     _trafficFlowRefreshTimer?.cancel();
     _trafficFlowRefreshTimer = null;
+    _trafficFlowRefreshInterval = null;
   }
 
   Future<CameraSnapshot?> syncCameraData({required String sessionToken}) async {

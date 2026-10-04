@@ -21,7 +21,7 @@ so existing preferences continue to select the same companion.
    /accounts/{account}/workers/workers/{id}`. Preserve its ID, secrets, deployment,
    and KV binding. Preserve secret values; switch USER_DB to the verified copy.
    Rename KV in place, preserving its namespace ID and all cached data.
-4. Deploy the updated application to `waybi.nzs.workers.dev`; validate health,
+4. Deploy the updated application to `waybi.co`; validate health,
    account lookup, map configuration, independent discovery and road geometry.
 5. Deploy `wrangler.legacy.jsonc` as an address compatibility gateway. It forwards
    already-installed clients to Waybi without retaining credentials or data.

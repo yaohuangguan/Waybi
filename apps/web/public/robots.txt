@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /api/
 
-Sitemap: https://waybi.nzs.workers.dev/sitemap.xml
+Sitemap: https://waybi.co/sitemap.xml

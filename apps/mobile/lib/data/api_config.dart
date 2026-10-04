@@ -1,1 +1,1 @@
-const workerBaseUrl = 'https://waybi.nzs.workers.dev';
+const workerBaseUrl = 'https://waybi.co';

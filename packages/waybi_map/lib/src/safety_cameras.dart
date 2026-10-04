@@ -65,7 +65,7 @@ abstract interface class SafetyCameraLayerSource
 class WaybiSafetyCameraSource implements SafetyCameraLayerSource {
   WaybiSafetyCameraSource({
     http.Client? client,
-    this.baseUrl = 'https://waybi.nzs.workers.dev',
+    this.baseUrl = 'https://waybi.co',
   }) : _client = client ?? http.Client(),
        _ownsClient = client == null;
 

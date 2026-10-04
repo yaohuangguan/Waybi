@@ -27,6 +27,42 @@ test('identity migration pauses API and scheduled writes while keeping assets av
   await worker.scheduled({ cron: '0 */6 * * *' }, env, ctx);
 });
 
+test('legacy public hosts canonicalize to waybi.co without breaking API clients', async () => {
+  const env = { ASSETS: { fetch: async () => new Response('site') } };
+  const ctx = { waitUntil() {} };
+
+  const httpApex = await worker.fetch(
+    new Request('http://waybi.co/route-watch/?from=http'),
+    env,
+    ctx
+  );
+  assert.equal(httpApex.status, 301);
+  assert.equal(httpApex.headers.get('location'), 'https://waybi.co/route-watch/?from=http');
+
+  const www = await worker.fetch(
+    new Request('https://www.waybi.co/route-watch/?from=www'),
+    env,
+    ctx
+  );
+  assert.equal(www.status, 301);
+  assert.equal(www.headers.get('location'), 'https://waybi.co/route-watch/?from=www');
+
+  const workersDev = await worker.fetch(
+    new Request('https://waybi.nzs.workers.dev/zh/?from=legacy'),
+    env,
+    ctx
+  );
+  assert.equal(workersDev.status, 301);
+  assert.equal(workersDev.headers.get('location'), 'https://waybi.co/zh/?from=legacy');
+
+  const api = await worker.fetch(
+    new Request('https://waybi.nzs.workers.dev/api/health'),
+    { ...fakeEnv() },
+    ctx
+  );
+  assert.equal(api.status, 200);
+});
+
 test('product surfaces are noindex while public marketing assets stay indexable', async () => {
   const assetUrls = [];
   const env = {
@@ -97,7 +133,7 @@ test('Worker API serves the full seeded camera list when KV is empty', async () 
 });
 
 test('cross-origin address requests get a readable configuration response', async () => {
-  const response = await worker.fetch(new Request('https://waybi.nzs.workers.dev/api/suggest?q=Queen', {
+  const response = await worker.fetch(new Request('https://waybi.co/api/suggest?q=Queen', {
     headers: { Origin: 'https://preview.example' }
   }), fakeEnv(), { waitUntil() {} });
   assert.equal(response.status, 503);

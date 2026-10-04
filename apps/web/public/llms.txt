@@ -2,8 +2,8 @@
 
 > Waybi is a maps and navigation product with worldwide destinations and a companion room. Provider coverage varies by location.
 
-Canonical site: https://waybi.nzs.workers.dev/
-Web app: https://waybi.nzs.workers.dev/app
+Canonical site: https://waybi.co/
+Web app: https://waybi.co/app
 Source repository: https://github.com/yaohuangguan/Waybi
 
 ## Product
@@ -14,10 +14,10 @@ Core navigation includes place search, route planning, route alternatives, voice
 
 ## Authoritative Waybi pages
 
-- New Zealand navigation: https://waybi.nzs.workers.dev/new-zealand-navigation/
-- NZ safety-camera navigation: https://waybi.nzs.workers.dev/safety-camera-navigation/
-- Route Watch: https://waybi.nzs.workers.dev/route-watch/
-- Chinese overview: https://waybi.nzs.workers.dev/zh/
+- New Zealand navigation: https://waybi.co/new-zealand-navigation/
+- NZ safety-camera navigation: https://waybi.co/safety-camera-navigation/
+- Route Watch: https://waybi.co/route-watch/
+- Chinese overview: https://waybi.co/zh/
 
 ## Road data
 

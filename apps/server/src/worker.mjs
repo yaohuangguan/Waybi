@@ -398,7 +398,19 @@ async function handleApi(request, env, ctx) {
 
 export default {
   async fetch(request, env, ctx) {
-    const pathname = new URL(request.url).pathname;
+    const requestUrl = new URL(request.url);
+    const pathname = requestUrl.pathname;
+    const canonicalHost =
+      requestUrl.hostname === 'www.waybi.co' ||
+      (requestUrl.hostname === 'waybi.nzs.workers.dev' && !pathname.startsWith('/api/'))
+        ? 'waybi.co'
+        : requestUrl.hostname;
+    if (requestUrl.protocol !== 'https:' || canonicalHost !== requestUrl.hostname) {
+      requestUrl.protocol = 'https:';
+      requestUrl.hostname = canonicalHost;
+      requestUrl.port = '';
+      return Response.redirect(requestUrl.toString(), 301);
+    }
     if (!pathname.startsWith('/api/')) {
       const productSurface =
         pathname === '/app' || pathname.startsWith('/app/') ||

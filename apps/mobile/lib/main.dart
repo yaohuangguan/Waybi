@@ -501,7 +501,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     unawaited(
       _restoreMapSettings().then((_) async {
         if (_mapProvider == MapProvider.independent && _layers.traffic) {
-          await _driveEngine.loadTrafficFlow();
+          await _driveEngine.startTrafficFlowRefresh();
         }
         await _maybeShowCoreOnboarding();
         if (!mounted) return;
@@ -832,6 +832,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (!_appForeground) {
       _mapRefreshTimer?.cancel();
       _mapRefreshTimer = null;
+      _driveEngine.stopTrafficFlowRefresh();
     }
     if (state == AppLifecycleState.resumed) {
       if (_driveEngine.active) {
@@ -849,8 +850,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
       unawaited(_deliverRouteWatchAlerts());
       unawaited(_refreshQuickCommutes(force: true));
-      if (_mapProvider == MapProvider.independent && _layers.traffic) {
-        unawaited(_driveEngine.loadTrafficFlow(force: true));
+      if (_driveEngine.active ||
+          (_mapProvider == MapProvider.independent && _layers.traffic)) {
+        unawaited(_driveEngine.startTrafficFlowRefresh(force: true));
       }
     }
   }
@@ -3773,6 +3775,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           _destinationMarker = null;
         }
         await _driveEngine.stop();
+        if (_appForeground &&
+            _mapProvider == MapProvider.independent &&
+            _layers.traffic) {
+          unawaited(_driveEngine.startTrafficFlowRefresh(force: true));
+        }
         await navigationController?.setNavigationUIEnabled(false);
       }
       if (_account.profile != null &&
@@ -3904,6 +3911,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _stopDriveMode() async {
     if (_guidanceRunning) await _stopNavigation();
     await _driveEngine.stop();
+    if (mounted &&
+        _appForeground &&
+        _mapProvider == MapProvider.independent &&
+        _layers.traffic) {
+      unawaited(_driveEngine.startTrafficFlowRefresh(force: true));
+    }
     if (mounted) unawaited(_startTracking());
     if (_navigationSessionInitialized) {
       await GoogleMapsNavigator.cleanup();
@@ -4507,7 +4520,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     await prefs.setString('waybi.map.provider', provider.name);
     if (provider == MapProvider.google) _restoreGoogleRecent(prefs);
     if (provider == MapProvider.independent && _layers.traffic) {
-      unawaited(_driveEngine.loadTrafficFlow(force: true));
+      unawaited(_driveEngine.startTrafficFlowRefresh(force: true));
+    } else if (!_driveEngine.active) {
+      _driveEngine.stopTrafficFlowRefresh();
     }
     if (wasPreviewing && _selectedPoi != null) {
       unawaited(_loadRoutePreview(_selectedPoi!));
@@ -4580,7 +4595,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       prefs.setString('waybi.layers.style', value.style.name),
     ]);
     if (trafficJustEnabled && _mapProvider == MapProvider.independent) {
-      await _driveEngine.loadTrafficFlow(force: true);
+      await _driveEngine.startTrafficFlowRefresh(force: true);
+    } else if (!value.traffic && !_driveEngine.active) {
+      _driveEngine.stopTrafficFlowRefresh();
     }
     final controller = _driveEngine.active
         ? _navigationController

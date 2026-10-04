@@ -396,7 +396,7 @@ class DriveEngine extends ChangeNotifier {
     notifyListeners();
     // Provider refreshes must not delay entering Drive.
     unawaited(loadCameras(force: true));
-    unawaited(loadTrafficFlow(force: true));
+    unawaited(startTrafficFlowRefresh(force: true));
   }
 
   Future<void> recoverLocalLocation() async {
@@ -510,10 +510,19 @@ class DriveEngine extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  Future<void> startTrafficFlowRefresh({bool force = false}) async {
+    await loadTrafficFlow(force: force);
     _trafficFlowRefreshTimer ??= Timer.periodic(
-      const Duration(minutes: 1),
+      const Duration(minutes: 5),
       (_) => unawaited(loadTrafficFlow(force: true)),
     );
+  }
+
+  void stopTrafficFlowRefresh() {
+    _trafficFlowRefreshTimer?.cancel();
+    _trafficFlowRefreshTimer = null;
   }
 
   Future<CameraSnapshot?> syncCameraData({required String sessionToken}) async {
@@ -929,6 +938,7 @@ class DriveEngine extends ChangeNotifier {
     routeProgress = null;
     _roadIntelligenceRefreshTimer?.cancel();
     _roadIntelligenceRefreshTimer = null;
+    stopTrafficFlowRefresh();
     _localLocationFilter.reset();
     for (final subscription in _subscriptions) {
       await subscription.cancel();

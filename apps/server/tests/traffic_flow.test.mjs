@@ -140,6 +140,69 @@ test('Worker exposes live traffic flow at /api/traffic-flow', async () => {
   }
 });
 
+
+test('cached traffic endpoint is read-only even when clients poll repeatedly', async () => {
+  const { default: worker } = await import('../src/worker.mjs');
+  const now = new Date();
+  const cached = {
+    ...normalizeTrafficFlow(samplePayload(), now),
+    checkedAt: new Date(now.getTime() - 30 * 60 * 1000).toISOString(),
+  };
+  let writes = 0;
+  let upstreamCalls = 0;
+  const env = {
+    CAMERA_DATA: {
+      async get() { return cached; },
+      async put() { writes++; },
+    },
+    ASSETS: { fetch: async () => new Response('asset') },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { upstreamCalls++; throw new Error('should not fetch'); };
+  try {
+    for (let i = 0; i < 3; i++) {
+      const response = await worker.fetch(
+        new Request('https://example.test/api/traffic-flow'),
+        env,
+        { waitUntil() {} },
+      );
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).segments.length, 2);
+    }
+    assert.equal(writes, 0);
+    assert.equal(upstreamCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('10-minute traffic cron refreshes KV without running other scheduled jobs', async () => {
+  const { default: worker } = await import('../src/worker.mjs');
+  let writes = 0;
+  const pending = [];
+  const env = {
+    CAMERA_DATA: {
+      async get() { return null; },
+      async put() { writes++; },
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify(samplePayload()), {
+    headers: { 'content-type': 'application/json' },
+  });
+  try {
+    await worker.scheduled(
+      { cron: '*/10 * * * *' },
+      env,
+      { waitUntil(promise) { pending.push(promise); } },
+    );
+    await Promise.all(pending);
+    assert.equal(writes, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('traffic flow fetch uses the live no-key NZTA endpoint response', async () => {
   const state = await fetchNztaTrafficFlow(async (url, init) => {
     assert.equal(

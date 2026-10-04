@@ -6,12 +6,12 @@ The code is ready for configuration. App Store Connect products and merchant cre
 
 ## Apple setup
 
-Create the Waybi application with bundle ID `me.samyao.waybi`. Create one auto-renewable subscription group containing two products at the same service level:
+Create the Waybi application with bundle ID `co.waybi.ios`. Create one auto-renewable subscription group containing two products at the same service level:
 
 | Product ID | Duration | Planned New Zealand price |
 | --- | --- | --- |
-| `me.samyao.waybi.plus.monthly` | 1 month | NZ$4.99 |
-| `me.samyao.waybi.plus.annual` | 1 year | NZ$39.99 |
+| `co.waybi.ios.plus.monthly` | 1 month | NZ$4.99 |
+| `co.waybi.ios.plus.annual` | 1 year | NZ$39.99 |
 
 Set each product's localization, availability, price and review information in App Store Connect. Complete the applicable paid-app agreements and merchant details there. Live native prices come from StoreKit, including the current storefront currency; the application does not charge its fallback display prices.
 

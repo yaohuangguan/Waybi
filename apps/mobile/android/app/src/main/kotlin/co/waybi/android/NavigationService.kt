@@ -1,4 +1,4 @@
-package space.ps6.waybi
+package co.waybi.android
 
 import android.app.Notification
 import android.app.NotificationChannel

@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const mobile = resolve(root, 'apps/mobile');
 const releaseApp = resolve(mobile, 'build/ios/iphoneos/Runner.app');
-const bundleId = 'me.samyao.waybi';
+const bundleId = 'co.waybi.ios';
 const mode = process.argv[2] ?? 'install';
 const buildDefines = existsSync(resolve(mobile, '.dart-defines.local.json'))
   ? ['--dart-define-from-file=.dart-defines.local.json'] : [];

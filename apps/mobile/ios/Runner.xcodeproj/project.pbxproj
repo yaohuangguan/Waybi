@@ -508,7 +508,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = me.samyao.waybi;
+				PRODUCT_BUNDLE_IDENTIFIER = co.waybi.ios;
 				CODE_SIGN_ENTITLEMENTS = "$(WAYBI_CODE_SIGN_ENTITLEMENTS)";
 				WAYBI_CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -527,7 +527,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = me.samyao.waybi.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = co.waybi.ios.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -545,7 +545,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = me.samyao.waybi.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = co.waybi.ios.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -561,7 +561,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = me.samyao.waybi.RunnerTests;
+				PRODUCT_BUNDLE_IDENTIFIER = co.waybi.ios.RunnerTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Runner";
@@ -695,7 +695,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = me.samyao.waybi;
+				PRODUCT_BUNDLE_IDENTIFIER = co.waybi.ios;
 				CODE_SIGN_ENTITLEMENTS = "$(WAYBI_CODE_SIGN_ENTITLEMENTS)";
 				WAYBI_CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -720,7 +720,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = me.samyao.waybi;
+				PRODUCT_BUNDLE_IDENTIFIER = co.waybi.ios;
 				CODE_SIGN_ENTITLEMENTS = "$(WAYBI_CODE_SIGN_ENTITLEMENTS)";
 				WAYBI_CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -730,9 +730,9 @@
 			};
 			name = Release;
 		};
-		1A05F128D6B71A36C801D097 /* Navigation Debug */ = { isa = XCBuildConfiguration; baseConfigurationReference = 9740EEB31CF90195004384FC; buildSettings = { APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)"; DEVELOPMENT_TEAM = U94L2UMT25; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = WaybiNavigation/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", ); MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = me.samyao.waybi.navigation; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
-		B03009A0B21D3410350D283C /* Navigation Release */ = { isa = XCBuildConfiguration; baseConfigurationReference = 9740EEB31CF90195004384FC; buildSettings = { APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)"; DEVELOPMENT_TEAM = U94L2UMT25; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = WaybiNavigation/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", ); MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = me.samyao.waybi.navigation; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
-		A0768EE5415AAE7A066E2172 /* Navigation Profile */ = { isa = XCBuildConfiguration; baseConfigurationReference = 9740EEB31CF90195004384FC; buildSettings = { APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)"; DEVELOPMENT_TEAM = U94L2UMT25; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = WaybiNavigation/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", ); MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = me.samyao.waybi.navigation; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Profile; };
+		1A05F128D6B71A36C801D097 /* Navigation Debug */ = { isa = XCBuildConfiguration; baseConfigurationReference = 9740EEB31CF90195004384FC; buildSettings = { APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)"; DEVELOPMENT_TEAM = U94L2UMT25; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = WaybiNavigation/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", ); MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = co.waybi.ios.navigation; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+		B03009A0B21D3410350D283C /* Navigation Release */ = { isa = XCBuildConfiguration; baseConfigurationReference = 9740EEB31CF90195004384FC; buildSettings = { APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)"; DEVELOPMENT_TEAM = U94L2UMT25; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = WaybiNavigation/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", ); MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = co.waybi.ios.navigation; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
+		A0768EE5415AAE7A066E2172 /* Navigation Profile */ = { isa = XCBuildConfiguration; baseConfigurationReference = 9740EEB31CF90195004384FC; buildSettings = { APPLICATION_EXTENSION_API_ONLY = YES; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)"; DEVELOPMENT_TEAM = U94L2UMT25; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_FILE = WaybiNavigation/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.2; LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks", ); MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)"; PRODUCT_BUNDLE_IDENTIFIER = co.waybi.ios.navigation; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SKIP_INSTALL = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2"; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Profile; };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */

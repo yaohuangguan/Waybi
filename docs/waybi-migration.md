@@ -26,7 +26,7 @@ so existing preferences continue to select the same companion.
 5. Deploy `wrangler.legacy.jsonc` as an address compatibility gateway. It forwards
    already-installed clients to Waybi without retaining credentials or data.
    Server authentication accepts both client headers and session-cookie names.
-6. Build `me.samyao.waybi` (iOS) and `space.ps6.waybi` (Android) as new identities.
+6. Build `co.waybi.ios` (iOS) and `co.waybi.android` (Android) as new identities.
    Existing app installations are retained. The user can keep them during testing;
    changing bundle IDs cannot transfer another app's private local storage.
 
@@ -36,8 +36,8 @@ After rollout, the gateway can point to a restored Waybi deployment while fixes
 are prepared. Removing the compatibility gateway is a separate later operation.
 
 Google iOS OAuth clients and any restricted Google Maps keys must authorize the
-new bundle ID. App Store Connect products should use `me.samyao.waybi.plus.monthly`
-and `me.samyao.waybi.plus.annual`; they have not yet been created. Apple entitlements
+new bundle ID. App Store Connect products should use `co.waybi.ios.plus.monthly`
+and `co.waybi.ios.plus.annual`; they have not yet been created. Apple entitlements
 remain server-verified. Stripe customer/subscription data remains in the same D1.
 
 ## Waybi Map traffic and discovery

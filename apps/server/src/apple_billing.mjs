@@ -1,6 +1,6 @@
 import { reconcileEntitlement } from './billing_entitlements.mjs';
 
-const bundleId = 'me.samyao.waybi';
+const bundleId = 'co.waybi.ios';
 export function appleConfig(env) {
   return {
     ready: Boolean(env.APPLE_IAP_ISSUER_ID && env.APPLE_IAP_KEY_ID && env.APPLE_IAP_PRIVATE_KEY),

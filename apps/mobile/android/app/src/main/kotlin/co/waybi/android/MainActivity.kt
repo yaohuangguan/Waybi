@@ -1,4 +1,4 @@
-package space.ps6.waybi
+package co.waybi.android
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine

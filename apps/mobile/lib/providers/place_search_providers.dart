@@ -125,6 +125,9 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
           return PlaceCandidate(
             name: displayName,
             address: address.isEmpty ? label : address,
+            category: item['approximate'] == true
+                ? 'approximate_address'
+                : item['resultType']?.toString() ?? '',
             kind: isAddress ? PlaceKind.address : PlaceKind.poi,
             location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
             reference: ProviderReference(

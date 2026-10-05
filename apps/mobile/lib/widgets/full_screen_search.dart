@@ -491,7 +491,8 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
           ),
           if (items.any((item) {
             final provider = item.reference?.provider ?? '';
-            return provider == 'osm' ||
+            return provider == 'google' ||
+                provider == 'osm' ||
                 provider == 'geoapify' ||
                 provider.startsWith('regional:');
           }))
@@ -502,13 +503,18 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                 child: IconButton(
                   icon: const Icon(Icons.info_outline_rounded),
                   tooltip: widget.language == 'zh' ? '数据来源' : 'Data credits',
-                  onPressed: () => showPlaceSources(
-                    context,
-                    language: widget.language,
-                    providerIds: items
+                  onPressed: () {
+                    final providerIds = items
                         .map((item) => item.reference?.provider ?? '')
-                        .where((provider) => provider.isNotEmpty),
-                  ),
+                        .where((provider) => provider.isNotEmpty)
+                        .toList(growable: false);
+                    showPlaceSources(
+                      context,
+                      language: widget.language,
+                      mapCompatible: !providerIds.contains('google'),
+                      providerIds: providerIds,
+                    );
+                  },
                 ),
               ),
             ),

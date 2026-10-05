@@ -11,6 +11,7 @@ void showPlaceSources(
   Iterable<String> providerIds = const [],
 }) {
   final zh = language == 'zh';
+  final providerSet = providerIds.toSet();
   final regionalCredits = regionalCreditsForProviders(providerIds);
   showModalBottomSheet<void>(
     context: context,
@@ -56,6 +57,14 @@ void showPlaceSources(
                   mode: LaunchMode.externalApplication,
                 ),
                 child: const Text('© OpenMapTiles · CC BY'),
+              ),
+            if (providerSet.contains('here'))
+              TextButton(
+                onPressed: () => launchUrl(
+                  Uri.parse('https://www.here.com'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: const Text('© HERE'),
               ),
             for (final credit in regionalCredits)
               TextButton(

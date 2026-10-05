@@ -40,6 +40,7 @@ export function rankPlaces(results, query, near) {
       index,
       distance,
       houseDelta,
+      exactness: place?.approximate === true ? 0 : 1,
       relevance: relevance(place, query)
     };
   }).sort((a, b) => {
@@ -49,6 +50,7 @@ export function rankPlaces(results, query, near) {
     const bLocal = b.distance <= 80000 ? 1 : 0;
     if (aLocal !== bLocal) return bLocal - aLocal;
     if (a.relevance !== b.relevance) return b.relevance - a.relevance;
+    if (a.exactness !== b.exactness) return b.exactness - a.exactness;
     // For numbered-address autocomplete, nearby matching street candidates
     // should be ordered by house-number closeness before GPS distance. This
     // avoids showing 5/12/3 ahead of 46/34 for a query like "42 veri".

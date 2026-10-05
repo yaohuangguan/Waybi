@@ -468,10 +468,17 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: item.secondaryAddress.isEmpty
+                  subtitle:
+                      item.secondaryAddress.isEmpty &&
+                          item.category != 'approximate_address'
                       ? null
                       : Text(
-                          item.secondaryAddress,
+                          [
+                            if (item.category == 'approximate_address')
+                              _text('Approximate location', '约略位置'),
+                            if (item.secondaryAddress.isNotEmpty)
+                              item.secondaryAddress,
+                          ].join(' · '),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -494,6 +501,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
             return provider == 'google' ||
                 provider == 'osm' ||
                 provider == 'geoapify' ||
+                provider == 'here' ||
                 provider.startsWith('regional:');
           }))
             SafeArea(

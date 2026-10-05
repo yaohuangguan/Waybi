@@ -1,7 +1,49 @@
 import { mergeAndRankSearchResults, needsAddressEnrichment } from './search_orchestrator.mjs';
+import { parseNumberedStreetQuery } from './numbered_street_query.mjs';
 
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function firstNonEmpty(promises, timeoutMs) {
+  return new Promise((resolve) => {
+    if (!promises.length) {
+      resolve([]);
+      return;
+    }
+    let remaining = promises.length;
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve([]);
+    }, timeoutMs);
+    for (const promise of promises) {
+      Promise.resolve(promise).then((items) => {
+        if (settled) return;
+        if (Array.isArray(items) && items.length) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(items);
+          return;
+        }
+        remaining -= 1;
+        if (remaining === 0) {
+          settled = true;
+          clearTimeout(timer);
+          resolve([]);
+        }
+      }).catch(() => {
+        if (settled) return;
+        remaining -= 1;
+        if (remaining === 0) {
+          settled = true;
+          clearTimeout(timer);
+          resolve([]);
+        }
+      });
+    }
+  });
 }
 
 function mapGeoapifyPlaces(data) {
@@ -94,6 +136,29 @@ function mapPhotonPlaces(data) {
   });
 }
 
+function mapHerePlaces(data) {
+  return (data?.items || []).flatMap((item) => {
+    const latitude = Number(item?.position?.lat);
+    const longitude = Number(item?.position?.lng);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
+    const label = text(item?.address?.label) || text(item?.title);
+    const resultType = text(item?.resultType);
+    const isPoi = resultType === 'place';
+    const name = isPoi ? (text(item?.title) || label) : label;
+    return [{
+      id: text(item?.id) || label,
+      provider: 'here',
+      name,
+      address: label,
+      label,
+      isPoi,
+      resultType,
+      latitude,
+      longitude
+    }];
+  });
+}
+
 async function fetchGeoapify({ query, point, language, apiKey, trackUsage }) {
   if (!apiKey) return [];
   const url = new URL('https://api.geoapify.com/v1/geocode/autocomplete');
@@ -105,9 +170,35 @@ async function fetchGeoapify({ query, point, language, apiKey, trackUsage }) {
   if (point) url.searchParams.set('bias', `proximity:${point.join(',')}`);
   trackUsage('geoapify', 'autocomplete', 1);
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(3500) });
+    const response = await fetch(url, { signal: AbortSignal.timeout(1400) });
     if (!response.ok) return [];
     return mapGeoapifyPlaces(await response.json());
+  } catch {
+    return [];
+  }
+}
+
+async function fetchHere({ query, point, language, apiKey, trackUsage }) {
+  if (!apiKey) return [];
+  const numberedAddress = Boolean(parseNumberedStreetQuery(query));
+  const url = new URL(
+    numberedAddress
+      ? 'https://geocode.search.hereapi.com/v1/geocode'
+      : 'https://discover.search.hereapi.com/v1/discover'
+  );
+  url.searchParams.set('q', query);
+  url.searchParams.set('limit', '10');
+  url.searchParams.set('lang', language === 'zh' ? 'zh-CN' : 'en');
+  url.searchParams.set('apiKey', apiKey);
+  if (point) url.searchParams.set('at', `${point[1]},${point[0]}`);
+  trackUsage('here', numberedAddress ? 'geocode' : 'discover', 1);
+  try {
+    const response = await fetch(url, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(1400)
+    });
+    if (!response.ok) return [];
+    return mapHerePlaces(await response.json());
   } catch {
     return [];
   }
@@ -130,7 +221,7 @@ async function fetchPhoton({ query, point, language, trackUsage }) {
         'user-agent': 'Waybi/1.0 (+https://waybi.co)',
         accept: 'application/json'
       },
-      signal: AbortSignal.timeout(3000)
+      signal: AbortSignal.timeout(1600)
     });
     if (!response.ok) return [];
     return mapPhotonPlaces(await response.json());
@@ -157,21 +248,41 @@ export async function searchIndependentGlobal({
     apiKey: env?.GEOAPIFY_API_KEY,
     trackUsage
   });
-  const [geoapify, enrichments] = await Promise.all([
-    geoPromise,
-    enrichmentsPromise.catch(() => [])
-  ]);
+  const herePromise = fetchHere({
+    query,
+    point,
+    language,
+    apiKey: env?.HERE_API_KEY,
+    trackUsage
+  });
+  const safeEnrichments = enrichmentsPromise.catch(() => []);
 
-  // Geoapify is the primary worldwide autocomplete/address source. Regional
-  // official data is merged in when available. Photon is a global open-data
-  // fallback only when the primary stack is sparse or misses address detail.
-  if (geoapify.length && !needsAddressEnrichment(geoapify, query)) {
-    return mergeAndRankSearchResults([enrichments, geoapify], query, point, 12);
+  // Return an exact global result without waiting for optional regional data.
+  // This matters when an official local layer is slower or only supports
+  // interpolation while a worldwide provider already has the exact address.
+  const firstGlobal = await firstNonEmpty([herePromise, geoPromise], 700);
+  if (firstGlobal.length && !needsAddressEnrichment(firstGlobal, query)) {
+    return mergeAndRankSearchResults([firstGlobal], query, point, 12);
+  }
+
+  const [geoapify, here, enrichments] = await Promise.all([
+    geoPromise,
+    herePromise,
+    safeEnrichments
+  ]);
+  const global = mergeAndRankSearchResults(
+    [enrichments, here, geoapify],
+    query,
+    point,
+    12
+  );
+  if (global.length && !needsAddressEnrichment(global, query)) {
+    return global;
   }
 
   const photon = await fetchPhoton({ query, point, language, trackUsage });
   return mergeAndRankSearchResults(
-    [enrichments, geoapify, photon],
+    [enrichments, here, geoapify, photon],
     query,
     point,
     12

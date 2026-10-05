@@ -494,6 +494,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
             return provider == 'google' ||
                 provider == 'osm' ||
                 provider == 'geoapify' ||
+                provider == 'here' ||
                 provider.startsWith('regional:');
           }))
             SafeArea(

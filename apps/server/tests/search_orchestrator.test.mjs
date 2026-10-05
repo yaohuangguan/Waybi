@@ -33,3 +33,14 @@ test('regional address enrichment is skipped when global search already has an e
   ], '42 Verissimo Drive'), true);
   assert.equal(needsAddressEnrichment([], 'Auckland Airport'), false);
 });
+
+
+test('interpolated address remains enrichment-needed when exact global lookup may exist', () => {
+  assert.equal(needsAddressEnrichment([
+    {
+      name: '42 Verissimo Drive',
+      address: '42 Verissimo Drive, Māngere, Auckland 2022',
+      approximate: true,
+    }
+  ], '42 Verissimo Drive'), true);
+});

@@ -5,6 +5,47 @@ function text(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function firstNonEmpty(promises, timeoutMs) {
+  return new Promise((resolve) => {
+    if (!promises.length) {
+      resolve([]);
+      return;
+    }
+    let remaining = promises.length;
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve([]);
+    }, timeoutMs);
+    for (const promise of promises) {
+      Promise.resolve(promise).then((items) => {
+        if (settled) return;
+        if (Array.isArray(items) && items.length) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(items);
+          return;
+        }
+        remaining -= 1;
+        if (remaining === 0) {
+          settled = true;
+          clearTimeout(timer);
+          resolve([]);
+        }
+      }).catch(() => {
+        if (settled) return;
+        remaining -= 1;
+        if (remaining === 0) {
+          settled = true;
+          clearTimeout(timer);
+          resolve([]);
+        }
+      });
+    }
+  });
+}
+
 function mapGeoapifyPlaces(data) {
   return (data?.results || [])
     .filter((place) => Number.isFinite(place?.lat) && Number.isFinite(place?.lon))
@@ -216,9 +257,19 @@ export async function searchIndependentGlobal({
   });
   const enrichments = await enrichmentsPromise.catch(() => []);
 
-  // Geoapify and HERE are independent global sources. Run them concurrently
-  // so a slow provider cannot serialize the typeahead path. Regional official
-  // data is merged in where available; Photon remains the no-key fallback.
+  // Return the first useful global provider quickly for typeahead. The slower
+  // provider continues in the background and is only awaited when the fast
+  // result is empty or lacks requested address detail.
+  const firstGlobal = await firstNonEmpty([herePromise, geoPromise], 700);
+  if (firstGlobal.length && !needsAddressEnrichment(firstGlobal, query)) {
+    return mergeAndRankSearchResults(
+      [enrichments, firstGlobal],
+      query,
+      point,
+      12
+    );
+  }
+
   const [geoapify, here] = await Promise.all([geoPromise, herePromise]);
   const global = mergeAndRankSearchResults(
     [enrichments, here, geoapify],

@@ -1,4 +1,4 @@
-import { parseNumberedStreetQuery } from './numbered_street_query.mjs';
+import { parseStreetQuery } from './numbered_street_query.mjs';
 import { aucklandCouncilAddressProvider } from './regional/auckland_council.mjs';
 
 // Regional providers are optional enrichments. The global search path remains
@@ -14,7 +14,7 @@ export async function searchRegionalAddressEnrichments(
   near,
   fetcher = fetch
 ) {
-  const parsed = parseNumberedStreetQuery(query);
+  const parsed = parseStreetQuery(query);
   if (!parsed || !near) return [];
   const eligible = providers.filter((provider) =>
     provider.supports({ query, near, parsed })

@@ -24,7 +24,16 @@ export const aucklandCouncilAddressProvider = {
   },
   async search({ parsed, fetcher = fetch }) {
     const url = new URL(ENDPOINT);
-    const filters = [`UPPER(RoadName)='${sql(parsed.roadName.toUpperCase())}'`];
+    const normalizedRoad = parsed.roadName.toUpperCase().trim();
+    const roadPrefix = !parsed.roadType
+      ? normalizedRoad.replace(/\s+(?:R|RO|RD|S|ST|D|DR|A|AV|L|LN|P|PL|C|CR|T|TC|H|HW|W)$/u, '').trim()
+      : normalizedRoad;
+    const safeRoad = sql(roadPrefix || normalizedRoad);
+    const filters = [
+      parsed.roadType
+        ? `UPPER(RoadName)='${safeRoad}'`
+        : `UPPER(RoadName) LIKE '${safeRoad}%'`
+    ];
     if (parsed.roadType) filters.push(`UPPER(RoadType)='${sql(parsed.roadType)}'`);
     url.searchParams.set('where', filters.join(' AND '));
     url.searchParams.set(

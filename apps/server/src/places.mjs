@@ -155,6 +155,10 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     }
 
     if (!env.GEOAPIFY_API_KEY) {
+      const enrichments = await enrichmentPromise;
+      if (enrichments.length) {
+        return json(mergeAndRankSearchResults([enrichments], query, point, 12));
+      }
       return json({ error: 'Place search is not configured' }, 503);
     }
     const mapGeoapifyPlaces = (data) => (data.results || []).filter((place) =>

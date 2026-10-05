@@ -131,10 +131,11 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
       _loading = true;
       _error = null;
       _expandedArea = expandedArea;
-      _results = const [];
+      // Keep the previous suggestions visible while the next prefix is
+      // loading so typeahead never flashes to an empty state.
     });
     _debounce = Timer(
-      immediate ? Duration.zero : const Duration(milliseconds: 280),
+      immediate ? Duration.zero : const Duration(milliseconds: 160),
       () async {
         try {
           final provider = widget.provider;

@@ -58,7 +58,7 @@ void main() {
     );
   });
 
-  testWidgets('search waits 280 ms and ignores stale responses', (
+  testWidgets('search waits 160 ms and ignores stale responses', (
     tester,
   ) async {
     final provider = _DelayedSearch();
@@ -74,13 +74,13 @@ void main() {
     );
 
     await tester.enterText(find.byType(TextField), 'Cordis');
-    await tester.pump(const Duration(milliseconds: 279));
+    await tester.pump(const Duration(milliseconds: 159));
     expect(provider.queries, isEmpty);
     await tester.pump(const Duration(milliseconds: 1));
     expect(provider.queries, ['Cordis']);
 
     await tester.enterText(find.byType(TextField), 'Cordis Auckland');
-    await tester.pump(const Duration(milliseconds: 280));
+    await tester.pump(const Duration(milliseconds: 160));
     expect(provider.queries, ['Cordis', 'Cordis Auckland']);
 
     provider.pending.first.complete(const [

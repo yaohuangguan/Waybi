@@ -84,11 +84,11 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
         new Promise((resolve) => setTimeout(() => resolve([]), 450))
       ]);
       if (fastEnrichments.length) {
-        const hasExactResult = fastEnrichments.some(
-          (place) => place.approximate !== true
-        );
+        const hasExactRequestedAddress = parsedStreet.number
+          ? !needsAddressEnrichment(fastEnrichments, query)
+          : true;
         const isPartialStreet = !parsedStreet.roadType;
-        if (hasExactResult || isPartialStreet) {
+        if (hasExactRequestedAddress || isPartialStreet) {
           return json(
             mergeAndRankSearchResults([fastEnrichments], query, point, 12)
           );

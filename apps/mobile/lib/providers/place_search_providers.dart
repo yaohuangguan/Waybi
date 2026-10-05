@@ -400,7 +400,7 @@ class IndependentSearchProvider
             final provider = item['provider']?.toString() ?? 'osm';
             if (provider != 'osm' &&
                 provider != 'geoapify' &&
-                provider != 'google' &&
+                provider != 'here' &&
                 !provider.startsWith('regional:')) {
               return null;
             }
@@ -409,6 +409,9 @@ class IndependentSearchProvider
             return PlaceSummary(
               name: name.isEmpty ? address : name,
               address: address,
+              category: item['approximate'] == true
+                  ? 'approximate_address'
+                  : item['resultType']?.toString() ?? '',
               location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
               kind: PlaceKind.address,
               reference: ProviderReference(

@@ -21,7 +21,10 @@ test('Auckland Council is an optional regional adapter with a namespaced provide
     ]
   }), { headers: { 'content-type': 'application/json' } });
   const results = await aucklandCouncilAddressProvider.search({ parsed, fetcher });
-  assert.deepEqual(results.map((item) => item.name), [
+  assert.equal(results[0].name, '42 Verissimo Drive');
+  assert.equal(results[0].approximate, true);
+  assert.equal(results[0].resultType, 'interpolated_address');
+  assert.deepEqual(results.slice(1).map((item) => item.name), [
     '46 Verissimo Drive', '34 Verissimo Drive', '12 Verissimo Drive'
   ]);
   assert.ok(results.every((item) => item.provider === 'regional:auckland-council'));
@@ -42,4 +45,25 @@ test('partial numbered street input uses a safe street-prefix lookup for autocom
   const results = await aucklandCouncilAddressProvider.search({ parsed, fetcher });
   assert.match(where, /LIKE 'VERI%'/);
   assert.deepEqual(results.map((item) => item.name), ['46 Verissimo Drive', '34 Verissimo Drive']);
+});
+
+
+test('street-only queries collapse address points into a distinguishable street result', async () => {
+  const parsed = parseNumberedStreetQuery('42 Verissimo Drive');
+  const streetParsed = { ...parsed, number: null };
+  const fetcher = async () => new Response(JSON.stringify({
+    features: [
+      { properties: { OBJECTID: 1, FullNumber: '34', RoadName: 'VERISSIMO', RoadType: 'DRIVE', FullAddress: '34 VERISSIMO DRIVE MANGERE AUCKLAND 2022', Locality: 'MANGERE' }, geometry: { coordinates: [174.788, -36.989] } },
+      { properties: { OBJECTID: 2, FullNumber: '46', RoadName: 'VERISSIMO', RoadType: 'DRIVE', FullAddress: '46 VERISSIMO DRIVE MANGERE AUCKLAND 2022', Locality: 'MANGERE' }, geometry: { coordinates: [174.787, -36.991] } }
+    ]
+  }), { headers: { 'content-type': 'application/json' } });
+  const results = await aucklandCouncilAddressProvider.search({
+    parsed: streetParsed,
+    near: [174.79, -36.98],
+    fetcher
+  });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].name, 'Verissimo Drive');
+  assert.match(results[0].address, /Mangere, Auckland 2022, New Zealand/);
+  assert.equal(results[0].resultType, 'street');
 });

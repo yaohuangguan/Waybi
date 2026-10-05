@@ -195,3 +195,35 @@ test('Independent global search falls back to Photon without Google', async () =
     assert.deepEqual(hosts, ['api.geoapify.com', 'photon.komoot.io']);
   } finally { globalThis.fetch = previous; }
 });
+
+
+test('Independent global search can use HERE without Google', async () => {
+  const previous = globalThis.fetch;
+  const hosts = [];
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(url);
+    hosts.push(parsed.hostname);
+    assert.equal(parsed.hostname, 'geocode.search.hereapi.com');
+    assert.equal(parsed.searchParams.get('q'), '42 Verissimo Drive');
+    return Response.json({ items: [{
+      id: 'here:af:streetsection:verissimo:42',
+      title: '42 Verissimo Drive, Māngere, Auckland 2022, New Zealand',
+      resultType: 'houseNumber',
+      address: { label: '42 Verissimo Drive, Māngere, Auckland 2022, New Zealand' },
+      position: { lat: -36.9902, lng: 174.7878 }
+    }] });
+  };
+  try {
+    const response = await handlePlaces(new Request(
+      'https://example.test/api/suggest?q=42%20Verissimo%20Drive&provider=independent&near=174.79,-36.98'),
+      {
+        GOOGLE_ROUTES_API_KEY: 'google-key-that-must-not-be-used',
+        HERE_API_KEY: 'here-key',
+      });
+    assert.equal(response.status, 200);
+    const [place] = await response.json();
+    assert.equal(place.provider, 'here');
+    assert.match(place.name, /^42 Verissimo Drive/);
+    assert.deepEqual(hosts, ['geocode.search.hereapi.com']);
+  } finally { globalThis.fetch = previous; }
+});

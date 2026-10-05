@@ -28,3 +28,16 @@ test('house-number address relevance beats nearby street-only fragments', () => 
   ], '42 Verissimo Drive', near);
   assert.equal(ranked[0].name, '42 Verissimo Drive');
 });
+
+
+test('partial numbered-address suggestions prefer closest house numbers before GPS distance', () => {
+  const near = [174.79, -36.98];
+  const ranked = rankPlaces([
+    { name: '5 Verissimo Drive', address: '5 Verissimo Drive, Mangere', latitude: -36.9801, longitude: 174.7901 },
+    { name: '46 Verissimo Drive', address: '46 Verissimo Drive, Mangere', latitude: -36.991, longitude: 174.787 },
+    { name: '34 Verissimo Drive', address: '34 Verissimo Drive, Mangere', latitude: -36.989, longitude: 174.788 },
+  ], '42 veri', near);
+  assert.deepEqual(ranked.map((item) => item.name), [
+    '46 Verissimo Drive', '34 Verissimo Drive', '5 Verissimo Drive'
+  ]);
+});

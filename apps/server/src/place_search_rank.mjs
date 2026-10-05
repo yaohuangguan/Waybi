@@ -7,6 +7,12 @@ function compact(value) {
     .replace(/[\p{P}\p{S}\s]+/gu, '');
 }
 
+
+function houseNumber(value) {
+  const match = String(value || '').trim().match(/^(?:\d+\/)?(\d+)[A-Za-z]?\b/u);
+  return match ? Number(match[1]) : null;
+}
+
 function relevance(place, query) {
   const q = compact(query);
   if (!q) return 0;
@@ -21,10 +27,21 @@ function relevance(place, query) {
 
 export function rankPlaces(results, query, near) {
   if (!Array.isArray(results) || !near) return results || [];
+  const wantedHouse = houseNumber(query);
   return results.map((place, index) => {
     const point = [Number(place.longitude), Number(place.latitude)];
     const distance = point.every(Number.isFinite) ? distanceMeters(near, point) : Infinity;
-    return { place, index, distance, relevance: relevance(place, query) };
+    const candidateHouse = houseNumber(place.name) ?? houseNumber(place.address || place.label);
+    const houseDelta = wantedHouse != null && candidateHouse != null
+      ? Math.abs(candidateHouse - wantedHouse)
+      : Infinity;
+    return {
+      place,
+      index,
+      distance,
+      houseDelta,
+      relevance: relevance(place, query)
+    };
   }).sort((a, b) => {
     // Default search intent is local-first, not country-locked. Any plausible
     // result within an everyday driving radius outranks a remote namesake.
@@ -32,6 +49,10 @@ export function rankPlaces(results, query, near) {
     const bLocal = b.distance <= 80000 ? 1 : 0;
     if (aLocal !== bLocal) return bLocal - aLocal;
     if (a.relevance !== b.relevance) return b.relevance - a.relevance;
+    // For numbered-address autocomplete, nearby matching street candidates
+    // should be ordered by house-number closeness before GPS distance. This
+    // avoids showing 5/12/3 ahead of 46/34 for a query like "42 veri".
+    if (a.houseDelta !== b.houseDelta) return a.houseDelta - b.houseDelta;
     if (a.distance !== b.distance) return a.distance - b.distance;
     return a.index - b.index;
   }).map(({ place, distance }) => ({

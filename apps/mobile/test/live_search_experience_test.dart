@@ -28,26 +28,51 @@ class _FakeSearchProvider implements SearchProvider {
 }
 
 void main() {
-  testWidgets('tapping the map search field opens search without Enter', (
+  testWidgets('map search shows live suggestions without Enter', (
     tester,
   ) async {
     final opened = <String>[];
+    final selected = <PlaceCandidate>[];
+    var loads = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: CompanionSearchPrompt(
             marker: LocationMarkerStyle.kiwi,
             language: 'zh',
+            currentLocation: const GeoPoint(-36.85, 174.76),
             onSearch: opened.add,
+            loadSuggestions: (query) async {
+              loads++;
+              return const [
+                PlaceCandidate(
+                  name: '42 Verissimo Drive',
+                  address: 'Māngere, Auckland 2022, New Zealand',
+                  kind: PlaceKind.address,
+                  location: GeoPoint(-36.984, 174.79),
+                ),
+              ];
+            },
+            onSuggestionSelected: selected.add,
           ),
         ),
       ),
     );
 
-    await tester.tap(find.byKey(const Key('companionSearchInput')));
+    await tester.enterText(
+      find.byKey(const Key('companionSearchInput')),
+      '42 veri',
+    );
+    await tester.pump(const Duration(milliseconds: 130));
     await tester.pump();
 
-    expect(opened, ['']);
+    expect(loads, 1);
+    expect(opened, isEmpty);
+    expect(find.text('42 Verissimo Drive'), findsOneWidget);
+
+    await tester.tap(find.text('42 Verissimo Drive'));
+    await tester.pump();
+    expect(selected, hasLength(1));
   });
 
   testWidgets('full-screen search returns suggestions while typing', (

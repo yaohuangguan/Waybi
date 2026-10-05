@@ -50,6 +50,8 @@ class _PreviewState extends State<_Preview> {
                   marker: marker,
                   language: 'zh',
                   onSearch: (_) {},
+                  loadSuggestions: (_) async => const [],
+                  onSuggestionSelected: (_) {},
                 ),
               ],
             ),

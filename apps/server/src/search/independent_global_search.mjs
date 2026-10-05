@@ -255,22 +255,21 @@ export async function searchIndependentGlobal({
     apiKey: env?.HERE_API_KEY,
     trackUsage
   });
-  const enrichments = await enrichmentsPromise.catch(() => []);
+  const safeEnrichments = enrichmentsPromise.catch(() => []);
 
-  // Return the first useful global provider quickly for typeahead. The slower
-  // provider continues in the background and is only awaited when the fast
-  // result is empty or lacks requested address detail.
+  // Return an exact global result without waiting for optional regional data.
+  // This matters when an official local layer is slower or only supports
+  // interpolation while a worldwide provider already has the exact address.
   const firstGlobal = await firstNonEmpty([herePromise, geoPromise], 700);
   if (firstGlobal.length && !needsAddressEnrichment(firstGlobal, query)) {
-    return mergeAndRankSearchResults(
-      [enrichments, firstGlobal],
-      query,
-      point,
-      12
-    );
+    return mergeAndRankSearchResults([firstGlobal], query, point, 12);
   }
 
-  const [geoapify, here] = await Promise.all([geoPromise, herePromise]);
+  const [geoapify, here, enrichments] = await Promise.all([
+    geoPromise,
+    herePromise,
+    safeEnrichments
+  ]);
   const global = mergeAndRankSearchResults(
     [enrichments, here, geoapify],
     query,

@@ -80,6 +80,7 @@ class ProviderPolicy {
       reference == null ||
       reference.provider == placeProvider ||
       reference.provider == 'geoapify' ||
+      reference.provider == 'here' ||
       reference.provider == 'osm' ||
       reference.provider == 'at' ||
       reference.provider.startsWith('regional:');

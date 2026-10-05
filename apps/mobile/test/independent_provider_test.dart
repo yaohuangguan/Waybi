@@ -479,4 +479,56 @@ void main() {
       repository.dispose();
     },
   );
+
+  test('Independent fast search never returns Google-only places', () async {
+    final provider = IndependentSearchProvider(
+      useWorkerSuggestions: true,
+      requestSpacing: Duration.zero,
+      client: MockClient((request) async {
+        expect(request.url.path, '/api/suggest');
+        expect(request.url.queryParameters['provider'], 'geoapify');
+        return http.Response.bytes(
+          utf8.encode(
+            jsonEncode([
+              {
+                'id': '42-verissimo',
+                'provider': 'geoapify',
+                'name': '42 Verissimo Drive',
+                'address':
+                    '42 Verissimo Drive, Māngere, Auckland 2022, New Zealand',
+                'isPoi': false,
+                'latitude': -36.984,
+                'longitude': 174.79,
+              },
+              {
+                'id': 'google-only',
+                'provider': 'google',
+                'name': 'Should never cross into Independent',
+                'latitude': -36.985,
+                'longitude': 174.791,
+              },
+            ]),
+          ),
+          200,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+    addTearDown(provider.dispose);
+
+    final results = await provider.search(
+      '42 verissimo',
+      proximity: const GeoPoint(-36.85, 174.76),
+      language: 'en',
+    );
+
+    expect(results, hasLength(1));
+    expect(results.single.name, '42 Verissimo Drive');
+    expect(results.single.reference?.provider, 'geoapify');
+    expect(
+      const ProviderPolicy(MapProvider.independent)
+          .canDisplay(results.single.reference),
+      isTrue,
+    );
+  });
 }

@@ -168,7 +168,7 @@ class IndependentSearchProvider
     this.useWorkerSuggestions = false,
   }) : _client = client ?? http.Client() {
     if (useWorkerSuggestions) {
-      _fastSearch = WorkerSearchProvider(client: _client);
+      _fastSearch = WorkerSearchProvider(client: _client, mapCompatible: true);
     }
   }
   final http.Client _client;

@@ -415,7 +415,7 @@ void main() {
     final provider = WorkerSearchProvider(
       mapCompatible: true,
       client: MockClient((request) async {
-        expect(request.url.queryParameters['provider'], 'geoapify');
+        expect(request.url.queryParameters['provider'], 'independent');
         return http.Response(
           jsonEncode([
             {
@@ -432,14 +432,33 @@ void main() {
               'latitude': -36.85,
               'longitude': 174.76,
             },
+            {
+              'id': 'o',
+              'provider': 'osm',
+              'name': 'Open cafe',
+              'latitude': -36.851,
+              'longitude': 174.761,
+            },
+            {
+              'id': 'r',
+              'provider': 'regional:test-addresses',
+              'name': '42 Example Street',
+              'isPoi': false,
+              'latitude': -36.852,
+              'longitude': 174.762,
+            },
           ]),
           200,
         );
       }),
     );
     final results = await provider.search('Cafe', language: 'zh');
-    expect(results.single.name, 'Cafe');
-    expect(results.single.reference?.provider, 'geoapify');
+    expect(results, hasLength(3));
+    expect(results.map((result) => result.reference?.provider).toSet(), {
+      'geoapify',
+      'osm',
+      'regional:test-addresses',
+    });
     provider.dispose();
   });
   test(
@@ -486,7 +505,7 @@ void main() {
       requestSpacing: Duration.zero,
       client: MockClient((request) async {
         expect(request.url.path, '/api/suggest');
-        expect(request.url.queryParameters['provider'], 'geoapify');
+        expect(request.url.queryParameters['provider'], 'independent');
         return http.Response.bytes(
           utf8.encode(
             jsonEncode([

@@ -69,7 +69,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
       queryParameters: {
         'q': query,
         'lang': language,
-        if (mapCompatible) 'provider': 'geoapify',
+        if (mapCompatible) 'provider': 'independent',
         if (proximity != null)
           'near':
               '${proximity.longitude.toStringAsFixed(2)},${proximity.latitude.toStringAsFixed(2)}',
@@ -105,7 +105,14 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
     final results = data
         .whereType<Map<String, dynamic>>()
         .map((item) {
-          if (mapCompatible && item['provider'] != 'geoapify') return null;
+          final sourceProvider = item['provider']?.toString() ?? 'geoapify';
+          final sourceId =
+              item['id']?.toString() ?? item['label']?.toString() ?? '';
+          if (mapCompatible &&
+              !const ProviderPolicy(MapProvider.independent)
+                  .canDisplay(ProviderReference(sourceProvider, sourceId))) {
+            return null;
+          }
           final latitude = item['latitude'];
           final longitude = item['longitude'];
           if (latitude is! num || longitude is! num) return null;
@@ -121,8 +128,8 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
             kind: isAddress ? PlaceKind.address : PlaceKind.poi,
             location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
             reference: ProviderReference(
-              item['provider']?.toString() ?? 'geoapify',
-              item['id']?.toString() ?? label,
+              sourceProvider,
+              sourceId.isEmpty ? label : sourceId,
             ),
           );
         })

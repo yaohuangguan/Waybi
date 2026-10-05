@@ -3,6 +3,7 @@ import { geoapifyExplore } from './compatible_places.mjs';
 import { parseLonLat } from './geo.mjs';
 import { rankPlaces } from './place_search_rank.mjs';
 import { loadSearchEnrichments, mergeAndRankSearchResults, needsAddressEnrichment } from './search/search_orchestrator.mjs';
+import { searchIndependentGlobal } from './search/independent_global_search.mjs';
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -90,8 +91,21 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
       }
     }
     const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
+    const requestedProvider = url.searchParams.get('provider') || '';
+    if (requestedProvider === 'independent') {
+      const results = await searchIndependentGlobal({
+        query,
+        point,
+        language: prefersChinese ? 'zh' : 'en',
+        env,
+        trackUsage,
+        enrichmentsPromise: enrichmentPromise
+      });
+      if (results.length) return json(results);
+      return json({ error: 'Independent place search unavailable' }, 502);
+    }
     const googleKey = placesApiKey(env);
-    if (googleKey && url.searchParams.get('provider') !== 'geoapify') {
+    if (googleKey && requestedProvider !== 'geoapify') {
       const body = {
         textQuery: query,
         languageCode: prefersChinese ? 'zh-CN' : 'en',

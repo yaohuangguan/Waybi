@@ -122,3 +122,76 @@ test('independent search keeps proximity bias without country locking', async ()
     assert.equal(urls[1].searchParams.get('bias'), null);
   } finally { globalThis.fetch = previous; }
 });
+
+test('Independent global search uses Geoapify and never crosses into Google', async () => {
+  const previous = globalThis.fetch;
+  const hosts = [];
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(url);
+    hosts.push(parsed.hostname);
+    assert.equal(parsed.hostname, 'api.geoapify.com');
+    return Response.json({ results: [{
+      place_id: 'tokyo-station',
+      name: 'Tokyo Station',
+      formatted: 'Tokyo Station, Marunouchi, Chiyoda, Tokyo, Japan',
+      address_line1: 'Tokyo Station',
+      address_line2: 'Marunouchi, Chiyoda, Tokyo, Japan',
+      categories: ['public_transport.train'],
+      result_type: 'amenity',
+      lat: 35.681236,
+      lon: 139.767125,
+    }] });
+  };
+  try {
+    const response = await handlePlaces(new Request(
+      'https://example.test/api/suggest?q=Tokyo%20Station&provider=independent&near=139.76,35.68'),
+      {
+        GOOGLE_ROUTES_API_KEY: 'google-key-that-must-not-be-used',
+        GEOAPIFY_API_KEY: 'geo-key',
+      });
+    assert.equal(response.status, 200);
+    const [place] = await response.json();
+    assert.equal(place.provider, 'geoapify');
+    assert.equal(place.name, 'Tokyo Station');
+    assert.deepEqual(hosts, ['api.geoapify.com']);
+  } finally { globalThis.fetch = previous; }
+});
+
+test('Independent global search falls back to Photon without Google', async () => {
+  const previous = globalThis.fetch;
+  const hosts = [];
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(url);
+    hosts.push(parsed.hostname);
+    if (parsed.hostname === 'api.geoapify.com') {
+      return new Response('upstream unavailable', { status: 503 });
+    }
+    assert.equal(parsed.hostname, 'photon.komoot.io');
+    return Response.json({ features: [{
+      properties: {
+        osm_type: 'N',
+        osm_id: 123,
+        name: 'Sydney Opera House',
+        osm_key: 'tourism',
+        osm_value: 'attraction',
+        city: 'Sydney',
+        state: 'New South Wales',
+        country: 'Australia',
+      },
+      geometry: { coordinates: [151.2153, -33.8568] },
+    }] });
+  };
+  try {
+    const response = await handlePlaces(new Request(
+      'https://example.test/api/suggest?q=Sydney%20Opera%20House&provider=independent&near=151.20,-33.86'),
+      {
+        GOOGLE_ROUTES_API_KEY: 'google-key-that-must-not-be-used',
+        GEOAPIFY_API_KEY: 'geo-key',
+      });
+    assert.equal(response.status, 200);
+    const [place] = await response.json();
+    assert.equal(place.provider, 'osm');
+    assert.equal(place.name, 'Sydney Opera House');
+    assert.deepEqual(hosts, ['api.geoapify.com', 'photon.komoot.io']);
+  } finally { globalThis.fetch = previous; }
+});

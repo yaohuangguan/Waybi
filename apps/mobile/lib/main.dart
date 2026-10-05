@@ -5606,11 +5606,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final point = _gpsLocation == null
         ? _viewport.center
         : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude);
-    return _workerSearch.search(
-      query,
-      proximity: point,
-      language: _appLanguage,
-    );
+    final SearchProvider provider = _mapProvider == MapProvider.independent
+        ? _independentSearch
+        : _workerSearch;
+    return provider.search(query, proximity: point, language: _appLanguage);
   }
 
   void _selectMapSearchSuggestion(PlaceCandidate candidate) {

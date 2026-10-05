@@ -44,7 +44,12 @@ test('partial numbered street input uses a safe street-prefix lookup for autocom
   };
   const results = await aucklandCouncilAddressProvider.search({ parsed, fetcher });
   assert.match(where, /LIKE 'VERI%'/);
-  assert.deepEqual(results.map((item) => item.name), ['46 Verissimo Drive', '34 Verissimo Drive']);
+  assert.deepEqual(results.map((item) => item.name), [
+    '42 Verissimo Drive',
+    '46 Verissimo Drive',
+    '34 Verissimo Drive'
+  ]);
+  assert.equal(results[0].approximate, true);
 });
 
 

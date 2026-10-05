@@ -71,12 +71,11 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
     duration: const Duration(milliseconds: 2400),
   );
 
-  final _input = TextEditingController();
   bool? _reduceMotion;
 
-  void _submit() {
+  void _openSearch() {
     FocusScope.of(context).unfocus();
-    widget.onSearch(_input.text.trim());
+    widget.onSearch('');
   }
 
   @override
@@ -106,7 +105,6 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
 
   @override
   void dispose() {
-    _input.dispose();
     _greeting.dispose();
     super.dispose();
   }
@@ -162,9 +160,9 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
                   ),
                   TextField(
                     key: const Key('companionSearchInput'),
-                    controller: _input,
-                    textInputAction: TextInputAction.search,
-                    autocorrect: false,
+                    readOnly: true,
+                    showCursor: false,
+                    enableInteractiveSelection: false,
                     style: TextStyle(color: scheme.onSurface, fontSize: 16),
                     decoration: InputDecoration(
                       hintText: chinese
@@ -181,7 +179,7 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
                     ),
-                    onSubmitted: (_) => _submit(),
+                    onTap: _openSearch,
                   ),
                 ],
               ),
@@ -189,7 +187,7 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
             IconButton.filledTonal(
               key: const Key('companionSearchSubmit'),
               tooltip: chinese ? '搜索' : 'Search',
-              onPressed: _submit,
+              onPressed: _openSearch,
               style: IconButton.styleFrom(
                 backgroundColor: scheme.primaryContainer,
                 foregroundColor: scheme.primary,

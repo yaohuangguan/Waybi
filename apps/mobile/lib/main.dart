@@ -2272,13 +2272,20 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     NavigationCameraMode.headingUpPerspective => CameraPerspective.tilted,
   };
 
+  double get _navigationFollowZoom {
+    final speed = _driveEngine.speedKph;
+    if (speed >= 90) return 17.0;
+    if (speed >= 60) return 17.35;
+    return 17.7;
+  }
+
   Future<void> _followNavigationCamera(
     GoogleNavigationViewController controller, {
     double? zoomLevel,
   }) async {
     await controller.followMyLocation(
       _navigationFollowPerspective,
-      zoomLevel: zoomLevel,
+      zoomLevel: zoomLevel ?? _navigationFollowZoom,
     );
     await controller.setMyLocationEnabled(true);
     await controller.setRecenterButtonEnabled(false);
@@ -2526,18 +2533,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     final controller = _navigationController;
     if (controller != null) unawaited(controller.showRouteOverview());
-  }
-
-  void _cycleNavigationCameraMode() {
-    if (!_following && !_routeOverviewActive) {
-      _recenter();
-      return;
-    }
-    if (_routeOverviewActive) {
-      _recenter();
-      return;
-    }
-    _showRouteOverview();
   }
 
   void _toggleCompass() {
@@ -6652,7 +6647,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                         voiceEnabled: _voiceEnabled,
                         lanesEnabled: _lanesEnabled,
                         onEnd: () => unawaited(_stopNavigation()),
-                        onRecenter: _cycleNavigationCameraMode,
+                        onRecenter: _recenter,
                         onOverview: _showRouteOverview,
                         following: _following,
                         overviewMode: _routeOverviewActive,
@@ -6694,7 +6689,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 destination: _destinationTitle,
                 language: _appLanguage,
                 onEnd: () => unawaited(_stopNavigation()),
-                onRecenter: _cycleNavigationCameraMode,
+                onRecenter: _recenter,
                 onOverview: _showRouteOverview,
                 following: _following,
                 overviewMode: _routeOverviewActive,

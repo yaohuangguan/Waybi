@@ -109,10 +109,9 @@ void main() {
     );
 
     await tester.pump();
+    expect(find.text('123 Queen Street'), findsOneWidget);
     expect(
-      find.text(
-        '123 Queen Street, Auckland Central, Auckland 1010, New Zealand',
-      ),
+      find.text('Auckland Central, Auckland 1010, New Zealand'),
       findsOneWidget,
     );
   });

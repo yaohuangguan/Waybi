@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../providers/regional_place_sources.dart';
+
 void showPlaceSources(
   BuildContext context, {
   required String language,
   bool mapCompatible = true,
   Map<String, dynamic>? photoCredit,
+  Iterable<String> providerIds = const [],
 }) {
   final zh = language == 'zh';
+  final regionalCredits = regionalCreditsForProviders(providerIds);
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -52,6 +56,14 @@ void showPlaceSources(
                   mode: LaunchMode.externalApplication,
                 ),
                 child: const Text('© OpenMapTiles · CC BY'),
+              ),
+            for (final credit in regionalCredits)
+              TextButton(
+                onPressed: () => launchUrl(
+                  Uri.parse(credit.url),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: Text('© ${credit.label}'),
               ),
             if (photoCredit != null) ...[
               const Divider(),

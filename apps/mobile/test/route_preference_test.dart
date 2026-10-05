@@ -16,7 +16,7 @@ RouteOption route(String id, {required int seconds, required int metres}) =>
     );
 
 void main() {
-  test('route preferences balance time, distance, traffic and cameras', () {
+  test('route preferences prioritize ETA while preserving route badges', () {
     final routes = [
       route('fast', seconds: 600, metres: 10000),
       route('balanced', seconds: 640, metres: 9000),
@@ -34,7 +34,22 @@ void main() {
     expect(result['short']!.shortest, isTrue);
     expect(result['balanced']!.leastTraffic, isTrue);
     expect(result['balanced']!.zeroCameras, isTrue);
-    expect(result['balanced']!.recommended, isTrue);
-    expect(recommendedRoute(routes, summaries)?.id, 'balanced');
+    expect(result['fast']!.recommended, isTrue);
+    expect(recommendedRoute(routes, summaries)?.id, 'fast');
   });
+
+  test(
+    'camera-free detour outside the ETA guardrail never becomes default',
+    () {
+      final routes = [
+        route('fast', seconds: 600, metres: 10000),
+        route('detour', seconds: 780, metres: 9300),
+      ];
+      const summaries = {
+        'fast': RoutePreferenceSummary(cameraCount: 4, congestionScore: 80),
+        'detour': RoutePreferenceSummary(cameraCount: 0, congestionScore: 0),
+      };
+      expect(recommendedRoute(routes, summaries)?.id, 'fast');
+    },
+  );
 }

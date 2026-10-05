@@ -31,7 +31,7 @@ class IndependentNavigationCamera {
     final forwardMetres = switch (mode) {
       WaybiTravelMode.walk => 100.0,
       WaybiTravelMode.bicycle => (120 + speed * 4).clamp(120.0, 240.0),
-      _ => (180 + speed * 3.5).clamp(180.0, 620.0),
+      _ => (145 + speed * 2.6).clamp(145.0, 455.0),
     };
     // The location sits 64% down the unobscured map, leaving road context ahead.
     final pixelsAhead = visibleHeight.clamp(200.0, 900.0) * .64;
@@ -43,7 +43,7 @@ class IndependentNavigationCamera {
         // MapLibre's world is 512 logical pixels wide at zoom zero.
         (math.log(78271.51696 * latitudeScale * pixelsAhead / forwardMetres) /
                 math.ln2)
-            .clamp(14.5, 16.5);
+            .clamp(14.9, 17.0);
     var desired = baseZoom;
     final step = nextStep;
     final junction =
@@ -73,7 +73,7 @@ class IndependentNavigationCamera {
           : (140 + speed * 3).clamp(180.0, 450.0);
       final fraction = (1 - distanceToStep / approach).clamp(0.0, 1.0);
       final blend = fraction * fraction * (3 - 2 * fraction);
-      final closeZoom = step.maneuverType == 'arrive' ? 16.6 : 16.9;
+      final closeZoom = step.maneuverType == 'arrive' ? 17.1 : 17.35;
       desired = baseZoom + (math.max(baseZoom, closeZoom) - baseZoom) * blend;
     }
     final elapsed = _lastAt == null

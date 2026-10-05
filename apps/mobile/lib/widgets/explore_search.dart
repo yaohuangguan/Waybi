@@ -65,7 +65,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
   bool _editingOrigin = false;
   final _client = http.Client();
   Timer? _debounce;
-  bool _suggestConfigured = true;
+  DateTime? _suggestRetryAfter;
   List<DestinationSuggestion> _results = const [];
   String? _error;
   int _request = 0;
@@ -190,41 +190,44 @@ class _ExploreSearchState extends State<ExploreSearch> {
     _debounce = Timer(const Duration(milliseconds: 300), () async {
       try {
         final near = widget.currentLocation;
-        final uri = Uri.parse('$workerBaseUrl/api/suggest').replace(
-          queryParameters: {
-            'q': query,
-            'lang': widget.language,
-            if (near != null) 'near': '${near.longitude},${near.latitude}',
-          },
-        );
-        var response = await _client.get(
-          _suggestConfigured
-              ? uri
-              : Uri.parse('$workerBaseUrl/api/search').replace(
-                  queryParameters: {
-                    'q': query,
-                    'lang': widget.language,
-                    if (near != null)
-                      'near': '${near.longitude},${near.latitude}',
-                  },
-                ),
-        );
-        if (_suggestConfigured && response.statusCode == 503) {
-          _suggestConfigured = false;
-          response = await _client.get(
-            Uri.parse('$workerBaseUrl/api/search').replace(
-              queryParameters: {
-                'q': query,
-                'lang': widget.language,
-                if (near != null) 'near': '${near.longitude},${near.latitude}',
-              },
-            ),
-          );
+        final params = {
+          'q': query,
+          'lang': widget.language,
+          if (near != null) 'near': '${near.longitude},${near.latitude}',
+        };
+        final suggestUri = Uri.parse('$workerBaseUrl/api/suggest')
+            .replace(queryParameters: params);
+        final fallbackUri = Uri.parse('$workerBaseUrl/api/search')
+            .replace(queryParameters: params);
+        final canTrySuggest =
+            _suggestRetryAfter == null ||
+            DateTime.now().isAfter(_suggestRetryAfter!);
+        http.Response? response;
+        if (canTrySuggest) {
+          response = await _client.get(suggestUri);
+          if (response.statusCode == 503 || response.statusCode == 502) {
+            _suggestRetryAfter = DateTime.now().add(
+              const Duration(seconds: 20),
+            );
+            response = null;
+          } else if (response.statusCode == 200) {
+            _suggestRetryAfter = null;
+          }
         }
+        response ??= await _client.get(fallbackUri);
         if (response.statusCode != 200) {
           throw StateError('Address search unavailable');
         }
-        final decoded = jsonDecode(response.body) as List<dynamic>;
+        var decoded = jsonDecode(response.body) as List<dynamic>;
+        // A provider can be healthy but return nothing for a niche POI/address.
+        // Fall back for this query only; never permanently downgrade the session.
+        if (decoded.isEmpty &&
+            response.request?.url.path.endsWith('/suggest') == true) {
+          final fallback = await _client.get(fallbackUri);
+          if (fallback.statusCode == 200) {
+            decoded = jsonDecode(fallback.body) as List<dynamic>;
+          }
+        }
         final places = decoded
             .whereType<Map<String, dynamic>>()
             .map((item) {
@@ -249,9 +252,23 @@ class _ExploreSearchState extends State<ExploreSearch> {
             })
             .whereType<DestinationSuggestion>()
             .toList();
+        final deduped = <DestinationSuggestion>[];
+        final seen = <String>{};
+        for (final place in places) {
+          final key = [
+            (place.address?.trim().isNotEmpty == true
+                    ? place.address!
+                    : place.label)
+                .toLowerCase()
+                .replaceAll(RegExp(r'[^a-z0-9\p{L}]+', unicode: true), ''),
+            place.location.latitude.toStringAsFixed(4),
+            place.location.longitude.toStringAsFixed(4),
+          ].join('|');
+          if (seen.add(key)) deduped.add(place);
+        }
         if (!mounted || request != _request) return;
         setState(() {
-          _results = places;
+          _results = deduped;
           _error = null;
         });
       } catch (_) {
@@ -290,15 +307,24 @@ class _ExploreSearchState extends State<ExploreSearch> {
   String _resultTitle(DestinationSuggestion result) {
     final address = result.address?.trim() ?? '';
     final name = result.name?.trim() ?? '';
-    if (result.isPoi == false && address.isNotEmpty) return address;
+    if (result.isPoi == false && address.isNotEmpty) {
+      final first = address.split(',').first.trim();
+      if (first.isNotEmpty) return first;
+    }
     if (name.isNotEmpty) return name;
     return result.label;
   }
 
   String _resultAddress(DestinationSuggestion result) {
     final address = result.address?.trim() ?? '';
+    if (address.isEmpty) return '';
     final title = _resultTitle(result);
-    if (address == title) return '';
+    if (address == title) return result.label == title ? '' : result.label;
+    final prefix = '$title,';
+    if (address.toLowerCase().startsWith(prefix.toLowerCase())) {
+      final locality = address.substring(prefix.length).trim();
+      if (locality.isNotEmpty) return locality;
+    }
     return address;
   }
 

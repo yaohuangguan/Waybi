@@ -11,6 +11,7 @@ import '../domain/map_provider.dart';
 import '../domain/safety_camera.dart';
 import '../domain/traffic_flow.dart';
 import '../domain/road_event.dart';
+import '../domain/route_traffic_match.dart';
 import 'location_marker_art.dart';
 import 'road_event_marker_art.dart';
 import 'independent_map_style.dart';
@@ -267,6 +268,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       );
       for (final source in [
         'waybi-traffic',
+        'waybi-route-traffic',
         'waybi-route',
         'waybi-pins',
         'waybi-driver',
@@ -317,8 +319,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         'waybi-traffic-casing',
         const ml.LineLayerProperties(
           lineColor: '#ffffff',
-          lineWidth: 7,
-          lineOpacity: .72,
+          lineWidth: 4.2,
+          lineOpacity: .56,
           lineCap: 'round',
           lineJoin: 'round',
         ),
@@ -340,49 +342,38 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             '#D93025',
             '#8A8F98',
           ],
-          lineWidth: 4.5,
-          lineOpacity: .92,
+          lineWidth: 2.6,
+          lineOpacity: .9,
           lineCap: 'round',
           lineJoin: 'round',
         ),
         belowLayerId: 'waybi-alternative-edge',
         enableInteraction: false,
       );
-      // A narrow congestion stripe sits inside the wider lime route. Fresh
-      // slow/heavy traffic remains visible without gray or stale data hiding
-      // the route, and the provider's actual road geometry is retained.
+      // During active navigation traffic belongs to the route itself. Only
+      // official traffic sections that actually align with this route are drawn,
+      // at exactly the route width, so there is one visual path rather than a
+      // competing traffic ribbon beside it.
       await c.addLineLayer(
-        'waybi-traffic',
-        'waybi-traffic-congestion',
+        'waybi-route-traffic',
+        'waybi-route-traffic-flow',
         ml.LineLayerProperties(
           lineColor: [
             'match',
             ['get', 'level'],
+            'free',
+            '#36B85A',
+            'moderate',
+            '#F2A900',
             'heavy',
             '#D93025',
-            '#F2A900',
+            '#A8D86A',
           ],
-          lineWidth: 3,
-          lineOpacity: 1,
+          lineWidth: 7,
+          lineOpacity: .98,
           lineCap: 'round',
           lineJoin: 'round',
         ),
-        // iOS converts method-channel filters through NSPredicate. Use
-        // expression syntax consistently; legacy property-name filters can
-        // raise an Objective-C exception outside Dart's error handling.
-        filter: [
-          'any',
-          [
-            '==',
-            ['get', 'level'],
-            'moderate',
-          ],
-          [
-            '==',
-            ['get', 'level'],
-            'heavy',
-          ],
-        ],
         belowLayerId: 'waybi-poi-dot',
         enableInteraction: false,
       );
@@ -622,14 +613,29 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       while (mounted && _ready && _dirty && generation == _generation) {
         _dirty = false;
         await _syncTrafficTiles();
-        final traffic = widget.layers.traffic
+        final activeRoute = widget.routePaths
+            .where((route) => route.active)
+            .firstOrNull;
+        final allTraffic = widget.layers.traffic
             ? widget.trafficSegments
-                  .where((s) => s.hasRoadGeometry)
+                  .where((segment) => segment.hasRoadGeometry)
+                  .toList(growable: false)
+            : const <TrafficFlowSegment>[];
+        final traffic = widget.navigating
+            ? const <TrafficFlowSegment>[]
+            : allTraffic;
+        final routeTraffic = widget.navigating && activeRoute != null
+            ? allTraffic
+                  .where(
+                    (segment) =>
+                        trafficSegmentMatchesRoute(segment, activeRoute),
+                  )
                   .toList(growable: false)
             : const <TrafficFlowSegment>[];
         final trafficHash = Object.hash(
           widget.layers.traffic,
           widget.trafficFresh,
+          widget.navigating,
           Object.hashAll(
             traffic.map(
               (segment) => Object.hash(
@@ -665,6 +671,45 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
               },
           ]),
         );
+        final routeTrafficHash = Object.hash(
+          widget.trafficFresh,
+          Object.hashAll(
+            routeTraffic.map(
+              (segment) => Object.hash(
+                segment.id,
+                segment.level,
+                Object.hashAll(segment.geometry),
+              ),
+            ),
+          ),
+        );
+        await _setSource(
+          'waybi-route-traffic',
+          routeTrafficHash,
+          () => _collection([
+            for (final segment in routeTraffic)
+              if (trafficGeometryOnRoute(segment, activeRoute!).length >= 2)
+                {
+                  'type': 'Feature',
+                  'id': 'route-${segment.id}',
+                  'geometry': {
+                    'type': 'LineString',
+                    'coordinates': [
+                      for (final p in trafficGeometryOnRoute(
+                        segment,
+                        activeRoute,
+                      ))
+                        [p.longitude, p.latitude],
+                    ],
+                  },
+                  'properties': {
+                    'level': widget.trafficFresh
+                        ? segment.level.name
+                        : 'unknown',
+                  },
+                },
+          ]),
+        );
         final routeHash = Object.hashAll(
           widget.routePaths.map(
             (route) => Object.hash(
@@ -693,9 +738,6 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                 },
           ]),
         );
-        final activeRoute = widget.routePaths
-            .where((route) => route.active)
-            .firstOrNull;
         final cameras = widget.cameras
             .where(widget.layers.shows)
             .toList(growable: false);

@@ -65,21 +65,29 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
 
   List<RouteOption> _sensibleDrivingAlternatives(List<RouteOption> routes) {
     if (routes.length <= 1) return routes;
-    final fastest = routes
-        .map((route) => route.durationSeconds)
-        .reduce((a, b) => a < b ? a : b);
-    final shortest = routes
+    final sorted = [...routes]
+      ..sort((a, b) {
+        final byTime = a.durationSeconds.compareTo(b.durationSeconds);
+        return byTime != 0
+            ? byTime
+            : a.distanceMeters.compareTo(b.distanceMeters);
+      });
+    final fastest = sorted.first.durationSeconds;
+    final fastestDistance = sorted.first.distanceMeters;
+    final shortest = sorted
         .map((route) => route.distanceMeters)
         .reduce((a, b) => a < b ? a : b);
-    final filtered = routes
-        .where(
-          (route) =>
-              route.durationSeconds <= fastest * 1.30 &&
-              route.distanceMeters <= shortest * 1.35,
-        )
+    final filtered = sorted
+        .where((route) {
+          final timeOk = route.durationSeconds <= fastest * 1.18;
+          final distanceOk =
+              route.distanceMeters <= shortest * 1.28 &&
+              route.distanceMeters <= fastestDistance * 1.35;
+          return timeOk && distanceOk;
+        })
         .take(3)
         .toList(growable: false);
-    return filtered.isEmpty ? [routes.first] : filtered;
+    return filtered.isEmpty ? [sorted.first] : filtered;
   }
 
   Future<RouteOption> reroute({

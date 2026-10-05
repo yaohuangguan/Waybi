@@ -60,20 +60,29 @@ Map<String, RoutePreferenceAssessment> assessRoutePreferences(
     return (value - min) / (max - min);
   }
 
+  final fastestDuration = minOf(durations);
+  final candidateIds = <String>{
+    for (var i = 0; i < routes.length; i++)
+      if (durations[i] <= fastestDuration * 1.15) routes[i].id,
+  };
   final scores = <String, double>{};
   for (var i = 0; i < routes.length; i++) {
-    var score =
-        normalized(durations[i], durations) * .48 +
-        normalized(distances[i], distances) * .20 +
+    // Default routing is experience-first: ETA dominates. Traffic may break a
+    // close tie, but cameras are informational and must never create detours.
+    final score =
+        normalized(durations[i], durations) * .72 +
         normalized(congestion[i], congestion) * .20 +
-        normalized(cameras[i], cameras) * .12;
-    if (cameras[i] == 0) score -= .035;
+        normalized(distances[i], distances) * .08;
     scores[routes[i].id] = score;
   }
 
-  final recommendedId = scores.entries
-      .reduce((a, b) => a.value <= b.value ? a : b)
-      .key;
+  final eligibleScores = scores.entries
+      .where((entry) => candidateIds.contains(entry.key))
+      .toList(growable: false);
+  final recommendedId =
+      (eligibleScores.isEmpty ? scores.entries : eligibleScores)
+          .reduce((a, b) => a.value <= b.value ? a : b)
+          .key;
   final fastest = minOf(durations);
   final shortest = minOf(distances);
   final leastTraffic = minOf(congestion);

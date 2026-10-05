@@ -605,6 +605,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               perspectiveAvailable: widget.perspectiveAvailable,
                               onCompassToggle: widget.onCompassToggle,
                               onRecenter: widget.onRecenter,
+                              onOverview: widget.onOverview,
                               onLayers: widget.onLayers,
                               onReport: widget.onReport,
                             ),
@@ -615,6 +616,41 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                   ],
                 ),
               ),
+              // Keep the deck visually attached to the physical screen edge.
+              // This also masks transient sub-pixel gaps while the draggable
+              // sheet animates between extents.
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: bottomInset + 44,
+                child: IgnorePointer(
+                  child: ColoredBox(
+                    color: dark ? WaybiColors.darkOcean : scheme.surface,
+                  ),
+                ),
+              ),
+              if (!expanded)
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  left: 14,
+                  bottom: (_reportedBottom ?? (225 + bottomInset)) + 12,
+                  child: PointerInterceptor(
+                    child: Material(
+                      key: const Key('navigationRecenterButton'),
+                      color: scheme.surface.withValues(alpha: .98),
+                      elevation: 6,
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        tooltip: _text('Re-center', '回正导航'),
+                        onPressed: widget.onRecenter,
+                        icon: const Icon(Icons.my_location_rounded),
+                        color: WaybiColors.ocean,
+                      ),
+                    ),
+                  ),
+                ),
               Positioned(
                 top: 0,
                 bottom: 0,
@@ -803,6 +839,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                       events: widget.engine.upcomingRoadEvents,
                                       language: widget.language,
                                       dark: dark,
+                                      compact: !expanded,
                                     ),
                                   ],
                                   if (expanded && widget.systemStatus != null)
@@ -1066,6 +1103,7 @@ class _NavigationControlRail extends StatelessWidget {
     required this.perspectiveAvailable,
     required this.onCompassToggle,
     required this.onRecenter,
+    required this.onOverview,
     required this.onLayers,
     required this.onReport,
   });
@@ -1079,6 +1117,7 @@ class _NavigationControlRail extends StatelessWidget {
   String _text(String en, String zh) => language == 'zh' ? zh : en;
   final VoidCallback onCompassToggle;
   final VoidCallback onRecenter;
+  final VoidCallback onOverview;
   final VoidCallback onLayers;
   final VoidCallback onReport;
 
@@ -1115,15 +1154,13 @@ class _NavigationControlRail extends StatelessWidget {
           ),
           const _RailDivider(),
           _RailButton(
-            icon: overviewMode
-                ? Icons.navigation_rounded
+            icon: overviewMode || !following
+                ? Icons.my_location_rounded
                 : Icons.alt_route_rounded,
-            tooltip: overviewMode
-                ? _text('Follow my location', '进入跟车视角')
-                : following
-                ? _text('Route overview', '路线全览')
-                : _text('Follow my location', '回到我的位置'),
-            onTap: onRecenter,
+            tooltip: overviewMode || !following
+                ? _text('Re-center on my location', '回正导航')
+                : _text('Route overview', '路线全览'),
+            onTap: overviewMode || !following ? onRecenter : onOverview,
           ),
           const _RailDivider(),
           _RailButton(

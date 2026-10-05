@@ -77,13 +77,22 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     // eligible official regional adapter without waiting for global providers.
     // Outside a supported region the promise resolves empty immediately, so
     // global search keeps the same behavior everywhere else.
-    if (requestedProvider === 'independent' && point && parseStreetQuery(query)) {
+    const parsedStreet = parseStreetQuery(query);
+    if (requestedProvider === 'independent' && point && parsedStreet) {
       const fastEnrichments = await Promise.race([
         enrichmentPromise,
         new Promise((resolve) => setTimeout(() => resolve([]), 450))
       ]);
       if (fastEnrichments.length) {
-        return json(mergeAndRankSearchResults([fastEnrichments], query, point, 12));
+        const hasExactResult = fastEnrichments.some(
+          (place) => place.approximate !== true
+        );
+        const isPartialStreet = !parsedStreet.roadType;
+        if (hasExactResult || isPartialStreet) {
+          return json(
+            mergeAndRankSearchResults([fastEnrichments], query, point, 12)
+          );
+        }
       }
     }
     const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);

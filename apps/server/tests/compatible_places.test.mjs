@@ -215,7 +215,7 @@ test('Independent global search can use HERE without Google', async () => {
   };
   try {
     const response = await handlePlaces(new Request(
-      'https://example.test/api/suggest?q=42%20Verissimo%20Drive&provider=independent&near=174.79,-36.98'),
+      'https://example.test/api/suggest?q=42%20Verissimo%20Drive&provider=independent&near=151.21,-33.87'),
       {
         GOOGLE_ROUTES_API_KEY: 'google-key-that-must-not-be-used',
         HERE_API_KEY: 'here-key',

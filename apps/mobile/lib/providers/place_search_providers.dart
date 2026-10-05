@@ -19,9 +19,46 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
   final bool mapCompatible;
 
   final http.Client _client;
+  final _searchCache = <String, (DateTime, List<PlaceCandidate>)>{};
+  final _searchPending = <String, Future<List<PlaceCandidate>>>{};
+
+  String _searchKey(String query, GeoPoint? proximity, String language) => [
+    query.trim().toLowerCase(),
+    language,
+    mapCompatible ? 'map-compatible' : 'global',
+    if (proximity != null)
+      '${proximity.latitude.toStringAsFixed(3)},${proximity.longitude.toStringAsFixed(3)}',
+  ].join('|');
 
   @override
   Future<List<PlaceCandidate>> search(
+    String query, {
+    GeoPoint? proximity,
+    required String language,
+  }) {
+    final key = _searchKey(query, proximity, language);
+    final cached = _searchCache[key];
+    if (cached != null &&
+        DateTime.now().difference(cached.$1) < const Duration(minutes: 2)) {
+      return Future.value(cached.$2);
+    }
+    return _searchPending.putIfAbsent(key, () async {
+      try {
+        final results = await _searchNetwork(
+          query,
+          proximity: proximity,
+          language: language,
+        );
+        if (_searchCache.length >= 48) _searchCache.remove(_searchCache.keys.first);
+        _searchCache[key] = (DateTime.now(), results);
+        return results;
+      } finally {
+        _searchPending.remove(key);
+      }
+    });
+  }
+
+  Future<List<PlaceCandidate>> _searchNetwork(
     String query, {
     GeoPoint? proximity,
     required String language,
@@ -32,7 +69,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
         'lang': language,
         if (mapCompatible) 'provider': 'geoapify',
         if (proximity != null)
-          'near': '${proximity.longitude},${proximity.latitude}',
+          'near': '${proximity.longitude.toStringAsFixed(3)},${proximity.latitude.toStringAsFixed(3)}',
       },
     );
     final fallbackUri = Uri.parse('$workerBaseUrl/api/search').replace(
@@ -40,10 +77,10 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
         'q': query,
         'lang': language,
         if (proximity != null)
-          'near': '${proximity.longitude},${proximity.latitude}',
+          'near': '${proximity.longitude.toStringAsFixed(3)},${proximity.latitude.toStringAsFixed(3)}',
       },
     );
-    var response = await _client.get(uri).timeout(const Duration(seconds: 12));
+    var response = await _client.get(uri).timeout(const Duration(seconds: 4));
     var data = response.statusCode == 200
         ? jsonDecode(response.body) as List<dynamic>
         : const <dynamic>[];
@@ -53,7 +90,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
             data.isEmpty)) {
       response = await _client
           .get(fallbackUri)
-          .timeout(const Duration(seconds: 12));
+          .timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         data = jsonDecode(response.body) as List<dynamic>;
       }
@@ -132,6 +169,7 @@ class IndependentSearchProvider
   );
 
   final Duration requestSpacing;
+  final WorkerSearchProvider _fastSearch = WorkerSearchProvider();
   final _cache = <String, (DateTime, List<PlaceSummary>)>{};
   final _pending = <String, Future<List<PlaceSummary>>>{};
   static Future<void>? _queue;
@@ -186,7 +224,7 @@ class IndependentSearchProvider
               if (!kIsWeb) 'User-Agent': 'Waybi/1.0 (+https://waybi.co)',
             },
           )
-          .timeout(const Duration(seconds: 12));
+          .timeout(const Duration(seconds: 4));
     } finally {
       if (identical(_queue, completed.future)) _queue = null;
       completed.complete();
@@ -304,7 +342,7 @@ class IndependentSearchProvider
         'q': query.trim(),
         'lang': language,
         if (proximity != null)
-          'near': '${proximity.longitude},${proximity.latitude}',
+          'near': '${proximity.longitude.toStringAsFixed(3)},${proximity.latitude.toStringAsFixed(3)}',
       };
       final headers = {
         'Accept': 'application/json',
@@ -344,6 +382,7 @@ class IndependentSearchProvider
             final provider = item['provider']?.toString() ?? 'osm';
             if (provider != 'osm' &&
                 provider != 'geoapify' &&
+                provider != 'google' &&
                 !provider.startsWith('regional:')) {
               return null;
             }
@@ -609,6 +648,22 @@ class IndependentSearchProvider
     final coreQuery = _coreBrandQuery(plainQuery);
     final primaryQuery = intentQuery ?? plainQuery;
     final localFirst = !expanded && proximity != null && proximity.isValid;
+
+    // Normal search is powered by Waybi's global search endpoint first. It is
+    // substantially faster than serial public-Photon lookups and keeps search
+    // quality identical regardless of which map renderer is selected. Photon
+    // remains the open-data fallback if Waybi search is slow or unavailable.
+    if (!expanded) {
+      try {
+        final fast = await _fastSearch
+            .search(trimmed, proximity: proximity, language: language)
+            .timeout(const Duration(milliseconds: 1200));
+        if (fast.isNotEmpty) return fast.take(8).toList(growable: false);
+      } catch (_) {
+        // Fall through to the independent global provider below.
+      }
+    }
+
     var results = await _load(
       'api/',
       _photonParameters(primaryQuery, proximity, localBias: !expanded),
@@ -796,5 +851,8 @@ class IndependentSearchProvider
     language: language,
   )).map((p) => p.toPlace(p.location!)).toList(growable: false);
 
-  void dispose() => _client.close();
+  void dispose() {
+    _fastSearch.dispose();
+    _client.close();
+  }
 }

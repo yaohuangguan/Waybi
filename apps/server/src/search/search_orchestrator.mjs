@@ -20,6 +20,7 @@ export function needsAddressEnrichment(places, query) {
   );
   if (!wanted) return false;
   return !(places || []).some((place) => {
+    if (place?.approximate === true) return false;
     const candidates = [place?.name, place?.address, place?.label]
       .map(normalizedText)
       .filter(Boolean);

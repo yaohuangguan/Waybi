@@ -8,18 +8,23 @@ const ROAD_TYPE_ALIASES = new Map([
   ['WAY', 'WAY']
 ]);
 
-export function parseNumberedStreetQuery(query) {
+export function parseStreetQuery(query) {
   const match = String(query || '').trim().match(
-    /^(\d+[A-Za-z]?(?:\s*\/\s*\d+[A-Za-z]?)?)\s+([^,]+)(?:,.*)?$/u
+    /^(?:(\d+[A-Za-z]?(?:\s*\/\s*\d+[A-Za-z]?)?)\s+)?([^,]+)(?:,.*)?$/u
   );
   if (!match) return null;
-  const number = match[1].replace(/\s+/g, '');
+  const number = match[1]?.replace(/\s+/g, '') || null;
   const words = match[2].trim().split(/\s+/).filter(Boolean);
   if (!words.length) return null;
   const last = words.at(-1).toUpperCase().replace(/\./g, '');
   const roadType = ROAD_TYPE_ALIASES.get(last) || null;
   if (roadType) words.pop();
   const roadName = words.join(' ').trim();
-  if (!roadName) return null;
+  if (!roadName || (!number && !roadType)) return null;
   return { number, roadName, roadType };
+}
+
+export function parseNumberedStreetQuery(query) {
+  const parsed = parseStreetQuery(query);
+  return parsed?.number ? parsed : null;
 }

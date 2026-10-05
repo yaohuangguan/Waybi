@@ -311,9 +311,18 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              if (suggestion.secondaryAddress.isNotEmpty)
+                              if (suggestion.secondaryAddress.isNotEmpty ||
+                                  suggestion.category == 'approximate_address')
                                 Text(
-                                  suggestion.secondaryAddress,
+                                  [
+                                    if (suggestion.category ==
+                                        'approximate_address')
+                                      chinese
+                                          ? '约略位置'
+                                          : 'Approximate location',
+                                    if (suggestion.secondaryAddress.isNotEmpty)
+                                      suggestion.secondaryAddress,
+                                  ].join(' · '),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(

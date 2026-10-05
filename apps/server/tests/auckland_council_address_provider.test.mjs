@@ -26,3 +26,20 @@ test('Auckland Council is an optional regional adapter with a namespaced provide
   ]);
   assert.ok(results.every((item) => item.provider === 'regional:auckland-council'));
 });
+
+test('partial numbered street input uses a safe street-prefix lookup for autocomplete', async () => {
+  const parsed = parseNumberedStreetQuery('42 veri');
+  let where = '';
+  const fetcher = async (url) => {
+    where = url.searchParams.get('where') || '';
+    return new Response(JSON.stringify({
+      features: [
+        { properties: { OBJECTID: 46, FullNumber: '46', RoadName: 'VERISSIMO', RoadType: 'DRIVE', FullAddress: '46 VERISSIMO DRIVE MANGERE AUCKLAND 2022' }, geometry: { coordinates: [174.787, -36.991] } },
+        { properties: { OBJECTID: 34, FullNumber: '34', RoadName: 'VERISSIMO', RoadType: 'DRIVE', FullAddress: '34 VERISSIMO DRIVE MANGERE AUCKLAND 2022' }, geometry: { coordinates: [174.788, -36.989] } }
+      ]
+    }), { headers: { 'content-type': 'application/json' } });
+  };
+  const results = await aucklandCouncilAddressProvider.search({ parsed, fetcher });
+  assert.match(where, /LIKE 'VERI%'/);
+  assert.deepEqual(results.map((item) => item.name), ['46 Verissimo Drive', '34 Verissimo Drive']);
+});

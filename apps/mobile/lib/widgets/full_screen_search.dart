@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../data/search_history_store.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import '../providers/provider_contracts.dart';
@@ -49,17 +50,58 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
   bool _expandedArea = false;
   String? _error;
   List<PlaceCandidate> _results = const [];
+  List<String> _recentQueries = const [];
+  final SearchHistoryStore _history = SearchHistoryStore();
 
   String _text(String en, String zh) => widget.language == 'zh' ? zh : en;
 
   @override
   void initState() {
     super.initState();
+    unawaited(_loadHistory());
     if (widget.initialQuery.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _search(widget.initialQuery);
       });
     }
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final history = await _history.load();
+      if (!mounted) return;
+      setState(() => _recentQueries = history);
+    } catch (_) {
+      // Search must stay usable even if local preferences are unavailable.
+    }
+  }
+
+  Future<void> _rememberQuery(String query) async {
+    try {
+      final history = await _history.remember(query);
+      if (!mounted) return;
+      setState(() => _recentQueries = history);
+    } catch (_) {
+      // History is an enhancement, never a blocker for search.
+    }
+  }
+
+  Future<void> _removeRecentQuery(String query) async {
+    try {
+      final history = await _history.remove(query);
+      if (!mounted) return;
+      setState(() => _recentQueries = history);
+    } catch (_) {
+      // Ignore storage failures and keep the search surface responsive.
+    }
+  }
+
+  void _useRecentQuery(String query) {
+    _controller.value = TextEditingValue(
+      text: query,
+      selection: TextSelection.collapsed(offset: query.length),
+    );
+    _search(query, immediate: true);
   }
 
   @override
@@ -126,6 +168,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
 
   Future<void> _choose(PlaceCandidate candidate) async {
     if (_resolving) return;
+    unawaited(_rememberQuery(_controller.text));
     setState(() => _resolving = true);
     try {
       final place = await widget.resolve(candidate);
@@ -230,7 +273,10 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               ),
             ),
             onChanged: _search,
-            onSubmitted: (value) => _search(value, immediate: true),
+            onSubmitted: (value) {
+              unawaited(_rememberQuery(value));
+              _search(value, immediate: true);
+            },
           ),
         ),
         actions: [
@@ -290,13 +336,59 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                 ],
               ),
             ),
-          if (recent && items.isNotEmpty)
+          if (recent && _recentQueries.isNotEmpty) ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 22, 18, 8),
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 6),
               child: Text(
-                _text('Recent', '最近搜索'),
+                _text('Recent searches', '最近搜索'),
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            for (final query in _recentQueries)
+              ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 18),
+                leading: const Icon(Icons.history_rounded),
+                title: Text(
+                  query,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: IconButton(
+                  tooltip: _text('Remove', '删除'),
+                  onPressed: () => unawaited(_removeRecentQuery(query)),
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                ),
+                onTap: () => _useRecentQuery(query),
+              ),
+          ],
+          if (recent && items.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                18,
+                _recentQueries.isEmpty ? 22 : 12,
+                18,
+                8,
+              ),
+              child: Text(
+                _text('Recent places', '最近地点'),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          if (!recent && items.isNotEmpty && !_loading)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
+              child: Text(
+                _text('Suggestions', '搜索联想'),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
               ),

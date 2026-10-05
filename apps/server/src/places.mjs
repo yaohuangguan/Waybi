@@ -16,6 +16,11 @@ function placesApiKey(env) {
   return env.GOOGLE_PLACES_SERVER_API_KEY || env.GOOGLE_ROUTES_API_KEY;
 }
 
+function partialNumberedStreetPrefix(query) {
+  const match = String(query).trim().match(/^\d+[A-Za-z]?(?:[-/]\d+[A-Za-z]?)?\s+([\p{L}\p{M}]{2,5})$/u);
+  return match ? match[1] : '';
+}
+
 function localizedText(value) {
   if (!value) return '';
   if (typeof value === 'string') return value;
@@ -70,6 +75,20 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
 
     const point = geoPoint(url.searchParams.get('near'));
     const enrichmentPromise = loadSearchEnrichments(query, point).catch(() => []);
+    // While a user is still typing a numbered street prefix (for example
+    // "42 veri"), a regional official-address adapter can often answer in
+    // ~200 ms. Return that useful typeahead immediately instead of making the
+    // UI wait for a slower global provider. Outside an adapter service area
+    // this resolves empty and the normal global path continues unchanged.
+    if (point && partialNumberedStreetPrefix(query)) {
+      const fastEnrichments = await Promise.race([
+        enrichmentPromise,
+        new Promise((resolve) => setTimeout(() => resolve([]), 320))
+      ]);
+      if (fastEnrichments.length) {
+        return json(mergeAndRankSearchResults([fastEnrichments], query, point, 12));
+      }
+    }
     const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
     const googleKey = placesApiKey(env);
     if (googleKey && url.searchParams.get('provider') !== 'geoapify') {

@@ -5602,6 +5602,51 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
+  Future<List<PlaceCandidate>> _loadMapSearchSuggestions(String query) {
+    final point = _gpsLocation == null
+        ? _viewport.center
+        : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude);
+    return _workerSearch.search(
+      query,
+      proximity: point,
+      language: _appLanguage,
+    );
+  }
+
+  void _selectMapSearchSuggestion(PlaceCandidate candidate) {
+    final location = candidate.location;
+    if (location == null) {
+      unawaited(_openSearch(query: candidate.name));
+      return;
+    }
+    final place = candidate.toPlace(location);
+    _rememberDestination(
+      DestinationSuggestion(
+        label: place.name,
+        name: place.name,
+        address: place.address,
+        location: LatLng(
+          latitude: place.location.latitude,
+          longitude: place.location.longitude,
+        ),
+      ),
+    );
+    _selectPlace(place, SelectionSource.search);
+    final controller = _browseController;
+    if (controller != null) {
+      unawaited(
+        controller.animateCamera(
+          CameraUpdate.newLatLng(
+            LatLng(
+              latitude: place.location.latitude,
+              longitude: place.location.longitude,
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
   void _showGoSearch() => unawaited(_openSearch());
 
   Future<PlaceSummary?> _openSearch({
@@ -6608,6 +6653,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     CompanionSearchPrompt(
                       marker: _locationMarker,
                       language: _appLanguage,
+                      currentLocation: _gpsLocation == null
+                          ? _viewport.center
+                          : GeoPoint(
+                              _gpsLocation!.latitude,
+                              _gpsLocation!.longitude,
+                            ),
+                      loadSuggestions: _loadMapSearchSuggestions,
+                      onSuggestionSelected: _selectMapSearchSuggestion,
                       onSearch: (query) => unawaited(_openSearch(query: query)),
                     ),
                     const SizedBox(height: 9),

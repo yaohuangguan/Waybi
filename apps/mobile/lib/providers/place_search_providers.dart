@@ -27,7 +27,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
     language,
     mapCompatible ? 'map-compatible' : 'global',
     if (proximity != null)
-      '${proximity.latitude.toStringAsFixed(3)},${proximity.longitude.toStringAsFixed(3)}',
+      '${proximity.latitude.toStringAsFixed(2)},${proximity.longitude.toStringAsFixed(2)}',
   ].join('|');
 
   @override
@@ -39,7 +39,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
     final key = _searchKey(query, proximity, language);
     final cached = _searchCache[key];
     if (cached != null &&
-        DateTime.now().difference(cached.$1) < const Duration(minutes: 2)) {
+        DateTime.now().difference(cached.$1) < const Duration(minutes: 5)) {
       return Future.value(cached.$2);
     }
     return _searchPending.putIfAbsent(key, () async {
@@ -49,7 +49,9 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
           proximity: proximity,
           language: language,
         );
-        if (_searchCache.length >= 48) _searchCache.remove(_searchCache.keys.first);
+        if (_searchCache.length >= 48) {
+          _searchCache.remove(_searchCache.keys.first);
+        }
         _searchCache[key] = (DateTime.now(), results);
         return results;
       } finally {
@@ -69,7 +71,8 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
         'lang': language,
         if (mapCompatible) 'provider': 'geoapify',
         if (proximity != null)
-          'near': '${proximity.longitude.toStringAsFixed(3)},${proximity.latitude.toStringAsFixed(3)}',
+          'near':
+              '${proximity.longitude.toStringAsFixed(2)},${proximity.latitude.toStringAsFixed(2)}',
       },
     );
     final fallbackUri = Uri.parse('$workerBaseUrl/api/search').replace(
@@ -77,7 +80,8 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
         'q': query,
         'lang': language,
         if (proximity != null)
-          'near': '${proximity.longitude.toStringAsFixed(3)},${proximity.latitude.toStringAsFixed(3)}',
+          'near':
+              '${proximity.longitude.toStringAsFixed(3)},${proximity.latitude.toStringAsFixed(3)}',
       },
     );
     var response = await _client.get(uri).timeout(const Duration(seconds: 4));
@@ -348,7 +352,8 @@ class IndependentSearchProvider
         'q': query.trim(),
         'lang': language,
         if (proximity != null)
-          'near': '${proximity.longitude.toStringAsFixed(3)},${proximity.latitude.toStringAsFixed(3)}',
+          'near':
+              '${proximity.longitude.toStringAsFixed(3)},${proximity.latitude.toStringAsFixed(3)}',
       };
       final headers = {
         'Accept': 'application/json',

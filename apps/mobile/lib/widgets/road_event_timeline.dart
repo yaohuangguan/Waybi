@@ -10,12 +10,14 @@ class RoadEventTimeline extends StatelessWidget {
     this.maneuverLabel,
     this.language = 'en',
     this.dark = true,
+    this.compact = false,
   });
 
   final List<RoadEvent> events;
   final String? maneuverLabel;
   final String language;
   final bool dark;
+  final bool compact;
 
   String _text(String en, String zh) => language == 'zh' ? zh : en;
 
@@ -84,6 +86,74 @@ class RoadEventTimeline extends StatelessWidget {
     final surface = dark
         ? WaybiColors.darkOcean.withValues(alpha: .94)
         : WaybiColors.lightSurface.withValues(alpha: .96);
+    if (compact && visible.isNotEmpty) {
+      final event = visible.first;
+      final distance = _distance(event);
+      final more = events.length - 1;
+      final color = event.severity.index >= RoadEventSeverity.warning.index
+          ? WaybiColors.warning
+          : event.type == RoadEventType.safetyCamera
+          ? WaybiColors.teal
+          : WaybiColors.coastal;
+      return Semantics(
+        label: _text('Upcoming road event', '前方道路事件'),
+        child: Container(
+          key: const Key('compactRoadEventStrip'),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: dark ? .12 : .09),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: .34)),
+          ),
+          child: Row(
+            children: [
+              Icon(_icon(event.type), color: color, size: 19),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  [
+                    _label(event),
+                    if (event.roadName?.trim().isNotEmpty == true)
+                      event.roadName!.trim(),
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (distance.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  distance,
+                  style: TextStyle(
+                    color: foreground,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+              if (more > 0) ...[
+                const SizedBox(width: 7),
+                Text(
+                  '+$more',
+                  style: TextStyle(
+                    color: muted,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
     final items = <Widget>[
       _TimelineNode(
         icon: Icons.navigation_rounded,

@@ -1,3 +1,4 @@
+import { loadSearchEnrichments, mergeAndRankSearchResults } from './search/search_orchestrator.mjs';
 import { clientKind } from './brand_compat.mjs';
 import { saveNavigationFeedback } from './navigation_feedback.mjs';
 import { handleTrafficTile } from './traffic_tiles.mjs';
@@ -332,6 +333,7 @@ async function handleApi(request, env, ctx) {
     lastSearchAt = Date.now();
     const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
     const near = validateCoordinatePair(url.searchParams.get('near'));
+    const enrichmentPromise = loadSearchEnrichments(query, near).catch(() => []);
     const search = new URL('https://nominatim.openstreetmap.org/search');
     search.searchParams.set('format', 'jsonv2');
     search.searchParams.set('addressdetails', '1');
@@ -346,7 +348,7 @@ async function handleApi(request, env, ctx) {
       search.searchParams.set('bounded', '0');
     }
     const results = await upstreamJson(search.toString(), { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)', 'referer': 'https://github.com/yaohuangguan/Waybi', accept: 'application/json' });
-    return json(rankPlaces(results.map((place) => {
+    const globalResults = results.map((place) => {
       const address = place.address || {};
       const poiClasses = new Set([
         'amenity', 'tourism', 'shop', 'office', 'leisure', 'healthcare',
@@ -366,6 +368,7 @@ async function handleApi(request, env, ctx) {
         : fullAddress;
       return {
         id: place.place_id,
+        provider: 'osm',
         name,
         address: isPoi ? (streetAddress || fullAddress) : fullAddress,
         label: fullAddress,
@@ -373,7 +376,11 @@ async function handleApi(request, env, ctx) {
         latitude: Number(place.lat),
         longitude: Number(place.lon)
       };
-    }), query, near).slice(0, 8));
+    });
+    const enrichments = await enrichmentPromise;
+    return json(
+      mergeAndRankSearchResults([enrichments, globalResults], query, near, 12)
+    );
   }
   if (url.pathname === '/api/route') {
     const from = validateCoordinatePair(url.searchParams.get('from'));

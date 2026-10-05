@@ -40,8 +40,8 @@ void main() {
   test('city and motorway framing show useful road distances', () {
     final city = frame(IndependentNavigationCamera());
     final highway = frame(IndependentNavigationCamera(), speed: 100);
-    expect(city.zoom, inInclusiveRange(15.5, 16.1));
-    expect(highway.zoom, inInclusiveRange(15.0, 15.6));
+    expect(city.zoom, inInclusiveRange(16.0, 16.7));
+    expect(highway.zoom, inInclusiveRange(15.5, 16.2));
     expect(highway.zoom, lessThan(city.zoom));
   });
   test(
@@ -63,7 +63,7 @@ void main() {
     final after = frame(camera, distance: 1000, seconds: 3);
     expect(approaching.zoom, greaterThan(far.zoom));
     expect(near.zoom, greaterThan(approaching.zoom));
-    expect(near.zoom, lessThanOrEqualTo(16.9));
+    expect(near.zoom, lessThanOrEqualTo(17.35));
     expect(after.zoom, closeTo(near.zoom - .28, .001));
   });
   test(

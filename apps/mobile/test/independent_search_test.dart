@@ -166,67 +166,72 @@ void main() {
     provider.dispose();
   });
 
-  test('short local brand search is bounded and ranks the nearby POI over a global place', () async {
-    final provider = IndependentSearchProvider(
-      requestSpacing: Duration.zero,
-      client: MockClient((request) async {
-        expect(request.url.queryParameters['q'], 'taiping');
-        expect(request.url.queryParameters['bbox'], isNotNull);
-        return http.Response.bytes(
-          utf8.encode(
-            jsonEncode({
-              'features': [
-                {
-                  'properties': {
-                    'osm_id': 1,
-                    'osm_type': 'N',
-                    'name': 'Taiping',
-                    'osm_value': 'city',
-                    'city': 'Taiping',
-                    'country': 'Malaysia',
+  test(
+    'short local brand search is locally bounded without country locking',
+    () async {
+      final provider = IndependentSearchProvider(
+        requestSpacing: Duration.zero,
+        client: MockClient((request) async {
+          expect(request.url.queryParameters['q'], 'taiping');
+          expect(request.url.queryParameters['bbox'], isNotNull);
+          expect(request.url.queryParameters['lat'], isNotNull);
+          expect(request.url.queryParameters['lon'], isNotNull);
+          return http.Response.bytes(
+            utf8.encode(
+              jsonEncode({
+                'features': [
+                  {
+                    'properties': {
+                      'osm_id': 1,
+                      'osm_type': 'N',
+                      'name': 'Taiping',
+                      'osm_value': 'city',
+                      'city': 'Taiping',
+                      'country': 'Malaysia',
+                    },
+                    'geometry': {
+                      'coordinates': [100.7439, 4.8547],
+                    },
                   },
-                  'geometry': {
-                    'coordinates': [100.7439, 4.8547],
+                  {
+                    'properties': {
+                      'osm_id': 2,
+                      'osm_type': 'N',
+                      'name': 'Tai Ping',
+                      'osm_value': 'supermarket',
+                      'district': 'Mount Wellington',
+                      'city': 'Maungakiekie-Tāmaki',
+                      'state': 'Auckland',
+                      'country': 'New Zealand',
+                    },
+                    'geometry': {
+                      'coordinates': [174.84335, -36.89950],
+                    },
                   },
-                },
-                {
-                  'properties': {
-                    'osm_id': 2,
-                    'osm_type': 'N',
-                    'name': 'Tai Ping',
-                    'osm_value': 'supermarket',
-                    'district': 'Mount Wellington',
-                    'city': 'Maungakiekie-Tāmaki',
-                    'state': 'Auckland',
-                    'country': 'New Zealand',
-                  },
-                  'geometry': {
-                    'coordinates': [174.84335, -36.89950],
-                  },
-                },
-              ],
-            }),
-          ),
-          200,
-          headers: {'content-type': 'application/json; charset=utf-8'},
-        );
-      }),
-    );
+                ],
+              }),
+            ),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
 
-    final results = await provider.search(
-      'taiping',
-      proximity: const GeoPoint(-36.8485, 174.7633),
-      language: 'en',
-    );
+      final results = await provider.search(
+        'taiping',
+        proximity: const GeoPoint(-36.8485, 174.7633),
+        language: 'en',
+      );
 
-    expect(results.first.name, 'Tai Ping');
-    expect(results.first.category, 'supermarket');
-    expect(results.first.address, contains('Mount Wellington'));
-    provider.dispose();
-  });
+      expect(results.first.name, 'Tai Ping');
+      expect(results.first.category, 'supermarket');
+      expect(results.first.address, contains('Mount Wellington'));
+      provider.dispose();
+    },
+  );
 
   test(
-    'bounded local search still finds an exact destination elsewhere in NZ',
+    'local-first search still finds an exact remote administrative destination',
     () async {
       final boundedFlags = <bool>[];
       final provider = IndependentSearchProvider(
@@ -287,7 +292,7 @@ void main() {
   );
 
   test(
-    'generic airport search expands to the nearest major NZ airport',
+    'generic airport search uses global intent plus proximity anywhere',
     () async {
       final queries = <String>[];
       final provider = IndependentSearchProvider(
@@ -295,45 +300,35 @@ void main() {
         client: MockClient((request) async {
           final query = request.url.queryParameters['q']!;
           queries.add(query);
-          final features = query == 'Auckland Airport'
-              ? [
-                  {
-                    'properties': {
-                      'osm_id': 9,
-                      'osm_type': 'N',
-                      'name': 'Auckland Airport',
-                      'osm_value': 'quarter',
-                    },
-                    'geometry': {
-                      'coordinates': [174.7918, -37.0003],
-                    },
+          return http.Response(
+            jsonEncode({
+              'features': [
+                {
+                  'properties': {
+                    'osm_id': 9,
+                    'osm_type': 'N',
+                    'name': 'Airport Oaks',
+                    'osm_value': 'quarter',
                   },
-                  {
-                    'properties': {
-                      'osm_id': 10,
-                      'osm_type': 'N',
-                      'name': 'Auckland Airport',
-                      'osm_value': 'aerodrome',
-                    },
-                    'geometry': {
-                      'coordinates': [174.7903, -37.0066],
-                    },
+                  'geometry': {
+                    'coordinates': [174.7756, -36.9887],
                   },
-                ]
-              : [
-                  {
-                    'properties': {
-                      'osm_id': 11,
-                      'osm_type': 'N',
-                      'name': 'Airport Oaks',
-                      'osm_value': 'quarter',
-                    },
-                    'geometry': {
-                      'coordinates': [174.7756, -36.9887],
-                    },
+                },
+                {
+                  'properties': {
+                    'osm_id': 10,
+                    'osm_type': 'N',
+                    'name': 'Auckland Airport',
+                    'osm_value': 'aerodrome',
                   },
-                ];
-          return http.Response(jsonEncode({'features': features}), 200);
+                  'geometry': {
+                    'coordinates': [174.7903, -37.0066],
+                  },
+                },
+              ],
+            }),
+            200,
+          );
         }),
       );
 
@@ -343,7 +338,7 @@ void main() {
         language: 'en',
       );
 
-      expect(queries, ['Auckland Airport']);
+      expect(queries, ['Airport']);
       expect(results.first.name, 'Auckland Airport');
       expect(results.first.category, 'aerodrome');
       provider.dispose();

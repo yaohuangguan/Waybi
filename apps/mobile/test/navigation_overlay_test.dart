@@ -19,6 +19,7 @@ void main() {
     });
     final engine = DriveEngine();
     var recenterCount = 0;
+    var overviewCount = 0;
     final insets = <double>[];
     final bottomInsets = <double>[];
     addTearDown(engine.dispose);
@@ -40,7 +41,7 @@ void main() {
                   lanesEnabled: true,
                   onEnd: () {},
                   onRecenter: () => recenterCount += 1,
-                  onOverview: () {},
+                  onOverview: () => overviewCount += 1,
                   northUp: false,
                   onCompassToggle: () {},
                   onReport: () {},
@@ -81,7 +82,8 @@ void main() {
 
     await tester.tap(find.byTooltip('Route overview'));
     await tester.pump();
-    expect(recenterCount, 1);
+    expect(recenterCount, 0);
+    expect(overviewCount, 1);
 
     // Drag from destination content, well outside the small handle.
     final start = tester.getCenter(
@@ -147,8 +149,9 @@ void main() {
       ),
     );
 
-    expect(find.byTooltip('Follow my location'), findsOneWidget);
-    await tester.tap(find.byTooltip('Follow my location'));
+    expect(find.byTooltip('Re-center on my location'), findsOneWidget);
+    expect(find.byKey(const Key('navigationRecenterButton')), findsOneWidget);
+    await tester.tap(find.byTooltip('Re-center on my location'));
     await tester.pump();
     expect(taps, 1);
   });

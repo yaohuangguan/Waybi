@@ -2,6 +2,7 @@ import { independentExplore } from './independent_explore.mjs';
 import { geoapifyExplore } from './compatible_places.mjs';
 import { parseLonLat } from './geo.mjs';
 import { rankPlaces } from './place_search_rank.mjs';
+import { loadSearchEnrichments, mergeAndRankSearchResults, needsAddressEnrichment } from './search/search_orchestrator.mjs';
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -20,6 +21,20 @@ function localizedText(value) {
   if (typeof value === 'string') return value;
   return typeof value.text === 'string' ? value.text : '';
 }
+
+const GOOGLE_ADDRESS_TYPES = new Set([
+  'street_address', 'premise', 'subpremise', 'route', 'postal_code',
+  'intersection', 'plus_code'
+]);
+
+export function googlePlaceIsPoi(place, query = '') {
+  const types = Array.isArray(place?.types) ? place.types : [];
+  if (types.some((type) => GOOGLE_ADDRESS_TYPES.has(type))) return false;
+  const formatted = String(place?.formattedAddress || '').trim().toLowerCase();
+  const requestedHouse = String(query).trim().match(/^\d+[A-Za-z]?(?:[-/]\d+[A-Za-z]?)?\s+/)?.[0]?.trim().toLowerCase();
+  return !(requestedHouse && formatted.startsWith(requestedHouse + ' '));
+}
+
 
 function isGeoapifyPoi(place) {
   if (!place?.name) return false;
@@ -54,13 +69,14 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     }
 
     const point = geoPoint(url.searchParams.get('near'));
+    const enrichmentPromise = loadSearchEnrichments(query, point).catch(() => []);
     const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
     const googleKey = placesApiKey(env);
     if (googleKey && url.searchParams.get('provider') !== 'geoapify') {
       const body = {
         textQuery: query,
         languageCode: prefersChinese ? 'zh-CN' : 'en',
-        pageSize: 10
+        pageSize: 12
       };
       if (point) {
         body.locationBias = {
@@ -76,7 +92,7 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
         headers: {
           'content-type': 'application/json',
           'X-Goog-Api-Key': googleKey,
-          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName'
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName,places.types'
         },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000)
@@ -87,14 +103,23 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
         name: localizedText(place.displayName) || place.formattedAddress || query,
         address: place.formattedAddress || '',
         label: place.formattedAddress || localizedText(place.displayName) || query,
-        isPoi: true,
+        isPoi: googlePlaceIsPoi(place, query),
         resultType: localizedText(place.primaryTypeDisplayName),
         latitude: Number(place.location?.latitude),
         longitude: Number(place.location?.longitude)
       })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
+      let local = [];
       if (google.ok) {
-        const local = mapGooglePlaces(await google.json());
-        if (local.length) return json(rankPlaces(local, query, point));
+        local = mapGooglePlaces(await google.json());
+        if (local.length) {
+          if (!needsAddressEnrichment(local, query)) {
+            return json(mergeAndRankSearchResults([local], query, point, 12));
+          }
+          const enrichments = await enrichmentPromise;
+          return json(
+            mergeAndRankSearchResults([enrichments, local], query, point, 12)
+          );
+        }
       }
 
       trackUsage('google', 'places_text_search', 1);
@@ -103,18 +128,29 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
         headers: {
           'content-type': 'application/json',
           'X-Goog-Api-Key': googleKey,
-          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName'
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.primaryTypeDisplayName,places.types'
         },
         body: JSON.stringify({
           textQuery: query,
           languageCode: prefersChinese ? 'zh-CN' : 'en',
-          pageSize: 10
+          pageSize: 12
         }),
         signal: AbortSignal.timeout(10000)
       });
       if (globalGoogle.ok) {
         const global = mapGooglePlaces(await globalGoogle.json());
-        if (global.length) return json(rankPlaces(global, query, point));
+        const enrichments = await enrichmentPromise;
+        const merged = mergeAndRankSearchResults(
+          [enrichments, local, global], query, point, 12
+        );
+        if (merged.length) return json(merged);
+      }
+      if (local.length) {
+        if (!needsAddressEnrichment(local, query)) {
+          return json(mergeAndRankSearchResults([local], query, point, 12));
+        }
+        const enrichments = await enrichmentPromise;
+        return json(mergeAndRankSearchResults([enrichments, local], query, point, 12));
       }
     }
 
@@ -161,7 +197,13 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     });
     if (localUpstream.ok) {
       const local = mapGeoapifyPlaces(await localUpstream.json());
-      if (local.length) return json(rankPlaces(local, query, point));
+      if (local.length) {
+        if (!needsAddressEnrichment(local, query)) {
+          return json(mergeAndRankSearchResults([local], query, point, 12));
+        }
+        const enrichments = await enrichmentPromise;
+        return json(mergeAndRankSearchResults([enrichments, local], query, point, 12));
+      }
     }
 
     trackUsage('geoapify', 'autocomplete', 1);
@@ -169,7 +211,15 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
       signal: AbortSignal.timeout(10000)
     });
     if (!globalUpstream.ok) return json({ error: 'Address autocomplete unavailable' }, 502);
-    return json(rankPlaces(mapGeoapifyPlaces(await globalUpstream.json()), query, point));
+    const enrichments = await enrichmentPromise;
+    return json(
+      mergeAndRankSearchResults(
+        [enrichments, mapGeoapifyPlaces(await globalUpstream.json())],
+        query,
+        point,
+        12
+      )
+    );
   }
   if (url.pathname === '/api/explore') {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
@@ -194,7 +244,7 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     };
     const fieldMask = [
       'places.id', 'places.displayName', 'places.formattedAddress',
-      'places.primaryTypeDisplayName', 'places.rating', 'places.userRatingCount',
+      'places.primaryTypeDisplayName,places.types', 'places.rating', 'places.userRatingCount',
       'places.priceLevel', 'places.currentOpeningHours.openNow',
       'places.photos', 'places.location', 'places.types'
     ].join(',');

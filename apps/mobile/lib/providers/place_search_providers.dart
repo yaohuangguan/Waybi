@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import '../data/api_config.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
+import 'regional_query_aliases.dart';
 import 'provider_contracts.dart';
 
 class WorkerSearchProvider implements SearchProvider, ExploreProvider {
@@ -34,25 +35,32 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
           'near': '${proximity.longitude},${proximity.latitude}',
       },
     );
+    final fallbackUri = Uri.parse('$workerBaseUrl/api/search').replace(
+      queryParameters: {
+        'q': query,
+        'lang': language,
+        if (proximity != null)
+          'near': '${proximity.longitude},${proximity.latitude}',
+      },
+    );
     var response = await _client.get(uri).timeout(const Duration(seconds: 12));
-    if (response.statusCode == 503 && !mapCompatible) {
+    var data = response.statusCode == 200
+        ? jsonDecode(response.body) as List<dynamic>
+        : const <dynamic>[];
+    if (!mapCompatible &&
+        (response.statusCode == 502 ||
+            response.statusCode == 503 ||
+            data.isEmpty)) {
       response = await _client
-          .get(
-            Uri.parse('$workerBaseUrl/api/search').replace(
-              queryParameters: {
-                'q': query,
-                'lang': language,
-                if (proximity != null)
-                  'near': '${proximity.longitude},${proximity.latitude}',
-              },
-            ),
-          )
+          .get(fallbackUri)
           .timeout(const Duration(seconds: 12));
+      if (response.statusCode == 200) {
+        data = jsonDecode(response.body) as List<dynamic>;
+      }
     }
     if (response.statusCode != 200) {
       throw StateError('Search unavailable: ${response.statusCode}');
     }
-    final data = jsonDecode(response.body) as List<dynamic>;
     final results = data
         .whereType<Map<String, dynamic>>()
         .map((item) {
@@ -64,7 +72,8 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
           final name = item['name']?.toString().trim() ?? '';
           final address = item['address']?.toString().trim() ?? '';
           final displayName = name.isEmpty ? label : name;
-          final isAddress = RegExp(r'^\d+\s').hasMatch(displayName);
+          final isAddress =
+              item['isPoi'] == false || RegExp(r'^\d+\s').hasMatch(displayName);
           return PlaceCandidate(
             name: displayName,
             address: address.isEmpty ? label : address,
@@ -78,7 +87,15 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
         })
         .whereType<PlaceCandidate>()
         .toList();
-    return List.unmodifiable(results);
+    final deduped = <PlaceCandidate>[];
+    final seen = <String>{};
+    for (final result in results) {
+      final key = result.reference == null
+          ? '${result.name.toLowerCase()}|${result.location}'
+          : '${result.reference!.provider}:${result.reference!.id}';
+      if (seen.add(key)) deduped.add(result);
+    }
+    return List.unmodifiable(deduped);
   }
 
   void dispose() => _client.close();
@@ -166,8 +183,7 @@ class IndependentSearchProvider
             Uri.parse('$_base/$path').replace(queryParameters: parameters),
             headers: {
               'Accept': 'application/json',
-              if (!kIsWeb)
-                'User-Agent': 'Waybi/1.0 (+https://waybi.co)',
+              if (!kIsWeb) 'User-Agent': 'Waybi/1.0 (+https://waybi.co)',
             },
           )
           .timeout(const Duration(seconds: 12));
@@ -272,6 +288,85 @@ class IndependentSearchProvider
     '',
   );
 
+  static final _streetAddressPattern = RegExp(
+    r'^\d+[A-Za-z]?(?:\s*/\s*\d+[A-Za-z]?)?\s+.+\s+(?:road|rd|street|st|drive|dr|avenue|ave|lane|ln|place|pl|crescent|cres|terrace|tce|court|ct|close|cl|parade|pde|highway|hwy|way)\.?$',
+    caseSensitive: false,
+  );
+
+  Future<List<PlaceSummary>> _globalAddressSupplement(
+    String query,
+    GeoPoint? proximity,
+    String language,
+  ) async {
+    if (!_streetAddressPattern.hasMatch(query.trim())) return const [];
+    try {
+      final params = {
+        'q': query.trim(),
+        'lang': language,
+        if (proximity != null)
+          'near': '${proximity.longitude},${proximity.latitude}',
+      };
+      final headers = {
+        'Accept': 'application/json',
+        if (!kIsWeb) 'User-Agent': 'Waybi/1.0 (+https://waybi.co)',
+      };
+      var response = await _client
+          .get(
+            Uri.parse('$workerBaseUrl/api/suggest')
+                .replace(queryParameters: {...params, 'provider': 'geoapify'}),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 9));
+      var decoded = response.statusCode == 200
+          ? jsonDecode(response.body) as List<dynamic>
+          : const <dynamic>[];
+      if (response.statusCode == 502 ||
+          response.statusCode == 503 ||
+          decoded.isEmpty) {
+        response = await _client
+            .get(
+              Uri.parse('$workerBaseUrl/api/search')
+                  .replace(queryParameters: params),
+              headers: headers,
+            )
+            .timeout(const Duration(seconds: 9));
+        decoded = response.statusCode == 200
+            ? jsonDecode(response.body) as List<dynamic>
+            : const <dynamic>[];
+      }
+      if (response.statusCode != 200) return const [];
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .map((item) {
+            final latitude = item['latitude'];
+            final longitude = item['longitude'];
+            if (latitude is! num || longitude is! num) return null;
+            final provider = item['provider']?.toString() ?? 'osm';
+            if (provider != 'osm' &&
+                provider != 'geoapify' &&
+                !provider.startsWith('regional:')) {
+              return null;
+            }
+            final name = item['name']?.toString().trim() ?? '';
+            final address = item['address']?.toString().trim() ?? '';
+            return PlaceSummary(
+              name: name.isEmpty ? address : name,
+              address: address,
+              location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
+              kind: PlaceKind.address,
+              reference: ProviderReference(
+                provider,
+                item['id']?.toString() ?? address,
+              ),
+            );
+          })
+          .whereType<PlaceSummary>()
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
   bool _nameMatchesCore(PlaceSummary place, String core) {
     final name = _compactSearchText(place.name);
     final wanted = _compactSearchText(core);
@@ -280,17 +375,7 @@ class IndependentSearchProvider
         (name.contains(wanted) || wanted.contains(name));
   }
 
-  static const _regionalSearchAnchors = <(String, GeoPoint)>[
-    ('Auckland', GeoPoint(-36.8485, 174.7633)),
-    ('Hamilton', GeoPoint(-37.7870, 175.2793)),
-    ('Tauranga', GeoPoint(-37.6878, 176.1651)),
-    ('Wellington', GeoPoint(-41.2866, 174.7756)),
-    ('Christchurch', GeoPoint(-43.5321, 172.6362)),
-    ('Dunedin', GeoPoint(-45.8788, 170.5028)),
-    ('Queenstown', GeoPoint(-45.0312, 168.6626)),
-  ];
-
-  static const _regionalIntents = {
+  static const _localizedCategoryIntents = {
     'airport': 'Airport',
     'international airport': 'Airport',
     '机场': 'Airport',
@@ -308,29 +393,8 @@ class IndependentSearchProvider
     '渡轮': 'Ferry Terminal',
   };
 
-  String? _regionalIntentQuery(String query, GeoPoint? proximity) {
-    if (proximity == null) return null;
-    final intent = _regionalIntents[query.toLowerCase().trim()];
-    if (intent == null) return null;
-    (String, GeoPoint)? nearest;
-    var nearestMeters = double.infinity;
-    for (final region in _regionalSearchAnchors) {
-      final metres = distanceMeters(
-        proximity.latitude,
-        proximity.longitude,
-        region.$2.latitude,
-        region.$2.longitude,
-      );
-      if (metres < nearestMeters) {
-        nearest = region;
-        nearestMeters = metres;
-      }
-    }
-    // Use city intent expansion only when the map/search origin is genuinely
-    // in that metro area. Outside those regions Photon keeps its normal ranking.
-    if (nearest == null || nearestMeters > 160000) return null;
-    return '${nearest.$1} $intent';
-  }
+  String? _localizedIntentQuery(String query) =>
+      _localizedCategoryIntents[query.toLowerCase().trim()];
 
   static const _poiCategories = {
     'supermarket',
@@ -369,47 +433,11 @@ class IndependentSearchProvider
     'locality',
   };
 
-  bool _queryNamesAnotherRegion(String query) {
-    final lower = query.toLowerCase();
-    if (lower.contains('new zealand') || RegExp(r'\bnz\b').hasMatch(lower)) {
-      return true;
-    }
-    return _regionalSearchAnchors.any(
-      (region) => lower.contains(region.$1.toLowerCase()),
-    );
-  }
-
-  bool _shouldBoundLocally(String query, GeoPoint? proximity) =>
-      proximity != null &&
-      proximity.isValid &&
-      !_queryNamesAnotherRegion(query);
-
-  bool _inNewZealand(GeoPoint? point) =>
-      point != null &&
-      point.latitude > -48 &&
-      point.latitude < -34 &&
-      point.longitude > 166 &&
-      point.longitude < 179;
-
-  // Verified local trading names bridge gaps in the public multilingual index.
-  // They change the query, never fabricate a destination or its coordinates.
-  String _localTradingName(String query, GeoPoint? proximity) {
-    if (!_inNewZealand(proximity)) return query;
-    const aliases = {
-      '福地': 'Foodie Asian Supermarket',
-      '福地超市': 'Foodie Asian Supermarket',
-      '福地亚洲超市': 'Foodie Asian Supermarket',
-      '太平超市': 'Tai Ping',
-      '太平亚洲超市': 'Tai Ping',
-    };
-    return aliases[query.replaceAll(RegExp(r'\s+'), '')] ?? query;
-  }
-
   bool _isCategoryIntent(String query) {
     final normalized = query.toLowerCase().trim().replaceAll(' ', '_');
     return _poiCategories.contains(normalized) ||
         _genericSearchWords.contains(query.toLowerCase().trim()) ||
-        _regionalIntents.containsKey(query.toLowerCase().trim());
+        _localizedCategoryIntents.containsKey(query.toLowerCase().trim());
   }
 
   bool _strongNameMatch(PlaceSummary place, String query) {
@@ -419,6 +447,8 @@ class IndependentSearchProvider
   }
 
   String _localBbox(GeoPoint center) {
+    // Roughly metro-scale everywhere on Earth. Longitude expands towards the
+    // poles so the local-first behavior is geographic, not country-specific.
     const latRadius = .65;
     final lonRadius =
         (latRadius /
@@ -430,6 +460,39 @@ class IndependentSearchProvider
       (center.longitude + lonRadius).clamp(-180, 180).toStringAsFixed(4),
       (center.latitude + latRadius).clamp(-90, 90).toStringAsFixed(4),
     ].join(',');
+  }
+
+  bool _automaticGlobalCandidate(
+    PlaceSummary place,
+    String query,
+    GeoPoint proximity,
+  ) {
+    final metres = distanceMeters(
+      proximity.latitude,
+      proximity.longitude,
+      place.location.latitude,
+      place.location.longitude,
+    );
+    if (metres <= 250000) return true;
+
+    final wanted = _compactSearchText(query);
+    final name = _compactSearchText(place.name);
+    final address = _compactSearchText(place.address);
+    final exactOrContained =
+        wanted.isNotEmpty &&
+        (name == wanted ||
+            name.contains(wanted) ||
+            wanted.contains(name) ||
+            address.contains(wanted));
+    if (!exactOrContained) return false;
+
+    // Named cities/regions and explicit street addresses should work globally
+    // without a mode switch. For ambiguous non-Latin POI names, keep remote
+    // namesakes behind the explicit "Search further" action.
+    if (_administrativeCategories.contains(place.category)) return true;
+    if (_streetAddressPattern.hasMatch(query.trim())) return true;
+    final containsCjk = RegExp(r'[\u3400-\u9fff\uf900-\ufaff]').hasMatch(query);
+    return !containsCjk;
   }
 
   double _resultRank(
@@ -464,9 +527,7 @@ class IndependentSearchProvider
     }
     final category = place.category.toLowerCase();
     if (_poiCategories.contains(category)) rank -= 9000;
-    if (_administrativeCategories.contains(category) &&
-        !_queryNamesAnotherRegion(query) &&
-        name != wanted) {
+    if (_administrativeCategories.contains(category) && name != wanted) {
       rank += 12000;
     }
     if (preferredName?.toLowerCase().contains('airport') == true) {
@@ -495,13 +556,13 @@ class IndependentSearchProvider
     bool localBias = true,
   }) => {
     'q': query,
-    'limit': localBias ? '16' : '8',
+    'limit': localBias ? '16' : '10',
     'lang': 'en',
     if (proximity != null) 'lat': proximity.latitude.toStringAsFixed(3),
     if (proximity != null) 'lon': proximity.longitude.toStringAsFixed(3),
     if (proximity != null) 'location_bias_scale': '0.1',
-    if (localBias && _shouldBoundLocally(query, proximity))
-      'bbox': _localBbox(proximity!),
+    if (localBias && proximity != null && proximity.isValid)
+      'bbox': _localBbox(proximity),
   };
 
   @override
@@ -527,8 +588,8 @@ class IndependentSearchProvider
   }) async {
     final trimmed = query.trim();
     if (trimmed.runes.length < 2) return [];
-    // The public Photon index only provides en/de/fr/local names. Translate
-    // category intents and NZ city aliases; preserve other names and addresses.
+    // Photon is global. Normalize language/category intent, then apply optional
+    // regional vocabulary adapters without changing the core search algorithm.
     const aliases = {
       '咖啡': 'cafe',
       '咖啡店': 'cafe',
@@ -539,29 +600,41 @@ class IndependentSearchProvider
       '加油站': 'petrol station',
       '医院': 'hospital',
       '停车场': 'parking',
-      '奥克兰': 'Auckland',
-      '惠灵顿': 'Wellington',
-      '基督城': 'Christchurch',
-      '皇后镇': 'Queenstown',
     };
-    final plainQuery = _localTradingName(
+    final plainQuery = resolveRegionalQueryAlias(
       aliases[trimmed] ?? trimmed,
       proximity,
     );
-    final regionalQuery = _regionalIntentQuery(trimmed, proximity);
+    final intentQuery = _localizedIntentQuery(trimmed);
     final coreQuery = _coreBrandQuery(plainQuery);
-    final primaryQuery = regionalQuery ?? plainQuery;
-    final bounded = !expanded && _shouldBoundLocally(primaryQuery, proximity);
+    final primaryQuery = intentQuery ?? plainQuery;
+    final localFirst = !expanded && proximity != null && proximity.isValid;
     var results = await _load(
       'api/',
       _photonParameters(primaryQuery, proximity, localBias: !expanded),
     );
+    final addressSupplement = await _globalAddressSupplement(
+      trimmed,
+      proximity,
+      language,
+    );
+    if (addressSupplement.isNotEmpty) {
+      final merged = <String, PlaceSummary>{};
+      for (final place in [...addressSupplement, ...results]) {
+        final ref = place.reference;
+        final key = ref == null
+            ? '${place.name}|${place.location.latitude}|${place.location.longitude}'
+            : '${ref.provider}:${ref.id}';
+        merged.putIfAbsent(key, () => place);
+      }
+      results = merged.values.toList(growable: false);
+    }
 
-    // A bounded local query keeps short brands local, but must not make long
-    // distance destination search impossible. When the local box has no strong
-    // name match (for example searching a city elsewhere in NZ), merge a global
-    // response and let semantic relevance outrank proximity.
-    if (bounded &&
+    // Normal search is local-first everywhere, never NZ-first. If the local
+    // metro box has no strong semantic match, fetch a global pass. Safe exact
+    // destinations/cities can surface automatically; ambiguous remote CJK POI
+    // names stay behind the explicit "Search further" action.
+    if (localFirst &&
         (results.isEmpty ||
             (coreQuery == null &&
                 !_isCategoryIntent(plainQuery) &&
@@ -573,26 +646,16 @@ class IndependentSearchProvider
         _photonParameters(primaryQuery, proximity, localBias: false),
       );
       final merged = <String, PlaceSummary>{};
-      // A missing local Chinese name must not turn into an overseas namesake.
-      // Keep nearby/NZ destinations and exact named cities. Wider POI results
-      // are available through the explicit "Search further" action.
-      final wider = global.where((place) {
-        if (proximity == null) return true;
-        final metres = distanceMeters(
-          proximity.latitude,
-          proximity.longitude,
-          place.location.latitude,
-          place.location.longitude,
-        );
-        if (metres <= 250000) return true;
-        if (_inNewZealand(proximity) && _inNewZealand(place.location)) {
-          return true;
-        }
-        return !RegExp(r'[\u3400-\u9fff]').hasMatch(plainQuery) &&
-            _administrativeCategories.contains(place.category) &&
-            _strongNameMatch(place, plainQuery);
-      });
-      for (final place in [...results, ...wider]) {
+      for (final place in results) {
+        final ref = place.reference;
+        final key = ref == null
+            ? '${place.name}|${place.location.latitude}|${place.location.longitude}'
+            : '${ref.provider}:${ref.id}';
+        merged.putIfAbsent(key, () => place);
+      }
+      for (final place in global.where(
+        (place) => _automaticGlobalCandidate(place, plainQuery, proximity),
+      )) {
         final ref = place.reference;
         final key = ref == null
             ? '${place.name}|${place.location.latitude}|${place.location.longitude}'
@@ -603,12 +666,10 @@ class IndependentSearchProvider
     }
 
     // Photon can over-weight generic category words. Branded searches retry
-    // the brand portion. Common local intents are expanded before the first
-    // request so "airport" near Auckland is both smarter and faster.
+    // the brand portion. Localized category intents are normalized before the first request;
+    // proximity then picks the relevant nearby instance anywhere in the world.
     final fallbacks = <String>[
-      if (regionalQuery != null &&
-          plainQuery != primaryQuery &&
-          results.isEmpty)
+      if (intentQuery != null && plainQuery != primaryQuery && results.isEmpty)
         plainQuery,
       if (coreQuery != null &&
           coreQuery != primaryQuery &&
@@ -644,15 +705,7 @@ class IndependentSearchProvider
       ..sort((a, b) {
         // Keep explicitly named destinations and brand intent, then rank
         // equally relevant addresses/places by actual distance without a cap.
-        if (proximity != null &&
-            regionalQuery == null &&
-            !_queryNamesAnotherRegion(trimmed)) {
-          bool exactRegion(PlaceSummary p) =>
-              _administrativeCategories.contains(p.category) &&
-              _compactSearchText(p.name) == _compactSearchText(plainQuery) &&
-              p.address.contains('New Zealand');
-          final region = (exactRegion(b) ? 1 : 0) - (exactRegion(a) ? 1 : 0);
-          if (region != 0) return region;
+        if (proximity != null && intentQuery == null) {
           bool matches(PlaceSummary p) => coreQuery != null
               ? _nameMatchesCore(p, coreQuery)
               : _isCategoryIntent(plainQuery)
@@ -664,7 +717,12 @@ class IndependentSearchProvider
           final exactName =
               (_strongNameMatch(b, plainQuery) ? 1 : 0) -
               (_strongNameMatch(a, plainQuery) ? 1 : 0);
-          if (exactName != 0 && coreQuery != null) return exactName;
+          // For exact destinations/POIs the name should beat proximity. For a
+          // numbered street address, equivalent house/street matches should
+          // instead be disambiguated by distance/locality.
+          if (exactName != 0 && !_streetAddressPattern.hasMatch(plainQuery)) {
+            return exactName;
+          }
           final relevance = (matches(b) ? 1 : 0) - (matches(a) ? 1 : 0);
           if (relevance != 0) return relevance;
           double metres(PlaceSummary p) => distanceMeters(
@@ -680,14 +738,14 @@ class IndependentSearchProvider
           a,
           query: plainQuery,
           proximity: proximity,
-          preferredName: regionalQuery,
+          preferredName: intentQuery,
           coreName: coreQuery,
         );
         final bRank = _resultRank(
           b,
           query: plainQuery,
           proximity: proximity,
-          preferredName: regionalQuery,
+          preferredName: intentQuery,
           coreName: coreQuery,
         );
         return aRank.compareTo(bRank);

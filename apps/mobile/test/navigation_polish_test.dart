@@ -165,4 +165,38 @@ void main() {
     expect(find.text('道路施工'), findsOneWidget);
     expect(find.text('350 米'), findsOneWidget);
   });
+
+  testWidgets('collapsed road-event UI is a compact next-event strip', (
+    tester,
+  ) async {
+    const event = RoadEvent(
+      id: 'closure-1',
+      type: RoadEventType.roadClosure,
+      location: _destination,
+      source: RoadEventSource(
+        provider: 'NZTA',
+        country: 'NZ',
+        sourceId: 'closure-1',
+      ),
+      roadName: 'George Bolt Memorial Drive',
+      distanceFromDriver: 1498,
+      severity: RoadEventSeverity.warning,
+    );
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: RoadEventTimeline(
+            events: [event],
+            language: 'zh',
+            dark: false,
+            compact: true,
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('compactRoadEventStrip')), findsOneWidget);
+    expect(find.textContaining('道路封闭'), findsOneWidget);
+    expect(find.textContaining('1.5 公里'), findsOneWidget);
+    expect(find.text('当前'), findsNothing);
+  });
 }

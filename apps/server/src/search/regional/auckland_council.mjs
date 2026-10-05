@@ -1,0 +1,90 @@
+const ENDPOINT = 'https://mapspublic.aucklandcouncil.govt.nz/arcgis3/rest/services/NonCouncil/UnitaryPlanManagementLayers/MapServer/4/query';
+
+function sql(value) {
+  return String(value).replaceAll("'", "''");
+}
+
+function titleWords(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/(^|[\s/-])([a-z])/g, (_match, prefix, letter) => prefix + letter.toUpperCase());
+}
+
+function inServiceArea(near) {
+  if (!near) return false;
+  const [lon, lat] = near;
+  return lon >= 174.2 && lon <= 175.4 && lat >= -37.4 && lat <= -36.2;
+}
+
+export const aucklandCouncilAddressProvider = {
+  id: 'auckland-council',
+  provider: 'regional:auckland-council',
+  supports({ near, parsed }) {
+    return Boolean(parsed && inServiceArea(near));
+  },
+  async search({ parsed, fetcher = fetch }) {
+    const url = new URL(ENDPOINT);
+    const filters = [`UPPER(RoadName)='${sql(parsed.roadName.toUpperCase())}'`];
+    if (parsed.roadType) filters.push(`UPPER(RoadType)='${sql(parsed.roadType)}'`);
+    url.searchParams.set('where', filters.join(' AND '));
+    url.searchParams.set(
+      'outFields',
+      'OBJECTID,FullNumber,RoadName,RoadType,FullAddress,Locality,FullAddress_macron'
+    );
+    url.searchParams.set('returnGeometry', 'true');
+    url.searchParams.set('outSR', '4326');
+    url.searchParams.set('f', 'geojson');
+    url.searchParams.set('resultRecordCount', '40');
+    const response = await fetcher(url, {
+      headers: {
+        'user-agent': 'Waybi/1.0 (+https://waybi.co)',
+        accept: 'application/json'
+      },
+      signal: AbortSignal.timeout(2200)
+    });
+    if (!response.ok) return [];
+    const body = await response.json();
+    const features = Array.isArray(body.features) ? body.features : [];
+    const wantedNumber = Number(parsed.number.split('/').at(-1).match(/^\d+/)?.[0]);
+    const results = features.flatMap((feature) => {
+      const props = feature?.properties || {};
+      const coordinates = feature?.geometry?.coordinates;
+      if (!Array.isArray(coordinates) ||
+          !Number.isFinite(coordinates[0]) ||
+          !Number.isFinite(coordinates[1])) return [];
+      const fullNumber = String(props.FullNumber || '').trim();
+      if (!fullNumber) return [];
+      const road = [titleWords(props.RoadName), titleWords(props.RoadType)]
+        .filter(Boolean)
+        .join(' ');
+      const name = `${fullNumber} ${road}`.trim();
+      const rawFull = String(props.FullAddress_macron || props.FullAddress || name);
+      const postcode = rawFull.match(/\b(\d{4})\s*$/)?.[1] || '';
+      const locality = titleWords(props.Locality || '');
+      const full = [
+        name,
+        locality,
+        ['Auckland', postcode].filter(Boolean).join(' '),
+        'New Zealand'
+      ].filter(Boolean).join(', ');
+      return [{
+        id: `auckland-council:${props.OBJECTID}`,
+        provider: 'regional:auckland-council',
+        sourceName: 'Auckland Council',
+        name,
+        address: full,
+        label: full,
+        isPoi: false,
+        latitude: Number(coordinates[1]),
+        longitude: Number(coordinates[0]),
+        _numberDistance: Number.isFinite(wantedNumber)
+          ? Math.abs(
+              Number(fullNumber.split('/').at(-1).match(/^\d+/)?.[0]) - wantedNumber
+            )
+          : 0
+      }];
+    });
+    results.sort((a, b) => a._numberDistance - b._numberDistance);
+    return results.slice(0, 12).map(({ _numberDistance, ...place }) => place);
+  }
+};

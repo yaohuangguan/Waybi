@@ -19,3 +19,12 @@ test('global results remain available when no nearby candidate exists', () => {
   ], 'Tokyo', [174.7633, -36.8485]);
   assert.equal(ranked[0].name, 'Tokyo');
 });
+
+test('house-number address relevance beats nearby street-only fragments', () => {
+  const near = [174.79, -36.99];
+  const ranked = rankPlaces([
+    { name: 'Verissimo Drive', address: 'Māngere, Auckland 2022, New Zealand', latitude: -36.988, longitude: 174.789 },
+    { name: '42 Verissimo Drive', address: '42 Verissimo Drive, Māngere, Auckland 2022, New Zealand', latitude: -36.9918, longitude: 174.7899 },
+  ], '42 Verissimo Drive', near);
+  assert.equal(ranked[0].name, '42 Verissimo Drive');
+});

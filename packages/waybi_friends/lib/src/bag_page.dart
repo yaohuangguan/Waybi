@@ -4,6 +4,7 @@ import 'game_controller.dart';
 import 'journey_engine.dart';
 import 'packing_status.dart';
 import 'theme.dart';
+import 'friend_strings.dart';
 import 'travel_item_art.dart';
 
 class BagPage extends StatelessWidget {
@@ -24,12 +25,22 @@ class BagPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Little bag',
+              friendText(context, 'Little bag', '小背包'),
               style: Theme.of(context).textTheme.headlineMedium,
             ),
             const SizedBox(height: 6),
             Text(
-              locked ? 'Waybi took this bag along for the journey.' : 'Bring up to two things, or let Waybi travel light. Each item adds a little something to the story.',
+              locked
+                  ? friendText(
+                      context,
+                      'Your friend took this bag along.',
+                      '伙伴带着这个小背包出门了。',
+                    )
+                  : friendText(
+                      context,
+                      'Bring up to two things, or travel light. Each item adds a little something to the story.',
+                      '最多带两件东西，也可以轻装出门。每一件都会让故事多一点惊喜。',
+                    ),
               style: const TextStyle(
                 color: WwhColors.muted,
                 fontSize: 14,
@@ -76,8 +87,17 @@ class BagPage extends StatelessWidget {
                         ],
                         Text(
                           selected.isEmpty
-                              ? 'The bag is almost empty. That is allowed.'
-                              : 'Packed: ${selected.map((id) => itemById(id).name).join(', ')}',
+                              ? friendText(
+                                  context,
+                                  'An empty bag is welcome too.',
+                                  '空背包也可以出发。',
+                                )
+                              : friendText(context, 'Packed: ', '已装好：') +
+                                    selected
+                                        .map(
+                                          (id) => travelItemName(context, id),
+                                        )
+                                        .join('、'),
                           style: const TextStyle(
                             color: WwhColors.ink,
                             fontSize: 16,
@@ -112,9 +132,13 @@ class BagPage extends StatelessWidget {
                               );
                               if (!changed && context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
+                                  SnackBar(
                                     content: Text(
-                                      'The bag is full. Remove an item first.',
+                                      friendText(
+                                        context,
+                                        'The bag is full. Remove an item first.',
+                                        '背包满了，先拿出一件东西吧。',
+                                      ),
                                     ),
                                   ),
                                 );
@@ -151,7 +175,7 @@ class BagPage extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    item.name,
+                                    travelItemName(context, item.id),
                                     style: const TextStyle(
                                       color: WwhColors.ink,
                                       fontSize: 16,
@@ -160,7 +184,7 @@ class BagPage extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 3),
                                   Text(
-                                    item.note,
+                                    travelItemNote(context, item.id),
                                     style: const TextStyle(
                                       color: WwhColors.muted,
                                       fontSize: 13,

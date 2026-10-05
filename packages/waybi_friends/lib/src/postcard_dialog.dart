@@ -3,27 +3,33 @@ import 'package:flutter/material.dart';
 import 'journey_engine.dart';
 import 'models.dart';
 import 'theme.dart';
+import 'friend_strings.dart';
 import 'souvenir_collection.dart';
 
 Future<void> showPostcardDialog(
   BuildContext context,
   JourneyMemory memory,
 ) async {
+  final locale = Localizations.localeOf(context);
   final destination = destinationById(memory.destinationId);
   await showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
-    barrierLabel: 'Close postcard',
+    barrierLabel: friendText(context, 'Close postcard', '关闭明信片'),
     barrierColor: const Color(0x990F190D),
     transitionDuration: const Duration(milliseconds: 360),
     pageBuilder: (context, animation, secondaryAnimation) {
-      return SafeArea(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Material(
-              color: Colors.transparent,
-              child: _Postcard(memory: memory, destination: destination),
+      return Localizations.override(
+        context: context,
+        locale: locale,
+        child: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Material(
+                color: Colors.transparent,
+                child: _Postcard(memory: memory, destination: destination),
+              ),
             ),
           ),
         ),
@@ -72,7 +78,7 @@ class _Postcard extends StatelessWidget {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              _PostcardScene(destination: destination),
+              _PostcardScene(destination: destination, memory: memory),
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
                 child: Column(
@@ -83,7 +89,7 @@ class _Postcard extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            memory.title,
+                            memoryTitle(context, memory),
                             style: Theme.of(context).textTheme.headlineMedium,
                           ),
                         ),
@@ -97,7 +103,18 @@ class _Postcard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(99),
                           ),
                           child: Text(
-                            destination.area,
+                            memory.countryCode ??
+                                friendText(
+                                  context,
+                                  destination.area,
+                                  destination.area == 'Auckland'
+                                      ? '奥克兰'
+                                      : destination.area == 'Hauraki Gulf'
+                                      ? '豪拉基湾'
+                                      : destination.area == 'Waitākere'
+                                      ? '怀塔克雷'
+                                      : '',
+                                ),
                             style: const TextStyle(
                               color: WwhColors.ink,
                               fontSize: 11,
@@ -109,7 +126,7 @@ class _Postcard extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      memory.story,
+                      memoryStory(context, memory),
                       style: const TextStyle(
                         color: WwhColors.ink,
                         fontSize: 15,
@@ -128,8 +145,8 @@ class _Postcard extends StatelessWidget {
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 15),
                         ),
-                        child: const Text(
-                          'Put it in the journal',
+                        child: Text(
+                          friendText(context, 'Put it in the journal', '放进旅行册'),
                           style: TextStyle(fontWeight: FontWeight.w800),
                         ),
                       ),
@@ -146,7 +163,8 @@ class _Postcard extends StatelessWidget {
 }
 
 class _PostcardScene extends StatelessWidget {
-  const _PostcardScene({required this.destination});
+  const _PostcardScene({required this.destination, required this.memory});
+  final JourneyMemory memory;
 
   final Destination destination;
 
@@ -205,7 +223,7 @@ class _PostcardScene extends StatelessWidget {
             left: 20,
             bottom: 10,
             child: Image.asset(
-              'packages/waybi_friends/assets/characters/waybi.png',
+              'packages/waybi_friends/assets/characters/${memory.traveller.name}.png',
               width: 145,
               filterQuality: FilterQuality.high,
             ),
@@ -217,8 +235,8 @@ class _PostcardScene extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'A LITTLE POSTCARD FROM',
+                Text(
+                  friendText(context, 'A LITTLE POSTCARD FROM', '来自旅途的小明信片'),
                   style: TextStyle(
                     color: Color(0xCCFFFFFF),
                     fontSize: 10,
@@ -228,7 +246,7 @@ class _PostcardScene extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  destination.name,
+                  memoryPlace(context, memory),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 27,

@@ -276,6 +276,17 @@ void main() {
       }
       expect(platform.builds, builds);
       expect(platform.updates, isEmpty);
+      // iOS can send the exact final bearing only with its idle event.
+      platform.onCameraIdlePlatform.call(
+        const ml.CameraPosition(
+          target: ml.LatLng(-36.85, 174.76),
+          zoom: 15,
+          bearing: 95,
+        ),
+      );
+      await tester.pump();
+      expect(renderer!.viewport.bearing, 95);
+      expect(platform.builds, builds);
       final a = await tester.startGesture(const Offset(60, 340), pointer: 1);
       final b = await tester.startGesture(const Offset(320, 500), pointer: 2);
       await a.moveTo(const Offset(140, 380));

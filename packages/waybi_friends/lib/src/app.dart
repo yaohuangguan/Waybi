@@ -44,9 +44,12 @@ class _GameShellState extends State<GameShell> {
   void initState() {
     super.initState();
     session = GameSession(
-      controller: widget.controller,
+      controller:
+          widget.controller ??
+          (widget.embedded ? GameController.embedded : null),
       saveKey: widget.embedded ? 'waybi_friends_v1' : 'waybis_way_home_v1',
     );
+    session.ownsController = widget.controller == null && !widget.embedded;
     session.addListener(_changed);
     session.start();
   }
@@ -94,16 +97,21 @@ class _GameShellState extends State<GameShell> {
   }
 
   Future<void> _openPage(Widget page, String title) async {
+    final locale = Localizations.localeOf(context);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => Theme(
-          data: buildWaybiTheme(),
-          child: Scaffold(
-            appBar: AppBar(title: Text(title)),
-            body: SafeArea(
-              child: ListenableBuilder(
-                listenable: controller,
-                builder: (_, _) => page,
+        builder: (pageContext) => Localizations.override(
+          context: pageContext,
+          locale: locale,
+          child: Theme(
+            data: buildWaybiTheme(),
+            child: Scaffold(
+              appBar: AppBar(title: Text(title)),
+              body: SafeArea(
+                child: ListenableBuilder(
+                  listenable: controller,
+                  builder: (_, _) => page,
+                ),
               ),
             ),
           ),

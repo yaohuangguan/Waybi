@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'friend_strings.dart';
 import 'game_controller.dart';
-import 'journey_engine.dart';
 import 'models.dart';
 import 'souvenir_art.dart';
 import 'souvenirs.dart';
@@ -31,7 +30,11 @@ class SouvenirReward extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      friendText(context, 'Waybi brought home', 'Waybi 带回了'),
+                      friendText(
+                        context,
+                        '${memory.traveller.name[0].toUpperCase()}${memory.traveller.name.substring(1)} brought home',
+                        '${memory.traveller.name[0].toUpperCase()}${memory.traveller.name.substring(1)} 带回了',
+                      ),
                       style: const TextStyle(
                         color: WwhColors.muted,
                         fontSize: 12,
@@ -71,95 +74,103 @@ class SouvenirReward extends StatelessWidget {
 }
 
 Future<void> showSouvenir(BuildContext context, JourneyMemory memory) async {
+  final locale = Localizations.localeOf(context);
   final item = souvenirForMemory(memory);
-  final destination = destinationById(memory.destinationId);
+  final place = memoryPlace(context, memory);
   final date = MaterialLocalizations.of(context)
       .formatMediumDate(memory.returnedAt.toLocal());
   await showDialog<void>(
     context: context,
-    builder: (context) => Dialog(
-      backgroundColor: WwhColors.paper,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 430),
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  friendText(
-                    context,
-                    'A LITTLE SOMETHING TO KEEP',
-                    '收藏一点旅途的惊喜',
-                  ),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    letterSpacing: .5,
-                    color: WwhColors.muted,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1ECDD),
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: SouvenirIllustration(item: item, size: 220),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  friendText(context, item.name, item.chineseName),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 23,
-                    fontWeight: FontWeight.w800,
-                    color: WwhColors.ink,
-                  ),
-                ),
-                const SizedBox(height: 9),
-                Text(
-                  '${destination.name} · $date',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: WwhColors.muted, fontSize: 13),
-                ),
-                const SizedBox(height: 20),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8F2E5),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    item.kind == SouvenirKind.letter
-                        ? friendText(
-                            context,
-                            'Dear Clover and Sett,\n\n${memory.story}\n\nSee you by the window.\nLove, Waybi',
-                            '亲爱的 Clover 和 Sett：\n\n${memory.story}\n\n回家后，窗边见。\n想你们的 Waybi',
-                          )
-                        : friendText(
-                            context,
-                            'Waybi found this little keepsake in ${destination.name}.\n\n${memory.story}',
-                            'Waybi 在 ${destination.name} 收下了这件小纪念品。\n\n${memory.story}',
-                          ),
+    builder: (dialogContext) => Localizations.override(
+      context: dialogContext,
+      locale: locale,
+      child: Dialog(
+        backgroundColor: WwhColors.paper,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    friendText(
+                      context,
+                      'A LITTLE SOMETHING TO KEEP',
+                      '收藏一点旅途的惊喜',
+                    ),
                     style: const TextStyle(
-                      color: WwhColors.ink,
-                      fontSize: 14,
-                      height: 1.6,
+                      fontSize: 11,
+                      letterSpacing: .5,
+                      color: WwhColors.muted,
                     ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text(friendText(context, 'Keep it safe', '好好收起来')),
+                  const SizedBox(height: 16),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1ECDD),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: SouvenirIllustration(item: item, size: 220),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 20),
+                  Text(
+                    friendText(context, item.name, item.chineseName),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 23,
+                      fontWeight: FontWeight.w800,
+                      color: WwhColors.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Text(
+                    '$place · $date',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: WwhColors.muted,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8F2E5),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      item.kind == SouvenirKind.letter
+                          ? friendText(
+                              context,
+                              'Dear Clover and Sett,\n\n${memoryStory(context, memory)}\n\nSee you by the window.\nLove, ${memory.traveller.name[0].toUpperCase()}${memory.traveller.name.substring(1)}',
+                              '亲爱的 Clover 和 Sett：\n\n${memoryStory(context, memory)}\n\n回家后，窗边见。\n想你们的 ${memory.traveller.name[0].toUpperCase()}${memory.traveller.name.substring(1)}',
+                            )
+                          : friendText(
+                              context,
+                              'A little keepsake of your journey to $place.\n\n${memoryStory(context, memory)}',
+                              '关于 $place 的小小纪念品。\n\n${memoryStory(context, memory)}',
+                            ),
+                      style: const TextStyle(
+                        color: WwhColors.ink,
+                        fontSize: 14,
+                        height: 1.6,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(friendText(context, 'Keep it safe', '好好收起来')),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

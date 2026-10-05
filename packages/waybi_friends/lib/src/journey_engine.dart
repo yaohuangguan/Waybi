@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'models.dart';
 import 'souvenirs.dart';
+import 'room_life.dart';
 
 const travelItems = <TravelItem>[
   TravelItem(
@@ -137,8 +138,17 @@ const awayLines = <String>[
   'Sett brought a toy to the door and left it there.',
 ];
 
-Destination destinationById(String id) =>
-    destinations.firstWhere((destination) => destination.id == id);
+Destination destinationById(String id) => destinations.firstWhere(
+  (destination) => destination.id == id,
+  orElse: () => Destination(
+    id: id,
+    name: 'Your journey',
+    area: '',
+    emoji: '',
+    memory: '',
+    souvenirs: const [],
+  ),
+);
 
 TravelItem itemById(String id) =>
     travelItems.firstWhere((item) => item.id == id);
@@ -148,9 +158,27 @@ class JourneyEngine {
 
   final Random _random;
 
-  ActiveJourney start(List<String> itemIds, {DateTime? at}) {
+  static const journeyMinutes = [
+    20,
+    35,
+    50,
+    60,
+    90,
+    120,
+    180,
+    300,
+    480,
+    600,
+    720,
+  ];
+
+  ActiveJourney start(
+    List<String> itemIds, {
+    DateTime? at,
+    FriendKind traveller = FriendKind.waybi,
+  }) {
     final destination = destinations[_random.nextInt(destinations.length)];
-    final minutes = 2 + _random.nextInt(7);
+    final minutes = journeyMinutes[_random.nextInt(journeyMinutes.length)];
     final now = at ?? DateTime.now();
 
     return ActiveJourney(
@@ -158,6 +186,7 @@ class JourneyEngine {
       departedAt: now,
       returnAt: now.add(Duration(minutes: minutes)),
       itemIds: List.unmodifiable(itemIds),
+      traveller: traveller,
     );
   }
 
@@ -204,17 +233,50 @@ class JourneyEngine {
         ),
     ];
     final souvenir = weighted[_random.nextInt(weighted.length)];
+    final name = friendName(active.traveller);
 
     return JourneyMemory(
       id: '${active.departedAt.microsecondsSinceEpoch}-${active.destinationId}',
       destinationId: destination.id,
       returnedAt: returnedAt,
       itemIds: active.itemIds,
-      title: 'A little trip to ${destination.name}',
+      title: '$name’s little trip to ${destination.name}',
       story:
-          'Today Waybi found ${destination.memory}. ${details[_random.nextInt(details.length)]} $ending',
+          'Today $name found ${destination.memory}. ${details[_random.nextInt(details.length)].replaceAll('Waybi', name)} ${ending.replaceAll('Waybi', name)}',
+      traveller: active.traveller,
+      titleZh: '$name 的${destinationChineseName(destination.id)}小旅行',
+      storyZh:
+          '$name 今天去了${destinationChineseName(destination.id)}，一路收集阳光、风声和小小的惊喜。${hasCamera ? '停下来拍了几张有趣的照片。' : ''}${hasSnack ? '在路上吃掉了准备好的午餐。' : ''}${hasUmbrella ? '下雨时撑起小伞，听了一会儿雨声。' : ''}${hasToy ? '还带着 Sett 的球玩了一会儿。' : ''}回家时，带回了${souvenir.chineseName}。',
       souvenir: souvenir.name,
       souvenirId: souvenir.id,
+    );
+  }
+
+  JourneyMemory arrival({
+    required String tripId,
+    required String destinationName,
+    String? countryCode,
+    required DateTime at,
+  }) {
+    final country = countryCode?.toUpperCase();
+    final choices = souvenirsForCountry(country);
+    final item = choices[_random.nextInt(choices.length)];
+    return JourneyMemory(
+      id: 'navigation:$tripId',
+      destinationId: 'navigation',
+      destinationName: destinationName,
+      returnedAt: at,
+      itemIds: const [],
+      title: 'A memory of $destinationName',
+      titleZh: '$destinationName 的旅行记忆',
+      story:
+          'You arrived at $destinationName. Waybi saved a little keepsake ${country == null ? 'for this journey' : 'inspired by ${countryEnglishName(country)}'}. A small reminder of a real journey, waiting at home.',
+      storyZh:
+          '你到达了 $destinationName。Waybi 为这段真实旅程收下了一件${country == null ? '' : '${countryChineseName(country)}主题的'}小纪念品，留在家里，慢慢回味。',
+      souvenir: item.name,
+      souvenirId: item.id,
+      sourceTripId: tripId,
+      countryCode: country,
     );
   }
 
@@ -225,3 +287,39 @@ class JourneyEngine {
     return pool[_random.nextInt(pool.length)];
   }
 }
+
+String friendName(FriendKind kind) => switch (kind) {
+  FriendKind.waybi => 'Waybi',
+  FriendKind.clover => 'Clover',
+  FriendKind.sett => 'Sett',
+};
+String destinationChineseName(String id) => switch (id) {
+  'mission_bay' => '使命湾',
+  'devonport' => '德文港',
+  'cornwall_park' => '康沃尔公园',
+  'mt_eden' => '伊甸山',
+  'takapuna' => '塔卡普纳海滩',
+  'waiheke' => '怀赫科岛',
+  'piha' => '皮哈海滩',
+  _ => '旅途',
+};
+String countryEnglishName(String code) => switch (code) {
+  'JP' => 'Japan',
+  'FR' => 'France',
+  'GB' => 'the United Kingdom',
+  'US' => 'the United States',
+  'NZ' => 'New Zealand',
+  'AU' => 'Australia',
+  'CN' => 'China',
+  _ => code,
+};
+String countryChineseName(String code) => switch (code) {
+  'JP' => '日本',
+  'FR' => '法国',
+  'GB' => '英国',
+  'US' => '美国',
+  'NZ' => '新西兰',
+  'AU' => '澳大利亚',
+  'CN' => '中国',
+  _ => code,
+};

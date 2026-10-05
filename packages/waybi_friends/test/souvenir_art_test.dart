@@ -38,7 +38,10 @@ void main() {
           canvas.restore();
         }
         final picture = recorder.endRecording();
-        final image = await picture.toImage(750, 750);
+        final image = await picture.toImage(
+          750,
+          ((SouvenirKind.values.length + 4) ~/ 5) * 150,
+        );
         final data = await image.toByteData(format: ui.ImageByteFormat.png);
         await File(preview).writeAsBytes(data!.buffer.asUint8List());
         image.dispose();

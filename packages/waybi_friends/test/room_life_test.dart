@@ -97,9 +97,8 @@ void main() {
         controller.roomLife
             .sample(now, waybiAway: false)
             .friend(FriendKind.waybi)
-            .position
-            .x,
-        RoomLife.waybiHome.x,
+            .activity,
+        isNot(FriendActivity.away),
       );
       final prefs = await SharedPreferences.getInstance();
       expect(

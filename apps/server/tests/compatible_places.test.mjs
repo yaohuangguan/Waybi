@@ -9,7 +9,9 @@ test('reverse geocoding accepts overseas locations without NZ restriction', asyn
   try {
     const result = await handlePlaces(new Request('https://example.test/api/reverse?at=139.7,35.69'), {});
     assert.equal(result.status,200);
-    assert.match((await result.json()).label,/Tokyo/);
+    const data = await result.json();
+    assert.match(data.label,/Tokyo/);
+    assert.equal(data.countryCode,'JP');
   } finally {globalThis.fetch=previous;}
 });
 

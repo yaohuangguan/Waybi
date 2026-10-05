@@ -40,18 +40,21 @@ class ActiveJourney {
     required this.departedAt,
     required this.returnAt,
     required this.itemIds,
+    this.traveller = FriendKind.waybi,
   });
 
   final String destinationId;
   final DateTime departedAt;
   final DateTime returnAt;
   final List<String> itemIds;
+  final FriendKind traveller;
 
   Map<String, dynamic> toJson() => {
     'destinationId': destinationId,
     'departedAt': departedAt.toIso8601String(),
     'returnAt': returnAt.toIso8601String(),
     'itemIds': itemIds,
+    'traveller': traveller.name,
   };
 
   factory ActiveJourney.fromJson(Map<String, dynamic> json) => ActiveJourney(
@@ -59,6 +62,10 @@ class ActiveJourney {
     departedAt: DateTime.parse(json['departedAt'] as String),
     returnAt: DateTime.parse(json['returnAt'] as String),
     itemIds: List<String>.from(json['itemIds'] as List? ?? const []),
+    traveller: FriendKind.values.firstWhere(
+      (kind) => kind.name == json['traveller'],
+      orElse: () => FriendKind.waybi,
+    ),
   );
 }
 
@@ -72,6 +79,12 @@ class JourneyMemory {
     required this.story,
     required this.souvenir,
     this.souvenirId,
+    this.traveller = FriendKind.waybi,
+    this.titleZh,
+    this.storyZh,
+    this.destinationName,
+    this.countryCode,
+    this.sourceTripId,
   });
 
   final String id;
@@ -82,6 +95,8 @@ class JourneyMemory {
   final String story;
   final String souvenir;
   final String? souvenirId;
+  final FriendKind traveller;
+  final String? titleZh, storyZh, destinationName, countryCode, sourceTripId;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -92,6 +107,12 @@ class JourneyMemory {
     'story': story,
     'souvenir': souvenir,
     'souvenirId': souvenirId,
+    'traveller': traveller.name,
+    'titleZh': titleZh,
+    'storyZh': storyZh,
+    'destinationName': destinationName,
+    'countryCode': countryCode,
+    'sourceTripId': sourceTripId,
   };
 
   factory JourneyMemory.fromJson(Map<String, dynamic> json) => JourneyMemory(
@@ -103,6 +124,15 @@ class JourneyMemory {
     story: json['story'] as String,
     souvenir: json['souvenir'] as String,
     souvenirId: json['souvenirId'] as String?,
+    traveller: FriendKind.values.firstWhere(
+      (kind) => kind.name == json['traveller'],
+      orElse: () => FriendKind.waybi,
+    ),
+    titleZh: json['titleZh'] as String?,
+    storyZh: json['storyZh'] as String?,
+    destinationName: json['destinationName'] as String?,
+    countryCode: json['countryCode'] as String?,
+    sourceTripId: json['sourceTripId'] as String?,
   );
 }
 

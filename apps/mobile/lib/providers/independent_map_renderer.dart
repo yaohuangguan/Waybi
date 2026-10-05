@@ -921,6 +921,13 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                 onMapCreated: (c) => _controller = c,
                 onStyleLoadedCallback: () => unawaited(_styleLoaded()),
                 onCameraMove: _cameraMoved,
+                onCameraIdle: () {
+                  // Native iOS reports the settled position separately from
+                  // movement frames. Keep follow calculations on that final
+                  // bearing and zoom, rather than the last animation frame.
+                  final camera = _controller?.cameraPosition;
+                  if (camera != null) _cameraMoved(camera);
+                },
                 onMapClick: (p, ll) => unawaited(_tap(p, ll)),
                 onMapLongClick: (_, p) => widget.onMapPlace(
                   PlaceSummary(

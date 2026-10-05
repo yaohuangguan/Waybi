@@ -88,8 +88,8 @@ const copy = {
     "friendsLead": "Clover finds the sunny window. Sett trots across the rug. Waybi gets ready for a little adventure. They have their own quiet rhythm, even while you are away.",
     "friendsSteps": [
       [
-        "A room with a life of its own",
-        "Little footsteps, sleepy afternoons and familiar faces. Come back and see what they are up to."
+        "A home and garden with a life of their own",
+        "Sit in the sunshine with Clover, play fetch with Sett, or unfold a map with Waybi. Their walks continue smoothly while you are away."
       ],
       [
         "Pack a tiny adventure",
@@ -97,7 +97,7 @@ const copy = {
       ],
       [
         "A story to keep",
-        "Send Waybi on a short companion trip. Collect illustrated letters, maps, scrolls and little treats, then tap each keepsake to see it up close."
+        "Send any friend exploring for a random 20 minutes to 12 hours. Real navigation arrivals also bring illustrated keepsakes inspired by the destination country."
       ]
     ],
     "friendsEntry": "Find it in Me → Waybi & Friends.",
@@ -133,8 +133,8 @@ const copy = {
         "Use a Waybi navigation link or the Navigate with Waybi action in iPhone Shortcuts to pass an address. Google Calendar controls its own Open with list; Waybi cannot add itself to that list."
       ],
       [
-        "Do my drives send Waybi on a companion trip?",
-        "The companion room currently has its own short trips, postcards and souvenirs. A real drive does not automatically create a companion souvenir."
+        "Do real journeys bring back keepsakes?",
+        "Yes. Confirmed navigation arrivals add a keepsake to your journal. Japan, France, the UK, the US, New Zealand, Australia and China have illustrated country collections, with everyday keepsakes elsewhere. Landmark designs are country-themed gifts, not proof that you visited that landmark."
       ]
     ],
     "footer": "A clearer journey. A little company along the way.",
@@ -219,8 +219,8 @@ const copy = {
     "friendsLead": "Clover 喜欢有阳光的窗边，Sett 会在地毯上小跑，Waybi 正准备下一次小冒险。你不在的时候，他们也有自己的生活节奏。",
     "friendsSteps": [
       [
-        "一间会继续生活的小屋",
-        "小小的脚步，懒洋洋的午后，熟悉的几个身影。回来看看，他们正在做什么。"
+        "有小屋，也有花园",
+        "陪 Clover 晒太阳、和 Sett 玩球，或和 Waybi 看地图。你离开时，他们也会继续慢慢散步。"
       ],
       [
         "打包一段小冒险",
@@ -228,7 +228,7 @@ const copy = {
       ],
       [
         "带回一个小故事",
-        "让 Waybi 去一趟短短的伙伴旅行。收集有插画的信件、地图、卷轴和小点心，点开纪念品，还能放大查看。"
+        "三位伙伴都能出门，随机旅行 20 分钟到 12 小时。完成真实导航后，还会收到目的地国家主题的插画纪念品。"
       ]
     ],
     "friendsEntry": "从 Me（我）→ Waybi & Friends 进入。",
@@ -265,7 +265,7 @@ const copy = {
       ],
       [
         "真实导航会让伙伴自动带回纪念品吗？",
-        "目前小屋有自己的短途旅行、明信片和纪念品循环。完成一次真实导航，还不会自动生成伙伴纪念品。"
+        "会。确认到达后，纪念品会收入旅行册。日本、法国、英国、美国、新西兰、澳大利亚和中国有专属插画收藏，其他地区也有日常小礼物。地标插画是国家主题礼物，不代表实际到访过那个地标。"
       ]
     ],
     "footer": "看清前方，多一点 Waybi 陪伴。",

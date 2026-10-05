@@ -6,6 +6,7 @@ import 'models.dart';
 import 'room_life.dart';
 
 class GameController extends ChangeNotifier {
+  static final embedded = GameController(saveKey: 'waybi_friends_v1');
   GameController({
     DateTime Function()? clock,
     this.saveKey = 'waybis_way_home_v1',
@@ -24,6 +25,7 @@ class GameController extends ChangeNotifier {
   bool _disposed = false;
 
   bool get waybiAway => state.activeJourney != null;
+  bool isAway(FriendKind kind) => state.activeJourney?.traveller == kind;
   static const bagCapacity = 2;
   RoomLife get roomLife => state.roomLife ?? RoomLife(startedAt: clock());
 
@@ -68,15 +70,56 @@ class GameController extends ChangeNotifier {
     return true;
   }
 
-  Future<void> startJourney() async {
+  Future<void> startJourney({FriendKind traveller = FriendKind.waybi}) async {
     if (!ready || waybiAway) return;
     final now = clock();
     state = state.copyWith(
-      activeJourney: engine.start(state.selectedItemIds, at: now),
-      roomLife: roomLife.departing(now),
+      activeJourney: engine.start(
+        state.selectedItemIds,
+        at: now,
+        traveller: traveller,
+      ),
+      roomLife: roomLife.departing(now, traveller),
     );
     _notify();
     await _save();
+  }
+
+  Future<void> changeScene(HomeScene scene) async {
+    if (!ready) return;
+    state = state.copyWith(roomLife: roomLife.changeScene(scene));
+    _notify();
+    await _save();
+  }
+
+  Future<void> interact(FriendKind kind) async {
+    if (!ready || isAway(kind)) return;
+    state = state.copyWith(
+      roomLife: roomLife.interact(kind, clock(), away: waybiAway),
+    );
+    _notify();
+    await _save();
+  }
+
+  /// Called only by a confirmed arrival, with no popup over navigation.
+  Future<JourneyMemory?> rememberArrival({
+    required String tripId,
+    required String destinationName,
+    String? countryCode,
+  }) async {
+    await load();
+    if (state.memories.any((m) => m.sourceTripId == tripId)) return null;
+    final memory = engine.arrival(
+      tripId: tripId,
+      destinationName: destinationName,
+      countryCode: countryCode,
+      at: clock(),
+    );
+    state = state.copyWith(memories: [memory, ...state.memories]);
+    latestReturn = memory;
+    _notify();
+    await _save();
+    return memory;
   }
 
   Future<void> tick() async {

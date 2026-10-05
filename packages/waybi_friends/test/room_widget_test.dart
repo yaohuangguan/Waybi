@@ -38,7 +38,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('Clover'), findsOneWidget);
+      expect(find.byKey(const ValueKey('friend-rig-clover')), findsOneWidget);
       expect(find.text('Sett'), findsOneWidget);
       expect(find.text('Waybi'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('friend-rig-clover')));
@@ -64,7 +64,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byTooltip('Journal'), findsOneWidget);
     expect(find.byTooltip('Bag'), findsOneWidget);
-    expect(find.text('Clover'), findsOneWidget);
+    expect(find.byKey(const ValueKey('friend-rig-clover')), findsOneWidget);
     await tester.tap(find.byTooltip('Journal'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -73,7 +73,7 @@ void main() {
     await tester.tap(find.byTooltip('Back').hitTestable());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Clover'), findsOneWidget);
+    expect(find.byKey(const ValueKey('friend-rig-clover')), findsOneWidget);
     await tester.tap(find.byTooltip('Back').hitTestable());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
@@ -125,9 +125,9 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(tester.takeException(), isNull);
-    await tester.ensureVisible(find.text('Let Waybi wander'));
+    await tester.ensureVisible(find.byKey(const ValueKey('send-friend-out')));
     await tester.pump(const Duration(milliseconds: 100));
-    await tester.tap(find.text('Let Waybi wander'));
+    await tester.tap(find.byKey(const ValueKey('send-friend-out')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(controller.waybiAway, isTrue);
@@ -137,7 +137,7 @@ void main() {
     now = start.add(const Duration(seconds: 6));
     await tester.pump(const Duration(milliseconds: 20));
     expect(find.byKey(const ValueKey('friend-rig-waybi')), findsNothing);
-    expect(find.text('Clover'), findsOneWidget);
+    expect(find.byKey(const ValueKey('friend-rig-clover')), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

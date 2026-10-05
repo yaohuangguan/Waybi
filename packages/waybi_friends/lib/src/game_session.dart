@@ -11,6 +11,7 @@ class GameSession extends ChangeNotifier with WidgetsBindingObserver {
     String saveKey = 'waybis_way_home_v1',
   }) : controller = controller ?? GameController(saveKey: saveKey);
   final GameController controller;
+  bool ownsController = true;
   Timer? _timer;
   bool foreground = true;
   bool _disposed = false;
@@ -71,7 +72,7 @@ class GameSession extends ChangeNotifier with WidgetsBindingObserver {
     _timer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     controller.removeListener(_changed);
-    controller.dispose();
+    if (ownsController) controller.dispose();
     super.dispose();
   }
 }

@@ -358,7 +358,8 @@ export async function handlePlaces(request, env, trackUsage = () => {}) {
     const address = data.address || {};
     return json({ label: [address.road || address.suburb || address.neighbourhood,
       address.suburb || address.city || address.town || address.village,
-      address.city || address.town || address.region].filter(Boolean).filter((item, index, values) => values.indexOf(item) === index).join(', ') || data.display_name });
+      address.city || address.town || address.region].filter(Boolean).filter((item, index, values) => values.indexOf(item) === index).join(', ') || data.display_name,
+      countryCode: typeof address.country_code === 'string' && /^[a-z]{2}$/i.test(address.country_code) ? address.country_code.toUpperCase() : null });
   }
   return null;
 }

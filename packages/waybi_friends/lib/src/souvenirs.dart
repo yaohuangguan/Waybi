@@ -22,6 +22,26 @@ enum SouvenirKind {
   token,
   fern,
   keepsake,
+  eiffel,
+  croissant,
+  torii,
+  mochi,
+  bigBen,
+  tea,
+  liberty,
+  pretzel,
+  hollywood,
+  palm,
+  skyTower,
+  pavlova,
+  operaHouse,
+  koala,
+  orientalPearl,
+  dumpling,
+  shenzhen,
+  greatWall,
+  palace,
+  teaScroll,
 }
 
 class SouvenirItem {
@@ -234,12 +254,186 @@ const souvenirItems = <SouvenirItem>[
   ),
 ];
 
+const regionalSouvenirs = <SouvenirItem>[
+  SouvenirItem(
+    'fr-eiffel',
+    'Eiffel Tower postcard',
+    '埃菲尔铁塔明信片',
+    SouvenirKind.eiffel,
+    'FR',
+    '',
+  ),
+  SouvenirItem(
+    'fr-croissant',
+    'Butter croissant',
+    '黄油可颂',
+    SouvenirKind.croissant,
+    'FR',
+    '',
+  ),
+  SouvenirItem(
+    'jp-torii',
+    'Torii travel postcard',
+    '鸟居旅行明信片',
+    SouvenirKind.torii,
+    'JP',
+    '',
+  ),
+  SouvenirItem(
+    'jp-mochi',
+    'Sakura mochi',
+    '樱花麻薯',
+    SouvenirKind.mochi,
+    'JP',
+    '',
+  ),
+  SouvenirItem(
+    'gb-big-ben',
+    'London clocktower postcard',
+    '伦敦钟楼明信片',
+    SouvenirKind.bigBen,
+    'GB',
+    '',
+  ),
+  SouvenirItem(
+    'gb-tea',
+    'Afternoon tea tin',
+    '下午茶小茶罐',
+    SouvenirKind.tea,
+    'GB',
+    '',
+  ),
+  SouvenirItem(
+    'us-liberty',
+    'New York harbour postcard',
+    '纽约港明信片',
+    SouvenirKind.liberty,
+    'US',
+    '',
+  ),
+  SouvenirItem(
+    'us-pretzel',
+    'New York pretzel',
+    '纽约椒盐脆饼',
+    SouvenirKind.pretzel,
+    'US',
+    '',
+  ),
+  SouvenirItem(
+    'us-hollywood',
+    'Los Angeles travel ticket',
+    '洛杉矶旅行票',
+    SouvenirKind.hollywood,
+    'US',
+    '',
+  ),
+  SouvenirItem(
+    'us-palm',
+    'California palm postcard',
+    '加州棕榈明信片',
+    SouvenirKind.palm,
+    'US',
+    '',
+  ),
+  SouvenirItem(
+    'nz-sky-tower',
+    'Auckland skyline postcard',
+    '奥克兰天空塔明信片',
+    SouvenirKind.skyTower,
+    'NZ',
+    '',
+  ),
+  SouvenirItem(
+    'nz-pavlova',
+    'Pavlova cake',
+    '帕芙洛娃蛋糕',
+    SouvenirKind.pavlova,
+    'NZ',
+    '',
+  ),
+  SouvenirItem(
+    'au-opera',
+    'Sydney harbour postcard',
+    '悉尼歌剧院明信片',
+    SouvenirKind.operaHouse,
+    'AU',
+    '',
+  ),
+  SouvenirItem(
+    'au-koala',
+    'Koala keepsake',
+    '考拉小摆件',
+    SouvenirKind.koala,
+    'AU',
+    '',
+  ),
+  SouvenirItem(
+    'cn-shanghai',
+    'Shanghai skyline scroll',
+    '上海天际线卷轴',
+    SouvenirKind.orientalPearl,
+    'CN',
+    '',
+  ),
+  SouvenirItem(
+    'cn-dumpling',
+    'Little dumpling basket',
+    '小笼包蒸笼',
+    SouvenirKind.dumpling,
+    'CN',
+    '',
+  ),
+  SouvenirItem(
+    'cn-shenzhen',
+    'Shenzhen skyline postcard',
+    '深圳天际线明信片',
+    SouvenirKind.shenzhen,
+    'CN',
+    '',
+  ),
+  SouvenirItem(
+    'cn-great-wall',
+    'Great Wall sketch',
+    '长城手绘图',
+    SouvenirKind.greatWall,
+    'CN',
+    '',
+  ),
+  SouvenirItem(
+    'cn-palace',
+    'Beijing palace postcard',
+    '北京宫殿明信片',
+    SouvenirKind.palace,
+    'CN',
+    '',
+  ),
+  SouvenirItem(
+    'cn-tea-scroll',
+    'Tea journey scroll',
+    '茶香旅行卷轴',
+    SouvenirKind.teaScroll,
+    'CN',
+    '',
+  ),
+];
+
+List<SouvenirItem> souvenirsForCountry(String? code) {
+  final local = regionalSouvenirs
+      .where((item) => item.destinationId == code?.toUpperCase())
+      .toList(growable: false);
+  return local.isNotEmpty
+      ? local
+      : souvenirItems
+            .where((item) => item.destinationId.isEmpty)
+            .toList(growable: false);
+}
+
 List<SouvenirItem> souvenirsForDestination(String id) => souvenirItems
     .where((item) => item.destinationId.isEmpty || item.destinationId == id)
     .toList(growable: false);
 
 SouvenirItem souvenirForMemory(JourneyMemory memory) {
-  for (final item in souvenirItems) {
+  for (final item in [...souvenirItems, ...regionalSouvenirs]) {
     if (item.id == memory.souvenirId ||
         item.legacyName == memory.souvenir ||
         item.name == memory.souvenir) {

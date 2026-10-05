@@ -7,15 +7,23 @@ import '../drive/journey_tracker.dart';
 import '../drive/navigation_language.dart';
 import '../theme/waybi_theme.dart';
 import 'waybi_bird.dart';
+import 'navigation_feedback_card.dart';
+import '../data/navigation_feedback_repository.dart';
+
+import 'package:waybi_friends/waybi_friends.dart';
 
 class JourneySummarySheet extends StatelessWidget {
   const JourneySummarySheet({
     super.key,
     required this.summary,
     required this.language,
+    this.reward,
+    this.feedback,
   });
   final JourneySummary summary;
   final String language;
+  final Future<JourneyMemory?>? reward;
+  final NavigationFeedbackRepository? feedback;
   String _text(String en, String zh) => language == 'zh' ? zh : en;
 
   @override
@@ -77,6 +85,37 @@ class JourneySummarySheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
+          NavigationFeedbackCard(
+            tripId: '${summary.startedAt.microsecondsSinceEpoch}',
+            language: language,
+            repository: feedback,
+          ),
+          if (reward != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: FutureBuilder<JourneyMemory?>(
+                future: reward,
+                builder: (context, snapshot) {
+                  final memory = snapshot.data;
+                  if (memory == null) return const SizedBox.shrink();
+                  return Column(
+                    children: [
+                      SouvenirReward(memory: memory),
+                      TextButton.icon(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => FriendsPage(language: language),
+                          ),
+                        ),
+                        icon: const Icon(Icons.pets_rounded),
+                        label: Text(_text('Visit Waybi & Friends', '去看看伙伴')),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: FilledButton(

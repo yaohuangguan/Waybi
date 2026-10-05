@@ -1,4 +1,5 @@
 import { clientKind } from './brand_compat.mjs';
+import { saveNavigationFeedback } from './navigation_feedback.mjs';
 import { handleTrafficTile } from './traffic_tiles.mjs';
 import { parseLonLat, parseNzLonLat } from './geo.mjs';
 import { rankPlaces } from './place_search_rank.mjs';
@@ -97,6 +98,20 @@ async function upstreamJson(url, headers = {}) {
 
 async function handleApi(request, env, ctx) {
   const url = new URL(request.url);
+  if (url.pathname === '/api/navigation-feedback') {
+    if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
+    if (clientKind(request) !== 'mobile') return json({ error: 'Invalid feedback client' }, 403);
+    if (!env.USER_DB) return json({ error: 'Feedback storage unavailable' }, 503);
+    const raw = await request.text();
+    if (raw.length > 1024) return json({ error: 'Feedback is too large' }, 413);
+    let body;
+    try {
+      body = JSON.parse(raw);
+      if (!body || typeof body.id !== 'string' || !/^[a-f0-9]{32}$/.test(body.id) || ![-1, 1].includes(body.vote)) throw new Error();
+    } catch { return json({ error: 'Invalid feedback vote' }, 400); }
+    await saveNavigationFeedback(env.USER_DB, body);
+    return json({ ok: true }, 202);
+  }
   if (url.pathname === '/api/telemetry/usage' && request.method === 'POST') {
     if (clientKind(request) !== 'mobile') {
       return json({ error: 'Invalid telemetry client' }, 403);

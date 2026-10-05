@@ -1301,85 +1301,40 @@ class _PlusCard extends StatelessWidget {
     required this.chinese,
     required this.onOpen,
   });
-
-  final bool isPlus;
-  final bool chinese;
+  final bool isPlus, chinese;
   final VoidCallback onOpen;
-
   String t(String en, String zh) => chinese ? zh : en;
-
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(17),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            WaybiColors.darkOcean,
-            WaybiColors.ocean.withValues(alpha: .92),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: WaybiColors.darkOcean.withValues(alpha: .13),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        colors: [WaybiColors.darkOcean, WaybiColors.ocean],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: const PageStorageKey('waybi-plus-card'),
+        initiallyExpanded: false,
+        collapsedIconColor: Colors.white70,
+        iconColor: WaybiColors.sky,
+        collapsedTextColor: Colors.white,
+        textColor: Colors.white,
+        leading: const Icon(Icons.radar_rounded, color: WaybiColors.sky),
+        title: const Text(
+          'Waybi Plus',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          isPlus
+              ? t('Plus is active', 'Plus 已启用')
+              : t('More help for your everyday trips', '给日常出行多一点帮助'),
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(17, 0, 17, 17),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: WaybiColors.sky.withValues(alpha: .16),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.radar_rounded,
-                  color: WaybiColors.sky,
-                  size: 21,
-                ),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Waybi Plus',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    Text(
-                      isPlus
-                          ? t('Plus is active', 'Plus 已启用')
-                          : t(
-                              'A proactive driving suite, not paid navigation',
-                              '一整套主动驾驶能力，而不是付费导航',
-                            ),
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (isPlus)
-                const Icon(Icons.verified_rounded, color: WaybiColors.sky),
-            ],
-          ),
           const SizedBox(height: 14),
           Text(
             t(
@@ -1445,8 +1400,8 @@ class _PlusCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 class _PlusChip extends StatelessWidget {

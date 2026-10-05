@@ -91,6 +91,25 @@ void _compactPhone(WidgetTester tester) {
 }
 
 void main() {
+  testWidgets('Plus benefits are collapsed until the user opens the card', (tester) async {
+    _compactPhone(tester);
+    final account = AccountRepository()..profile = _profile('free');
+    addTearDown(account.dispose);
+    await tester.pumpWidget(_page(account: account, onSync: () async => _snapshot(3)));
+    await tester.pumpAndSettle();
+    final card = find.byKey(const PageStorageKey('waybi-plus-card'));
+    await tester.ensureVisible(card);
+    expect(find.text('了解 Waybi Plus').hitTestable(), findsNothing);
+    await tester.tap(find.descendant(of: card, matching: find.text('Waybi Plus')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('了解 Waybi Plus'));
+    expect(find.text('了解 Waybi Plus').hitTestable(), findsOneWidget);
+    await tester.ensureVisible(card);
+    await tester.tap(find.descendant(of: card, matching: find.text('Waybi Plus')));
+    await tester.pumpAndSettle();
+    expect(find.text('了解 Waybi Plus').hitTestable(), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('Plus user can manually sync NZTA camera data', (tester) async {
     _compactPhone(tester);
     final account = AccountRepository()..profile = _profile('plus');

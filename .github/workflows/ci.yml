@@ -35,6 +35,12 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      - name: Analyze and test Waybi companions
+        working-directory: packages/waybi_friends
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
       - name: Analyze and test reusable waybi_map package
         working-directory: packages/waybi_map
         run: |
@@ -111,7 +117,7 @@ jobs:
           BEFORE_SHA="${{ github.event.before }}"
           if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "$BEFORE_SHA" "${{ github.sha }}" -- apps/server/migrations; then
+          elif git diff --quiet "$BEFORE_SHA" "${{ github.sha }}" -- migrations; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"

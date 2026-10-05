@@ -19,6 +19,8 @@ import 'data/parking_repository.dart';
 import 'data/route_repository.dart';
 import 'data/quick_location_store.dart';
 import 'data/usage_telemetry_repository.dart';
+import 'data/navigation_reward_repository.dart';
+import 'data/navigation_feedback_repository.dart';
 import 'domain/radar_geometry.dart';
 import 'domain/map_layer_settings.dart';
 import 'domain/map_provider.dart';
@@ -317,6 +319,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       PlaceDetailsRepository();
   final RouteRepository _routeRepository = RouteRepository();
   final UsageTelemetryRepository _usageTelemetry = UsageTelemetryRepository();
+  final _navigationRewards = NavigationRewardRepository();
+  final _navigationFeedback = NavigationFeedbackRepository();
+  Future<String?>? _journeyCountry;
   final ParkingRepository _parkingRepository = ParkingRepository();
   final WorkerSearchProvider _workerSearch = WorkerSearchProvider();
   final IndependentSearchProvider _independentSearch =
@@ -390,7 +395,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _markerSyncing = false;
   bool _useCarMarker = false;
   MapLayerSettings _layers = const MapLayerSettings();
-  NavigationCameraMode _cameraMode = NavigationCameraMode.headingUpFlat;
+  NavigationCameraMode _cameraMode = NavigationCameraMode.northUpFlat;
   String _appLanguage = 'en';
   String _voiceLanguage = 'en-NZ';
   double? _gpsAccuracy;
@@ -1736,6 +1741,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _plusBilling.dispose();
     _account.dispose();
     _usageTelemetry.dispose();
+    _navigationRewards.dispose();
+    _navigationFeedback.dispose();
     _placeDetailsRepository.dispose();
     _parkingRepository.dispose();
     _driveEngine.dispose();
@@ -2144,21 +2151,17 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           location != null &&
           _browseRenderer != null) {
         final navigating = _independentNavigation.active;
-        final heading = _driveEngine.active
-            ? _driveEngine.snappedHeadingDegrees ??
-                  _travelHeading ??
-                  _deviceHeading ??
-                  0
-            : _travelHeading ?? _deviceHeading ?? 0;
+        final heading = navigationForwardBearing(
+          speedKph: _driveEngine.active ? _driveEngine.speedKph : 0,
+          course: _driveEngine.snappedHeadingDegrees ?? _travelHeading,
+          compass: _deviceHeading,
+          routeBearing: _routeInitialBearing,
+        );
         final point = GeoPoint(location.latitude, location.longitude);
         final viewport = navigating
             ? _independentCamera.update(
                 location: point,
-                heading:
-                    _driveEngine.snappedHeadingDegrees ??
-                    _travelHeading ??
-                    _routeInitialBearing ??
-                    heading,
+                heading: heading,
                 speedKph: _driveEngine.speedKph,
                 mode: _activeNavigationRoute?.mode ?? _selectedMode,
                 visibleHeight:
@@ -2398,7 +2401,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (!_following) {
       setState(() {
         _following = true;
-        _cameraMode = NavigationCameraMode.headingUpFlat;
+        _cameraMode = _driveEngine.active
+            ? NavigationCameraMode.headingUpFlat
+            : NavigationCameraMode.northUpFlat;
       });
     } else {
       _toggleCompass();
@@ -3878,6 +3883,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     await _systemNavigation.stop();
     final route = _activeNavigationRoute;
     final summary = _journey?.finish(arrived: arrived);
+    final reward = summary?.arrived == true
+        ? _navigationRewards
+              .complete(summary!, country: _journeyCountry)
+              .catchError((Object _) => null)
+        : null;
+    _journeyCountry = null;
     _journey = null;
     try {
       if (_independentNavigation.active) {
@@ -3930,6 +3941,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _lastCorridorCacheAt = null;
         _destinationTitle = _text('Destination', '目的地');
         _journeyPhase = JourneyPhase.idle;
+        _cameraMode = NavigationCameraMode.northUpFlat;
         _following = true;
         _routeOverviewActive = false;
         _arrivalMode = false;
@@ -3961,8 +3973,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             isScrollControlled: true,
             useSafeArea: true,
             showDragHandle: true,
-            builder: (_) =>
-                JourneySummarySheet(summary: summary, language: _appLanguage),
+            builder: (sheetContext) => Localizations.override(
+              context: sheetContext,
+              locale: Locale(_appLanguage),
+              child: JourneySummarySheet(
+                summary: summary,
+                language: _appLanguage,
+                reward: reward,
+                feedback: _navigationFeedback,
+              ),
+            ),
           ),
         );
       }
@@ -3995,7 +4015,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         await _driveEngine.startLocal(
           initialPosition: _lastReliableBrowsePosition,
         );
-        if (mounted) setState(() => _following = true);
+        if (mounted) {
+          setState(() {
+            _following = true;
+            _cameraMode = NavigationCameraMode.headingUpFlat;
+          });
+        }
         _queueMapRefresh();
         return;
       }
@@ -4029,6 +4054,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _stopDriveMode() async {
     if (_guidanceRunning) await _stopNavigation();
     await _driveEngine.stop();
+    if (mounted) setState(() => _cameraMode = NavigationCameraMode.northUpFlat);
     if (mounted &&
         _appForeground &&
         _mapProvider == MapProvider.independent &&
@@ -4876,6 +4902,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   void _beginJourney(PointOfInterest poi) {
+    _journeyCountry = _navigationRewards.countryAt(
+      GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
+    );
+    unawaited(_navigationFeedback.flush());
     _journey = JourneyTracker(
       target: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
       destination: poi.name,
@@ -6378,11 +6408,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                             _displayLocation!.latitude,
                             _displayLocation!.longitude,
                           ),
-                    heading:
-                        _driveEngine.snappedHeadingDegrees ??
-                        _travelHeading ??
-                        _deviceHeading ??
-                        0,
+                    heading: navigationForwardBearing(
+                      speedKph: _driveEngine.active ? _driveEngine.speedKph : 0,
+                      course:
+                          _driveEngine.snappedHeadingDegrees ?? _travelHeading,
+                      compass: _deviceHeading,
+                      routeBearing: _routeInitialBearing,
+                    ),
                     contentPadding: _guidanceRunning
                         ? _independentNavigationPadding
                         : EdgeInsets.only(

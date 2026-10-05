@@ -119,7 +119,11 @@ class _LivingRoomSceneState extends State<LivingRoomScene>
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  const CustomPaint(painter: _LivingRoomPainter()),
+                  CustomPaint(
+                    painter: widget.life.scene == HomeScene.garden
+                        ? const GardenPainter()
+                        : const _LivingRoomPainter(),
+                  ),
                   Positioned(
                     top: 17,
                     left: 16,
@@ -136,7 +140,14 @@ class _LivingRoomSceneState extends State<LivingRoomScene>
                       child: Text(
                         thoughtActive
                             ? widget.thought!
-                            : roomCaption(context, frame.moment),
+                            : roomCaption(
+                                context,
+                                frame.moment,
+                                scene: widget.life.scene,
+                              ).replaceAll(
+                                'Waybi',
+                                _name(widget.life.traveller),
+                              ),
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: WwhColors.ink,
@@ -229,8 +240,8 @@ class _LivingRoomSceneState extends State<LivingRoomScene>
                           Text(
                             friendText(
                               context,
-                              'Waybi is exploring',
-                              'Waybi 在外探索',
+                              '${_name(widget.life.traveller)} is exploring',
+                              '${_name(widget.life.traveller)} 在外探索',
                             ),
                             style: const TextStyle(
                               color: WwhColors.moss,
@@ -262,8 +273,87 @@ class _LivingRoomSceneState extends State<LivingRoomScene>
         FriendActivity.watching => friendText(context, 'looking out', '看风景'),
         FriendActivity.packing => friendText(context, 'ready to leave', '准备出门'),
         FriendActivity.away => friendText(context, 'exploring', '探索中'),
+        FriendActivity.playing => friendText(context, 'playing', '玩耍中'),
         _ => friendText(context, 'at home', '在家里'),
       };
+}
+
+class GardenPainter extends CustomPainter {
+  const GardenPainter();
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = const Color(0xFFCAE4E7),
+    );
+    canvas.drawCircle(
+      Offset(w * .78, h * .22),
+      w * .085,
+      Paint()..color = const Color(0xFFFFE7A2),
+    );
+    canvas.drawOval(
+      Rect.fromLTWH(-w * .3, h * .4, w * 1.7, h),
+      Paint()..color = const Color(0xFFADC693),
+    );
+    canvas.drawOval(
+      Rect.fromLTWH(-w * .1, h * .62, w * 1.4, h * .48),
+      Paint()..color = const Color(0xFFF0DFBE),
+    );
+    final fence = Paint()
+      ..color = const Color(0xFFF5EDDA)
+      ..strokeWidth = 6;
+    for (double x = 10; x < w; x += 28) {
+      canvas.drawLine(Offset(x, h * .43), Offset(x, h * .62), fence);
+    }
+    canvas.drawLine(Offset(0, h * .48), Offset(w, h * .48), fence);
+    canvas.drawLine(Offset(0, h * .57), Offset(w, h * .57), fence);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(w * .12, h * .67, w * .24, h * .035),
+        const Radius.circular(8),
+      ),
+      Paint()..color = const Color(0xFFB38A63),
+    );
+    for (final x in [.14, .33]) {
+      canvas.drawLine(
+        Offset(w * x, h * .7),
+        Offset(w * x, h * .78),
+        Paint()
+          ..color = const Color(0xFF846747)
+          ..strokeWidth = 7,
+      );
+    }
+    for (var i = 0; i < 12; i++) {
+      final x = w * (.05 + (i % 6) * .18), y = h * (.79 + (i ~/ 6) * .15);
+      canvas.drawLine(
+        Offset(x, y),
+        Offset(x, y + 14),
+        Paint()
+          ..color = WwhColors.moss
+          ..strokeWidth = 2,
+      );
+      for (var n = 0; n < 5; n++) {
+        final angle = n * math.pi * 2 / 5;
+        canvas.drawCircle(
+          Offset(x + math.cos(angle) * 4, y + math.sin(angle) * 4),
+          3.5,
+          Paint()
+            ..color = i.isEven
+                ? const Color(0xFFEAA996)
+                : const Color(0xFFFFF2D1),
+        );
+      }
+      canvas.drawCircle(
+        Offset(x, y),
+        2.5,
+        Paint()..color = const Color(0xFFD5AF61),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant GardenPainter oldDelegate) => false;
 }
 
 class _LivingRoomPainter extends CustomPainter {

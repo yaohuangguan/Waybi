@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'game_controller.dart';
-import 'journey_engine.dart';
 import 'postcard_dialog.dart';
 import 'theme.dart';
 import 'friend_strings.dart';
@@ -48,8 +47,16 @@ class JournalPage extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               memories.isEmpty
-                  ? 'Little journeys will collect here.'
-                  : '${memories.length} little ${memories.length == 1 ? 'journey' : 'journeys'} so far.',
+                  ? friendText(
+                      context,
+                      'Little journeys will collect here.',
+                      '小旅行的记忆会收藏在这里。',
+                    )
+                  : friendText(
+                      context,
+                      '${memories.length} journeys so far.',
+                      '已经收藏 ${memories.length} 段旅行。',
+                    ),
               style: const TextStyle(color: WwhColors.muted, fontSize: 14),
             ),
             const SizedBox(height: 18),
@@ -62,9 +69,7 @@ class JournalPage extends StatelessWidget {
                       separatorBuilder: (_, _) => const SizedBox(height: 13),
                       itemBuilder: (context, index) {
                         final memory = memories[index];
-                        final destination = destinationById(
-                          memory.destinationId,
-                        );
+                        final destinationName = memoryPlace(context, memory);
                         return InkWell(
                           borderRadius: BorderRadius.circular(22),
                           onTap: () => showPostcardDialog(context, memory),
@@ -83,7 +88,7 @@ class JournalPage extends StatelessWidget {
                                   width: 78,
                                   height: 82,
                                   decoration: BoxDecoration(
-                                    color: _toneFor(destination.id),
+                                    color: _toneFor(memory.destinationId),
                                     borderRadius: BorderRadius.circular(17),
                                   ),
                                   child: Center(
@@ -100,7 +105,7 @@ class JournalPage extends StatelessWidget {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        destination.name,
+                                        destinationName,
                                         style: const TextStyle(
                                           color: WwhColors.ink,
                                           fontSize: 17,
@@ -109,7 +114,7 @@ class JournalPage extends StatelessWidget {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        memory.story,
+                                        memoryStory(context, memory),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
@@ -131,7 +136,12 @@ class JournalPage extends StatelessWidget {
                                           ),
                                           Expanded(
                                             child: Text(
-                                              memory.souvenir,
+                                              friendText(
+                                                context,
+                                                souvenirForMemory(memory).name,
+                                                souvenirForMemory(memory)
+                                                    .chineseName,
+                                              ),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: const TextStyle(
@@ -204,8 +214,8 @@ class _EmptyJournal extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
-              'Nothing here yet.',
+            Text(
+              friendText(context, 'Nothing here yet.', '还没有旅行记忆。'),
               style: TextStyle(
                 color: WwhColors.ink,
                 fontSize: 19,
@@ -213,10 +223,14 @@ class _EmptyJournal extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 7),
-            const SizedBox(
+            SizedBox(
               width: 250,
               child: Text(
-                'Pack Waybi a small bag and see what comes home.',
+                friendText(
+                  context,
+                  'Pack a small bag and see what comes home. Real arrivals bring keepsakes too.',
+                  '给伙伴准备小背包，看看会带什么回来。完成真实导航后也会收下纪念品。',
+                ),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: WwhColors.muted, height: 1.45),
               ),

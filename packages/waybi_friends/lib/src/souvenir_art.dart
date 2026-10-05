@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'souvenirs.dart';
+import 'regional_souvenir_art.dart';
 
 /// The bundled PNG illustrations are rendered from this code, so every
 /// collectible has local artwork and works offline without font fallback.
@@ -96,6 +97,27 @@ class SouvenirPainter extends CustomPainter {
       Paint()..color = const Color(0x14606445),
     );
     switch (kind) {
+      case SouvenirKind.eiffel:
+      case SouvenirKind.croissant:
+      case SouvenirKind.torii:
+      case SouvenirKind.mochi:
+      case SouvenirKind.bigBen:
+      case SouvenirKind.tea:
+      case SouvenirKind.liberty:
+      case SouvenirKind.pretzel:
+      case SouvenirKind.hollywood:
+      case SouvenirKind.palm:
+      case SouvenirKind.skyTower:
+      case SouvenirKind.pavlova:
+      case SouvenirKind.operaHouse:
+      case SouvenirKind.koala:
+      case SouvenirKind.orientalPearl:
+      case SouvenirKind.dumpling:
+      case SouvenirKind.shenzhen:
+      case SouvenirKind.greatWall:
+      case SouvenirKind.palace:
+      case SouvenirKind.teaScroll:
+        paintRegionalSouvenir(canvas, kind);
       case SouvenirKind.letter:
         rect(13, 8, 35, 33, const Color(0xFFFFF9E8), r: 2);
         for (var y = 15.0; y < 30; y += 5) {

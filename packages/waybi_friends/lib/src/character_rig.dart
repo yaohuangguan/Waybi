@@ -79,6 +79,48 @@ class CharacterRig extends CustomPainter {
       case FriendKind.sett:
         _dog(canvas);
     }
+    if (pose.activity == FriendActivity.playing) {
+      if (pose.kind == FriendKind.sett) {
+        final y = 82.0 + (reducedMotion ? 0.0 : math.sin(time * 4) * 4);
+        oval(
+          canvas,
+          Rect.fromCircle(center: Offset(86, y), radius: 8),
+          const Color(0xFFB1CF63),
+        );
+        line(
+          canvas,
+          Path()
+            ..moveTo(81, y - 5)
+            ..quadraticBezierTo(89, y, 81, y + 5),
+          cream,
+          1.8,
+        );
+      } else if (pose.kind == FriendKind.waybi) {
+        path(
+          canvas,
+          Path()
+            ..moveTo(15, 75)
+            ..lineTo(36, 72)
+            ..lineTo(56, 78)
+            ..lineTo(77, 73)
+            ..lineTo(77, 91)
+            ..lineTo(56, 96)
+            ..lineTo(36, 90)
+            ..lineTo(15, 95)
+            ..close(),
+          const Color(0xFFF3DFC0),
+        );
+        line(
+          canvas,
+          Path()
+            ..moveTo(24, 87)
+            ..lineTo(40, 81)
+            ..lineTo(61, 87),
+          ink,
+          2,
+        );
+      }
+    }
     canvas.restore();
   }
 

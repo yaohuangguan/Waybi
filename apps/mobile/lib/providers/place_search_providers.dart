@@ -161,7 +161,12 @@ class IndependentSearchProvider
   IndependentSearchProvider({
     http.Client? client,
     this.requestSpacing = const Duration(milliseconds: 750),
-  }) : _client = client ?? http.Client();
+    this.useWorkerSuggestions = false,
+  }) : _client = client ?? http.Client() {
+    if (useWorkerSuggestions) {
+      _fastSearch = WorkerSearchProvider(client: _client);
+    }
+  }
   final http.Client _client;
   static const _base = String.fromEnvironment(
     'KIWI_PHOTON_URL',
@@ -169,7 +174,8 @@ class IndependentSearchProvider
   );
 
   final Duration requestSpacing;
-  final WorkerSearchProvider _fastSearch = WorkerSearchProvider();
+  final bool useWorkerSuggestions;
+  WorkerSearchProvider? _fastSearch;
   final _cache = <String, (DateTime, List<PlaceSummary>)>{};
   final _pending = <String, Future<List<PlaceSummary>>>{};
   static Future<void>? _queue;
@@ -653,9 +659,10 @@ class IndependentSearchProvider
     // substantially faster than serial public-Photon lookups and keeps search
     // quality identical regardless of which map renderer is selected. Photon
     // remains the open-data fallback if Waybi search is slow or unavailable.
-    if (!expanded) {
+    final fastSearch = _fastSearch;
+    if (!expanded && fastSearch != null) {
       try {
-        final fast = await _fastSearch
+        final fast = await fastSearch
             .search(trimmed, proximity: proximity, language: language)
             .timeout(const Duration(milliseconds: 1200));
         if (fast.isNotEmpty) return fast.take(8).toList(growable: false);
@@ -851,8 +858,5 @@ class IndependentSearchProvider
     language: language,
   )).map((p) => p.toPlace(p.location!)).toList(growable: false);
 
-  void dispose() {
-    _fastSearch.dispose();
-    _client.close();
-  }
+  void dispose() => _client.close();
 }

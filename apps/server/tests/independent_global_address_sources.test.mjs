@@ -99,3 +99,61 @@ test('Independent worldwide search accepts TomTom results without Google', async
     globalThis.fetch = previous;
   }
 });
+
+
+test('Independent search collapses duplicate OSM street segments into one street result', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'photon.komoot.io') {
+      return Response.json({
+        features: [
+          {
+            properties: {
+              osm_type: 'W',
+              osm_id: 1,
+              name: 'Verissimo Drive',
+              osm_key: 'highway',
+              osm_value: 'residential',
+              city: 'Auckland',
+              district: 'Māngere',
+              postcode: '2022',
+              country: 'New Zealand',
+            },
+            geometry: { coordinates: [174.7905, -36.9838] },
+          },
+          {
+            properties: {
+              osm_type: 'W',
+              osm_id: 2,
+              name: 'Verissimo Drive',
+              osm_key: 'highway',
+              osm_value: 'residential',
+              city: 'Auckland',
+              district: 'Māngere',
+              postcode: '2150',
+              country: 'New Zealand',
+            },
+            geometry: { coordinates: [174.7917, -36.9822] },
+          },
+        ],
+      });
+    }
+    return new Response('unavailable', { status: 503 });
+  };
+
+  try {
+    const results = await searchIndependentGlobal({
+      query: 'Verissimo Drive unique-street-test',
+      point: [174.79, -36.98],
+      language: 'en',
+      env: {},
+      enrichmentsPromise: Promise.resolve([]),
+    });
+    const streets = results.filter((item) => item.name === 'Verissimo Drive');
+    assert.equal(streets.length, 1);
+    assert.doesNotMatch(streets[0].address, /^Verissimo Drive/i);
+  } finally {
+    globalThis.fetch = previous;
+  }
+});

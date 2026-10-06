@@ -54,7 +54,9 @@ export const aucklandCouncilAddressProvider = {
     if (!response.ok) return [];
     const body = await response.json();
     const features = Array.isArray(body.features) ? body.features : [];
-    const wantedNumber = Number(parsed.number.split('/').at(-1).match(/^\d+/)?.[0]);
+    const wantedNumber = parsed.number
+      ? Number(parsed.number.split('/').at(-1).match(/^\d+/)?.[0])
+      : NaN;
     const results = features.flatMap((feature) => {
       const props = feature?.properties || {};
       const coordinates = feature?.geometry?.coordinates;

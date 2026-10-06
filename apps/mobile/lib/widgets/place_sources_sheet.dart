@@ -11,7 +11,10 @@ void showPlaceSources(
   Iterable<String> providerIds = const [],
 }) {
   final zh = language == 'zh';
+  final providerSet = providerIds.toSet();
   final regionalCredits = regionalCreditsForProviders(providerIds);
+  final hasGeoapify = providerSet.contains('geoapify');
+  final hasTomTom = providerSet.contains('tomtom');
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -56,6 +59,22 @@ void showPlaceSources(
                   mode: LaunchMode.externalApplication,
                 ),
                 child: const Text('© OpenMapTiles · CC BY'),
+              ),
+            if (hasGeoapify)
+              TextButton(
+                onPressed: () => launchUrl(
+                  Uri.parse('https://www.geoapify.com/'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: const Text('Powered by Geoapify'),
+              ),
+            if (hasTomTom)
+              TextButton(
+                onPressed: () => launchUrl(
+                  Uri.parse('https://www.tomtom.com/'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: const Text('© TomTom'),
               ),
             for (final credit in regionalCredits)
               TextButton(

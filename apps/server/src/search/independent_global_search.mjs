@@ -160,6 +160,10 @@ function mapTomTomPlaces(data) {
   });
 }
 
+function ifStreetAddress(isStreetOnly, street) {
+  return isStreetOnly ? '' : street;
+}
+
 function mapPhotonPlaces(data) {
   return (data?.features || []).flatMap((feature) => {
     const props = feature?.properties || {};
@@ -177,8 +181,10 @@ function mapPhotonPlaces(data) {
       .join(' ');
     const name =
       text(props.name) || street || text(props.city) || text(props.country) || 'Place';
+    const isStreetOnly =
+      String(props.osm_key || '') === 'highway' && !text(props.housenumber);
     const parts = [
-      street,
+      ifStreetAddress(isStreetOnly, street),
       props.district,
       props.locality,
       props.city,
@@ -202,7 +208,9 @@ function mapPhotonPlaces(data) {
     );
     return [
       {
-        id: `${props.osm_type || ''}:${props.osm_id || ''}`,
+        id: isStreetOnly
+          ? `street:${name.toLocaleLowerCase()}:${text(props.city).toLocaleLowerCase()}`
+          : `${props.osm_type || ''}:${props.osm_id || ''}`,
         provider: 'osm',
         sourceName: 'OpenStreetMap',
         name,
@@ -353,7 +361,7 @@ async function searchIndependentGlobalUncached({
   // Give exact/numbered addresses a little more time for an authoritative
   // national adapter or commercial geocoder, without blocking typeahead for
   // multiple seconds.
-  await Promise.race([Promise.allSettled(firstWave), wait(550)]);
+  await Promise.race([Promise.allSettled(firstWave), wait(950)]);
   merged = mergeAndRankSearchResults(
     [enrichments, tomtom, geoapify],
     query,

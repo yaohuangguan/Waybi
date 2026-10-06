@@ -43,6 +43,21 @@ void main() {
       independent.canDisplay(const ProviderReference('google', 'g1')),
       isFalse,
     );
+    for (final provider in [
+      'geoapify',
+      'tomtom',
+      'regional:linz-nz-addresses',
+      'derived:address-interpolation',
+    ]) {
+      expect(
+        independent.canDisplay(
+          ProviderReference(provider, 'independent-result'),
+        ),
+        isTrue,
+        reason:
+            '$provider must remain usable when Google map/search is disabled',
+      );
+    }
   });
 
   test('street addresses retain their exact first line', () {

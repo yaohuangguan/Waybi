@@ -3,6 +3,39 @@ import {
   needsAddressEnrichment,
 } from './search_orchestrator.mjs';
 
+const SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
+const SEARCH_CACHE_MAX = 160;
+const searchCache = new Map();
+const searchPending = new Map();
+
+function cacheKey(query, point, language) {
+  return [
+    String(query || '').trim().toLocaleLowerCase(),
+    language || 'en',
+    point ? Number(point[0]).toFixed(2) : '',
+    point ? Number(point[1]).toFixed(2) : '',
+  ].join('|');
+}
+
+function readCache(key) {
+  const cached = searchCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.at > SEARCH_CACHE_TTL_MS) {
+    searchCache.delete(key);
+    return null;
+  }
+  return cached.results;
+}
+
+function writeCache(key, results) {
+  if (!Array.isArray(results) || !results.length) return results;
+  if (searchCache.size >= SEARCH_CACHE_MAX) {
+    searchCache.delete(searchCache.keys().next().value);
+  }
+  searchCache.set(key, { at: Date.now(), results });
+  return results;
+}
+
 function text(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -263,7 +296,7 @@ function wait(ms) {
 /// Fast path: Geoapify + TomTom + applicable official regional/national address
 /// adapters run concurrently. We return as soon as that first wave settles or
 /// reaches a short UI deadline. Photon is only a last-resort open-data fallback.
-export async function searchIndependentGlobal({
+async function searchIndependentGlobalUncached({
   query,
   point,
   language = 'en',
@@ -332,3 +365,19 @@ export async function searchIndependentGlobal({
   const photon = await fetchPhoton({ query, point, language, trackUsage });
   return mergeAndRankSearchResults([photon], query, point, 12);
 }
+
+export function searchIndependentGlobal(args) {
+  const key = cacheKey(args.query, args.point, args.language);
+  const cached = readCache(key);
+  if (cached) return Promise.resolve(cached);
+
+  const existing = searchPending.get(key);
+  if (existing) return existing;
+
+  const pending = searchIndependentGlobalUncached(args)
+    .then((results) => writeCache(key, results))
+    .finally(() => searchPending.delete(key));
+  searchPending.set(key, pending);
+  return pending;
+}
+

@@ -33,3 +33,46 @@ test('regional address enrichment is skipped when global search already has an e
   ], '42 Verissimo Drive'), true);
   assert.equal(needsAddressEnrichment([], 'Auckland Airport'), false);
 });
+
+test('interpolates a missing exact house number from bracketing same-street addresses', async () => {
+  const { mergeAndRankSearchResults } = await import('../src/search/search_orchestrator.mjs');
+  const results = mergeAndRankSearchResults([[
+    {
+      id: '34', provider: 'regional:test', name: '34 Verissimo Drive',
+      address: '34 Verissimo Drive, Mangere, Auckland 2022, New Zealand',
+      label: '34 Verissimo Drive, Mangere, Auckland 2022, New Zealand',
+      isPoi: false, latitude: -36.9882, longitude: 174.7887,
+    },
+    {
+      id: '46', provider: 'regional:test', name: '46 Verissimo Drive',
+      address: '46 Verissimo Drive, Mangere, Auckland 2022, New Zealand',
+      label: '46 Verissimo Drive, Mangere, Auckland 2022, New Zealand',
+      isPoi: false, latitude: -36.9909, longitude: 174.7897,
+    },
+  ]], '42 Verissimo Drive', [174.79, -36.98], 12);
+
+  assert.equal(results[0].name, '42 Verissimo Drive');
+  assert.equal(results[0].provider, 'derived:address-interpolation');
+  assert.equal(results[0].interpolated, true);
+  assert.match(results[0].address, /Mangere, Auckland 2022, New Zealand/);
+});
+
+test('partial numbered street interpolation uses the canonical candidate street name', async () => {
+  const { mergeAndRankSearchResults } = await import('../src/search/search_orchestrator.mjs');
+  const results = mergeAndRankSearchResults([[
+    {
+      id: '34', provider: 'regional:test', name: '34 Verissimo Drive',
+      address: '34 Verissimo Drive, Mangere, Auckland 2022, New Zealand',
+      label: '34 Verissimo Drive, Mangere, Auckland 2022, New Zealand',
+      isPoi: false, latitude: -36.9882, longitude: 174.7887,
+    },
+    {
+      id: '46', provider: 'regional:test', name: '46 Verissimo Drive',
+      address: '46 Verissimo Drive, Mangere, Auckland 2022, New Zealand',
+      label: '46 Verissimo Drive, Mangere, Auckland 2022, New Zealand',
+      isPoi: false, latitude: -36.9909, longitude: 174.7897,
+    },
+  ]], '42 veri', [174.79, -36.98], 12);
+
+  assert.equal(results[0].name, '42 Verissimo Drive');
+});

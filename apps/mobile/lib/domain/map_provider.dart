@@ -83,7 +83,8 @@ class ProviderPolicy {
       reference.provider == 'osm' ||
       reference.provider == 'tomtom' ||
       reference.provider == 'at' ||
-      reference.provider.startsWith('regional:');
+      reference.provider.startsWith('regional:') ||
+      reference.provider.startsWith('derived:');
 }
 
 class ProviderCapabilities {

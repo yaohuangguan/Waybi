@@ -44,7 +44,9 @@ export const linzNzAddressProvider = {
     // address such as "42 Verissimo Drive" use the same fast path.
     url.searchParams.set(
       'where',
-      `UPPER(full_address_ascii) LIKE '${sql(prefix)}%'`
+      parsed.number
+        ? `UPPER(full_address_ascii) LIKE '${sql(prefix)}%'`
+        : `UPPER(road_name_ascii)='${sql([parsed.roadName, parsed.roadType].filter(Boolean).join(' ').toUpperCase())}'`
     );
     url.searchParams.set(
       'outFields',
@@ -67,7 +69,7 @@ export const linzNzAddressProvider = {
 
     const body = await response.json();
     const features = Array.isArray(body.features) ? body.features : [];
-    return features.flatMap((feature) => {
+    const results = features.flatMap((feature) => {
       const props = feature?.properties || {};
       const coordinates = feature?.geometry?.coordinates;
       if (
@@ -120,8 +122,32 @@ export const linzNzAddressProvider = {
           isPoi: false,
           latitude: Number(coordinates[1]),
           longitude: Number(coordinates[0]),
+          _streetLocality: [suburb, city, authority, 'New Zealand']
+            .filter((value, index, values) => value && values.indexOf(value) === index)
+            .join(', '),
         },
       ];
     });
+    if (!parsed.number && results.length) {
+      const latitude = results.reduce((sum, place) => sum + place.latitude, 0) / results.length;
+      const longitude = results.reduce((sum, place) => sum + place.longitude, 0) / results.length;
+      const road = [parsed.roadName, parsed.roadType]
+        .filter(Boolean)
+        .map(titleWords)
+        .join(' ');
+      const locality = results[0]._streetLocality || 'New Zealand';
+      return [{
+        id: `linz-nz-street:${road.toLowerCase()}`,
+        provider: 'regional:linz-nz-addresses',
+        sourceName: 'Toitū Te Whenua LINZ',
+        name: road,
+        address: locality,
+        label: [road, locality].filter(Boolean).join(', '),
+        isPoi: false,
+        latitude,
+        longitude,
+      }];
+    }
+    return results.map(({ _streetLocality, ...place }) => place);
   },
 };

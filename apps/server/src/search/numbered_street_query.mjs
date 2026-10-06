@@ -23,3 +23,17 @@ export function parseNumberedStreetQuery(query) {
   if (!roadName) return null;
   return { number, roadName, roadType };
 }
+
+
+export function parseStreetQuery(query) {
+  const raw = String(query || '').trim().split(',')[0].trim();
+  if (!raw || /^\d/u.test(raw)) return null;
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+  const last = words.at(-1).toUpperCase().replace(/\./g, '');
+  const roadType = ROAD_TYPE_ALIASES.get(last) || null;
+  if (!roadType) return null;
+  words.pop();
+  const roadName = words.join(' ').trim();
+  return roadName ? { number: null, roadName, roadType } : null;
+}

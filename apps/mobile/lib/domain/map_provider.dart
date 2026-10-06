@@ -81,6 +81,7 @@ class ProviderPolicy {
       reference.provider == placeProvider ||
       reference.provider == 'geoapify' ||
       reference.provider == 'osm' ||
+      reference.provider == 'tomtom' ||
       reference.provider == 'at' ||
       reference.provider.startsWith('regional:');
 }

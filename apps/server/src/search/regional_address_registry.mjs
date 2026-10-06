@@ -1,4 +1,4 @@
-import { parseNumberedStreetQuery } from './numbered_street_query.mjs';
+import { parseNumberedStreetQuery, parseStreetQuery } from './numbered_street_query.mjs';
 import { linzNzAddressProvider } from './regional/linz_nz_addresses.mjs';
 import { aucklandCouncilAddressProvider } from './regional/auckland_council.mjs';
 
@@ -19,7 +19,7 @@ export async function searchRegionalAddressEnrichments(
   near,
   fetcher = fetch
 ) {
-  const parsed = parseNumberedStreetQuery(query);
+  const parsed = parseNumberedStreetQuery(query) || parseStreetQuery(query);
   if (!parsed || !near) return [];
 
   const eligible = providers.filter((provider) =>
@@ -27,9 +27,32 @@ export async function searchRegionalAddressEnrichments(
   );
   if (!eligible.length) return [];
 
-  // Search in priority order and stop as soon as an authoritative adapter has
-  // useful results. This keeps typeahead responsive and avoids waiting for
-  // multiple overlapping government datasets.
+  if (!parsed.number && eligible.length > 1) {
+    // Street-name typeahead is latency-sensitive and does not require one
+    // exact house authority to win. Query overlapping official adapters in
+    // parallel and return the first useful street result.
+    return new Promise((resolve) => {
+      let remaining = eligible.length;
+      let settled = false;
+      for (const provider of eligible) {
+        Promise.resolve(provider.search({ query, near, parsed, fetcher }))
+          .then((results) => {
+            if (!settled && Array.isArray(results) && results.length) {
+              settled = true;
+              resolve(results);
+            }
+          })
+          .catch(() => {})
+          .finally(() => {
+            remaining -= 1;
+            if (!settled && remaining === 0) resolve([]);
+          });
+      }
+    });
+  }
+
+  // Numbered addresses preserve provider priority so the broadest official
+  // address authority gets first chance at an exact coordinate.
   for (const provider of eligible) {
     try {
       const results = await provider.search({ query, near, parsed, fetcher });

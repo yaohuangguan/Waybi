@@ -94,6 +94,24 @@ export const aucklandCouncilAddressProvider = {
       }];
     });
     results.sort((a, b) => a._numberDistance - b._numberDistance);
+    if (!parsed.number && results.length) {
+      const first = results[0];
+      const latitude = results.reduce((sum, place) => sum + place.latitude, 0) / results.length;
+      const longitude = results.reduce((sum, place) => sum + place.longitude, 0) / results.length;
+      const road = first.name.replace(/^\S+\s+/u, '');
+      const locality = first.address.split(',').slice(1).join(',').trim();
+      return [{
+        id: `auckland-council:street:${road.toLowerCase()}`,
+        provider: 'regional:auckland-council',
+        sourceName: 'Auckland Council',
+        name: road,
+        address: locality,
+        label: [road, locality].filter(Boolean).join(', '),
+        isPoi: false,
+        latitude,
+        longitude,
+      }];
+    }
     return results.slice(0, 12).map(({ _numberDistance, ...place }) => place);
   }
 };

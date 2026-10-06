@@ -345,8 +345,23 @@ async function searchIndependentGlobalUncached({
       return results;
     });
 
+  // Official regional/national address data is often the fastest and most
+  // precise source for street input. Give it a very short head start: if it
+  // can already produce an exact (or safely interpolated) address/street, do
+  // not hold typeahead open waiting for slower worldwide providers.
+  await Promise.race([regionalPromise, wait(280)]);
+  let regionalOnly = mergeAndRankSearchResults(
+    [enrichments],
+    query,
+    point,
+    12
+  );
+  if (regionalOnly.length && !needsAddressEnrichment(regionalOnly, query)) {
+    return regionalOnly;
+  }
+
   const firstWave = [regionalPromise, geoPromise, tomtomPromise];
-  await Promise.race([Promise.allSettled(firstWave), wait(650)]);
+  await Promise.race([Promise.allSettled(firstWave), wait(520)]);
 
   let merged = mergeAndRankSearchResults(
     [enrichments, tomtom, geoapify],
@@ -361,7 +376,7 @@ async function searchIndependentGlobalUncached({
   // Give exact/numbered addresses a little more time for an authoritative
   // national adapter or commercial geocoder, without blocking typeahead for
   // multiple seconds.
-  await Promise.race([Promise.allSettled(firstWave), wait(950)]);
+  await Promise.race([Promise.allSettled(firstWave), wait(720)]);
   merged = mergeAndRankSearchResults(
     [enrichments, tomtom, geoapify],
     query,

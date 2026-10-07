@@ -149,6 +149,30 @@ class SavedGame {
   final List<JourneyMemory> memories;
   final List<String> selectedItemIds;
 
+  /// Restore memories without replacing an outing or room already in progress.
+  SavedGame mergeArchive(SavedGame archive) {
+    final ids = <String>{};
+    final tripIds = <String>{};
+    final combined = <JourneyMemory>[];
+    for (final memory in [...memories, ...archive.memories]) {
+      if (ids.contains(memory.id) ||
+          (memory.sourceTripId != null &&
+              tripIds.contains(memory.sourceTripId))) {
+        continue;
+      }
+      ids.add(memory.id);
+      if (memory.sourceTripId != null) tripIds.add(memory.sourceTripId!);
+      combined.add(memory);
+    }
+    combined.sort((a, b) => b.returnedAt.compareTo(a.returnedAt));
+    return SavedGame(
+      activeJourney: activeJourney ?? archive.activeJourney,
+      roomLife: roomLife ?? archive.roomLife,
+      memories: combined,
+      selectedItemIds: selectedItemIds,
+    );
+  }
+
   SavedGame copyWith({
     ActiveJourney? activeJourney,
     RoomLife? roomLife,

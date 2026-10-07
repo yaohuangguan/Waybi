@@ -8,6 +8,7 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:waybi_friends/waybi_friends.dart' show GameController;
 import 'package:flutter/services.dart';
 
 import 'data/account_repository.dart';
@@ -82,7 +83,15 @@ import 'widgets/trips_page.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ExternalNavigationInbox.instance.start();
-  await migrateWaybiPreferences(await SharedPreferences.getInstance());
+  final prefs = await SharedPreferences.getInstance();
+  await migrateWaybiPreferences(prefs);
+  if (prefs.containsKey(GameController.embedded.pendingRestoreKey)) {
+    try {
+      await GameController.embedded.load();
+    } catch (_) {
+      // Keep the archive for retry; the room presents its existing load error UI.
+    }
+  }
   runApp(const WaybiApp());
 }
 

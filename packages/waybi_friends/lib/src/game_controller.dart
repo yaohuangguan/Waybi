@@ -15,6 +15,8 @@ class GameController extends ChangeNotifier {
        engine = engine ?? JourneyEngine();
 
   final String saveKey;
+  String get backupKey => '$saveKey.backup';
+  String get pendingRestoreKey => '$saveKey.pending_restore';
   final DateTime Function() clock;
   final JourneyEngine engine;
   SavedGame state = const SavedGame();
@@ -37,12 +39,24 @@ class GameController extends ChangeNotifier {
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(saveKey);
-    if (raw != null) {
+    final backup = prefs.getString(backupKey);
+    if (raw != null || backup != null) {
       try {
-        state = SavedGame.decode(raw);
+        state = SavedGame.decode(raw ?? backup!);
       } catch (_) {
-        state = const SavedGame();
+        // An unreadable save must never silently become a new, empty journal.
+        // Leave the original untouched when no valid backup is available.
+        if (backup == null) rethrow;
+        state = SavedGame.decode(backup);
+        await _save();
       }
+    }
+    final pending = prefs.getString(pendingRestoreKey);
+    if (pending != null) {
+      final archive = SavedGame.decode(pending);
+      state = state.mergeArchive(archive);
+      await _save();
+      await prefs.remove(pendingRestoreKey);
     }
     if (state.roomLife == null) {
       state = state.copyWith(roomLife: RoomLife(startedAt: clock()));
@@ -164,7 +178,14 @@ class GameController extends ChangeNotifier {
     final snapshot = state.encode();
     final write = _writes.catchError((Object _) {}).then((_) async {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(saveKey, snapshot);
+      // Keep a complete, independently readable copy before replacing the
+      // primary save. Serialized writes preserve the order of concurrent rewards.
+      if (!await prefs.setString(backupKey, snapshot)) {
+        throw StateError('Could not back up the Friends journal');
+      }
+      if (!await prefs.setString(saveKey, snapshot)) {
+        throw StateError('Could not save the Friends journal');
+      }
     });
     _writes = write;
     return write;

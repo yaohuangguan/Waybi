@@ -552,18 +552,36 @@ void main() {
   });
 
   test(
-    'shipping Waybi search stays behind the Waybi Worker boundary',
+    'worker-only Waybi search falls back inside the Worker boundary',
     () async {
-      final hosts = <String>[];
+      final urls = <Uri>[];
       final provider = IndependentSearchProvider(
         useWorkerSuggestions: true,
         workerOnly: true,
         requestSpacing: Duration.zero,
         client: MockClient((request) async {
-          hosts.add(request.url.host);
-          expect(request.url.path, '/api/suggest');
-          expect(request.url.queryParameters['provider'], 'independent');
-          return http.Response('[]', 200);
+          urls.add(request.url);
+          if (request.url.path == '/api/suggest') {
+            expect(request.url.queryParameters['provider'], 'independent');
+            return http.Response(
+              jsonEncode({'error': 'Independent place search unavailable'}),
+              502,
+            );
+          }
+          expect(request.url.path, '/api/search');
+          return http.Response(
+            jsonEncode([
+              {
+                'id': 'osm-fallback',
+                'provider': 'osm',
+                'name': 'Quiet Road',
+                'isPoi': false,
+                'latitude': -36.85,
+                'longitude': 174.76,
+              },
+            ]),
+            200,
+          );
         }),
       );
       addTearDown(provider.dispose);
@@ -574,9 +592,9 @@ void main() {
         language: 'en',
       );
 
-      expect(results, isEmpty);
-      expect(hosts, ['waybi.co']);
-      expect(hosts.any((host) => host.contains('photon')), isFalse);
+      expect(results.single.name, 'Quiet Road');
+      expect(urls.map((url) => url.path), ['/api/suggest', '/api/search']);
+      expect(urls.every((url) => url.host == 'waybi.co'), isTrue);
     },
   );
 

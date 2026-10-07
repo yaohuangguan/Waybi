@@ -326,7 +326,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final ParkingRepository _parkingRepository = ParkingRepository();
   final WorkerSearchProvider _workerSearch = WorkerSearchProvider();
   final IndependentSearchProvider _independentSearch =
-      IndependentSearchProvider(useWorkerSuggestions: true, workerOnly: true);
+      IndependentSearchProvider(useWorkerSuggestions: true);
   final IndependentRoutingProvider _independentRoutes =
       IndependentRoutingProvider(useWaybiProxy: true);
   final IndependentTransitRoutingProvider _independentTransitRoutes =

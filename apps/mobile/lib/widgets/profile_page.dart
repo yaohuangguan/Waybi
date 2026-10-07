@@ -162,9 +162,17 @@ class _ProfilePageState extends State<ProfilePage> {
             const ListTile(
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.layers_outlined),
+              title: Text('OpenMapTiles'),
+              subtitle: Text(
+                'Vector tile schema © OpenMapTiles · CC BY. Waybi-hosted regional tiles currently use this transitional schema.',
+              ),
+            ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.map_outlined),
               title: Text('Waybi Map basemap'),
               subtitle: Text(
-                'MapLibre rendering. Current rollout still uses OpenFreeMap / OpenMapTiles infrastructure while Waybi-hosted map tiles are introduced.',
+                'MapLibre rendering with Waybi-controlled style and regional tile hosting. Global coverage still uses a fallback while Waybi-hosted regions expand.',
               ),
             ),
             const ListTile(

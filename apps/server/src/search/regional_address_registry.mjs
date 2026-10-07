@@ -27,10 +27,15 @@ export async function searchRegionalAddressEnrichments(
   );
   if (!eligible.length) return [];
 
-  if (!parsed.number && eligible.length > 1) {
-    // Street-name typeahead is latency-sensitive and does not require one
-    // exact house authority to win. Query overlapping official adapters in
-    // parallel and return the first useful street result.
+  if (eligible.length > 1) {
+    // Search typeahead must not inherit the latency of the slowest official
+    // service. Run overlapping regional adapters concurrently and return the
+    // first useful result. This is especially important in NZ where the LINZ
+    // ArcGIS service can occasionally be much slower than Auckland Council.
+    //
+    // Both sources remain official enrichment; the global search stack still
+    // merges/ranks the returned candidates and can interpolate a missing house
+    // number from neighbouring official addresses.
     return new Promise((resolve) => {
       let remaining = eligible.length;
       let settled = false;
@@ -51,16 +56,12 @@ export async function searchRegionalAddressEnrichments(
     });
   }
 
-  // Numbered addresses preserve provider priority so the broadest official
-  // address authority gets first chance at an exact coordinate.
-  for (const provider of eligible) {
-    try {
-      const results = await provider.search({ query, near, parsed, fetcher });
-      if (Array.isArray(results) && results.length) return results;
-    } catch {
-      // A regional adapter is enrichment only. Failure must never break the
-      // worldwide Geoapify/TomTom/Photon path.
-    }
+  try {
+    const results = await eligible[0].search({ query, near, parsed, fetcher });
+    return Array.isArray(results) ? results : [];
+  } catch {
+    // Regional data is enrichment only. Failure must never break the
+    // worldwide Geoapify/TomTom/Photon path.
+    return [];
   }
-  return [];
 }

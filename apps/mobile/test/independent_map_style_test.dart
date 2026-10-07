@@ -38,6 +38,8 @@ void main() {
       expect(layer('waybi-poi-label')['layout']['text-font'], [
         'Noto Sans Regular',
       ]);
+      expect(layer('waybi-poi-label')['filter'].toString(), contains('30'));
+      expect(layer('waybi-poi-label')['filter'].toString(), contains('300'));
       expect(
         layer('waybi-landuse')['paint']['fill-color'].toString(),
         contains('hospital'),

@@ -61,7 +61,7 @@ class _SplashGateState extends State<SplashGate> {
                     ),
                     const SizedBox(height: 28),
                     const Text(
-                      'Map data © OpenStreetMap contributors',
+                      '© OpenMapTiles · © OpenStreetMap contributors',
                       style: TextStyle(
                         color: WaybiColors.lightTextSecondary,
                         fontSize: 10.5,

@@ -27,10 +27,14 @@ time:
 - `WAYBI_MAP_SPRITE_URL`
 - `WAYBI_MAP_GLYPHS_URL`
 
-The intended first self-hosted source is a New Zealand PMTiles/vector archive
-served from a Waybi-controlled origin such as `maps.waybi.co`. The existing
+The first self-hosted source is a New Zealand PMTiles/vector archive served
+from the Waybi-controlled `waybi-map` R2 bucket on `maps.waybi.co`. The existing
 OpenMapTiles-compatible style remains the transition schema so the switch can
-ship without rewriting the renderer at the same time.
+ship without rewriting the renderer at the same time. The mobile renderer now
+selects the vector source by viewport: New Zealand uses the Waybi-hosted R2
+archive, while all other regions retain the existing OpenFreeMap global
+fallback. This keeps worldwide behavior aligned with main while NZ becomes the
+first owned map region.
 
 Example:
 
@@ -40,6 +44,10 @@ WAYBI_MAP_NATURAL_EARTH_TILES=https://maps.waybi.co/natural-earth/{z}/{x}/{y}.pn
 WAYBI_MAP_SPRITE_URL=https://maps.waybi.co/sprites/waybi
 WAYBI_MAP_GLYPHS_URL=https://maps.waybi.co/fonts/{fontstack}/{range}.pbf
 ```
+
+The current New Zealand archive is built through zoom 14 so ordinary POIs and high-detail road data are retained. Large archives are published with R2 multipart upload rather than reducing map detail to fit Wrangler's single-object upload limit.
+
+The mobile renderer selects the vector source by viewport region at runtime. New Zealand uses `pmtiles://https://maps.waybi.co/regions/nz.pmtiles`; everywhere else keeps the existing OpenFreeMap global fallback. No special build flag is required, and moving the map between New Zealand and another region switches stacks without making overseas Waybi Map views blank.
 
 ## Rollout order
 

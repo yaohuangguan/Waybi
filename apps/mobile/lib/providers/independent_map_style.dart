@@ -3,13 +3,21 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../domain/map_region_capabilities.dart';
+import '../domain/map_provider.dart';
+
 class WaybiMapSourceConfig {
   const WaybiMapSourceConfig._();
 
-  static const vectorSource = String.fromEnvironment(
+  static const vectorSourceOverride = String.fromEnvironment(
     'WAYBI_MAP_VECTOR_SOURCE',
-    defaultValue: 'https://tiles.openfreemap.org/planet',
   );
+
+  static String vectorSourceFor(GeoPoint center) {
+    if (vectorSourceOverride.isNotEmpty) return vectorSourceOverride;
+    return MapRegionCapabilities.forPoint(center).vectorSource;
+  }
+
   static const naturalEarthTemplate = String.fromEnvironment(
     'WAYBI_MAP_NATURAL_EARTH_TILES',
     defaultValue:
@@ -24,8 +32,8 @@ class WaybiMapSourceConfig {
     defaultValue: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
   );
 
-  static bool get usingWaybiHostedTiles =>
-      !vectorSource.contains('openfreemap.org');
+  static bool usingWaybiHostedTilesAt(GeoPoint center) =>
+      !vectorSourceFor(center).contains('openfreemap.org');
 }
 
 /// Native MapLibre style. Land use, road hierarchy and POIs remain distinct.
@@ -33,7 +41,7 @@ Map<String, dynamic> waybiMapStyle(
   Map<String, dynamic> base, {
   required bool dark,
   required String language,
-  String vectorSource = WaybiMapSourceConfig.vectorSource,
+  String vectorSource = MapRegionCapabilities.globalVectorSource,
   String naturalEarthTemplate = WaybiMapSourceConfig.naturalEarthTemplate,
   String spriteUrl = WaybiMapSourceConfig.spriteUrl,
   String glyphsUrl = WaybiMapSourceConfig.glyphsUrl,
@@ -176,7 +184,18 @@ Map<String, dynamic> waybiMapStyle(
   final poiColor = <dynamic>[
     'match',
     ['get', 'class'],
-    ['food', 'shop', 'grocery'],
+    [
+      'food',
+      'restaurant',
+      'cafe',
+      'fast_food',
+      'bar',
+      'beer',
+      'shop',
+      'clothing_store',
+      'bakery',
+      'grocery',
+    ],
     dark ? '#efbd7c' : '#a46b2c',
     ['hospital', 'doctor', 'pharmacy'],
     dark ? '#eea3b6' : '#b25878',
@@ -203,11 +222,11 @@ Map<String, dynamic> waybiMapStyle(
         ['zoom'],
         4,
         14,
-        10,
+        30,
         15,
-        25,
-        16,
         100,
+        16,
+        300,
       ],
     ],
   ];
@@ -274,6 +293,7 @@ class IndependentMapStyle {
   static Future<String> load({
     required bool dark,
     required String language,
+    required GeoPoint center,
   }) async {
     if (!_licensesRegistered) {
       _licensesRegistered = true;
@@ -288,7 +308,12 @@ class IndependentMapStyle {
         .loadString('assets/maps/positron_base.json')
         .then((s) => jsonDecode(s) as Map<String, dynamic>);
     return jsonEncode(
-      waybiMapStyle(await _base!, dark: dark, language: language),
+      waybiMapStyle(
+        await _base!,
+        dark: dark,
+        language: language,
+        vectorSource: WaybiMapSourceConfig.vectorSourceFor(center),
+      ),
     );
   }
 }

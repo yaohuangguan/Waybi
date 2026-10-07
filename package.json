@@ -14,6 +14,7 @@
     "dev:server": "pnpm --filter @waybi/server dev",
     "build": "pnpm build:web",
     "build:web": "pnpm --filter @waybi/core build && pnpm --filter @waybi/web build",
+    "seo:check": "node scripts/seo-smoke.mjs",
     "check:worker": "pnpm --filter @waybi/server build",
     "test": "pnpm --filter @waybi/core test && pnpm --filter @waybi/server test",
     "data:traffic-geometry": "node scripts/refresh-traffic-geometry.mjs",

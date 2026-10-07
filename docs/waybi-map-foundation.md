@@ -45,7 +45,7 @@ WAYBI_MAP_GLYPHS_URL=https://maps.waybi.co/fonts/{fontstack}/{range}.pbf
 ```
 
 For the NZ hosted-basemap validation build, the checked-in
-`apps/mobile/.dart-defines.waybi-map-nz.json` overrides only the vector source. The current NZ preview archive is built through zoom 13 and relies on MapLibre overzoom above that level; this keeps the regional archive small enough for the current deployment path while preserving the road network needed for navigation validation.
+`apps/mobile/.dart-defines.waybi-map-nz.json` overrides only the vector source. The current NZ preview archive is built through zoom 14 so ordinary POIs and high-detail road data are retained. Large archives are published with R2 multipart upload rather than reducing map detail to fit Wrangler's single-object upload limit.
 It composes with `.dart-defines.local.json`, so local secrets remain unchanged:
 
 ```bash

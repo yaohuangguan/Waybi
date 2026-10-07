@@ -2,35 +2,71 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
+import '../domain/road_event.dart';
 import '../theme/waybi_theme.dart';
+import 'discover_memory.dart';
 import 'trips_page.dart';
 
-enum DiscoverAction { newDestination, trips }
+enum DiscoverActionKind { search, trips, destination, direction, roadEvent }
+
+class DiscoverAction {
+  const DiscoverAction._(
+    this.kind, {
+    this.destination,
+    this.center,
+    this.event,
+  });
+  static const newDestination = DiscoverAction._(DiscoverActionKind.search);
+  static const trips = DiscoverAction._(DiscoverActionKind.trips);
+  factory DiscoverAction.place(TripDestination place) =>
+      DiscoverAction._(DiscoverActionKind.destination, destination: place);
+  factory DiscoverAction.direction(GeoPoint center) =>
+      DiscoverAction._(DiscoverActionKind.direction, center: center);
+  factory DiscoverAction.road(RoadEvent event) =>
+      DiscoverAction._(DiscoverActionKind.roadEvent, event: event);
+  final DiscoverActionKind kind;
+  final TripDestination? destination;
+  final GeoPoint? center;
+  final RoadEvent? event;
+}
+
+class DiscoverRoadSnapshot {
+  const DiscoverRoadSnapshot({
+    required this.events,
+    required this.status,
+    this.checkedAt,
+    this.officialCoverage = const [],
+  });
+  final List<RoadEvent> events;
+  final String status;
+  final DateTime? checkedAt;
+  final List<String> officialCoverage;
+}
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({
     super.key,
     required this.language,
     required this.loader,
+    this.roadLoader,
     this.origin,
   });
-
   final String language;
   final Future<TripsSnapshot> Function() loader;
+  final Future<DiscoverRoadSnapshot> Function()? roadLoader;
   final GeoPoint? origin;
-
   @override
   State<DiscoverPage> createState() => _DiscoverPageState();
 }
 
 class _DiscoverPageState extends State<DiscoverPage> {
   TripsSnapshot? _snapshot;
-  bool _loading = true;
-
-  bool get _zh => widget.language == 'zh';
-  String _text(String en, String zh) => _zh ? zh : en;
-
+  DiscoverRoadSnapshot? _roads;
+  bool _loading = true, _roadsLoading = true, _historyError = false;
+  int _request = 0;
+  String _text(String en, String zh) => widget.language == 'zh' ? zh : en;
   @override
   void initState() {
     super.initState();
@@ -38,262 +74,456 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   Future<void> _load() async {
+    final request = ++_request;
+    setState(() {
+      _loading = true;
+      _roadsLoading = true;
+      _historyError = false;
+    });
+    await Future.wait([_loadHistory(request), _loadRoads(request)]);
+  }
+
+  Future<void> _loadHistory(int request) async {
     try {
       final snapshot = await widget.loader();
-      if (!mounted) return;
+      if (!mounted || request != _request) return;
       setState(() {
         _snapshot = snapshot;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-    }
-  }
-
-  List<TripHistoryItem> get _leastRecentPlaces {
-    final history = [...?_snapshot?.history]
-      ..sort((a, b) {
-        final at = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        final bt = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
-        return at.compareTo(bt);
+      if (!mounted || request != _request) return;
+      setState(() {
+        _historyError = true;
+        _loading = false;
       });
-    final seen = <String>{};
-    return history
-        .where((item) => seen.add(item.destination.name.toLowerCase()))
-        .take(3)
-        .toList(growable: false);
+    }
   }
 
-  int get _uniqueDestinations {
-    return _snapshot?.history
-            .map((item) => item.destination.name.trim().toLowerCase())
-            .where((name) => name.isNotEmpty)
-            .toSet()
-            .length ??
-        0;
+  Future<void> _loadRoads(int request) async {
+    DiscoverRoadSnapshot result;
+    try {
+      result =
+          await widget.roadLoader?.call() ??
+          const DiscoverRoadSnapshot(events: [], status: 'not_loaded');
+    } catch (_) {
+      result = const DiscoverRoadSnapshot(events: [], status: 'unavailable');
+    }
+    if (!mounted || request != _request) return;
+    setState(() {
+      _roads = result;
+      _roadsLoading = false;
+    });
   }
 
-  Map<int, int> get _directionCounts {
+  double _eventDistance(RoadEvent event) {
     final origin = widget.origin;
-    if (origin == null) return const {};
-    final counts = <int, int>{0: 0, 1: 0, 2: 0, 3: 0};
-    final visitedCells = <String>{};
-    for (final item in _snapshot?.history ?? const <TripHistoryItem>[]) {
-      final destination = item.destination.location;
-      final cell =
-          '${(destination.latitude * 50).round()}:${(destination.longitude * 50).round()}';
-      if (!visitedCells.add(cell)) continue;
-      final lat1 = origin.latitude * math.pi / 180;
-      final lat2 = destination.latitude * math.pi / 180;
-      final deltaLon =
-          (destination.longitude - origin.longitude) * math.pi / 180;
-      final y = math.sin(deltaLon) * math.cos(lat2);
-      final x =
-          math.cos(lat1) * math.sin(lat2) -
-          math.sin(lat1) * math.cos(lat2) * math.cos(deltaLon);
-      final bearing = (math.atan2(y, x) * 180 / math.pi + 360) % 360;
-      final sector = ((bearing + 45) ~/ 90) % 4;
-      counts[sector] = (counts[sector] ?? 0) + 1;
-    }
-    return counts;
+    if (origin == null) return double.infinity;
+    final points = event.geometry.isEmpty ? [event.location] : event.geometry;
+    return points
+        .map(
+          (p) => distanceMeters(
+            origin.latitude,
+            origin.longitude,
+            p.latitude,
+            p.longitude,
+          ),
+        )
+        .reduce(math.min);
   }
 
-  int? get _leastExploredDirection {
-    if (widget.origin == null) return null;
-    final counts = _directionCounts;
-    if (counts.isEmpty) return null;
-    var best = 0;
-    for (var sector = 1; sector < 4; sector++) {
-      if ((counts[sector] ?? 0) < (counts[best] ?? 0)) best = sector;
-    }
-    return best;
+  List<RoadEvent> get _nearbyEvents {
+    final now = DateTime.now();
+    final events = (_roads?.events ?? const <RoadEvent>[])
+        .where(
+          (event) =>
+              event.type != RoadEventType.safetyCamera &&
+              event.observation != RoadEventObservation.inferred &&
+              event.isCurrent(now) &&
+              _eventDistance(event) <= 30000,
+        )
+        .toList();
+    events.sort((a, b) {
+      final severity = b.severity.index.compareTo(a.severity.index);
+      return severity != 0
+          ? severity
+          : _eventDistance(a).compareTo(_eventDistance(b));
+    });
+    return events;
   }
 
+  String _eventTitle(RoadEvent event) => switch (event.type) {
+    RoadEventType.roadClosure => _text('Road closed', '道路封闭'),
+    RoadEventType.roadworks => _text('Roadworks', '道路施工'),
+    RoadEventType.flooding => _text('Flooding', '积水 / 洪水'),
+    RoadEventType.slip => _text('Slip / debris', '滑坡 / 道路杂物'),
+    _ => _text('Road incident', '道路事件'),
+  };
+  String _lastVisited(DateTime? date) {
+    if (date == null) return _text('Visited before', '曾经到访');
+    final days = DateTime.now().difference(date).inDays;
+    if (days <= 0) return _text('Visited today', '今天到访');
+    if (days == 1) return _text('Visited yesterday', '昨天到访');
+    return _text('Last visited $days days ago', '上次到访是 $days 天前');
+  }
+
+  void _choose(DiscoverAction action) => Navigator.of(context).pop(action);
   String _directionName(int sector) => switch (sector) {
     0 => _text('North', '北边'),
     1 => _text('East', '东边'),
     2 => _text('South', '南边'),
     _ => _text('West', '西边'),
   };
-
-  Widget _unexploredDirectionCard() {
-    final history = _snapshot?.history ?? const <TripHistoryItem>[];
-    final sector = _leastExploredDirection;
-    final counts = _directionCounts;
-    final body = _loading
-        ? _text(
-            'Reading your journey history…',
-            '正在读取你的旅程记录…',
-          )
-        : history.isEmpty
-        ? _text(
-            'Every direction is still new. Your first completed journeys will start building Waybi’s memory of the world you have travelled.',
-            '现在每个方向都是新的。完成几次导航后，Waybi 就会开始建立你们一起走过的世界记忆。',
-          )
-        : sector == null
-        ? _text(
-            'Waybi needs your current location before it can compare where you have and have not travelled.',
-            'Waybi 需要当前位置，才能比较你去过和还没怎么去过的方向。',
-          )
-        : _text(
-            '${_directionName(sector)} is your least explored direction from here. Waybi remembers ${counts[sector] ?? 0} visited area${(counts[sector] ?? 0) == 1 ? '' : 's'} there.',
-            '从这里出发，${_directionName(sector)}是你最少探索的方向。Waybi 在这个方向目前只记住了 ${counts[sector] ?? 0} 个到访区域。',
-          );
-    return _SectionCard(
-      icon: Icons.explore_outlined,
-      title: _text('Where Waybi has barely been', 'Waybi 还没怎么去过的方向'),
-      body: body,
-      trailing: IconButton.filledTonal(
-        tooltip: _text('Choose a new destination', '选择一个新目的地'),
-        onPressed: _loading
-            ? null
-            : () => Navigator.of(context).pop(DiscoverAction.newDestination),
-        icon: const Icon(Icons.arrow_outward_rounded),
+  Widget _roadCard() {
+    final nearby = _nearbyEvents;
+    final unavailable = _roads?.status == 'not_loaded' ||
+      (_roads?.status == 'unavailable' && _roads?.checkedAt == null);
+    final coverage = _roads?.officialCoverage ?? const <String>[];
+    final publisher = coverage.contains('NZ')
+        ? 'NZTA'
+        : coverage.contains('AU-NSW')
+        ? 'Transport for NSW'
+        : null;
+    final checked = _roads?.checkedAt;
+    final age = checked == null
+        ? null
+        : DateTime.now().difference(checked).inMinutes.clamp(0, 999);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.add_road_rounded,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _text('Before you go', '出发前看一眼'),
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (_roadsLoading)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _text('Road updates within 30 km', '附近 30 公里的道路更新'),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            if (!_roadsLoading && unavailable) ...[
+              const SizedBox(height: 10),
+              Text(
+                _text('Road updates are unavailable right now.', '暂时无法获取道路更新。'),
+              ),
+              TextButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(_text('Try again', '重试')),
+              ),
+            ] else if (!_roadsLoading && widget.origin == null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _text(
+                  'Choose a map area to see nearby road updates.',
+                  '选择地图区域后查看附近路况。',
+                ),
+              ),
+            ] else if (!_roadsLoading && nearby.isEmpty) ...[
+              const SizedBox(height: 10),
+              Text(_text('No published road events nearby.', '附近暂无已发布的道路事件。')),
+            ],
+            for (final event in nearby.take(3)) ...[
+              const Divider(height: 24),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: event.type == RoadEventType.roadClosure
+                      ? const Color(0xffffe7e5)
+                      : const Color(0xfffff0d7),
+                  child: Icon(
+                    event.type == RoadEventType.roadClosure
+                        ? Icons.block_rounded
+                        : Icons.construction_rounded,
+                    color: event.type == RoadEventType.roadClosure
+                        ? const Color(0xffb52e35)
+                        : const Color(0xff946214),
+                  ),
+                ),
+                title: Text(
+                  event.roadName ?? _eventTitle(event),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  '${_eventTitle(event)} · ${(_eventDistance(event) / 1000).toStringAsFixed(1)} km',
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _choose(DiscoverAction.road(event)),
+              ),
+            ],
+            if (!_roadsLoading && !unavailable) ...[
+              const SizedBox(height: 10),
+              Text(
+                _roads?.status == 'stale'
+                    ? _text(
+                        'Cached updates · refresh to check the latest',
+                        '缓存路况 · 刷新以检查最新更新',
+                      )
+                    : _text(
+                        publisher == null
+                            ? 'Waybi driver reports · official coverage is not available here yet'
+                            : '$publisher · Waybi driver reports',
+                        publisher == null
+                            ? 'Waybi 用户报告 · 此地区暂未接入官方路况'
+                            : '$publisher · Waybi 用户报告',
+                      ),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              if (age != null)
+                Text(
+                  _text(
+                    age == 0 ? 'Checked just now' : 'Checked $age min ago',
+                    age == 0 ? '刚刚检查' : '$age 分钟前检查',
+                  ),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+            ],
+          ],
+        ),
       ),
     );
   }
 
-  String _lastVisited(DateTime? value) {
-    if (value == null) return _text('A while ago', '有一阵子了');
-    final days = DateTime.now().difference(value.toLocal()).inDays;
-    if (days <= 0) return _text('Today', '今天');
-    if (days == 1) return _text('Yesterday', '昨天');
-    if (days < 30) return _text('$days days ago', '$days 天前');
-    final months = (days / 30).floor();
-    return _text('$months months ago', '$months 个月前');
-  }
-
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
     final history = _snapshot?.history ?? const <TripHistoryItem>[];
-
+    final counts = visitedDirectionCounts(widget.origin, history);
+    final sector = leastVisitedDirection(counts);
+    final places = rediscoveryPlaces(history);
     return Scaffold(
       appBar: AppBar(title: Text(_text('Discover', '发现'))),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 32),
+          padding: const EdgeInsets.fromLTRB(18, 8, 18, 32),
           children: [
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [WaybiColors.ocean, WaybiColors.teal],
+                gradient: LinearGradient(
+                  colors: theme.brightness == Brightness.dark
+                      ? [const Color(0xff183a32), const Color(0xff294735)]
+                      : [const Color(0xffedf4dd), const Color(0xfffaf4df)],
                 ),
-                borderRadius: BorderRadius.circular(26),
+                borderRadius: BorderRadius.circular(28),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
-                    Icons.travel_explore_rounded,
-                    color: Colors.white,
-                    size: 30,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _text(
-                      'Go somewhere Waybi does not know yet.',
-                      '去一个 Waybi 还不认识的地方。',
-                    ),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      height: 1.15,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _text(
+                            'Find your next little trip.',
+                            '下一段小旅程，\n一起出发。',
+                          ),
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Image.asset(
+                        'assets/characters/waybi.png',
+                        package: 'waybi_friends',
+                        width: 82,
+                        height: 82,
+                        semanticLabel: _text(
+                          'Waybi the kiwi bird',
+                          'Kiwi 鸟 Waybi',
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Text(
                     _text(
-                      'Discover is built around your journeys, not restaurant rankings. New roads and new memories will become more useful as you travel.',
-                      '发现围绕你的旅程，而不是餐厅榜单。你走得越多，没走过的路和新的旅程记忆就越有意义。',
+                      'A new place, a familiar favourite, and a look at the road ahead.',
+                      '去个新地方，重访喜欢的角落，也看看前方的路。',
                     ),
-                    style: const TextStyle(
-                      color: Color(0xEFFFFFFF),
-                      height: 1.4,
-                    ),
+                    style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
                   ),
                   const SizedBox(height: 18),
-                  FilledButton.tonalIcon(
-                    onPressed: () =>
-                        Navigator.of(context)
-                            .pop(DiscoverAction.newDestination),
-                    icon: const Icon(Icons.navigation_rounded),
+                  FilledButton.icon(
+                    onPressed: () => _choose(DiscoverAction.newDestination),
+                    icon: const Icon(Icons.search_rounded),
                     label: Text(_text('Choose somewhere new', '去个新地方')),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 22),
-            Text(
-              _text('Your world with Waybi', '你和 Waybi 走过的世界'),
-              style: Theme.of(context).textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 10),
-            Row(
+            const SizedBox(height: 12),
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 12,
               children: [
-                Expanded(
-                  child: _MemoryStat(
-                    value: _loading ? '—' : '${history.length}',
-                    label: _text('journeys', '段旅程'),
-                  ),
+                Text(
+                  _loading
+                      ? _text('Reading your journeys…', '正在读取旅程…')
+                      : _text(
+                          '${history.length} journeys · ${places.length} places',
+                          '${history.length} 段旅程 · ${places.length} 个地点',
+                        ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _MemoryStat(
-                    value: _loading ? '—' : '$_uniqueDestinations',
-                    label: _text('places remembered', '个记住的地方'),
-                  ),
+                TextButton(
+                  onPressed: () => _choose(DiscoverAction.trips),
+                  child: Text(_text('View trips', '查看行程')),
                 ),
               ],
             ),
-            const SizedBox(height: 22),
-            _unexploredDirectionCard(),
+            if (_historyError)
+              Card(
+                child: ListTile(
+                  title: Text(
+                    _text('Journey history could not load', '旅程记录加载失败'),
+                  ),
+                  trailing: TextButton(
+                    onPressed: _load,
+                    child: Text(_text('Retry', '重试')),
+                  ),
+                ),
+              ),
             const SizedBox(height: 12),
-            _SectionCard(
-              icon: Icons.landscape_rounded,
-              title: _text('Scenic journeys', '风景路线'),
-              body: _text(
-                'Coastal, sunset and weekend drives will be route suggestions instead of generic nearby POIs.',
-                '海岸线、日落和周末路线会成为真正的路线推荐，而不是泛泛的附近 POI。',
+            _roadCard(),
+            const SizedBox(height: 18),
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _text('A different direction', '换个方向看看'),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 92,
+                          height: 92,
+                          child: CustomPaint(
+                            painter: _DirectionPainter(
+                              selected: sector,
+                              color: theme.colorScheme.primary,
+                              muted: theme.colorScheme.outlineVariant,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 18),
+                        Expanded(
+                          child: Text(
+                            sector == null
+                                ? _text(
+                                    'Your next journey starts a new memory.',
+                                    '下一段旅程，会带来新的回忆。',
+                                  )
+                                : _text(
+                                    '${_directionName(sector)} has fewer places you have visited from here.',
+                                    '从这里出发，你在${_directionName(sector)}到访过的区域较少。',
+                                  ),
+                            style: theme.textTheme.bodyLarge,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: widget.origin == null
+                          ? null
+                          : () {
+                              final origin = widget.origin!;
+                              _choose(
+                                DiscoverAction.direction(
+                                  sector == null
+                                      ? origin
+                                      : directionSearchCenter(origin, sector),
+                                ),
+                              );
+                            },
+                      icon: const Icon(Icons.explore_outlined),
+                      label: Text(
+                        sector == null
+                            ? _text('Find nearby places', '发现附近地点')
+                            : _text(
+                                'Explore ${_directionName(sector).toLowerCase()}',
+                                '探索${_directionName(sector)}',
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              trailing: Chip(label: Text(_text('Planned', '规划中'))),
             ),
-            if (_leastRecentPlaces.isNotEmpty) ...[
-              const SizedBox(height: 22),
+            if (places.isNotEmpty) ...[
+              const SizedBox(height: 24),
               Text(
-                _text('Places worth rediscovering', '值得再去一次'),
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                _text('Worth another visit', '值得再去一次'),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              const SizedBox(height: 8),
-              for (final item in _leastRecentPlaces)
+              const SizedBox(height: 10),
+              for (final trip in places.take(3))
                 Card(
-                  margin: const EdgeInsets.only(bottom: 8),
+                  margin: const EdgeInsets.only(bottom: 10),
                   child: ListTile(
-                    leading: const Icon(Icons.history_toggle_off_rounded),
-                    title: Text(item.destination.name),
-                    subtitle: Text(_lastVisited(item.createdAt)),
-                    trailing: const Icon(Icons.chevron_right_rounded),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    leading: const CircleAvatar(
+                      backgroundColor: WaybiColors.ice,
+                      child: Icon(
+                        Icons.landscape_rounded,
+                        color: WaybiColors.deepTeal,
+                      ),
+                    ),
+                    title: Text(
+                      trip.destination.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Text(_lastVisited(trip.createdAt)),
+                    trailing: const Icon(Icons.arrow_outward_rounded),
                     onTap: () =>
-                        Navigator.of(context).pop(DiscoverAction.trips),
+                        _choose(DiscoverAction.place(trip.destination)),
                   ),
                 ),
             ],
-            const SizedBox(height: 8),
-            Text(
-              _text(
-                'No ads, ratings or generic “top nearby” lists. Discover should get better because Waybi remembers your journeys.',
-                '这里不做广告、评分榜和泛化的“附近热门”。发现应该因为 Waybi 记住了你的旅程而越来越好。',
-              ),
-              style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant, height: 1.45),
-            ),
           ],
         ),
       ),
@@ -301,74 +531,46 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 }
 
-class _MemoryStat extends StatelessWidget {
-  const _MemoryStat({required this.value, required this.label});
-
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          value,
-          style: Theme.of(context).textTheme.headlineMedium
-              ?.copyWith(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 2),
-        Text(label),
-      ],
-    ),
-  );
-}
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.icon,
-    required this.title,
-    required this.body,
-    required this.trailing,
+class _DirectionPainter extends CustomPainter {
+  _DirectionPainter({
+    required this.selected,
+    required this.color,
+    required this.muted,
   });
-
-  final IconData icon;
-  final String title;
-  final String body;
-  final Widget trailing;
+  final int? selected;
+  final Color color, muted;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centre = size.center(Offset.zero), radius = size.shortestSide / 2 - 4;
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round;
+    for (var sector = 0; sector < 4; sector++) {
+      stroke.color = sector == selected ? color : muted;
+      canvas.drawArc(
+        Rect.fromCircle(center: centre, radius: radius),
+        -math.pi * 3 / 4 + sector * math.pi / 2,
+        math.pi / 2 - .15,
+        false,
+        stroke,
+      );
+    }
+    final arrow = Path()
+      ..moveTo(centre.dx, centre.dy - 18)
+      ..lineTo(centre.dx + 12, centre.dy + 12)
+      ..lineTo(centre.dx, centre.dy + 6)
+      ..lineTo(centre.dx - 12, centre.dy + 12)
+      ..close();
+    canvas.save();
+    canvas.translate(centre.dx, centre.dy);
+    canvas.rotate((selected ?? 0) * math.pi / 2);
+    canvas.translate(-centre.dx, -centre.dy);
+    canvas.drawPath(arrow, Paint()..color = color);
+    canvas.restore();
+  }
 
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-    ),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: Theme.of(context).colorScheme.primary),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 5),
-              Text(body, style: const TextStyle(height: 1.35)),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        trailing,
-      ],
-    ),
-  );
+  bool shouldRepaint(_DirectionPainter old) =>
+      old.selected != selected || old.color != color || old.muted != muted;
 }

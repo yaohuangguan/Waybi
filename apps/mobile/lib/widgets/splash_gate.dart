@@ -59,14 +59,6 @@ class _SplashGateState extends State<SplashGate> {
                       'Meet Waybi. Find your way.',
                       style: TextStyle(color: WaybiColors.lightTextSecondary),
                     ),
-                    const SizedBox(height: 28),
-                    const Text(
-                      '© OpenMapTiles · © OpenStreetMap contributors',
-                      style: TextStyle(
-                        color: WaybiColors.lightTextSecondary,
-                        fontSize: 10.5,
-                      ),
-                    ),
                   ],
                 ),
               ),

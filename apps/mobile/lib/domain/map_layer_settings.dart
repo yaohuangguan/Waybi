@@ -75,6 +75,7 @@ class MapLayerSettings {
     this.alertBusLane = true,
     this.alertOther = false,
     this.traffic = true,
+    this.roadEvents = true,
     this.style = BaseMapStyle.standard,
   });
 
@@ -94,6 +95,7 @@ class MapLayerSettings {
   final bool alertOther;
 
   final bool traffic;
+  final bool roadEvents;
   final BaseMapStyle style;
 
   bool shows(SafetyCamera camera) {
@@ -136,6 +138,7 @@ class MapLayerSettings {
     bool? alertBusLane,
     bool? alertOther,
     bool? traffic,
+    bool? roadEvents,
     BaseMapStyle? style,
   }) => MapLayerSettings(
     cameras: cameras ?? this.cameras,
@@ -153,6 +156,7 @@ class MapLayerSettings {
     alertBusLane: alertBusLane ?? this.alertBusLane,
     alertOther: alertOther ?? this.alertOther,
     traffic: traffic ?? this.traffic,
+    roadEvents: roadEvents ?? this.roadEvents,
     style: style ?? this.style,
   );
 }

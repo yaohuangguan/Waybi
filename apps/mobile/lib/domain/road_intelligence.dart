@@ -25,12 +25,18 @@ class RoadEventProviderRegistry {
     final available = providers.where((p) => p.supports(country));
     final events = <RoadEvent>[];
     final errors = <Object>[];
-    for (final provider in available) {
-      try {
-        events.addAll(await provider.load());
-      } catch (error) {
-        errors.add(error);
-      }
+    final batches = await Future.wait(
+      available.map((provider) async {
+        try {
+          return await provider.load();
+        } catch (error) {
+          errors.add(error);
+          return const <RoadEvent>[];
+        }
+      }),
+    );
+    for (final batch in batches) {
+      events.addAll(batch);
     }
     lastErrors = List.unmodifiable(errors);
     return events;

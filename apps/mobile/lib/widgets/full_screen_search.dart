@@ -131,6 +131,15 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
       _loading = true;
       _error = null;
       _expandedArea = expandedArea;
+      final provider = widget.provider;
+      if (!expandedArea && provider is CachedSearchProvider) {
+        final cached = provider.cachedSuggestions(
+          query,
+          proximity: widget.currentLocation,
+          language: widget.language,
+        );
+        if (cached.isNotEmpty) _results = cached;
+      }
       // Keep the previous suggestions visible while the next prefix is
       // loading so typeahead never flashes to an empty state.
     });

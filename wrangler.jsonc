@@ -2,7 +2,7 @@
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "waybi",
 	"account_id": "cdc04de9bc4c6a41b5003758e505a0d1",
-	"main": "apps/server/src/worker.mjs",
+	"main": "apps/server/src/worker.ts",
 	"workers_dev": true,
 	"routes": [
 		{ "pattern": "waybi.co", "custom_domain": true },

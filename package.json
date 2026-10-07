@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@12.6.0",
   "engines": {
-    "node": ">=20",
+    "node": ">=24",
     "pnpm": ">=12.6.0"
   },
   "scripts": {
@@ -33,7 +33,8 @@
     "mobile:build:apk": "cd apps/mobile && flutter build apk",
     "mobile:ios": "node scripts/ios-device.mjs debug",
     "mobile:ios:install": "node scripts/ios-device.mjs install",
-    "mobile:ios:ipa": "node scripts/ios-device.mjs ipa"
+    "mobile:ios:ipa": "node scripts/ios-device.mjs ipa",
+    "typecheck:server": "pnpm --filter @waybi/server typecheck"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

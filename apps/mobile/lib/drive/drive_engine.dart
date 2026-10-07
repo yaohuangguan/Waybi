@@ -104,6 +104,10 @@ class DriveEngine extends ChangeNotifier {
   List<SafetyCamera> get cameras => _cameras;
   CameraSnapshot? get cameraSnapshot => _nztaProvider.lastSnapshot;
   List<RoadEvent> roadEvents = const [];
+  String get roadEventSyncStatus => _trafficProvider.lastSyncStatus;
+  DateTime? get roadEventCheckedAt => _trafficProvider.lastCheckedAt;
+  List<String> get roadEventOfficialCoverage =>
+      _trafficProvider.officialCoverage;
   List<RoadEvent> _routeRoadEvents = const [];
   List<RoadEvent> upcomingRoadEvents = const [];
   List<TrafficFlowSegment> trafficFlowSegments = const [];
@@ -142,6 +146,8 @@ class DriveEngine extends ChangeNotifier {
   bool active = false;
   bool guidanceRunning = false;
   bool loadingCameras = false;
+  Future<void>? _cameraLoad;
+  String? _roadEventRegion;
   double speedKph = 0;
   int? speedLimitKph;
   bool _voiceEnabled = true;
@@ -545,15 +551,56 @@ class DriveEngine extends ChangeNotifier {
     return _nztaProvider.lastSnapshot ?? snapshot;
   }
 
-  Future<void> loadCameras({bool force = false}) async {
-    if (loadingCameras || (!force && _cameras.isNotEmpty)) return;
+  Future<void> loadCameras({bool force = false, GeoPoint? center}) async {
+    final location =
+        center ??
+        (latestPosition == null
+            ? null
+            : GeoPoint(latestPosition!.latitude, latestPosition!.longitude));
+    final country = location == null
+        ? CountryProfiles.nz
+        : CountryProfiles.at(location) ?? CountryProfiles.global;
+    final isNsw =
+        location != null &&
+        location.longitude >= 140.9 &&
+        location.longitude <= 153.7 &&
+        location.latitude >= -37.6 &&
+        location.latitude <= -28.1;
+    final region = country.code == 'AU'
+        ? (isNsw ? 'AU-NSW' : 'AU-global')
+        : country.code;
+    final pending = _cameraLoad;
+    if (pending != null) {
+      await pending;
+      if (_roadEventRegion == region) return;
+    }
+    if (!force && _roadEventRegion == region) return;
+    final job = _loadRegionalRoadIntelligence(location, country);
+    _cameraLoad = job;
+    try {
+      await job;
+      _roadEventRegion = region;
+    } finally {
+      if (identical(_cameraLoad, job)) _cameraLoad = null;
+    }
+  }
+
+  Future<void> _loadRegionalRoadIntelligence(
+    GeoPoint? location,
+    CountryProfile country,
+  ) async {
     loadingCameras = true;
     notifyListeners();
     try {
-      roadEvents = await _providerRegistry.load(CountryProfiles.nz);
+      _trafficProvider.regionCenter = location;
+      roadEvents = await _providerRegistry.load(country);
       final snapshot = _nztaProvider.lastSnapshot;
-      _cameras = snapshot?.cameras ?? const [];
-      final cameraStatus = snapshot?.syncStatus ?? 'unavailable';
+      _cameras = country.code == 'NZ'
+          ? snapshot?.cameras ?? const []
+          : const [];
+      final cameraStatus = country.code == 'NZ'
+          ? snapshot?.syncStatus ?? 'unavailable'
+          : 'not_applicable';
       final trafficStatus = _trafficProvider.lastSyncStatus;
       final providerErrors = _providerRegistry.lastErrors;
       roadIntelligenceStatus =

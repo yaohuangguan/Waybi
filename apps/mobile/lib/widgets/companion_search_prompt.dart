@@ -58,6 +58,7 @@ class CompanionSearchPrompt extends StatefulWidget {
     required this.onSearch,
     required this.loadSuggestions,
     required this.onSuggestionSelected,
+    this.cachedSuggestions,
     this.currentLocation,
   });
 
@@ -65,6 +66,7 @@ class CompanionSearchPrompt extends StatefulWidget {
   final String language;
   final ValueChanged<String> onSearch;
   final Future<List<PlaceCandidate>> Function(String query) loadSuggestions;
+  final List<PlaceCandidate> Function(String query)? cachedSuggestions;
   final ValueChanged<PlaceCandidate> onSuggestionSelected;
   final GeoPoint? currentLocation;
 
@@ -98,7 +100,14 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
       });
       return;
     }
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      final cached =
+          widget.cachedSuggestions?.call(query) ?? const <PlaceCandidate>[];
+      if (cached.isNotEmpty) {
+        _suggestions = cached.take(4).toList(growable: false);
+      }
+    });
     _debounce = Timer(const Duration(milliseconds: 120), () async {
       try {
         final results = await widget.loadSuggestions(query);

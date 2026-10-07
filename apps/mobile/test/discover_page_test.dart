@@ -66,15 +66,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Discover'), findsOneWidget);
-      expect(find.text('2'), findsNWidgets(2));
-      expect(find.text('Where Waybi has barely been'), findsOneWidget);
+      expect(find.text('2 journeys · 2 places'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('A different direction'), 200);
+      expect(find.text('A different direction'), findsOneWidget);
       expect(
-        find.text(
-          'North is your least explored direction from here. Waybi remembers 0 visited areas there.',
-        ),
+        find.text('North has fewer places you have visited from here.'),
         findsOneWidget,
       );
 
+      await tester.ensureVisible(find.text('Choose somewhere new'));
       await tester.tap(find.text('Choose somewhere new'));
       await tester.pumpAndSettle();
       expect(result, DiscoverAction.newDestination);

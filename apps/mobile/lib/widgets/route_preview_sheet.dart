@@ -5,6 +5,7 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/route_option.dart';
 import '../domain/route_preference.dart';
+import '../domain/road_event.dart';
 import '../data/parking_repository.dart';
 import 'waybi_bird.dart';
 
@@ -117,6 +118,8 @@ class RoutePreviewSheet extends StatelessWidget {
     required this.cameraCount,
     this.routeCameraSummaries = const {},
     this.routePreferenceSummaries = const {},
+    this.routeClosures = const {},
+    this.onRoadEvent,
     this.canRequestTransit = false,
     this.canRequestModes = false,
     required this.customOrigin,
@@ -148,6 +151,8 @@ class RoutePreviewSheet extends StatelessWidget {
   final int cameraCount;
   final Map<String, RouteCameraSummary> routeCameraSummaries;
   final Map<String, RoutePreferenceSummary> routePreferenceSummaries;
+  final Map<String, List<RoadEvent>> routeClosures;
+  final ValueChanged<RoadEvent>? onRoadEvent;
   final bool canRequestTransit;
   final bool canRequestModes;
   final bool customOrigin;
@@ -410,6 +415,40 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                     ],
                   ),
+                  if (selected != null &&
+                      (routeClosures[selected.id]?.isNotEmpty ?? false)) ...[
+                    Container(
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: ListTile(
+                        leading: Icon(
+                          Icons.block_rounded,
+                          color: Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                        title: Text(
+                          isChinese
+                              ? '这条路线有封路报告'
+                              : 'Closure reported on this route',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: Text(
+                          routeClosures[selected.id]!.first.roadName ??
+                              (isChinese
+                                  ? '查看详情，或选择其他路线。'
+                                  : 'Check the details or choose another route.'),
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: onRoadEvent == null
+                            ? null
+                            : () => onRoadEvent!(
+                                routeClosures[selected!.id]!.first,
+                              ),
+                      ),
+                    ),
+                  ],
                   if (routes.isNotEmpty) ...[
                     const Divider(height: 12),
                     Align(
@@ -428,6 +467,8 @@ class RoutePreviewSheet extends StatelessWidget {
                         route: routes[index],
                         isChinese: isChinese,
                         active: routes[index].id == selected?.id,
+                        closureCount:
+                            routeClosures[routes[index].id]?.length ?? 0,
                         fastestDuration: fastestDuration,
                         cameraSummary:
                             routeCameraSummaries[routes[index].id] ??
@@ -552,6 +593,7 @@ class _RouteOptionTile extends StatelessWidget {
     required this.route,
     required this.isChinese,
     required this.active,
+    required this.closureCount,
     required this.fastestDuration,
     required this.cameraSummary,
     required this.preference,
@@ -561,6 +603,7 @@ class _RouteOptionTile extends StatelessWidget {
   final RouteOption route;
   final bool isChinese;
   final bool active;
+  final int closureCount;
   final int fastestDuration;
   final RouteCameraSummary cameraSummary;
   final RoutePreferenceAssessment? preference;
@@ -586,7 +629,7 @@ class _RouteOptionTile extends StatelessWidget {
     final value = preference;
     if (value == null) return const [];
     final labels = <String>[];
-    if (value.recommended) {
+    if (value.recommended && closureCount == 0) {
       labels.add(isChinese ? '综合推荐' : 'Recommended');
     }
     if (value.fastest) labels.add(isChinese ? '时间最短' : 'Fastest');
@@ -685,6 +728,20 @@ class _RouteOptionTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 1),
+                  if (closureCount > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 3),
+                      child: Text(
+                        isChinese
+                            ? '$closureCount 处封路报告'
+                            : '$closureCount reported closure${closureCount == 1 ? '' : 's'}',
+                        style: TextStyle(
+                          color: scheme.error,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   Text(
                     '${_distance(route.distanceMeters, isChinese: isChinese)} · $description'
                     '${delay != null && delay > 60 ? (isChinese ? ' · 拥堵 ${_duration(delay, isChinese: true)}' : ' · ${_duration(delay)} traffic') : ''}',

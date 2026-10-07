@@ -96,6 +96,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   bool? _dark;
   late WaybiMapRegion _region;
   bool _ready = false, _syncing = false, _dirty = false;
+  bool _styleEventReceived = false;
+  bool _initializingStyle = false;
   int _generation = 0;
   String? _trafficTileSignature;
   final _signatures = <String, int>{};
@@ -123,6 +125,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   void _loadStyle() {
     _dark = Theme.of(context).brightness == Brightness.dark;
     _ready = false;
+    _styleEventReceived = false;
     _generation++;
     _trafficTileSignature = null;
     _signatures.clear();
@@ -247,6 +250,13 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   void _cameraIdle() {
     final camera = _controller?.cameraPosition;
     if (camera != null) _cameraMoved(camera);
+
+    // MapLibre can report a transient/default camera while a new style is
+    // still being attached. Never let that tear down the first overlay setup:
+    // Waybi driver, POIs, routes and traffic are all installed in
+    // _styleLoaded(). Region switching is only safe after that setup is ready.
+    if (!_ready) return;
+
     final next = MapRegionCapabilities.forPoint(_viewport.center).region;
     if (next == _region) return;
     setState(() {
@@ -261,21 +271,42 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     widget.onUserPan();
   }
 
+  void _mapCreated(ml.MapLibreMapController controller) {
+    _controller = controller;
+    if (_styleEventReceived) unawaited(_styleLoaded());
+  }
+
+  void _styleDidLoad() {
+    _styleEventReceived = true;
+    if (_controller != null) unawaited(_styleLoaded());
+  }
+
   Future<void> _styleLoaded() async {
+    if (_initializingStyle || !_styleEventReceived) return;
+    final c = _controller;
+    if (c == null) return;
+
+    _initializingStyle = true;
     final generation = _generation;
-    final c = _controller!;
-    final imageScale = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS
-        ? View.of(context).devicePixelRatio
-        : 1.0;
-    final existingLayerIds = (await c.getLayerIds())
-        .map((id) => id.toString())
-        .toSet();
-    final overlayAnchor = existingLayerIds.contains('waybi-poi-dot')
-        ? 'waybi-poi-dot'
-        : existingLayerIds.contains('waterway_line_label')
-        ? 'waterway_line_label'
-        : null;
     try {
+      final imageScale = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS
+          ? View.of(context).devicePixelRatio
+          : 1.0;
+      Set<String> existingLayerIds = const {};
+      try {
+        existingLayerIds = (await c.getLayerIds())
+            .map((id) => id.toString())
+            .toSet();
+      } catch (e) {
+        debugPrint(
+          'Waybi map layer discovery unavailable; using safe overlay fallback: $e',
+        );
+      }
+      final overlayAnchor = existingLayerIds.contains('waybi-poi-dot')
+          ? 'waybi-poi-dot'
+          : existingLayerIds.contains('waterway_line_label')
+          ? 'waterway_line_label'
+          : null;
       for (final style in LocationMarkerStyle.values) {
         await c.addImage(
           'waybi-puck-${style.name}',
@@ -552,14 +583,27 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         enableInteraction: false,
       );
       if (!mounted || generation != _generation) return;
+      _styleEventReceived = false;
       _ready = true;
       _signatures.clear();
       await _updatePadding();
       _queueSync();
       debugPrint('Waybi native map layers ready');
       widget.onReady(this);
-    } catch (e) {
-      if (mounted) debugPrint('Practice map initialization failed: $e');
+    } catch (e, stack) {
+      if (mounted) {
+        debugPrint('Practice map initialization failed: $e');
+        debugPrintStack(stackTrace: stack);
+      }
+    } finally {
+      _initializingStyle = false;
+      if (mounted &&
+          !_ready &&
+          _styleEventReceived &&
+          _controller != null &&
+          generation == _generation) {
+        scheduleMicrotask(_styleLoaded);
+      }
     }
   }
 
@@ -989,8 +1033,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                 tiltGesturesEnabled: false,
                 dragEnabled: false,
                 annotationOrder: const [],
-                onMapCreated: (c) => _controller = c,
-                onStyleLoadedCallback: () => unawaited(_styleLoaded()),
+                onMapCreated: _mapCreated,
+                onStyleLoadedCallback: _styleDidLoad,
                 onCameraMove: _cameraMoved,
                 onCameraIdle: _cameraIdle,
                 onMapClick: (p, ll) => unawaited(_tap(p, ll)),

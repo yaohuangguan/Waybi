@@ -221,14 +221,19 @@ void main() {
         }
         await LocationMarkerArt.finishFlagPng();
       });
+      final nativeMap = tester.widget<ml.MapLibreMap>(
+        find.byType(ml.MapLibreMap),
+      );
       await tester.runAsync(() async {
-        platform.onMapStyleLoadedPlatform.call(null);
+        nativeMap.onStyleLoadedCallback?.call();
         await Future<void>.delayed(const Duration(milliseconds: 50));
       });
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 200)),
-      );
-      await tester.pumpAndSettle();
+      for (var i = 0; i < 40 && renderer == null; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
       expect(renderer, isNotNull);
       final map = tester.widget<ml.MapLibreMap>(find.byType(ml.MapLibreMap));
       expect(map.attributionButtonMargins, const Point(8, 8));

@@ -24,6 +24,15 @@ abstract interface class SearchProvider {
   });
 }
 
+/// Immediate local suggestions while a newer prefix is refreshed online.
+abstract interface class CachedSearchProvider implements SearchProvider {
+  List<PlaceCandidate> cachedSuggestions(
+    String query, {
+    GeoPoint? proximity,
+    required String language,
+  });
+}
+
 /// A deliberate wider search, separate from everyday nearby suggestions.
 abstract interface class ExpandedSearchProvider implements SearchProvider {
   Future<List<PlaceCandidate>> searchFurther(

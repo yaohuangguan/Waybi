@@ -925,13 +925,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 trailing: DropdownButton<MapProvider>(
                   value: _mapProvider,
                   items: [
-                    const DropdownMenuItem(
-                      value: MapProvider.google,
-                      child: Text('Google Maps'),
-                    ),
                     DropdownMenuItem(
                       value: MapProvider.independent,
                       child: Text(_text('Waybi Map', 'Waybi 地图')),
+                    ),
+                    const DropdownMenuItem(
+                      value: MapProvider.google,
+                      child: Text('Google Maps'),
                     ),
                   ],
                   onChanged: (value) async {
@@ -940,19 +940,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     if (mounted) setState(() => _mapProvider = actual);
                   },
                 ),
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.info_outline_rounded),
-                title: Text(_text('Map data & licences', '地图数据与许可')),
-                subtitle: Text(
-                  _text(
-                    'OpenStreetMap, LINZ and other map-data credits',
-                    'OpenStreetMap、LINZ 及其他地图数据来源',
-                  ),
-                ),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: _showMapDataLicences,
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -1259,6 +1246,16 @@ class _ProfilePageState extends State<ProfilePage> {
                   label: Text(_text('Sign out', '退出登录')),
                 ),
               ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _showMapDataLicences,
+                  child: Text(
+                    _text('Map data & licences', '地图数据与许可'),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

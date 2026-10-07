@@ -30,6 +30,7 @@ import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
 import 'domain/route_preference.dart';
 import 'domain/road_event.dart';
+import 'domain/route_road_events.dart' as road_routes;
 import 'domain/safety_camera.dart';
 import 'domain/traffic_flow.dart';
 import 'drive/device_heading.dart';
@@ -74,6 +75,7 @@ import 'widgets/profile_page.dart';
 import 'widgets/map_layer_sheet.dart';
 import 'widgets/splash_gate.dart';
 import 'widgets/route_preview_sheet.dart';
+import 'widgets/road_event_details_sheet.dart';
 import 'widgets/transit_trip_overlay.dart';
 import 'widgets/trips_page.dart';
 
@@ -331,7 +333,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       IndependentRoutingProvider(useWaybiProxy: true);
   final IndependentTransitRoutingProvider _independentTransitRoutes =
       IndependentTransitRoutingProvider();
-  MapProvider _mapProvider = MapProvider.google;
+  MapProvider _mapProvider = MapProvider.independent;
   MapProvider? _requestedMapProvider;
   Future<void> _providerSwitchQueue = Future<void>.value();
   LocationMarkerStyle _locationMarker = LocationMarkerStyle.kiwi;
@@ -430,6 +432,43 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   WaybiTravelMode _selectedMode = WaybiTravelMode.drive;
   String? _selectedRouteId;
   bool _routePreviewLoading = false;
+  final _closureCache =
+      <
+        String,
+        ({
+          RouteOption route,
+          List<RoadEvent> events,
+          DateTime checkedAt,
+          List<RoadEvent> matches,
+        })
+      >{};
+
+  List<RoadEvent> _closuresOnRoute(RouteOption route) {
+    final cached = _closureCache[route.id];
+    final now = DateTime.now();
+    if (cached != null &&
+        identical(cached.route, route) &&
+        identical(cached.events, _driveEngine.roadEvents) &&
+        now.difference(cached.checkedAt).inSeconds < 30) {
+      return cached.matches;
+    }
+    final matches = road_routes.routeClosures(
+      route,
+      _driveEngine.roadEvents,
+      now: now,
+    );
+    if (_closureCache.length >= 12) {
+      _closureCache.remove(_closureCache.keys.first);
+    }
+    _closureCache[route.id] = (
+      route: route,
+      events: _driveEngine.roadEvents,
+      checkedAt: now,
+      matches: matches,
+    );
+    return matches;
+  }
+
   int _routeRequest = 0;
   bool _transitTripRunning = false;
   RouteOption? _activeTransitRoute;
@@ -1006,7 +1045,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     _journey?.cameraPassed(_driveEngine.passedCamera?.id);
     unawaited(_notifyRoadIntelligence());
-    final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
+    final reportIds = _visibleRoadEvents.map((event) => event.id).join(',');
     final signature =
         '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}:${_driveEngine.trafficFlowRevision}';
     if (signature != _markerSignature) {
@@ -1288,13 +1327,23 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  List<RoadEvent> get _communityRoadEvents => _driveEngine.roadEvents
-      .where(
-        (event) =>
-            event.metadata['userReported'] == true &&
-            event.isCurrent(DateTime.now()),
-      )
-      .toList(growable: false);
+  List<RoadEvent> get _visibleRoadEvents => _layers.roadEvents
+      ? _driveEngine.roadEvents
+            .where(
+              (event) =>
+                  (event.metadata['userReported'] == true ||
+                      (event.observation == RoadEventObservation.official &&
+                          {
+                            RoadEventType.roadClosure,
+                            RoadEventType.roadworks,
+                            RoadEventType.incident,
+                            RoadEventType.flooding,
+                            RoadEventType.slip,
+                          }.contains(event.type))) &&
+                  event.isCurrent(DateTime.now()),
+            )
+            .toList(growable: false)
+      : const [];
 
   String _roadEventLabel(RoadEventType type) => switch (type) {
     RoadEventType.incident => _text('Crash / hazard', '事故 / 危险'),
@@ -1503,85 +1552,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _showRoadEventDetails(RoadEvent event) async {
-    final reporter =
-        event.metadata['reporterName']?.toString() ??
-        _text('Waybi driver', 'Waybi 用户');
-    final description = event.metadata['description']?.toString();
-    final reportedAt =
-        DateTime.tryParse(event.metadata['reportedAt']?.toString() ?? '') ??
-        event.source.updatedAt;
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 44,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).dividerColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: WaybiColors.ice,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.add_alert_rounded,
-                    color: WaybiColors.ocean,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _roadEventLabel(event.type),
-                    style: const TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.w700,
-                      color: WaybiColors.deepOcean,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              _text(
-                '$reporter reported this ${_relativeTime(reportedAt)}',
-                '$reporter · ${_relativeTime(reportedAt)}报告',
-              ),
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: WaybiColors.deepOcean,
-              ),
-            ),
-            if (description != null && description.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(description),
-            ],
-            const SizedBox(height: 8),
-            Text(
-              _remainingTime(event.validUntil),
-              style: const TextStyle(
-                color: WaybiColors.lightTextSecondary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
+      showDragHandle: true,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .8,
+      ),
+      builder: (_) => RoadEventDetailsSheet(
+        event: event,
+        title: _roadEventLabel(event.type),
+        language: _appLanguage,
       ),
     );
   }
@@ -1592,10 +1574,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _mapProvider = MapProvider.values.firstWhere(
       (value) => value.name == prefs.getString('waybi.map.provider'),
       orElse: () =>
-          const String.fromEnvironment('WAYBI_DEFAULT_MAP_PROVIDER') ==
-              'independent'
-          ? MapProvider.independent
-          : MapProvider.google,
+          const String.fromEnvironment('WAYBI_DEFAULT_MAP_PROVIDER') == 'google'
+          ? MapProvider.google
+          : MapProvider.independent,
     );
     if (prefs.getString('waybi.map.provider') == 'mapbox') {
       _mapProvider = MapProvider.independent;
@@ -1673,6 +1654,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       alertBusLane: prefs.getBool('waybi.alerts.bus_lane') ?? true,
       alertOther: prefs.getBool('waybi.alerts.other_camera') ?? false,
       traffic: prefs.getBool('waybi.layers.traffic') ?? true,
+      roadEvents: prefs.getBool('waybi.layers.road_events') ?? true,
       style: BaseMapStyle.values.firstWhere(
         (value) => value.name == prefs.getString('waybi.layers.style'),
         orElse: () => BaseMapStyle.standard,
@@ -2830,8 +2812,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           .forMode(preferredMode)
           .take(3)
           .toList(growable: false);
+      final routesWithoutKnownClosures = preferredRoutes
+          .where((route) => _closuresOnRoute(route).isEmpty)
+          .toList(growable: false);
       final preferredRoute = preferredMode == WaybiTravelMode.drive
-          ? recommendedRoute(preferredRoutes, preferenceSummaries)
+          ? recommendedRoute(
+              routesWithoutKnownClosures.isEmpty
+                  ? preferredRoutes
+                  : routesWithoutKnownClosures,
+              preferenceSummaries,
+            )
           : preferredRoutes.firstOrNull;
       if (!mounted || request != _routeRequest) return;
       setState(() {
@@ -4351,7 +4341,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         : _browseController;
     if (controller == null) return;
     _markerSyncing = true;
-    final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
+    final reportIds = _visibleRoadEvents.map((event) => event.id).join(',');
     final signature =
         '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}:${_driveEngine.trafficFlowRevision}';
     try {
@@ -4396,7 +4386,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           ? []
           : (await controller.addMarkers(options)).whereType<Marker>().toList();
       final roadEventOptions = [
-        for (final event in _communityRoadEvents)
+        for (final event in _visibleRoadEvents)
           MarkerOptions(
             position: LatLng(
               latitude: event.location.latitude,
@@ -4434,7 +4424,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _markerSignature = signature;
     } finally {
       _markerSyncing = false;
-      final latestReportIds = _communityRoadEvents
+      final latestReportIds = _visibleRoadEvents
           .map((event) => event.id)
           .join(',');
       final latest =
@@ -4730,6 +4720,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       prefs.setBool('waybi.alerts.bus_lane', value.alertBusLane),
       prefs.setBool('waybi.alerts.other_camera', value.alertOther),
       prefs.setBool('waybi.layers.traffic', value.traffic),
+      prefs.setBool('waybi.layers.road_events', value.roadEvents),
       prefs.setString('waybi.layers.style', value.style.name),
     ]);
     if (trafficJustEnabled && _mapProvider == MapProvider.independent) {
@@ -5490,23 +5481,60 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _showDiscover() async {
+    final origin = _gpsLocation == null
+        ? _viewport.center
+        : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude);
     final action = await Navigator.of(context).push<DiscoverAction>(
       MaterialPageRoute(
         builder: (_) => DiscoverPage(
           language: _appLanguage,
           loader: _loadTripsSnapshot,
-          origin: _gpsLocation == null
-              ? _viewport.center
-              : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude),
+          roadLoader: () async {
+            await _driveEngine.loadCameras(force: true, center: origin);
+            return DiscoverRoadSnapshot(
+              events: _driveEngine.roadEvents,
+              status: _driveEngine.roadEventSyncStatus,
+              checkedAt: _driveEngine.roadEventCheckedAt,
+              officialCoverage: _driveEngine.roadEventOfficialCoverage,
+            );
+          },
+          origin: origin,
         ),
       ),
     );
     if (!mounted || action == null) return;
-    switch (action) {
-      case DiscoverAction.newDestination:
+    switch (action.kind) {
+      case DiscoverActionKind.search:
         _showGoSearch();
-      case DiscoverAction.trips:
+      case DiscoverActionKind.trips:
         await _showTrips();
+      case DiscoverActionKind.destination:
+        final place = action.destination!;
+        _selectPlace(
+          PlaceSummary(
+            name: place.name,
+            address: place.address,
+            location: place.location,
+          ),
+          SelectionSource.frequent,
+        );
+      case DiscoverActionKind.direction:
+        await _showExplore(center: action.center);
+      case DiscoverActionKind.roadEvent:
+        final event = action.event!;
+        await _setMapLayers(_layers.copyWith(roadEvents: true));
+        if (!_driveEngine.active) {
+          setState(() => _following = false);
+          await _browseRenderer?.moveTo(
+            _viewport.copyWith(
+              center: event.location,
+              zoom: 15.5,
+              bearing: 0,
+              pitch: 0,
+            ),
+          );
+        }
+        if (mounted) await _showRoadEventDetails(event);
     }
   }
 
@@ -5632,6 +5660,21 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ? _independentSearch
         : _workerSearch;
     return provider.search(query, proximity: point, language: _appLanguage);
+  }
+
+  List<PlaceCandidate> _cachedMapSearchSuggestions(String query) {
+    final point = _gpsLocation == null
+        ? _viewport.center
+        : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude);
+    final CachedSearchProvider provider =
+        _mapProvider == MapProvider.independent
+        ? _independentSearch
+        : _workerSearch;
+    return provider.cachedSuggestions(
+      query,
+      proximity: point,
+      language: _appLanguage,
+    );
   }
 
   void _selectMapSearchSuggestion(PlaceCandidate candidate) {
@@ -6487,7 +6530,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     language: _appLanguage,
                     cameras: _driveEngine.cameras,
                     onCamera: (camera) => unawaited(_showCameraDetails(camera)),
-                    roadEvents: _communityRoadEvents,
+                    roadEvents: _visibleRoadEvents,
                     onRoadEvent: (event) =>
                         unawaited(_showRoadEventDetails(event)),
                     trafficSegments: _driveEngine.trafficFlowSegments,
@@ -6681,6 +6724,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                               _gpsLocation!.longitude,
                             ),
                       loadSuggestions: _loadMapSearchSuggestions,
+                      cachedSuggestions: _cachedMapSearchSuggestions,
                       onSuggestionSelected: _selectMapSearchSuggestion,
                       onSearch: (query) => unawaited(_openSearch(query: query)),
                     ),
@@ -6892,6 +6936,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 cameraCount: _driveEngine.routeCameraCount,
                 routeCameraSummaries: _routeCameraSummaries,
                 routePreferenceSummaries: _routePreferenceSummaries,
+                routeClosures: {
+                  for (final route in _routePlan!.forMode(_selectedMode))
+                    route.id: _closuresOnRoute(route),
+                },
+                onRoadEvent: (event) => unawaited(_showRoadEventDetails(event)),
                 canRequestTransit: _mapProvider == MapProvider.independent,
                 canRequestModes: true,
                 customOrigin: _manualOrigin != null,

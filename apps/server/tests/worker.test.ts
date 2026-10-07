@@ -1,0 +1,476 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import worker, { readCameraState, syncCameras } from '../src/worker.ts';
+import seed from '../data/cameras.json' with { type: 'json' };
+
+test('valid overseas coordinates have unknown limits rather than rejecting navigation', async () => {
+  for (const coordinate of ['-74,40.71','139.7,35.69','121.47,31.23','18.4,-33.9']) {
+    const response = await worker.fetch(new Request('https://waybi.test/api/speed-limit?at='+coordinate),
+      {}, {waitUntil(){}});
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).speedLimitKph,null);
+  }
+});
+
+test('identity migration pauses API and scheduled writes while keeping assets available', async () => {
+  const env = {
+    WAYBI_MIGRATION_PAUSED: 'true',
+    ASSETS: { fetch: async () => new Response('site') }
+  };
+  const ctx = { waitUntil() { assert.fail('Migration must not start background work'); } };
+  for (const method of ['GET', 'POST']) {
+    const response = await worker.fetch(new Request('https://waybi.test/api/account', { method }), env, ctx);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('Retry-After'), '60');
+  }
+  assert.equal(await (await worker.fetch(new Request('https://waybi.test/'), env, ctx)).text(), 'site');
+  await worker.scheduled({ cron: '0 */6 * * *' }, env, ctx);
+});
+
+test('legacy public hosts canonicalize to waybi.co without breaking API clients', async () => {
+  const env = { ASSETS: { fetch: async () => new Response('site') } };
+  const ctx = { waitUntil() {} };
+
+  const httpApex = await worker.fetch(
+    new Request('http://waybi.co/route-watch/?from=http'),
+    env,
+    ctx
+  );
+  assert.equal(httpApex.status, 301);
+  assert.equal(httpApex.headers.get('location'), 'https://waybi.co/route-watch/?from=http');
+
+  const www = await worker.fetch(
+    new Request('https://www.waybi.co/route-watch/?from=www'),
+    env,
+    ctx
+  );
+  assert.equal(www.status, 301);
+  assert.equal(www.headers.get('location'), 'https://waybi.co/route-watch/?from=www');
+
+  const workersDev = await worker.fetch(
+    new Request('https://waybi.nzs.workers.dev/zh/?from=legacy'),
+    env,
+    ctx
+  );
+  assert.equal(workersDev.status, 301);
+  assert.equal(workersDev.headers.get('location'), 'https://waybi.co/zh/?from=legacy');
+
+  const api = await worker.fetch(
+    new Request('https://waybi.nzs.workers.dev/api/health'),
+    { ...fakeEnv() },
+    ctx
+  );
+  assert.equal(api.status, 200);
+});
+
+test('product surfaces are noindex while public marketing assets stay indexable', async () => {
+  const assetUrls = [];
+  const env = {
+    ASSETS: {
+      fetch: async (request) => {
+        assetUrls.push(request.url);
+        return new Response('site', { headers: { 'cache-control': 'public, max-age=60' } });
+      }
+    }
+  };
+  const ctx = { waitUntil() {} };
+
+  for (const path of ['/app', '/app/', '/dashboard', '/dashboard/profile']) {
+    const response = await worker.fetch(new Request(`https://waybi.test${path}`), env, ctx);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-robots-tag'), 'noindex, follow');
+    assert.equal(response.headers.get('cache-control'), 'private, no-cache');
+  }
+  assert.deepEqual(assetUrls.slice(0, 4), Array(4).fill('https://waybi.test/'));
+
+  const marketing = await worker.fetch(new Request('https://waybi.test/'), env, ctx);
+  assert.equal(marketing.headers.get('x-robots-tag'), null);
+  assert.equal(assetUrls.at(-1), 'https://waybi.test/');
+});
+
+function fakeEnv(initial = null) {
+  let value = initial;
+  return {
+    CAMERA_DATA: {
+      async get() { return value; },
+      async put(_key, serialized) { value = JSON.parse(serialized); }
+    },
+    ASSETS: { fetch: async () => new Response('asset') }
+  };
+}
+
+function fakeUserDb(plan = 'free') {
+  return {
+    prepare(sql) {
+      return {
+        bind() {
+          return {
+            async first() {
+              if (sql.includes('FROM sessions')) {
+                return { id: 'user-1', email: 'test@example.com' };
+              }
+              if (sql.includes('FROM user_subscriptions')) {
+                return plan === 'plus'
+                  ? { plan: 'plus', source: 'test', expiresAt: null }
+                  : null;
+              }
+              return null;
+            }
+          };
+        }
+      };
+    }
+  };
+}
+
+test('Worker API serves the full seeded camera list when KV is empty', async () => {
+  const env = fakeEnv();
+  const state = await readCameraState(env);
+  assert.equal(state.cameras.length, seed.cameras.length);
+  const response = await worker.fetch(new Request('https://example.test/api/health'), env, { waitUntil() {} });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).cameraCount, seed.cameras.length);
+});
+
+test('cross-origin address requests get a readable configuration response', async () => {
+  const response = await worker.fetch(new Request('https://waybi.co/api/suggest?q=Queen', {
+    headers: { Origin: 'https://preview.example' }
+  }), fakeEnv(), { waitUntil() {} });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('access-control-allow-origin'), '*');
+});
+
+test('address suggestions expose a place name and street address', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    results: [{
+      place_id: 'gallery-1',
+      name: 'Auckland Art Gallery Toi o Tāmaki',
+      address_line1: 'Wellesley Street East',
+      address_line2: 'Auckland Central, Auckland 1010, New Zealand',
+      formatted: 'Auckland Art Gallery Toi o Tāmaki, Wellesley Street East, Auckland',
+      country_code: 'nz',
+      lat: -36.8509,
+      lon: 174.7666
+    }]
+  }), { headers: { 'content-type': 'application/json' } });
+  try {
+    const env = { ...fakeEnv(), GEOAPIFY_API_KEY: 'test-key' };
+    const response = await worker.fetch(
+      new Request('https://example.test/api/suggest?q=gallery&near=174.7633,-36.8485'),
+      env,
+      { waitUntil() {} }
+    );
+    assert.equal(response.status, 200);
+    const [suggestion] = await response.json();
+    assert.equal(suggestion.name, 'Auckland Art Gallery Toi o Tāmaki');
+    assert.equal(
+      suggestion.address,
+      'Wellesley Street East, Auckland Central, Auckland 1010, New Zealand'
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Google place search handles nearby POIs and two-character Chinese queries without Geoapify', async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies = [];
+  globalThis.fetch = async (_url, options = {}) => {
+    bodies.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({
+      places: [{
+        id: 'ChIJtaiping1',
+        displayName: { text: 'Tai Ping Asian Supermarket Greenlane 太平亚洲食品超市' },
+        formattedAddress: '444 Great South Road, Greenlane, Auckland 1051',
+        primaryTypeDisplayName: { text: 'Asian grocery store' },
+        location: { latitude: -36.89181, longitude: 174.7962865 }
+      }]
+    }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const env = { ...fakeEnv(), GOOGLE_ROUTES_API_KEY: 'test-key' };
+    for (const query of ['taiping', '太平']) {
+      const response = await worker.fetch(
+        new Request(`https://example.test/api/suggest?q=${encodeURIComponent(query)}&lang=en&near=174.7633,-36.8485`),
+        env,
+        { waitUntil() {} }
+      );
+      assert.equal(response.status, 200);
+      const [suggestion] = await response.json();
+      assert.equal(suggestion.name, 'Tai Ping Asian Supermarket Greenlane 太平亚洲食品超市');
+    }
+    assert.equal(bodies[0].locationRestriction, undefined);
+    assert.equal(bodies[0].locationBias.circle.center.latitude, -36.8485);
+    assert.equal(bodies[0].locationBias.circle.center.longitude, 174.7633);
+    assert.equal(bodies[0].locationBias.circle.radius, 50000);
+    assert.equal(bodies[1].languageCode, 'zh-CN');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('explore returns nearby Google places with Yelp-style metadata', async () => {
+  const originalFetch = globalThis.fetch;
+  let requestBody = null;
+  globalThis.fetch = async (_url, options = {}) => {
+    requestBody = JSON.parse(options.body);
+    return new Response(JSON.stringify({
+      places: [{
+        id: 'ChIJexplore1',
+        displayName: { text: 'Auckland Art Gallery' },
+        formattedAddress: 'Wellesley Street East, Auckland 1010, New Zealand',
+        primaryTypeDisplayName: { text: 'Art gallery' },
+        rating: 4.7,
+        userRatingCount: 4200,
+        priceLevel: 'PRICE_LEVEL_FREE',
+        currentOpeningHours: { openNow: true },
+        location: { latitude: -36.8509, longitude: 174.7666 },
+        photos: [{ name: 'places/example/photos/photo-1' }]
+      }]
+    }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const env = { ...fakeEnv(), GOOGLE_ROUTES_API_KEY: 'test-key' };
+    const response = await worker.fetch(
+      new Request('https://example.test/api/explore?at=174.7633,-36.8485&category=activities'),
+      env,
+      { waitUntil() {} }
+    );
+    assert.equal(response.status, 200);
+    assert.equal(requestBody.rankPreference, 'POPULARITY');
+    assert.ok(requestBody.includedTypes.includes('museum'));
+    const [place] = await response.json();
+    assert.equal(place.name, 'Auckland Art Gallery');
+    assert.equal(place.rating, 4.7);
+    assert.equal(place.openNow, true);
+    assert.equal(place.photoName, 'places/example/photos/photo-1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('failed scheduled sync keeps validated cameras in KV', async () => {
+  const env = fakeEnv();
+  const state = await syncCameras(env, async () => new Response('<html>challenge</html>'));
+  assert.equal(state.syncStatus, 'stale');
+  assert.equal(state.cameras.length, seed.cameras.length);
+  assert.equal((await readCameraState(env)).cameras.length, seed.cameras.length);
+});
+
+test('Worker rejects malformed route coordinates before upstream calls', async () => {
+  const response = await worker.fetch(new Request('https://example.test/api/route?from=181,91&to=1,1'), fakeEnv(), { waitUntil() {} });
+  assert.equal(response.status, 400);
+});
+
+test('speed limit API selects the currently effective NZTA record', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    features: [
+      { attributes: {
+        speedLimitZoneValue: '30',
+        speedLimitZoneMaxValue: '30 km/h',
+        speedLimitZoneName: 'OLD CBD',
+        whenEffective: 0,
+        whenIneffective: Date.now() - 1000
+      } },
+      { attributes: {
+        speedLimitZoneValue: '50',
+        speedLimitZoneMaxValue: '50 km/h',
+        speedLimitZoneName: 'CURRENT CBD',
+        whenEffective: Date.now() - 5000,
+        whenIneffective: null
+      } }
+    ]
+  }), { headers: { 'content-type': 'application/json' } });
+  try {
+    const response = await worker.fetch(
+      new Request('https://example.test/api/speed-limit?at=174.7633,-36.8485'),
+      fakeEnv(),
+      { waitUntil() {} }
+    );
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.speedLimitKph, 50);
+    assert.equal(body.zoneName, 'CURRENT CBD');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('route API preserves OSRM lane guidance for turn steps', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    code: 'Ok',
+    routes: [{
+      distance: 1200,
+      duration: 120,
+      geometry: { coordinates: [[174.76, -36.85], [174.77, -36.86]] },
+      legs: [{ steps: [{
+        distance: 300,
+        duration: 30,
+        name: 'Queen Street',
+        maneuver: { type: 'turn', modifier: 'right', location: [174.77, -36.86] },
+        intersections: [{ lanes: [
+          { indications: ['straight'], valid: false },
+          { indications: ['straight', 'right'], valid: true }
+        ] }]
+      }] }]
+    }]
+  }), { headers: { 'content-type': 'application/json' } });
+  try {
+    const response = await worker.fetch(new Request(
+      'https://example.test/api/route?from=174.76,-36.85&to=174.77,-36.86'
+    ), fakeEnv(), { waitUntil() {} });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.steps[0].lanes, [
+      { indications: ['straight'], valid: false },
+      { indications: ['straight', 'right'], valid: true }
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test('Google place search falls back globally when proximity-biased search has no result', async () => {
+  const originalFetch = globalThis.fetch;
+  const bodies = [];
+  globalThis.fetch = async (_url, options = {}) => {
+    const body = JSON.parse(options.body);
+    bodies.push(body);
+    if (bodies.length === 1) {
+      return Response.json({ places: [] });
+    }
+    return Response.json({
+      places: [{
+        id: 'shijiazhuang-city',
+        displayName: { text: '石家庄市' },
+        formattedAddress: '河北省石家庄市，中国',
+        primaryTypeDisplayName: { text: '城市' },
+        location: { latitude: 38.0428, longitude: 114.5149 }
+      }]
+    });
+  };
+  try {
+    const env = { ...fakeEnv(), GOOGLE_ROUTES_API_KEY: 'test-key' };
+    const response = await worker.fetch(
+      new Request(
+        'https://example.test/api/suggest?q=%E7%9F%B3%E5%AE%B6%E5%BA%84&lang=zh&near=174.7633,-36.8485'
+      ),
+      env,
+      { waitUntil() {} }
+    );
+    assert.equal(response.status, 200);
+    const [place] = await response.json();
+    assert.equal(place.name, '石家庄市');
+    assert.equal(place.latitude, 38.0428);
+    assert.equal(place.longitude, 114.5149);
+    assert.equal(bodies.length, 2);
+    assert.equal(bodies[0].regionCode, undefined);
+    assert.ok(bodies[0].locationBias);
+    assert.equal(bodies[1].regionCode, undefined);
+    assert.equal(bodies[1].locationBias, undefined);
+    assert.equal(bodies[1].languageCode, 'zh-CN');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Cost Guard telemetry accepts only known mobile usage events', async () => {
+  const accepted = await worker.fetch(
+    new Request('https://example.test/api/telemetry/usage', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-waybi-client': 'mobile'
+      },
+      body: JSON.stringify({ event: 'google_navigation_destination', units: 2 })
+    }),
+    fakeEnv(),
+    { waitUntil() {} }
+  );
+  assert.equal(accepted.status, 202);
+
+  const unknown = await worker.fetch(
+    new Request('https://example.test/api/telemetry/usage', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-waybi-client': 'mobile'
+      },
+      body: JSON.stringify({ event: 'made_up_billable_event' })
+    }),
+    fakeEnv(),
+    { waitUntil() {} }
+  );
+  assert.equal(unknown.status, 400);
+
+  const spoofedClient = await worker.fetch(
+    new Request('https://example.test/api/telemetry/usage', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-waybi-client': 'web'
+      },
+      body: JSON.stringify({ event: 'google_navigation_destination' })
+    }),
+    fakeEnv(),
+    { waitUntil() {} }
+  );
+  assert.equal(spoofedClient.status, 403);
+});
+
+
+test('manual camera sync is rejected for free users', async () => {
+  const cached = {
+    ...seed,
+    checkedAt: new Date().toISOString(),
+    syncStatus: 'live',
+    syncError: null,
+    fetchMode: 'reader-fallback',
+    change: { added: 0, removed: 0 }
+  };
+  const env = { ...fakeEnv(cached), USER_DB: fakeUserDb('free') };
+  const response = await worker.fetch(
+    new Request('https://example.test/api/cameras/sync', {
+      method: 'POST',
+      headers: {
+        'x-waybi-client': 'mobile',
+        cookie: `waybi_session=${'a'.repeat(64)}`
+      }
+    }),
+    env,
+    { waitUntil() {} }
+  );
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).code, 'PLUS_REQUIRED');
+});
+
+test('manual camera sync is available to Plus users', async () => {
+  const cached = {
+    ...seed,
+    checkedAt: new Date().toISOString(),
+    syncStatus: 'live',
+    syncError: null,
+    fetchMode: 'reader-fallback',
+    change: { added: 0, removed: 0 }
+  };
+  const env = { ...fakeEnv(cached), USER_DB: fakeUserDb('plus') };
+  const response = await worker.fetch(
+    new Request('https://example.test/api/cameras/sync', {
+      method: 'POST',
+      headers: {
+        'x-waybi-client': 'mobile',
+        cookie: `waybi_session=${'b'.repeat(64)}`
+      }
+    }),
+    env,
+    { waitUntil() {} }
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.skipped, true);
+  assert.equal(body.cameras.length, seed.cameras.length);
+});

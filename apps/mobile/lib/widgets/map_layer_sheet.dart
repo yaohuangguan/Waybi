@@ -342,6 +342,22 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                             update(current.copyWith(traffic: value)),
                       ),
                     ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      secondary: const Icon(Icons.add_road_rounded),
+                      title: Text(
+                        _text('Road closures & incidents', '封路与道路事件'),
+                      ),
+                      subtitle: Text(
+                        _text(
+                          'Official updates and driver reports. Driving alerts stay on separately.',
+                          '官方路况与用户报告；驾驶提醒可独立设置。',
+                        ),
+                      ),
+                      value: current.roadEvents,
+                      onChanged: (value) =>
+                          update(current.copyWith(roadEvents: value)),
+                    ),
                     const Divider(),
                     Theme(
                       data: Theme.of(

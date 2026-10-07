@@ -8,7 +8,7 @@ Source repository: https://github.com/yaohuangguan/Waybi
 
 ## Product
 
-Waybi combines route planning and turn-by-turn navigation with route-based and community road context. Official camera and speed-limit sources currently cover New Zealand. The mobile app supports Google Maps and an independent Waybi Map path based on OpenFreeMap / OpenStreetMap. The web experience is backed by Cloudflare Workers.
+Waybi combines route planning and turn-by-turn navigation with route-based and community road context. Official camera and speed-limit sources currently cover New Zealand. The mobile app supports Google Maps and an independent Waybi Map path with a Waybi-hosted NZ OpenStreetMap basemap and a global OpenFreeMap fallback. The web experience is backed by Cloudflare Workers.
 
 Core navigation includes place search, route planning, route alternatives, voice and lane guidance where provider data is available, Journey Brief, parking discovery, trip history and route-aware fixed safety-camera reminders.
 
@@ -16,6 +16,7 @@ Core navigation includes place search, route planning, route alternatives, voice
 
 - New Zealand navigation: https://waybi.co/new-zealand-navigation/
 - NZ safety-camera navigation: https://waybi.co/safety-camera-navigation/
+- Waybi & Friends: https://waybi.co/waybi-friends/
 - Route Watch: https://waybi.co/route-watch/
 - Chinese overview: https://waybi.co/zh/
 
@@ -39,6 +40,9 @@ Tagline: A clearer journey.
 
 ## Waybi & Friends
 
-The iPhone app includes a persistent animated companion room under Me → Waybi & Friends, accessible to guests. Waybi, Clover and Sett walk, rest and react in their room. Pack zero, one or two items for a short companion trip; returning trips add a postcard and souvenir. Real navigation completion does not yet generate companion souvenirs.
+The iPhone app includes a persistent animated companion room under Me → Waybi & Friends, accessible to guests. Waybi, Clover and Sett walk, rest and react in their room. Pack optional items for companion trips lasting a random 20 minutes to 12 hours. Returning trips add postcards and illustrated keepsakes. Confirmed real navigation arrivals can add journal memories and country-themed keepsakes; a specific landmark souvenir is not guaranteed.
 
 Independent navigation follows heading and adjusts the camera by speed and upcoming turns. External waybi links and the Navigate with Waybi iPhone Shortcuts action open a destination for review. Google Calendar controls its own Open with picker; inclusion is not promised.
+
+Official road events cover NZTA in New Zealand and Transport for NSW in New South Wales, Australia. A shared Worker snapshot refreshes every three minutes. Map road-event layers start enabled, Discover shows nearby events, and route previews flag matched closures. Route alternatives without a matched closure are preferred when available; guaranteed closure-aware detours are not implemented.
+

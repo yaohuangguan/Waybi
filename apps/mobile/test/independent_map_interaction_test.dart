@@ -22,6 +22,18 @@ class RecordingMapPlatform extends ml.MapLibrePlatform {
   final sources = <String, Map<String, dynamic>>{};
   final moves = <ml.CameraUpdate>[];
   List<Map<String, dynamic>> features = [];
+  ml.CameraPosition camera = const ml.CameraPosition(
+    target: ml.LatLng(-36.85, 174.76),
+    zoom: 15,
+    bearing: 95,
+  );
+  int cameraReads = 0;
+  @override
+  Future<ml.CameraPosition?> queryCameraPosition() async {
+    cameraReads++;
+    return camera;
+  }
+
   @override
   Widget buildView(
     Map<String, dynamic> creationParams,
@@ -237,6 +249,8 @@ void main() {
       expect(renderer, isNotNull);
       final map = tester.widget<ml.MapLibreMap>(find.byType(ml.MapLibreMap));
       expect(map.attributionButtonMargins, const Point(8, 8));
+      expect(map.attributionButtonEnabled, false);
+      expect(map.trackCameraPosition, false);
       final pins = platform.sources['waybi-pins']!['features'] as List;
       final eventPin = pins.firstWhere(
         (feature) => feature['id'] == 'event:report-1',
@@ -287,6 +301,7 @@ void main() {
       }
       expect(platform.builds, builds);
       expect(platform.updates, isEmpty);
+      expect(platform.cameraReads, 0);
       // iOS can send the exact final bearing only with its idle event.
       platform.onCameraIdlePlatform.call(
         const ml.CameraPosition(
@@ -297,6 +312,7 @@ void main() {
       );
       await tester.pump();
       expect(renderer!.viewport.bearing, 95);
+      expect(platform.cameraReads, 1);
       expect(platform.builds, builds);
       final a = await tester.startGesture(const Offset(60, 340), pointer: 1);
       final b = await tester.startGesture(const Offset(320, 500), pointer: 2);

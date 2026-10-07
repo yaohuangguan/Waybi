@@ -24,6 +24,25 @@ reports, traffic, navigation routes and the location marker remain intact.
 POI name density grows more gradually between zooms 15 and 18; selectable dots
 retain the original density. No SDK memory guards are disabled.
 
+The final signed release on Sam retained visible POI names in every normal
+phase and recorded the following results after warmup:
+
+| Zoom | Frames | Median interval | p95 interval | Visible POI names | Intervals over 33.4 ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 16 | 487 | 16.67 ms | 18.40 ms | 65 | 3 |
+| 18 | 501 | 16.66 ms | 16.98 ms | 22 | 0 |
+| 19 | 471 | 16.67 ms | 17.81 ms | 7 | 1 |
+
+Each phase sampled approximately eight seconds of native camera animation.
+These results show the high-zoom label bottleneck was substantially reduced in
+this CBD scenario. Loading new tiles, long finger gestures crossing coverage
+boundaries, navigation camera updates and other devices need broader field
+testing; this measurement does not establish a universal 60 FPS guarantee.
+The probe temporarily keeps the screen awake, restores its previous idle-timer
+setting and camera when finished, and runs only with the explicit environment
+variable. The private on-device journal check also confirmed four memories in
+both the primary save and its backup, with no pending import left over.
+
 To repeat, launch a development-signed release with the environment variable
 `WAYBI_MAP_PERFORMANCE_PROBE` set to a run label. Keep the phone unlocked and
 foregrounded until `Documents/waybi-map-performance.json` is written. Copy that

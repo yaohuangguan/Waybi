@@ -1,15 +1,24 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+import '../domain/map_provider.dart';
 import '../theme/waybi_theme.dart';
 import 'trips_page.dart';
 
 enum DiscoverAction { newDestination, trips }
 
 class DiscoverPage extends StatefulWidget {
-  const DiscoverPage({super.key, required this.language, required this.loader});
+  const DiscoverPage({
+    super.key,
+    required this.language,
+    required this.loader,
+    this.origin,
+  });
 
   final String language;
   final Future<TripsSnapshot> Function() loader;
+  final GeoPoint? origin;
 
   @override
   State<DiscoverPage> createState() => _DiscoverPageState();
@@ -63,6 +72,86 @@ class _DiscoverPageState extends State<DiscoverPage> {
             .toSet()
             .length ??
         0;
+  }
+
+  Map<int, int> get _directionCounts {
+    final origin = widget.origin;
+    if (origin == null) return const {};
+    final counts = <int, int>{0: 0, 1: 0, 2: 0, 3: 0};
+    final visitedCells = <String>{};
+    for (final item in _snapshot?.history ?? const <TripHistoryItem>[]) {
+      final destination = item.destination.location;
+      final cell =
+          '${(destination.latitude * 50).round()}:${(destination.longitude * 50).round()}';
+      if (!visitedCells.add(cell)) continue;
+      final lat1 = origin.latitude * math.pi / 180;
+      final lat2 = destination.latitude * math.pi / 180;
+      final deltaLon =
+          (destination.longitude - origin.longitude) * math.pi / 180;
+      final y = math.sin(deltaLon) * math.cos(lat2);
+      final x =
+          math.cos(lat1) * math.sin(lat2) -
+          math.sin(lat1) * math.cos(lat2) * math.cos(deltaLon);
+      final bearing = (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+      final sector = ((bearing + 45) ~/ 90) % 4;
+      counts[sector] = (counts[sector] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  int? get _leastExploredDirection {
+    if (widget.origin == null) return null;
+    final counts = _directionCounts;
+    if (counts.isEmpty) return null;
+    var best = 0;
+    for (var sector = 1; sector < 4; sector++) {
+      if ((counts[sector] ?? 0) < (counts[best] ?? 0)) best = sector;
+    }
+    return best;
+  }
+
+  String _directionName(int sector) => switch (sector) {
+    0 => _text('North', '北边'),
+    1 => _text('East', '东边'),
+    2 => _text('South', '南边'),
+    _ => _text('West', '西边'),
+  };
+
+  Widget _unexploredDirectionCard() {
+    final history = _snapshot?.history ?? const <TripHistoryItem>[];
+    final sector = _leastExploredDirection;
+    final counts = _directionCounts;
+    final body = _loading
+        ? _text(
+            'Reading your journey history…',
+            '正在读取你的旅程记录…',
+          )
+        : history.isEmpty
+        ? _text(
+            'Every direction is still new. Your first completed journeys will start building Waybi’s memory of the world you have travelled.',
+            '现在每个方向都是新的。完成几次导航后，Waybi 就会开始建立你们一起走过的世界记忆。',
+          )
+        : sector == null
+        ? _text(
+            'Waybi needs your current location before it can compare where you have and have not travelled.',
+            'Waybi 需要当前位置，才能比较你去过和还没怎么去过的方向。',
+          )
+        : _text(
+            '${_directionName(sector)} is your least explored direction from here. Waybi remembers ${counts[sector] ?? 0} visited area${(counts[sector] ?? 0) == 1 ? '' : 's'} there.',
+            '从这里出发，${_directionName(sector)}是你最少探索的方向。Waybi 在这个方向目前只记住了 ${counts[sector] ?? 0} 个到访区域。',
+          );
+    return _SectionCard(
+      icon: Icons.explore_outlined,
+      title: _text('Where Waybi has barely been', 'Waybi 还没怎么去过的方向'),
+      body: body,
+      trailing: IconButton.filledTonal(
+        tooltip: _text('Choose a new destination', '选择一个新目的地'),
+        onPressed: _loading
+            ? null
+            : () => Navigator.of(context).pop(DiscoverAction.newDestination),
+        icon: const Icon(Icons.arrow_outward_rounded),
+      ),
+    );
   }
 
   String _lastVisited(DateTime? value) {
@@ -164,15 +253,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
               ],
             ),
             const SizedBox(height: 22),
-            _SectionCard(
-              icon: Icons.route_rounded,
-              title: _text('Unexplored roads', '还没走过的路'),
-              body: _text(
-                'Waybi will use your journey history to distinguish roads you have travelled from roads that are still new to you. Route-level coverage comes next.',
-                'Waybi 会用真实行程记录区分你走过和还没走过的道路。下一步会把记录细化到道路级。',
-              ),
-              trailing: Chip(label: Text(_text('Next', '下一步'))),
-            ),
+            _unexploredDirectionCard(),
             const SizedBox(height: 12),
             _SectionCard(
               icon: Icons.landscape_rounded,

@@ -5492,8 +5492,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _showDiscover() async {
     final action = await Navigator.of(context).push<DiscoverAction>(
       MaterialPageRoute(
-        builder: (_) =>
-            DiscoverPage(language: _appLanguage, loader: _loadTripsSnapshot),
+        builder: (_) => DiscoverPage(
+          language: _appLanguage,
+          loader: _loadTripsSnapshot,
+          origin: _gpsLocation == null
+              ? _viewport.center
+              : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude),
+        ),
       ),
     );
     if (!mounted || action == null) return;

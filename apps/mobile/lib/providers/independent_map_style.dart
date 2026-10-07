@@ -3,22 +3,58 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+class WaybiMapSourceConfig {
+  const WaybiMapSourceConfig._();
+
+  static const vectorSource = String.fromEnvironment(
+    'WAYBI_MAP_VECTOR_SOURCE',
+    defaultValue: 'https://tiles.openfreemap.org/planet',
+  );
+  static const naturalEarthTemplate = String.fromEnvironment(
+    'WAYBI_MAP_NATURAL_EARTH_TILES',
+    defaultValue:
+        'https://tiles.openfreemap.org/natural_earth/ne2sr/{z}/{x}/{y}.png',
+  );
+  static const spriteUrl = String.fromEnvironment(
+    'WAYBI_MAP_SPRITE_URL',
+    defaultValue: 'https://tiles.openfreemap.org/sprites/ofm_f384/ofm',
+  );
+  static const glyphsUrl = String.fromEnvironment(
+    'WAYBI_MAP_GLYPHS_URL',
+    defaultValue: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  );
+
+  static bool get usingWaybiHostedTiles =>
+      !vectorSource.contains('openfreemap.org');
+}
+
 /// Native MapLibre style. Land use, road hierarchy and POIs remain distinct.
 Map<String, dynamic> waybiMapStyle(
   Map<String, dynamic> base, {
   required bool dark,
   required String language,
+  String vectorSource = WaybiMapSourceConfig.vectorSource,
+  String naturalEarthTemplate = WaybiMapSourceConfig.naturalEarthTemplate,
+  String spriteUrl = WaybiMapSourceConfig.spriteUrl,
+  String glyphsUrl = WaybiMapSourceConfig.glyphsUrl,
 }) {
   final result = jsonDecode(jsonEncode(base)) as Map<String, dynamic>;
   result['id'] = 'waybi-${dark ? "night" : "day"}-$language';
   final sources = result['sources'] as Map<String, dynamic>?;
   final openMapTiles = sources?['openmaptiles'] as Map<String, dynamic>?;
   if (openMapTiles != null) {
-    // Keep attribution in the native MapLibre info control instead of a large
-    // custom badge that floats over navigation content.
+    openMapTiles['url'] = vectorSource;
+    // Keep source attribution machine-readable even when Waybi presents the
+    // legal credits through its own splash/settings experience.
     openMapTiles['attribution'] =
         '© OpenStreetMap contributors · © OpenMapTiles · Routing: OSRM';
   }
+  final naturalEarth = sources?['ne2_shaded'] as Map<String, dynamic>?;
+  if (naturalEarth != null) {
+    naturalEarth['tiles'] = [naturalEarthTemplate];
+  }
+  result['sprite'] = spriteUrl;
+  result['glyphs'] = glyphsUrl;
   final paper = dark ? '#192329' : '#f6f7f8';
   final park = dark ? '#294333' : '#cfe6bf';
   final water = dark ? '#204557' : '#e5eef3';

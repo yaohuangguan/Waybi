@@ -63,6 +63,7 @@ import 'widgets/arrival_experience_panel.dart';
 import 'widgets/map_symbols.dart';
 import 'widgets/independent_navigation_overlay.dart';
 import 'widgets/drive_hud.dart';
+import 'widgets/discover_page.dart';
 import 'widgets/explore_search.dart';
 import 'widgets/explore_page.dart';
 import 'widgets/full_screen_search.dart';
@@ -5488,6 +5489,22 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _showDiscover() async {
+    final action = await Navigator.of(context).push<DiscoverAction>(
+      MaterialPageRoute(
+        builder: (_) =>
+            DiscoverPage(language: _appLanguage, loader: _loadTripsSnapshot),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case DiscoverAction.newDestination:
+        _showGoSearch();
+      case DiscoverAction.trips:
+        await _showTrips();
+    }
+  }
+
   Future<void> _showSaved() async {
     final prefs = await SharedPreferences.getInstance();
     final savedRoutes = prefs.getStringList('waybi.saved.routes') ?? [];
@@ -6184,9 +6201,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             children: [
               item(Icons.map_outlined, _text('Map', '地图'), _recenter),
               item(
-                Icons.explore_outlined,
-                _text('Explore', '探索'),
-                () => unawaited(_showExplore()),
+                Icons.travel_explore_outlined,
+                _text('Discover', '发现'),
+                () => unawaited(_showDiscover()),
               ),
               Expanded(
                 child: InkWell(

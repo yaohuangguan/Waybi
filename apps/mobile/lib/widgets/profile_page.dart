@@ -104,6 +104,83 @@ class _ProfilePageState extends State<ProfilePage> {
   String _text(String english, String chinese) =>
       _appLanguage == 'zh' ? chinese : english;
 
+  Future<void> _showMapDataLicences() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .66,
+        minChildSize: .48,
+        maxChildSize: .9,
+        builder: (context, controller) => ListView(
+          controller: controller,
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            Text(
+              _text('Map data & licences', '地图数据与许可'),
+              style: Theme.of(context).textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _text(
+                'Waybi controls the map experience, style, navigation UI and product layers. Geographic data still comes from credited open and official sources.',
+                'Waybi 自己控制地图体验、样式、导航界面和产品图层；底层地理数据仍来自需要注明来源的开放数据和官方数据。',
+              ),
+              style: const TextStyle(height: 1.45),
+            ),
+            const SizedBox(height: 20),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.public_rounded),
+              title: Text('OpenStreetMap'),
+              subtitle: Text(
+                'Map data © OpenStreetMap contributors · Open Database License (ODbL)',
+              ),
+            ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.location_city_rounded),
+              title: Text('Toitū Te Whenua LINZ'),
+              subtitle: Text(
+                'New Zealand address data · Creative Commons Attribution 4.0',
+              ),
+            ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.layers_outlined),
+              title: Text('Waybi Map basemap'),
+              subtitle: Text(
+                'MapLibre rendering. Current rollout still uses OpenFreeMap / OpenMapTiles infrastructure while Waybi-hosted map tiles are introduced.',
+              ),
+            ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.route_rounded),
+              title: Text('Routing'),
+              subtitle: Text(
+                'OSRM routing over OpenStreetMap road data. Waybi-hosted regional routing is being introduced before public launch.',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void didUpdateWidget(covariant ProfilePage oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -855,6 +932,19 @@ class _ProfilePageState extends State<ProfilePage> {
                     if (mounted) setState(() => _mapProvider = actual);
                   },
                 ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.info_outline_rounded),
+                title: Text(_text('Map data & licences', '地图数据与许可')),
+                subtitle: Text(
+                  _text(
+                    'OpenStreetMap, LINZ and other map-data credits',
+                    'OpenStreetMap、LINZ 及其他地图数据来源',
+                  ),
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: _showMapDataLicences,
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,

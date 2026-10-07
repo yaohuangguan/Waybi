@@ -311,6 +311,22 @@ async function handleApi(request, env, ctx) {
     if (stops.length && googleMode === 'TRANSIT') {
       return json({ error: 'Transit route options do not support intermediate stops' }, 400);
     }
+    const requestedProvider = url.searchParams.get('provider');
+    if (requestedProvider && requestedProvider !== 'independent') {
+      return json({ error: 'provider must be independent when specified' }, 400);
+    }
+    if (requestedProvider === 'independent' && googleMode === 'TRANSIT') {
+      return json({ error: 'Waybi Map transit uses the transit routing endpoint' }, 400);
+    }
+    const alternatives = url.searchParams.get('alternatives');
+    if (alternatives != null && alternatives !== 'true' && alternatives !== 'false') {
+      return json({ error: 'alternatives must be true or false' }, 400);
+    }
+    const rawHeading = url.searchParams.get('heading');
+    const headingDegrees = rawHeading == null ? null : Number(rawHeading);
+    if (rawHeading != null && !Number.isFinite(headingDegrees)) {
+      return json({ error: 'heading must be a finite number' }, 400);
+    }
     return json(await routeOptions(
       from,
       to,
@@ -319,7 +335,12 @@ async function handleApi(request, env, ctx) {
       googleMode ? [googleMode] : null,
       (provider, sku, units) => ctx.waitUntil(
         recordApiUsage(env, { provider, sku, calls: units, units })
-      )
+      ),
+      {
+        forceIndependent: requestedProvider === 'independent',
+        alternatives: alternatives == null ? undefined : alternatives === 'true',
+        headingDegrees
+      }
     ));
   }
   if (url.pathname === '/api/independent-place-details') {

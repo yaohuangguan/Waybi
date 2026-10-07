@@ -173,6 +173,7 @@ class IndependentSearchProvider
     http.Client? client,
     this.requestSpacing = const Duration(milliseconds: 750),
     this.useWorkerSuggestions = false,
+    this.workerOnly = false,
   }) : _client = client ?? http.Client() {
     if (useWorkerSuggestions) {
       _fastSearch = WorkerSearchProvider(client: _client, mapCompatible: true);
@@ -186,6 +187,7 @@ class IndependentSearchProvider
 
   final Duration requestSpacing;
   final bool useWorkerSuggestions;
+  final bool workerOnly;
   WorkerSearchProvider? _fastSearch;
   final _cache = <String, (DateTime, List<PlaceSummary>)>{};
   final _pending = <String, Future<List<PlaceSummary>>>{};
@@ -672,15 +674,24 @@ class IndependentSearchProvider
     // quality identical regardless of which map renderer is selected. Photon
     // remains the open-data fallback if Waybi search is slow or unavailable.
     final fastSearch = _fastSearch;
-    if (!expanded && fastSearch != null) {
+    if (fastSearch != null && (!expanded || workerOnly)) {
       try {
         final fast = await fastSearch
             .search(trimmed, proximity: proximity, language: language)
-            .timeout(const Duration(milliseconds: 1200));
-        if (fast.isNotEmpty) return fast.take(8).toList(growable: false);
+            .timeout(const Duration(milliseconds: 1800));
+        if (fast.isNotEmpty || workerOnly) {
+          return fast.take(8).toList(growable: false);
+        }
       } catch (_) {
-        // Fall through to the independent global provider below.
+        if (workerOnly) {
+          throw StateError('Waybi Search is temporarily unavailable');
+        }
+        // Development/direct mode may still fall through to Photon.
       }
+    }
+
+    if (workerOnly) {
+      throw StateError('Waybi Search is temporarily unavailable');
     }
 
     var results = await _load(
@@ -852,12 +863,44 @@ class IndependentSearchProvider
     GeoPoint point, {
     required String language,
     String preferredName = '',
-  }) async => (await _load('reverse', {
-    'lat': '${point.latitude}',
-    'lon': '${point.longitude}',
-    'limit': '1',
-    'lang': 'en',
-  })).firstOrNull;
+  }) async {
+    if (workerOnly) {
+      try {
+        final uri = Uri.parse('$workerBaseUrl/api/reverse').replace(
+          queryParameters: {
+            'at': '${point.longitude},${point.latitude}',
+            'lang': language,
+          },
+        );
+        final response = await _client
+            .get(uri)
+            .timeout(const Duration(seconds: 4));
+        if (response.statusCode != 200) return null;
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        if (data is! Map<String, dynamic>) return null;
+        final label = data['label']?.toString().trim() ?? '';
+        if (label.isEmpty) return null;
+        return PlaceSummary(
+          name: preferredName.trim().isEmpty ? label : preferredName.trim(),
+          address: label,
+          kind: PlaceKind.address,
+          location: point,
+          reference: ProviderReference(
+            'osm',
+            'reverse:${point.latitude},${point.longitude}',
+          ),
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+    return (await _load('reverse', {
+      'lat': '${point.latitude}',
+      'lon': '${point.longitude}',
+      'limit': '1',
+      'lang': 'en',
+    })).firstOrNull;
+  }
 
   @override
   Future<List<PlaceSummary>> nearby(

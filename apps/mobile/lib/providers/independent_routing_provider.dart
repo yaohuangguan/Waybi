@@ -4,17 +4,23 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 
+import '../data/api_config.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import 'provider_contracts.dart';
 
 class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
-  IndependentRoutingProvider({http.Client? client})
-    : _client = client ?? http.Client();
+  IndependentRoutingProvider({
+    http.Client? client,
+    this.useWaybiProxy = false,
+    this.proxyBaseUrl = workerBaseUrl,
+  }) : _client = client ?? http.Client();
   final _slots = <String, Future<void>>{};
   final _lastRequest = <String, DateTime>{};
   final _pending = <Uri, Future<http.Response>>{};
   final http.Client _client;
+  final bool useWaybiProxy;
+  final String proxyBaseUrl;
 
   @override
   Future<RoutePlan> route({
@@ -128,6 +134,14 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     bool alternatives = true,
     double? headingDegrees,
   }) async {
+    if (useWaybiProxy) {
+      return _fetchWaybiMode(
+        points,
+        mode: mode,
+        alternatives: alternatives,
+        headingDegrees: headingDegrees,
+      );
+    }
     final path = points
         .map((point) => '${point.longitude},${point.latitude}')
         .join(';');
@@ -280,6 +294,75 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         )
         .toList(growable: false);
   }
+
+  Future<List<RouteOption>> _fetchWaybiMode(
+    List<GeoPoint> points, {
+    required WaybiTravelMode mode,
+    required bool alternatives,
+    double? headingDegrees,
+  }) async {
+    final uri = Uri.parse('$proxyBaseUrl/api/route-options').replace(
+      queryParameters: {
+        'from': '${points.first.longitude},${points.first.latitude}',
+        'to': '${points.last.longitude},${points.last.latitude}',
+        if (points.length > 2)
+          'stops': points
+              .skip(1)
+              .take(points.length - 2)
+              .map((point) => '${point.longitude},${point.latitude}')
+              .join(';'),
+        'mode': mode.apiValue,
+        'provider': 'independent',
+        'alternatives': alternatives ? 'true' : 'false',
+        if (headingDegrees != null && headingDegrees.isFinite)
+          'heading': '${headingDegrees % 360}',
+      },
+    );
+    final response = await _client
+        .get(uri, headers: const {'Accept': 'application/json'})
+        .timeout(Duration(seconds: alternatives ? 12 : 8));
+    if (response.statusCode != 200) {
+      throw StateError('Waybi directions unavailable: ${response.statusCode}');
+    }
+    final body =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final routes = (body['options'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(RouteOption.fromJson)
+        .where(
+          (route) =>
+              route.mode == mode &&
+              route.points.length >= 2 &&
+              route.distanceMeters > 0,
+        )
+        .map((route) => _withWaypoints(route, points))
+        .toList(growable: false);
+    if (routes.isEmpty) {
+      throw StateError('Waybi could not find a route');
+    }
+    return routes;
+  }
+
+  RouteOption _withWaypoints(RouteOption route, List<GeoPoint> points) =>
+      RouteOption(
+        id: route.id,
+        mode: route.mode,
+        durationSeconds: route.durationSeconds,
+        staticDurationSeconds: route.staticDurationSeconds,
+        trafficDelaySeconds: route.trafficDelaySeconds,
+        distanceMeters: route.distanceMeters,
+        points: route.points,
+        provider: route.provider,
+        traffic: route.traffic,
+        trafficIntervals: route.trafficIntervals,
+        routeToken: route.routeToken,
+        description: route.description,
+        labels: route.labels,
+        warnings: route.warnings,
+        transit: route.transit,
+        steps: route.steps,
+        waypoints: List.unmodifiable(points),
+      );
 
   Future<http.Response> _limitedGet(Uri uri, {required Duration timeout}) {
     return _pending.putIfAbsent(uri, () {

@@ -92,8 +92,6 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   bool _ready = false, _syncing = false, _dirty = false;
   int _generation = 0;
   String? _trafficTileSignature;
-  Timer? _creditTimer;
-  bool _showCredit = true;
   final _signatures = <String, int>{};
   final _pointers = <int, Offset>{};
   bool _gestureReported = false;
@@ -106,7 +104,6 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
 
   @override
   void dispose() {
-    _creditTimer?.cancel();
     super.dispose();
   }
 
@@ -520,10 +517,6 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       );
       if (!mounted || generation != _generation) return;
       _ready = true;
-      _creditTimer?.cancel();
-      _creditTimer = Timer(const Duration(seconds: 5), () {
-        if (mounted) setState(() => _showCredit = false);
-      });
       _signatures.clear();
       await _updatePadding();
       _queueSync();
@@ -986,24 +979,6 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           },
         ),
       ),
-      if (_showCredit)
-        Positioned(
-          bottom: 8,
-          left: 8,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface
-                    .withValues(alpha: .92),
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                child: Text('© OpenStreetMap', style: TextStyle(fontSize: 10)),
-              ),
-            ),
-          ),
-        ),
     ],
   );
 }

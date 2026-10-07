@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 
 import '../domain/map_layer_settings.dart';
+import '../domain/map_region_capabilities.dart';
 import '../domain/map_provider.dart';
 import '../domain/safety_camera.dart';
 import '../domain/traffic_flow.dart';
@@ -75,7 +76,11 @@ class IndependentMapRenderer extends StatefulWidget {
   final bool navigating;
   final TrafficTileOverlay? trafficTileOverlay;
   final bool trafficFresh;
-  final Future<String> Function({required bool dark, required String language})
+  final Future<String> Function({
+    required bool dark,
+    required String language,
+    required GeoPoint center,
+  })
   styleLoader;
   @override
   State<IndependentMapRenderer> createState() => _IndependentMapRendererState();
@@ -89,6 +94,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   EdgeInsets? _appliedPadding;
   Future<String>? _style;
   bool? _dark;
+  late WaybiMapRegion _region;
   bool _ready = false, _syncing = false, _dirty = false;
   int _generation = 0;
   String? _trafficTileSignature;
@@ -103,6 +109,13 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   ml.LatLng _point(GeoPoint p) => ml.LatLng(p.latitude, p.longitude);
 
   @override
+  void initState() {
+    super.initState();
+    _region = MapRegionCapabilities.forPoint(widget.initialViewport.center)
+        .region;
+  }
+
+  @override
   void dispose() {
     super.dispose();
   }
@@ -114,7 +127,11 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     _trafficTileSignature = null;
     _signatures.clear();
     _appliedPadding = null;
-    _style = widget.styleLoader(dark: _dark!, language: widget.language);
+    _style = widget.styleLoader(
+      dark: _dark!,
+      language: widget.language,
+      center: _viewport.center,
+    );
   }
 
   @override
@@ -225,6 +242,17 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     );
     // No setState here: native map movement must not rebuild the Flutter HUD.
     widget.onViewportChanged(_viewport);
+  }
+
+  void _cameraIdle() {
+    final camera = _controller?.cameraPosition;
+    if (camera != null) _cameraMoved(camera);
+    final next = MapRegionCapabilities.forPoint(_viewport.center).region;
+    if (next == _region) return;
+    setState(() {
+      _region = next;
+      _loadStyle();
+    });
   }
 
   void _pan() {
@@ -964,13 +992,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                 onMapCreated: (c) => _controller = c,
                 onStyleLoadedCallback: () => unawaited(_styleLoaded()),
                 onCameraMove: _cameraMoved,
-                onCameraIdle: () {
-                  // Native iOS reports the settled position separately from
-                  // movement frames. Keep follow calculations on that final
-                  // bearing and zoom, rather than the last animation frame.
-                  final camera = _controller?.cameraPosition;
-                  if (camera != null) _cameraMoved(camera);
-                },
+                onCameraIdle: _cameraIdle,
                 onMapClick: (p, ll) => unawaited(_tap(p, ll)),
                 onMapLongClick: (_, p) => widget.onMapPlace(
                   PlaceSummary(

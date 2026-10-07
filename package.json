@@ -33,7 +33,6 @@
     "mobile:build:apk": "cd apps/mobile && flutter build apk",
     "mobile:ios": "node scripts/ios-device.mjs debug",
     "mobile:ios:install": "node scripts/ios-device.mjs install",
-    "mobile:ios:waybi-map-nz": "WAYBI_DART_DEFINES_FILE=.dart-defines.waybi-map-nz.json node scripts/ios-device.mjs install",
     "mobile:ios:ipa": "node scripts/ios-device.mjs ipa"
   },
   "devDependencies": {

@@ -70,6 +70,9 @@ class RecordingMapPlatform extends ml.MapLibrePlatform {
   }
 
   @override
+  Future<List> getLayerIds() async => const [];
+
+  @override
   Future<List> queryRenderedFeaturesInRect(
     Rect rect,
     List<String> layers,
@@ -196,8 +199,11 @@ void main() {
                     panCalls++;
                     state(() => following = false);
                   },
-                  styleLoader: ({required dark, required language}) async =>
-                      '{"version":8,"sources":{},"layers":[]}',
+                  styleLoader: ({
+                    required dark,
+                    required language,
+                    required center,
+                  }) async => '{"version":8,"sources":{},"layers":[]}',
                 ),
               );
             },

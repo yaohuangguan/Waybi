@@ -70,3 +70,54 @@ test('street-only queries are eligible for regional street enrichment', async ()
     globalThis.fetch = previous;
   }
 });
+
+test('slow national address service does not block faster local NZ typeahead', async () => {
+  const started = Date.now();
+  const results = await searchRegionalAddressEnrichments(
+    '42 veri',
+    [174.79, -36.98],
+    async (url) => {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'services.arcgis.com') {
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        return Response.json({ features: [] });
+      }
+      if (parsed.hostname === 'mapspublic.aucklandcouncil.govt.nz') {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+        return Response.json({
+          features: [
+            {
+              properties: {
+                OBJECTID: 34,
+                FullNumber: '34',
+                RoadName: 'VERISSIMO',
+                RoadType: 'DRIVE',
+                FullAddress: '34 VERISSIMO DRIVE MANGERE AUCKLAND 2022',
+                Locality: 'MANGERE',
+              },
+              geometry: { coordinates: [174.7887, -36.9882] },
+            },
+            {
+              properties: {
+                OBJECTID: 46,
+                FullNumber: '46',
+                RoadName: 'VERISSIMO',
+                RoadType: 'DRIVE',
+                FullAddress: '46 VERISSIMO DRIVE MANGERE AUCKLAND 2022',
+                Locality: 'MANGERE',
+              },
+              geometry: { coordinates: [174.7897, -36.9909] },
+            },
+          ],
+        });
+      }
+      throw new Error('unexpected upstream ' + parsed.hostname);
+    },
+  );
+
+  assert.ok(Date.now() - started < 400, 'typeahead should not wait for slow LINZ');
+  assert.deepEqual(results.map((item) => item.name), [
+    '46 Verissimo Drive',
+    '34 Verissimo Drive',
+  ]);
+});

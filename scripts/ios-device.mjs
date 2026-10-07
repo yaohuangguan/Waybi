@@ -8,8 +8,18 @@ const mobile = resolve(root, 'apps/mobile');
 const releaseApp = resolve(mobile, 'build/ios/iphoneos/Runner.app');
 const bundleId = 'co.waybi.ios';
 const mode = process.argv[2] ?? 'install';
-const buildDefines = existsSync(resolve(mobile, '.dart-defines.local.json'))
-  ? ['--dart-define-from-file=.dart-defines.local.json'] : [];
+const buildDefines = [];
+if (existsSync(resolve(mobile, '.dart-defines.local.json'))) {
+  buildDefines.push('--dart-define-from-file=.dart-defines.local.json');
+}
+const extraDefinesFile = process.env.WAYBI_DART_DEFINES_FILE;
+if (extraDefinesFile) {
+  const extraPath = resolve(mobile, extraDefinesFile);
+  if (!existsSync(extraPath)) {
+    throw new Error('WAYBI_DART_DEFINES_FILE does not exist: ' + extraPath);
+  }
+  buildDefines.push('--dart-define-from-file=' + extraDefinesFile);
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {

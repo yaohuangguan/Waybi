@@ -27,10 +27,13 @@ time:
 - `WAYBI_MAP_SPRITE_URL`
 - `WAYBI_MAP_GLYPHS_URL`
 
-The intended first self-hosted source is a New Zealand PMTiles/vector archive
-served from a Waybi-controlled origin such as `maps.waybi.co`. The existing
+The first self-hosted source is a New Zealand PMTiles/vector archive served
+from the Waybi-controlled `waybi-map` R2 bucket on `maps.waybi.co`. The existing
 OpenMapTiles-compatible style remains the transition schema so the switch can
-ship without rewriting the renderer at the same time.
+ship without rewriting the renderer at the same time. Production still keeps
+the global OpenFreeMap source as the fallback until a Waybi tile gateway can
+route NZ requests to the regional archive and non-NZ requests to a global
+fallback without making overseas maps blank.
 
 Example:
 
@@ -40,6 +43,18 @@ WAYBI_MAP_NATURAL_EARTH_TILES=https://maps.waybi.co/natural-earth/{z}/{x}/{y}.pn
 WAYBI_MAP_SPRITE_URL=https://maps.waybi.co/sprites/waybi
 WAYBI_MAP_GLYPHS_URL=https://maps.waybi.co/fonts/{fontstack}/{range}.pbf
 ```
+
+For the NZ hosted-basemap validation build, the checked-in
+`apps/mobile/.dart-defines.waybi-map-nz.json` overrides only the vector source. The current NZ preview archive is built through zoom 13 and relies on MapLibre overzoom above that level; this keeps the regional archive small enough for the current deployment path while preserving the road network needed for navigation validation.
+It composes with `.dart-defines.local.json`, so local secrets remain unchanged:
+
+```bash
+pnpm mobile:ios:waybi-map-nz
+```
+
+This preview is deliberately not the global production default: the NZ archive
+has regional high-zoom coverage and must not make overseas Waybi Map views
+blank.
 
 ## Rollout order
 

@@ -49,6 +49,7 @@ void main() {
                         builder: (_) => DiscoverPage(
                           language: 'en',
                           loader: () async => snapshot,
+                          origin: const GeoPoint(-36.8485, 174.7633),
                         ),
                       ),
                     );
@@ -66,7 +67,13 @@ void main() {
 
       expect(find.text('Discover'), findsOneWidget);
       expect(find.text('2'), findsNWidgets(2));
-      expect(find.text('Unexplored roads'), findsOneWidget);
+      expect(find.text('Where Waybi has barely been'), findsOneWidget);
+      expect(
+        find.text(
+          'North is your least explored direction from here. Waybi remembers 0 visited areas there.',
+        ),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('Choose somewhere new'));
       await tester.pumpAndSettle();

@@ -168,13 +168,27 @@ async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
   });
 }
 
-async function fallbackDrivingRoutes(from, to, stops = [], mode = 'DRIVE') {
+async function fallbackDrivingRoutes(from, to, stops = [], mode = 'DRIVE', options = {}) {
   const profile = ({ DRIVE: 'car', WALK: 'foot', BICYCLE: 'bike' })[mode];
   if (!profile) throw new Error('Transit routes require a transit provider');
   const points = [from, ...stops.slice(0, 23), to];
-  const routeUrl =
-    `https://routing.openstreetmap.de/routed-${profile}/route/v1/driving/${points.map((point) => point.join(',')).join(';')}` +
-    `?overview=full&geometries=geojson&steps=true&alternatives=${stops.length ? 'false' : '3'}`;
+  const routeUrl = new URL(
+    `https://routing.openstreetmap.de/routed-${profile}/route/v1/driving/${points.map((point) => point.join(',')).join(';')}`
+  );
+  routeUrl.searchParams.set('overview', 'full');
+  routeUrl.searchParams.set('geometries', 'geojson');
+  routeUrl.searchParams.set('steps', 'true');
+  routeUrl.searchParams.set(
+    'alternatives',
+    stops.length || options.alternatives === false ? 'false' : '3'
+  );
+  if (Number.isFinite(options.headingDegrees)) {
+    const normalized = Math.round(((options.headingDegrees % 360) + 360) % 360);
+    routeUrl.searchParams.set(
+      'bearings',
+      [`${normalized},90`, ...points.slice(1).map(() => '')].join(';')
+    );
+  }
   const response = await fetch(routeUrl, {
     headers: {
       'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)',
@@ -213,8 +227,17 @@ async function fallbackDrivingRoutes(from, to, stops = [], mode = 'DRIVE') {
   }));
 }
 
-export async function routeOptions(from, to, env, stops = [], requestedModes = null, trackUsage = () => {}) {
-  if (env.GOOGLE_ROUTES_API_KEY) {
+export async function routeOptions(
+  from,
+  to,
+  env,
+  stops = [],
+  requestedModes = null,
+  trackUsage = () => {},
+  options = {}
+) {
+  const forceIndependent = options.forceIndependent === true;
+  if (!forceIndependent && env.GOOGLE_ROUTES_API_KEY) {
     const defaultModes = stops.length
       ? ['DRIVE', 'WALK', 'BICYCLE']
       : ['DRIVE', 'TRANSIT', 'WALK', 'BICYCLE'];
@@ -236,11 +259,23 @@ export async function routeOptions(from, to, env, stops = [], requestedModes = n
   }
 
   const modes = requestedModes?.length ? requestedModes : ['DRIVE'];
-  const settled = await Promise.allSettled(modes.map((mode) => fallbackDrivingRoutes(from, to, stops, mode)));
-  const driving = settled.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+  const settled = await Promise.allSettled(
+    modes.map((mode) =>
+      fallbackDrivingRoutes(from, to, stops, mode, {
+        alternatives: options.alternatives,
+        headingDegrees: options.headingDegrees,
+      })
+    )
+  );
+  let driving = settled.flatMap((result) =>
+    result.status === 'fulfilled' ? result.value : []
+  );
   if (!driving.length) throw new Error('No routes available for the requested travel mode');
+  if (forceIndependent) {
+    driving = driving.map((route) => ({ ...route, provider: 'independent' }));
+  }
   return {
-    provider: 'osm-fallback',
+    provider: forceIndependent ? 'independent' : 'osm-fallback',
     trafficAvailable: false,
     stopsApplied: stops.length,
     options: driving

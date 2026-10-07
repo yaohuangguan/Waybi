@@ -8,9 +8,10 @@ Waybi. Open and official geographic datasets remain credited data sources.
 
 - Renderer: MapLibre Native through `maplibre_gl`
 - Vector basemap: OpenFreeMap / OpenMapTiles
-- Search: Waybi Worker orchestration, LINZ/Auckland official NZ address
-  enrichments, Geoapify/TomTom, Photon fallback
-- Routing: public OSRM endpoints
+- Search: the shipping mobile app calls Waybi Worker only; the Worker orchestrates
+  LINZ/Auckland official NZ address enrichments, Geoapify/TomTom and Photon fallback
+- Routing: the shipping mobile app calls Waybi Worker only with
+  `provider=independent`; the Worker currently falls back to public OSRM
 - NZ official data: LINZ addresses, NZTA road/camera/traffic sources where used
 
 Public OpenFreeMap, Photon and OSRM services are prototype dependencies and
@@ -48,10 +49,10 @@ WAYBI_MAP_GLYPHS_URL=https://maps.waybi.co/fonts/{fontstack}/{range}.pbf
    origin.
 3. Validate a no-Google/no-OpenFreeMap drive in Auckland: map load, search for
    `42 Verissimo Drive`, route preview, active navigation and rerouting.
-4. Move public OSRM behind a Waybi routing API, then replace NZ routing with a
-   Waybi-hosted regional graph.
-5. Remove direct mobile calls to Photon/public OSRM after the Waybi endpoints
-   meet latency and availability targets.
+4. Replace the Worker's public-OSRM fallback with a Waybi-hosted NZ regional
+   routing graph. The mobile app already routes through the Waybi API boundary.
+5. Replace the Worker's Photon fallback with Waybi-hosted search/indexing as
+   traffic justifies it. The shipping mobile app already has no Photon runtime dependency.
 6. Migrate from the transitional OpenMapTiles-compatible schema to a
    Waybi-owned schema only when doing so provides a real product or licensing
    benefit. Do not block the navigation product on a schema rewrite.

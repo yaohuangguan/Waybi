@@ -15,6 +15,7 @@ final class MapRenderProbe {
     private var rendering: [Double] = []
     private var results: [[String: Any]] = []
     private var originalCamera: MLNMapCamera?
+    private var previousIdleTimerDisabled = false
     private let mode = ProcessInfo.processInfo.environment["WAYBI_MAP_PERFORMANCE_PROBE"]
     static func make() -> MapRenderProbe? {
         ProcessInfo.processInfo.environment["WAYBI_MAP_PERFORMANCE_PROBE"] == nil ? nil : MapRenderProbe()
@@ -24,6 +25,8 @@ final class MapRenderProbe {
         started = true
         self.map = map
         originalCamera = map.camera
+        previousIdleTimerDisabled = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in self?.phase(0) }
     }
     func frame(encodingTime: Double, renderingTime: Double) {
@@ -39,6 +42,7 @@ final class MapRenderProbe {
         let phases: [(String, Double)] = [("street", 16), ("near", 18), ("very-near", 19), ("near-poi-off", 18), ("near-labels-off", 18)]
         guard index < phases.count else {
             save()
+            UIApplication.shared.isIdleTimerDisabled = previousIdleTimerDisabled
             for layer in map.style?.layers ?? [] { if layer is MLNSymbolStyleLayer { layer.isVisible = true } }
             if let originalCamera { map.setCamera(originalCamera, animated: false) }
             return
@@ -64,6 +68,9 @@ final class MapRenderProbe {
             recording = false
             results.append([
                 "name": name, "zoom": zoom, "frames": encoding.count,
+                "sampled_interval_ms": intervals.reduce(0, +),
+                "poi_name_features": map.visibleFeatures(in: map.bounds,
+                    styleLayerIdentifiers: Set(["waybi-poi-label"])).count,
                 "interval_p50_ms": percentile(intervals, 0.5),
                 "interval_p95_ms": percentile(intervals, 0.95),
                 "encoding_p95_ms": percentile(encoding, 0.95),
@@ -78,9 +85,12 @@ final class MapRenderProbe {
         camera.centerCoordinate = CLLocationCoordinate2D(latitude: -36.852,
                           longitude: 174.766 + (iteration % 2 == 0 ? delta : -delta))
         map.setCamera(camera, withDuration: 2, animationTimingFunction: CAMediaTimingFunction(name: .linear),
-                      completionHandler: { [weak self] in
+                      completionHandler: nil)
+        // A GPS camera update can cancel an animation. Keep the sampling window
+        // fixed rather than letting a cancellation prematurely finish a phase.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             self?.pan(iteration + 1, phase: index, name: name, zoom: zoom)
-        })
+        }
     }
     private func percentile(_ values: [Double], _ fraction: Double) -> Double {
         guard !values.isEmpty else { return 0 }

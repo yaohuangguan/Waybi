@@ -239,6 +239,14 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     final imageScale = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS
         ? View.of(context).devicePixelRatio
         : 1.0;
+    final existingLayerIds = (await c.getLayerIds())
+        .map((id) => id.toString())
+        .toSet();
+    final overlayAnchor = existingLayerIds.contains('waybi-poi-dot')
+        ? 'waybi-poi-dot'
+        : existingLayerIds.contains('waterway_line_label')
+        ? 'waterway_line_label'
+        : null;
     try {
       for (final style in LocationMarkerStyle.values) {
         await c.addImage(
@@ -289,7 +297,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             ['get', 'active'],
             active,
           ],
-          belowLayerId: 'waybi-poi-dot',
+          belowLayerId: overlayAnchor,
           enableInteraction: false,
         );
         await c.addLineLayer(
@@ -307,7 +315,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             ['get', 'active'],
             active,
           ],
-          belowLayerId: 'waybi-poi-dot',
+          belowLayerId: overlayAnchor,
           enableInteraction: false,
         );
       }
@@ -371,7 +379,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           lineCap: 'round',
           lineJoin: 'round',
         ),
-        belowLayerId: 'waybi-poi-dot',
+        belowLayerId: overlayAnchor,
         enableInteraction: false,
       );
       await c.addCircleLayer(

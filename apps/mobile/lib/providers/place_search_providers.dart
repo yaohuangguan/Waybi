@@ -88,10 +88,9 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
     var data = response.statusCode == 200
         ? jsonDecode(response.body) as List<dynamic>
         : const <dynamic>[];
-    if (!mapCompatible &&
-        (response.statusCode == 502 ||
-            response.statusCode == 503 ||
-            data.isEmpty)) {
+    if (response.statusCode == 502 ||
+        response.statusCode == 503 ||
+        data.isEmpty) {
       response = await _client
           .get(fallbackUri)
           .timeout(const Duration(seconds: 4));

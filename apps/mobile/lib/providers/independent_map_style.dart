@@ -230,6 +230,35 @@ Map<String, dynamic> waybiMapStyle(
       ],
     ],
   ];
+  // Dots remain selectable at full density. Names increase more gradually;
+  // expanding to rank 300 at z16 flooded the label index in dense city tiles.
+  final labelFilter = <dynamic>[
+    'all',
+    ['has', 'name'],
+    [
+      '<=',
+      [
+        'coalesce',
+        ['get', 'rank'],
+        1,
+      ],
+      [
+        'step',
+        ['zoom'],
+        4,
+        14,
+        30,
+        15,
+        50,
+        16,
+        80,
+        17,
+        150,
+        18,
+        300,
+      ],
+    ],
+  ];
   // POIs come from the tiles themselves; no per-frame geocoding or widgets.
   // The renderer inserts routes and traffic below this anchor. Keep every
   // base road shield, street name and place label above those road overlays.
@@ -254,7 +283,7 @@ Map<String, dynamic> waybiMapStyle(
     'source': 'openmaptiles',
     'source-layer': 'poi',
     'minzoom': 13,
-    'filter': filter,
+    'filter': labelFilter,
     'layout': {
       'text-field': names,
       'text-font': ['Noto Sans Regular'],

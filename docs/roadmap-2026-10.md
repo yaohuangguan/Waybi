@@ -49,6 +49,12 @@ NZTA/NSW feeds are fetched once into shared backend snapshots on the three-minut
 3. Compare **OSRM and Valhalla on the same NZ OSM extract** before choosing production routing. OSRM is the lowest parser migration cost. Valhalla offers runtime costing, multiple modes and exclusion options; directed closure application still needs our matching/integration. Compare route quality, turns/lanes, walking/cycling, exclusions, memory, build time and warm/cold p95 on public Auckland/Hamilton and CBD/airport-area routes.
 4. Choose Cloud Run versus a small VM using graph memory, startup time and warm latency. Region-local private engine endpoints sit behind the existing Worker gateway. Rebuild graphs in scheduled jobs and publish immutable versioned artifacts.
 
+Friends journals currently belong to the app's local sandbox, independently of
+account login. Keep the production bundle ID stable. Local backup recovery and
+an explicit archive merge support development bundle migrations; they do not
+provide cross-device or reinstall recovery. Account-scoped cloud backup, conflict
+merging and a user-visible export/restore flow remain follow-up work.
+
 ### P2 — differences users can feel
 
 1. Discover destinations ranked using real distance, revisit history, opening data where available, road conditions and actual scenic metadata. Do not label arbitrary low-cost roads “scenic”.

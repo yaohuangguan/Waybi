@@ -7,6 +7,8 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
     private var registrar: FlutterPluginRegistrar
     private var channel: FlutterMethodChannel?
 
+    private let renderProbe = MapRenderProbe.make()
+    private let labelViewportLimiter = MapLabelViewportLimiter()
     private var mapView: MLNMapView
     private var activeSnapshotter: MLNMapSnapshotter?
     private var isMapReady = false
@@ -1919,6 +1921,7 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
      */
     func mapView(_ mapView: MLNMapView, didFinishLoading _: MLNStyle) {
         isMapReady = true
+        renderProbe?.start(mapView)
         updateMyLocationEnabled()
 
         if let initialTilt = initialTilt {
@@ -1929,6 +1932,7 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
 
         addedShapesByLayer.removeAll()
         interactiveFeatureLayerIds.removeAll()
+        labelViewportLimiter.styleLoaded(mapView)
 
         mapReadyResult?(nil)
 
@@ -1945,6 +1949,11 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
                 }
             }
         }
+    }
+
+    func mapViewDidFinishRenderingFrame(_ mapView: MLNMapView, fullyRendered: Bool,
+                                      frameEncodingTime: Double, frameRenderingTime: Double) {
+        renderProbe?.frame(encodingTime: frameEncodingTime, renderingTime: frameRenderingTime)
     }
 
     // handle missing images
@@ -2472,6 +2481,7 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
     }
 
     func mapViewRegionIsChanging(_ mapView: MLNMapView) {
+        labelViewportLimiter.update(mapView)
         if !trackCameraPosition { return }
         if let channel = channel {
             channel.invokeMethod("camera#onMove", arguments: [
@@ -2481,6 +2491,7 @@ class MapLibreMapController: NSObject, FlutterPlatformView, MLNMapViewDelegate, 
     }
 
     func mapView(_ mapView: MLNMapView, regionDidChangeAnimated animated: Bool) {
+        labelViewportLimiter.update(mapView)
         let arguments = trackCameraPosition ? [
             "position": getCamera()?.toDict(mapView: mapView)
         ] : [:]

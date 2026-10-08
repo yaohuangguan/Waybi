@@ -31,16 +31,16 @@ extension CameraKindLabel on CameraKind {
     };
   }
 
-  static CameraKind fromCamera(SafetyCamera camera) {
-    final type = camera.type.toLowerCase();
+  static CameraKind fromCamera(SafetyCamera camera) => fromType(camera.type);
+
+  static CameraKind fromType(String cameraType) {
+    final type = cameraType.toLowerCase().replaceAll(RegExp(r'[_-]+'), ' ');
     if (type.contains('average') ||
-        type.contains('point-to-point') ||
+        type.contains('point to point') ||
         type.contains('p2p')) {
       return CameraKind.averageSpeed;
     }
-    if (type.contains('dual') &&
-        type.contains('red') &&
-        type.contains('speed')) {
+    if (type.contains('red') && type.contains('speed')) {
       return CameraKind.dualRedLightSpeed;
     }
     if (type.contains('bus lane') ||
@@ -49,12 +49,25 @@ extension CameraKindLabel on CameraKind {
         type.contains('svl')) {
       return CameraKind.busLane;
     }
-    if (type.contains('red light')) return CameraKind.redLight;
+    if (type.contains('red light') || type.contains('redlight')) {
+      return CameraKind.redLight;
+    }
     if (type.contains('spot speed') || type.contains('speed')) {
       return CameraKind.spotSpeed;
     }
     return CameraKind.other;
   }
+
+  String cameraLabel(String language) => switch (this) {
+    CameraKind.spotSpeed => language == 'zh' ? '定点测速摄像头' : 'Speed camera',
+    CameraKind.averageSpeed =>
+      language == 'zh' ? '区间测速摄像头' : 'Average-speed camera',
+    CameraKind.redLight => language == 'zh' ? '闯红灯摄像头' : 'Red-light camera',
+    CameraKind.dualRedLightSpeed =>
+      language == 'zh' ? '闯红灯及测速摄像头' : 'Red-light + speed camera',
+    CameraKind.busLane => language == 'zh' ? '专用车道摄像头' : 'Bus-lane camera',
+    CameraKind.other => language == 'zh' ? '安全摄像头' : 'Safety camera',
+  };
 }
 
 enum BaseMapStyle { standard, satellite, terrain, hybrid }

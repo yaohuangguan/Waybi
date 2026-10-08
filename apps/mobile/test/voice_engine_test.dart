@@ -66,7 +66,7 @@ void main() {
     await flush();
     expect(tts.spoken.last, contains('Fixed speed camera'));
     tts.completeSpeech();
-    await camera;
+    expect(await camera, true);
     await flush();
     expect(tts.spoken.last, 'Continue straight');
     tts.completeSpeech();
@@ -109,10 +109,68 @@ void main() {
     relevant = false;
     tts.completeSpeech();
     await turn;
-    await camera;
+    expect(await camera, false);
     expect(tts.spoken, ['Turn left']);
     await voice.dispose();
   });
+  test('queued camera uses distance at playback and names dual or unknown cameras truthfully', () async {
+    final tts = ControlledTts();
+    final voice = VoiceEngine(tts: tts);
+    var distance = 800;
+    final turn = voice.guidance('Turn left');
+    await flush();
+    final alert = voice.cameraAlert(
+      distanceMeters: 800,
+      cameraType: 'red-light + speed',
+      roadName: 'Green Lane East',
+      currentDistanceMeters: () => distance,
+    );
+    distance = 476;
+    tts.completeSpeech();
+    await turn;
+    await flush();
+    expect(tts.spoken.last, contains('Red-light + speed camera in 476 metres'));
+    tts.completeSpeech();
+    expect(await alert, true);
+    final unknown = voice.cameraAlert(
+      distanceMeters: 300,
+      cameraType: 'unconfirmed',
+      roadName: '',
+    );
+    await flush();
+    expect(tts.spoken.last, 'Safety camera in 300 metres.');
+    tts.completeSpeech();
+    await unknown;
+    await voice.dispose();
+  });
+  test(
+    'audio failure is observable and the next reminder can still play',
+    () async {
+      final tts = ControlledTts();
+      final voice = VoiceEngine(tts: tts);
+      final alert = voice.cameraAlert(
+        distanceMeters: 300,
+        cameraType: 'Spot speed',
+        roadName: 'Queen Street',
+      );
+      final failed = expectLater(alert, throwsStateError);
+      await flush();
+      final speaking = tts.speaking!;
+      tts.speaking = null;
+      speaking.complete(0);
+      await failed;
+      final retry = voice.cameraAlert(
+        distanceMeters: 250,
+        cameraType: 'Spot speed',
+        roadName: 'Queen Street',
+      );
+      await flush();
+      expect(tts.spoken.last, contains('250 metres'));
+      tts.completeSpeech();
+      expect(await retry, true);
+      await voice.dispose();
+    },
+  );
   test('resuming waits for the pending native stop to finish', () async {
     final tts = ControlledTts();
     final voice = VoiceEngine(tts: tts);

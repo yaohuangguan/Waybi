@@ -12,7 +12,7 @@ import { syncAllAppleSubscriptions } from './apple_billing.ts';
 import { handleBilling } from './billing.ts';
 import { handlePlaces } from './places.ts';
 import { independentPlaceDetails } from './independent_place_details.ts';
-import { routeOptions } from './routes.ts';
+import { routeOptions, maneuverLanes } from './routes.ts';
 import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.ts';
 import { loadRoadEventState, refreshRoadEventState } from './road_events.ts';
 import { refreshNswRoadEventState } from './au_road_events.ts';
@@ -467,10 +467,10 @@ async function handleApi(request: Request, env, ctx) {
     if (result.code !== 'Ok' || !result.routes?.length) return json({ error: 'No driving route found' }, 422);
     const selected = result.routes[0];
     const steps = selected.legs.flatMap((leg) => leg.steps.map((step) => {
-      const laneIntersection = step.intersections?.find((intersection) => Array.isArray(intersection.lanes) && intersection.lanes.length);
-      const lanes = laneIntersection?.lanes?.map((lane) => ({
+      const lanes = maneuverLanes(step).map((lane) => ({
         indications: Array.isArray(lane.indications) ? lane.indications : [],
-        valid: lane.valid === true
+        valid: lane.valid === true,
+        ...(typeof lane.active === 'boolean' ? { active: lane.active } : {})
       }));
       return {
         distance: step.distance,

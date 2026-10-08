@@ -39,6 +39,7 @@ import 'drive/device_heading.dart';
 import 'drive/journey_tracker.dart';
 import 'drive/navigation_language.dart';
 import 'drive/navigation_location_filter.dart';
+import 'drive/route_origin_location.dart';
 import 'drive/reliable_location_feed.dart';
 import 'drive/independent_navigation_camera.dart';
 import 'drive/navigation_motion.dart';
@@ -382,6 +383,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   StreamSubscription<double>? _headingSubscription;
   Timer? _mapRefreshTimer;
   LatLng? _gpsLocation;
+  final _routeOriginLocation = RouteOriginLocation();
+  LatLng? get _locationForRoute {
+    final point = _routeOriginLocation.point;
+    return point == null
+        ? null
+        : LatLng(latitude: point.latitude, longitude: point.longitude);
+  }
+
   DestinationSuggestion? _manualOrigin;
   final List<DestinationSuggestion> _guestRecent = [];
   final Map<String, RouteOption> _quickCommuteRoutes = {};
@@ -527,8 +536,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _busy = false;
   bool _checkingRouteWatchAlerts = false;
   String? _message;
-  String? _lastNotifiedCameraId;
   final Set<String> _notifiedRoadEventIds = <String>{};
+  final Set<String> _pendingRoadNotifications = {};
+  final Map<String, DateTime> _roadNotificationRetryAfter = {};
+  int _roadNotificationSession = 0;
 
   @override
   void initState() {
@@ -737,7 +748,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     });
     _selectPlace(destination, SelectionSource.search);
     if (!link.showPlaceOnly && _selectedPoi != null) {
-      if (_manualOrigin == null && _gpsLocation == null) {
+      if (_manualOrigin == null && _locationForRoute == null) {
         _externalPreview = (
           request: request,
           selected: _selectedPlace!,
@@ -765,7 +776,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _externalPreview = null;
       return;
     }
-    if (_gpsLocation == null || _selectedPoi == null || _busy) return;
+    if (_locationForRoute == null || _selectedPoi == null || _busy) return;
     _externalPreview = null;
     unawaited(_loadRoutePreview(_selectedPoi!, preferredMode: pending.mode));
   }
@@ -1134,24 +1145,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       stepMeters: distanceToStep.isFinite ? distanceToStep : remainingMeters,
       remainingMeters: remainingMeters,
       remainingSeconds: remainingSeconds,
-      lanes: [
-        for (final lane in next?.lanes ?? const <RouteLane>[])
-          NavigationLane(
-            lane.indications
-                .map(
-                  (name) => name.contains('left')
-                      ? '←'
-                      : name.contains('right')
-                      ? '→'
-                      : name == 'uturn'
-                      ? '↶'
-                      : '↑',
-                )
-                .toSet()
-                .join(),
-            lane.recommended,
-          ),
-      ],
+      lanes: routeNavigationLanes(next),
     );
   }
 
@@ -1398,21 +1392,19 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (_notifySafetyCameras &&
         camera != null &&
         cameraDistance != null &&
-        cameraDistance <= 600 &&
-        _lastNotifiedCameraId != camera.id) {
-      _lastNotifiedCameraId = camera.id;
+        cameraDistance > 0 &&
+        cameraDistance <= 800) {
       final cameraType = CameraKindLabel.fromCamera(camera)
-          .localizedLabel(_appLanguage);
-      await WaybiNotificationService.instance.showRoadAlert(
+          .cameraLabel(_appLanguage);
+      await _showNavigationNotification(
         id: 'camera:${camera.id}',
-        title: _text('Safety camera ahead', '前方安全摄像头'),
+        title: _text('$cameraType ahead', '前方$cameraType'),
         body: _text(
-          '$cameraType · ${cameraDistance.round()} m',
-          '$cameraType · ${cameraDistance.round()} 米',
+          '${cameraDistance.round()} m · ${camera.location}',
+          '${cameraDistance.round()} 米 · ${camera.location}',
         ),
       );
     }
-    if (camera == null) _lastNotifiedCameraId = null;
 
     for (final event in _driveEngine.upcomingRoadEvents) {
       final distance = event.distanceAlongRoute ?? event.distanceFromDriver;
@@ -1424,9 +1416,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       final enabled = community
           ? _notifyCommunityReports
           : _notifyRoadIncidents && importantOfficial;
-      if (!enabled || !_notifiedRoadEventIds.add(event.id)) continue;
+      if (!enabled || event.type == RoadEventType.safetyCamera) continue;
       final reporter = event.metadata['reporterName']?.toString();
-      await WaybiNotificationService.instance.showRoadAlert(
+      await _showNavigationNotification(
         id: event.id,
         title: _roadEventLabel(event.type),
         body: reporter == null
@@ -1829,10 +1821,25 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
     );
 
+    _routeOriginLocation.update(
+      NavigationLocationFix(
+        point: GeoPoint(position.latitude, position.longitude),
+        accuracyMeters: position.accuracy,
+        speedMetresPerSecond: speedMetresPerSecond,
+        timestamp: position.timestamp,
+      ),
+      confirmed: accepted != null,
+    );
+    _retryExternalPreview();
+
     // Keep the last reliable browse fix instead of letting a single indoor
     // GPS jump move route origins, arrival checks and the map by 50–100 m.
     if (accepted == null) {
       setState(() {});
+      final place = _selectedPlace?.place;
+      if (place != null && !_driveEngine.active && _routePlan == null) {
+        unawaited(_loadPlaceQuickRoute(place));
+      }
       return _browseLocationFilter.accepted?.timestamp == position.timestamp &&
           DateTime.now().difference(position.timestamp) <=
               const Duration(seconds: 10);
@@ -1881,7 +1888,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _loadPlaceQuickRoute(PlaceSummary place) async {
     if (!mounted || _driveEngine.active || _routePlan != null) return;
     if (!place.location.isValid) return;
-    final origin = _gpsLocation;
+    final origin = _locationForRoute;
     if (origin == null) return;
     final key = _placeRouteKey(place);
     final cached = _placeQuickRouteCache[key];
@@ -2747,12 +2754,83 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _recoverRouteLocation() async {
+    try {
+      if (!await _ensureLocationPermission()) return;
+      await _startTracking();
+      await _browseLocationFeed?.recover(force: true);
+      _retryExternalPreview();
+    } catch (_) {
+      if (mounted && _externalPreview != null) {
+        setState(
+          () => _message = _text(
+            'Location unavailable. Check location access and try again.',
+            '暂时无法定位，请检查定位权限后重试。',
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showNavigationNotification({
+    required String id,
+    required String title,
+    required String body,
+  }) async {
+    if (_notifiedRoadEventIds.contains(id) ||
+        _pendingRoadNotifications.contains(id) ||
+        (_roadNotificationRetryAfter[id]?.isAfter(DateTime.now()) ?? false)) {
+      return;
+    }
+    _pendingRoadNotifications.add(id);
+    final session = _roadNotificationSession;
+    try {
+      final shown = await WaybiNotificationService.instance.showRoadAlert(
+        id: id,
+        title: title,
+        body: body,
+      );
+      if (session != _roadNotificationSession) return;
+      if (shown) {
+        _notifiedRoadEventIds.add(id);
+      } else {
+        _roadNotificationRetryAfter[id] = DateTime.now().add(
+          const Duration(seconds: 20),
+        );
+      }
+    } catch (_) {
+      if (session == _roadNotificationSession) {
+        _roadNotificationRetryAfter[id] = DateTime.now().add(
+          const Duration(seconds: 20),
+        );
+      }
+    } finally {
+      if (session == _roadNotificationSession) {
+        _pendingRoadNotifications.remove(id);
+      }
+    }
+  }
+
+  Future<void> _prepareRoadNotifications() async {
+    if (!_notifySafetyCameras &&
+        !_notifyRoadIncidents &&
+        !_notifyCommunityReports) {
+      return;
+    }
+    try {
+      await WaybiNotificationService.instance.requestPermission();
+    } catch (_) {
+      // OS notifications are optional; navigation and spoken guidance continue.
+    }
+  }
+
   Future<void> _loadRoutePreview(
     PointOfInterest poi, {
     WaybiTravelMode preferredMode = WaybiTravelMode.drive,
   }) async {
+    FocusManager.instance.primaryFocus?.unfocus();
     _externalPreview = null;
-    final origin = _manualOrigin?.location ?? _gpsLocation;
+    final origin = _manualOrigin?.location ?? _locationForRoute;
     if (origin == null) {
       final selected = _selectedPlace;
       if (selected != null) {
@@ -2768,8 +2846,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           '正在获取位置，定位成功后会自动显示路线。',
         ),
       );
-      unawaited(_startTracking());
-      unawaited(_browseLocationFeed?.recover(force: true));
+      unawaited(_recoverRouteLocation());
       return;
     }
     final request = ++_routeRequest;
@@ -3656,6 +3733,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         return;
       }
 
+      await _prepareRoadNotifications();
+
       if (_mapProvider == MapProvider.independent) {
         if (!await _ensureLocationPermission()) return;
         await _pauseBrowseLocation();
@@ -3946,6 +4025,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ++_arrivalRequest;
       setState(() {
         _guidanceRunning = false;
+        ++_roadNotificationSession;
+        _notifiedRoadEventIds.clear();
+        _pendingRoadNotifications.clear();
+        _roadNotificationRetryAfter.clear();
 
         _activeNavigationRoute = null;
         _activeDestinationPlace = null;
@@ -4009,6 +4092,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _message = null;
     });
     try {
+      await _prepareRoadNotifications();
       if (_gpsLocation == null) {
         await _startTracking();
       }

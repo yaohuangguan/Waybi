@@ -1,12 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/map_layer_settings.dart';
 import 'package:waybi_mobile/domain/road_event.dart';
 import 'package:waybi_mobile/domain/safety_camera.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/widgets/navigation_camera_alert.dart';
 
 void main() {
+  testWidgets('confirmed camera type is visible in English and Chinese', (
+    tester,
+  ) async {
+    for (final language in ['en', 'zh']) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NavigationCameraAlert(
+              notice: const NavigationCameraNotice(
+                'Green Lane East',
+                476,
+                kind: CameraKind.dualRedLightSpeed,
+              ),
+              language: language,
+            ),
+          ),
+        ),
+      );
+      expect(
+        find.text(
+          language == 'zh' ? '前方闯红灯 + 测速' : 'Red-light + speed camera ahead',
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    }
+  });
   RoadEvent camera(
     String id,
     double? distance, {

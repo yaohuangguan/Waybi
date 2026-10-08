@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../data/api_config.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
+import '../domain/navigation_lanes.dart';
 import 'provider_contracts.dart';
 
 class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
@@ -226,12 +227,6 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
                   step['maneuver'] as Map<String, dynamic>? ?? const {};
               final point = maneuver['location'] as List<dynamic>? ?? const [];
               final distance = (step['distance'] as num?)?.toDouble() ?? 0;
-              final intersections =
-                  (step['intersections'] as List<dynamic>? ?? const [])
-                      .whereType<Map<String, dynamic>>();
-              final laneData = intersections.isEmpty
-                  ? const <dynamic>[]
-                  : intersections.first['lanes'] as List<dynamic>? ?? const [];
               if (point.length >= 2 && point[0] is num && point[1] is num) {
                 steps.add(
                   RouteStepInfo(
@@ -247,20 +242,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
                       (point[1] as num).toDouble(),
                       (point[0] as num).toDouble(),
                     ),
-                    lanes: laneData
-                        .whereType<Map<String, dynamic>>()
-                        .map(
-                          (lane) => RouteLane(
-                            indications:
-                                (lane['indications'] as List<dynamic>? ??
-                                        const [])
-                                    .whereType<String>()
-                                    .toList(),
-                            recommended:
-                                lane['active'] == true || lane['valid'] == true,
-                          ),
-                        )
-                        .toList(growable: false),
+                    lanes: maneuverRouteLanes(step),
                   ),
                 );
               }

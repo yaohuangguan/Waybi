@@ -1,4 +1,6 @@
 import '../theme/waybi_theme.dart';
+import '../domain/navigation_lanes.dart';
+import '../domain/route_option.dart';
 
 import 'package:flutter/material.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
@@ -34,6 +36,23 @@ class NavigationLane {
   final String symbol;
   final bool recommended;
 }
+
+List<NavigationLane> routeNavigationLanes(RouteStepInfo? step) => [
+  for (final lane in step?.lanes ?? const <RouteLane>[])
+    NavigationLane(
+      lane.indications
+              .map(laneSymbol)
+              .whereType<String>()
+              .toSet()
+              .join()
+              .isEmpty
+          ? '·'
+          : lane.indications.map(laneSymbol).whereType<String>().toSet().join(),
+      lane.recommended &&
+          lane.indications.any((s) => laneSymbol(s) != null) &&
+          laneSupportsManeuver(lane.indications, step!.maneuverModifier),
+    ),
+];
 
 /// Both providers feed the same Waybi HUD without manufacturing Google events.
 class NavigationGuidance {
@@ -242,15 +261,18 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                 lane.laneDirections
                     .map((direction) {
                       final name = direction.laneShape.name.toLowerCase();
-                      return name.contains('left')
-                          ? '←'
-                          : name.contains('right')
-                          ? '→'
-                          : '↑';
+                      return laneSymbol(name) ?? '·';
                     })
                     .toSet()
                     .join(),
-                lane.laneDirections.any((direction) => direction.isRecommended),
+                lane.laneDirections.any(
+                  (direction) =>
+                      direction.isRecommended &&
+                      laneSymbol(direction.laneShape.name) != null &&
+                      laneSupportsManeuver([
+                        direction.laneShape.name,
+                      ], step!.maneuver.name),
+                ),
               ),
           ],
         );
@@ -641,13 +663,33 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                       key: const Key('navigationRecenterButton'),
                       color: scheme.surface.withValues(alpha: .98),
                       elevation: 6,
-                      shape: const CircleBorder(),
-                      child: IconButton(
-                        tooltip: _text('Re-center', '回正导航'),
-                        onPressed: widget.onRecenter,
-                        icon: const Icon(Icons.my_location_rounded),
-                        color: WaybiColors.ocean,
-                      ),
+                      borderRadius: BorderRadius.circular(28),
+                      child: widget.following && !widget.overviewMode
+                          ? IconButton(
+                              tooltip: _text('Re-center', '回正导航'),
+                              onPressed: widget.onRecenter,
+                              icon: const Icon(Icons.my_location_rounded),
+                              color: WaybiColors.ocean,
+                            )
+                          : TextButton.icon(
+                              onPressed: widget.onRecenter,
+                              icon: const Icon(
+                                Icons.navigation_rounded,
+                                size: 20,
+                              ),
+                              label: Text(_text('Re-center', '回到当前位置')),
+                              style: TextButton.styleFrom(
+                                foregroundColor: WaybiColors.ocean,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
                     ),
                   ),
                 ),

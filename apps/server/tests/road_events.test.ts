@@ -82,7 +82,7 @@ test('fetches official NZTA response shape and normalizes usable events', async 
 test('keeps last road-event snapshot when NZTA refresh fails', async () => {
   let stored = {
     events: [normalizeRoadEvent(event(), NOW)],
-    checkedAt: '2026-09-25T23:50:00Z',
+    checkedAt: '2026-09-25T23:47:00Z',
     syncStatus: 'live'
   };
   const env = {

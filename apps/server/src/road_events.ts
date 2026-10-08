@@ -13,7 +13,9 @@ type RoadEventEnv = Pick<WorkerBindings, 'CAMERA_DATA'>;
 export const ROAD_EVENTS_SOURCE = 'https://trafficnz.info/service/traffic/rest/4/events/all/10';
 export const ROAD_EVENTS_SOURCE_PAGE = 'https://www.journeys.nzta.govt.nz/highway-conditions';
 const CACHE_KEY = 'road-events/current';
-const FRESH_MS = 5 * 60 * 1000;
+// Scheduled refresh runs every 10 minutes; allow slight Cron delivery delays
+// without making each API request perform its own KV write.
+const FRESH_MS = 12 * 60 * 1000;
 const MAX_STALE_MS = 15 * 60 * 1000;
 // Coalesce overlapping requests within a Worker isolate. Scheduled refreshes
 // publish one shared snapshot to KV; App requests normally only read it.

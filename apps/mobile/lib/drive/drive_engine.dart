@@ -521,9 +521,10 @@ class DriveEngine extends ChangeNotifier {
 
   Future<void> startTrafficFlowRefresh({bool force = false}) async {
     await loadTrafficFlow(force: force);
-    final interval = active
-        ? const Duration(seconds: 30)
-        : const Duration(minutes: 1);
+    // The shared upstream traffic snapshot refreshes every five minutes.
+    // Polling every 30 seconds while navigating exhausts Workers Free with
+    // 1,000 active drivers but cannot provide fresher traffic information.
+    const interval = Duration(minutes: 5);
     if (_trafficFlowRefreshTimer != null &&
         _trafficFlowRefreshInterval == interval) {
       return;

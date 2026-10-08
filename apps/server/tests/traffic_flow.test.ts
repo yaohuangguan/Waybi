@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { mockEdgeCache } from './mock_edge_cache.ts';
 
 import {
   fetchNztaTrafficFlow,
@@ -119,13 +120,12 @@ test('Worker exposes live traffic flow at /api/traffic-flow', async () => {
       </motorways>
     </trafficConditions>
   </getTrafficConditionsResponse>`;
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(xml, {
-      status: 200,
-      headers: { 'content-type': 'application/xml' },
-    });
-  try {
+  const snapshot = await fetchNztaTrafficFlow(async () => new Response(xml, {
+    status: 200,
+    headers: { 'content-type': 'application/xml' },
+  }));
+  await env.CAMERA_DATA.put('waybi:traffic-flow/v2', JSON.stringify(snapshot));
+  {
     const response = await worker.fetch(
       new Request('https://example.test/api/traffic-flow'),
       env,
@@ -136,8 +136,6 @@ test('Worker exposes live traffic flow at /api/traffic-flow', async () => {
     assert.equal(body.syncStatus, 'live');
     assert.equal(body.segments.length, 1);
     assert.equal(body.segments[0].level, 'moderate');
-  } finally {
-    globalThis.fetch = originalFetch;
   }
 });
 
@@ -174,6 +172,56 @@ test('cached traffic endpoint is read-only even when clients poll repeatedly', a
     assert.equal(upstreamCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('a thousand traffic requests reuse the shared edge snapshot without writing KV', async () => {
+  const { default: worker } = await import('../src/worker.ts');
+  const edge = mockEdgeCache();
+  const state = normalizeTrafficFlow(samplePayload(), new Date());
+  let kvReads = 0;
+  let kvWrites = 0;
+  const env = {
+    CAMERA_DATA: {
+      async get() { kvReads++; return state; },
+      async put() { kvWrites++; }
+    },
+  };
+  try {
+    for (let i = 0; i < 1000; i++) {
+      const response = await worker.fetch(
+        new Request('https://waybi.co/api/traffic-flow'), env, { waitUntil() {} }
+      );
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).segments.length, 2);
+    }
+    assert.equal(kvReads, 1);
+    assert.equal(kvWrites, 0);
+  } finally {
+    edge.restore();
+  }
+});
+
+test('missing traffic snapshot cannot trigger unbounded user-driven KV writes', async () => {
+  const { default: worker } = await import('../src/worker.ts');
+  const edge = mockEdgeCache();
+  let kvWrites = 0;
+  const env = {
+    CAMERA_DATA: {
+      async get() { return null; },
+      async put() { kvWrites++; },
+    },
+  };
+  try {
+    for (let i = 0; i < 10; i++) {
+      const response = await worker.fetch(
+        new Request('https://waybi.co/api/traffic-flow'), env, { waitUntil() {} }
+      );
+      assert.equal(response.status, 503);
+    }
+    assert.equal(kvWrites, 0);
+  } finally {
+    edge.restore();
   }
 });
 

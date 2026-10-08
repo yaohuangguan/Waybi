@@ -250,8 +250,21 @@ async function handleApi(request: Request, env, ctx) {
   }
   if (url.pathname.startsWith('/api/map/traffic/tiles/')) return handleTrafficTile(request, env);
   if (url.pathname === '/api/traffic-flow') {
+    // The Cron owns all authoritative traffic-flow writes. Serving an empty
+    // snapshot must not let many incoming drivers race to refresh KV.
+    const cacheKey = `${url.origin}/__edge-cache/traffic-flow/v1`;
+    const cached = await readPublicEdgeJson<{ segments?: unknown[] }>(cacheKey);
+    if (Array.isArray(cached?.segments) && cached.segments.length) {
+      const result = json(cached);
+      result.headers.set('cache-control', 'public, max-age=30');
+      return result;
+    }
     const state = await readTrafficFlowState(env);
-    return json(state ?? await refreshTrafficFlowState(env));
+    if (!state) return json({ error: 'Traffic snapshot unavailable; retry shortly' }, 503);
+    await writePublicEdgeJson(cacheKey, state, 30);
+    const result = json(state);
+    result.headers.set('cache-control', 'public, max-age=30');
+    return result;
   }
   if (url.pathname === '/api/parking') {
     const at = validateNzCoordinatePair(url.searchParams.get('at'));

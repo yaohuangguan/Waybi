@@ -86,6 +86,29 @@ function signingHelp(error) {
   throw error;
 }
 
+function verifyNativeMapsConfig(appPath = releaseApp) {
+  // Read the assembled app, not Dart defines: iOS initializes Google Maps
+  // from this native Info.plist entry before Flutter creates a platform view.
+  // Keep the value in this process only; diagnostics never include the key.
+  const plistPath = resolve(appPath, 'Info.plist');
+  const type = spawnSync('/usr/bin/plutil', ['-type', 'MAPS_API_KEY', plistPath], { encoding: 'utf8' });
+  const result = spawnSync(
+    '/usr/bin/plutil',
+    ['-extract', 'MAPS_API_KEY', 'raw', '-o', '-', plistPath],
+    { encoding: 'utf8' },
+  );
+  const configured = type.status === 0 && type.stdout?.trim() === 'string' && result.status === 0 &&
+    Boolean(result.stdout?.trim()) && !result.stdout.includes('$(');
+  if (!configured) {
+    throw new Error(
+      'The built app has no native Google Maps key. Configure MAPS_API_KEY in ' +
+      'the private xcconfig included by ios/Flutter/Release.xcconfig and rebuild. ' +
+      'Dart defines do not configure the native Maps SDK. Installation was stopped.',
+    );
+  }
+  console.log('Native Google Maps configuration verified.');
+}
+
 function debugOnDevice(device) {
   console.log('Starting Waybi debug build on ' + device.name + '...');
   const child = spawn(
@@ -113,6 +136,7 @@ function buildRelease() {
   if (!existsSync(releaseApp)) {
     throw new Error('Release app was not produced at ' + releaseApp);
   }
+  verifyNativeMapsConfig();
 }
 
 function installRelease(device) {
@@ -153,10 +177,15 @@ function buildIpa() {
     console.error('IPA export may require an Apple Developer Program distribution profile.');
     signingHelp(error);
   }
+  verifyNativeMapsConfig(resolve(mobile, 'build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app'));
   console.log('IPA output: apps/mobile/build/ios/ipa/');
 }
 
 function main() {
+  if (mode === 'check') {
+    verifyNativeMapsConfig(process.argv[3] ? resolve(process.argv[3]) : releaseApp);
+    return;
+  }
   ensureIosToolchain();
 
   if (mode === 'ipa') {

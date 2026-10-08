@@ -34,8 +34,10 @@ test('NZ snapshots coalesce concurrent requests, filter expired events and back 
   assert.ok(results.every(state => state.events.length === 1));
   assert.equal((await loadRoadEventState(env, fetcher, new Date(now.getTime()+60000))).syncStatus, 'live');
   assert.equal(calls, 1);
+  assert.equal((await loadRoadEventState(env, fetcher, new Date(now.getTime()+11*60000))).syncStatus, 'live');
+  assert.equal(calls, 1, 'requests between Crons should not write KV');
   const failure = async () => { calls++; throw new Error('offline'); };
-  const later = new Date(now.getTime()+6*60000);
+  const later = new Date(now.getTime()+13*60000);
   const stale = await loadRoadEventState(env, failure, later);
   assert.equal(stale.syncStatus, 'stale');
   assert.equal(stale.retrievedAt, now.toISOString());

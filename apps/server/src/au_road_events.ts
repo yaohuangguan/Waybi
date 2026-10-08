@@ -112,6 +112,7 @@ export async function readNswRoadEventState(env: Env): Promise<RoadEventState | 
 export async function loadNswRoadEventState(env: Env, fetcher: typeof fetch = fetch, now = new Date()): Promise<RoadEventState> {
   const stored = await env.CAMERA_DATA.get<RoadEventState>(KEY, 'json');
   const age = now.getTime() - Date.parse(stored?.checkedAt || '');
-  if (Number.isFinite(age) && age >= 0 && age < 5 * 60000) return current(stored, now);
+  // NSW is refreshed by the 10-minute Cron; avoid extra writes on hot paths.
+  if (Number.isFinite(age) && age >= 0 && age < 12 * 60000) return current(stored, now);
   return refreshNswRoadEventState(env, fetcher, now);
 }

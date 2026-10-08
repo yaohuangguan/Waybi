@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   fetchNztaTrafficFlow,
@@ -176,7 +177,7 @@ test('cached traffic endpoint is read-only even when clients poll repeatedly', a
   }
 });
 
-test('3-minute traffic cron refreshes KV without running other scheduled jobs', async () => {
+test('traffic and road-event crons write independently within the daily KV budget', async () => {
   const { default: worker } = await import('../src/worker.ts');
   const snapshots = new Map();
   const pending = [];
@@ -194,17 +195,32 @@ test('3-minute traffic cron refreshes KV without running other scheduled jobs', 
     headers: { 'content-type': 'application/json' },
   });
   try {
-    await worker.scheduled(
-      { cron: '*/3 * * * *' },
-      env,
-      { waitUntil(promise) { pending.push(promise); } },
-    );
-    await Promise.all(pending);
-    assert.deepEqual([...snapshots.keys()].sort(), ['road-events/au-nsw/current', 'road-events/current', 'waybi:traffic-flow/v2']);
+    const context = { waitUntil(promise) { pending.push(promise); } };
+    await worker.scheduled({ cron: '*/5 * * * *' }, env, context);
+    await Promise.all(pending.splice(0));
+    assert.deepEqual([...snapshots.keys()], ['waybi:traffic-flow/v2']);
     assert.equal(snapshots.get('waybi:traffic-flow/v2').segments.length, 2);
+
+    await worker.scheduled({ cron: '*/10 * * * *' }, env, context);
+    await Promise.all(pending.splice(0));
+    assert.deepEqual([...snapshots.keys()].sort(), ['road-events/au-nsw/current', 'road-events/current', 'waybi:traffic-flow/v2']);
     assert.equal(snapshots.get('road-events/current').syncStatus, 'live');
     assert.deepEqual(snapshots.get('road-events/current').events, []);
     assert.equal(snapshots.get('road-events/au-nsw/current').syncStatus, 'live');
+
+    snapshots.clear();
+    await worker.scheduled({ cron: '*/15 * * * *' }, env, context);
+    await Promise.all(pending.splice(0));
+    assert.deepEqual([...snapshots.keys()], []);
+
+    const config = JSON.parse(readFileSync(new URL('../../../wrangler.jsonc', import.meta.url), 'utf8'));
+    assert.deepEqual(config.triggers.crons, [
+      '*/5 * * * *', '*/10 * * * *', '*/15 * * * *', '0 */6 * * *',
+    ]);
+    // Three guaranteed KV writes across the 5m/10m jobs, plus 4 camera syncs.
+    const daily = 24 * ((60 / 5) + 2 * (60 / 10)) + 4;
+    assert.equal(daily, 580);
+    assert.ok(daily < 650, 'reserve room for request-driven KV writes');
   } finally {
     globalThis.fetch = originalFetch;
   }

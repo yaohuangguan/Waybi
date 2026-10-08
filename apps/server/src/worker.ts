@@ -517,16 +517,22 @@ export default {
   },
   async scheduled(event, env, ctx) {
     if (env.WAYBI_MIGRATION_PAUSED === 'true') return;
-    if (event.cron === '*/3 * * * *') {
+    if (event.cron === '*/5 * * * *') {
       ctx.waitUntil(refreshTrafficFlowState(env));
+      return;
+    }
+    if (event.cron === '*/10 * * * *') {
       ctx.waitUntil(refreshRoadEventState(env));
       ctx.waitUntil(refreshNswRoadEventState(env));
+      return;
+    }
+    if (event.cron === '*/15 * * * *') {
+      ctx.waitUntil(syncAllAppleSubscriptions(env));
+      ctx.waitUntil(evaluateAllRouteWatches(env));
       return;
     }
     if (event.cron === '0 */6 * * *') {
       ctx.waitUntil(syncCameras(env));
     }
-    ctx.waitUntil(syncAllAppleSubscriptions(env));
-    ctx.waitUntil(evaluateAllRouteWatches(env));
   }
 };

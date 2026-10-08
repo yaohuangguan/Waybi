@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import { independentPlaceDetails } from '../src/independent_place_details.ts';
+import { mockEdgeCache } from './mock_edge_cache.ts';
 globalThis.crypto ??= webcrypto;
 
 const input = () => new URL('https://waybi.test/api/independent-place-details?at=174.7622,-36.8485&name=Sky%20Tower&type=attraction&address=Victoria%20Street%20West%2C%20Auckland');
@@ -14,21 +15,27 @@ const commons = license => ({ query: { pages: [{ title: 'File:Sky Tower.jpg', im
     LicenseUrl: { value: 'https://creativecommons.org/licenses/by-sa/4.0/' } },
 }] }] } });
 
-test('exact place photo preserves licence, type and address; cache contains only photos', async () => {
-  const cache = new Map(); let calls = 0;
-  const env = { CAMERA_DATA: { get: async key => cache.has(key) ? JSON.parse(cache.get(key)) : null,
-    put: async (key, value) => cache.set(key, value) } };
-  const fetcher = async url => { calls++; return result(url.hostname === 'en.wikipedia.org' ? wiki('Sky Tower') : commons('CC BY-SA 4.0')); };
-  const first = await (await independentPlaceDetails(input(), env, fetcher)).json();
-  assert.equal(first.primaryType, 'attraction');
-  assert.equal(first.address, 'Victoria Street West, Auckland');
-  assert.equal(first.photos.length, 1);
-  assert.match(first.photos[0].attribution, /Example photographer · CC BY-SA 4.0/);
-  assert.match(first.photos[0].sourceUrl, /^https:\/\/commons.wikimedia.org\//);
-  const secondInput = input(); secondInput.searchParams.set('address', 'Updated full address');
-  const second = await (await independentPlaceDetails(secondInput, env, fetcher)).json();
-  assert.equal(second.address, 'Updated full address');
-  assert.equal(calls, 2);
+test('exact place photo preserves licence, type and address; edge cache avoids KV writes', async () => {
+  const edge = mockEdgeCache(); let calls = 0;
+  const env = { CAMERA_DATA: { get: async () => { throw Error('No KV reads'); }, put: async () => { throw Error('No KV writes'); } } };
+  try {
+    const fetcher = async url => { calls++; return result(url.hostname === 'en.wikipedia.org' ? wiki('Sky Tower') : commons('CC BY-SA 4.0')); };
+    const first = await (await independentPlaceDetails(input(), env, fetcher)).json();
+    assert.equal(first.primaryType, 'attraction');
+    assert.equal(first.address, 'Victoria Street West, Auckland');
+    assert.equal(first.photos.length, 1);
+    assert.match(first.photos[0].attribution, /Example photographer · CC BY-SA 4.0/);
+    assert.match(first.photos[0].sourceUrl, /^https:\/\/commons.wikimedia.org\//);
+    const secondInput = input(); secondInput.searchParams.set('address', 'Updated full address');
+    const second = await (await independentPlaceDetails(secondInput, env, fetcher)).json();
+    assert.equal(second.address, 'Updated full address');
+    assert.equal(calls, 2);
+    assert.equal(edge.entries.size, 1);
+    const cachedPhotos = await [...edge.entries.values()][0].clone().json();
+    assert.equal(cachedPhotos.length, 1);
+    assert.equal(cachedPhotos[0].url, first.photos[0].url);
+    assert.equal(cachedPhotos[0].address, undefined, 'never cache personal/request-specific place fields');
+  } finally { edge.restore(); }
 });
 
 test('nearby landmark photos are never attached to a different selected place', async () => {

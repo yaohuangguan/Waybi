@@ -19,7 +19,9 @@ import { refreshNswRoadEventState } from './au_road_events.ts';
 import { loadRegionalRoadEvents } from './regional_road_events.ts';
 import { readTrafficFlowState, refreshTrafficFlowState } from './traffic_flow.ts';
 import { handleRoadIntelligence } from './road_intelligence_api.ts';
-import { createRoadReport, readRoadReports } from './road_reports.ts';
+import { createRoadReport, readRoadReports, validRoadReportInput } from './road_reports.ts';
+import { reserveRoadReportQuota } from './road_report_quota.ts';
+import { readPublicEdgeJson, writePublicEdgeJson } from './public_edge_cache.ts';
 import { recordApiUsage, readUsageSummary } from './cost_guard.ts';
 import {
   evaluateAllRouteWatches,
@@ -28,7 +30,9 @@ import {
 } from './route_watch.ts';
 
 const CAMERA_KEY = 'cameras/current';
-const CAMERA_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
+// Camera locations are slow-changing metadata, not live traffic frames.
+// A shared daily refresh is sufficient; manual checks must respect the same window.
+const CAMERA_SYNC_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 let lastSearchAt = 0;
 
 function json(body, status = 200) {
@@ -138,18 +142,26 @@ async function handleApi(request: Request, env, ctx) {
     return json({ ok: true }, 202);
   }
   if (url.pathname === '/api/road-reports' && request.method === 'POST') {
+    if (clientKind(request) !== 'mobile') return json({ error: 'Mobile client required' }, 403);
+    if (!env.USER_DB) return json({ error: 'Report account storage unavailable' }, 503);
+    const reporter = await roadReportAuthor(env.USER_DB, request);
+    if (!reporter) return json({ error: 'Sign in to report a road event' }, 401);
+    if (Number(request.headers.get('content-length')) > 2048) return json({ error: 'Report is too large' }, 413);
+    const raw = await request.text();
+    if (raw.length > 2048) return json({ error: 'Report is too large' }, 413);
+    let payload: ProviderPayload;
+    try { payload = JSON.parse(raw); }
+    catch { return json({ error: 'Invalid road report JSON' }, 400); }
+    if (!validRoadReportInput(payload)) return json({ error: 'Valid global road report required' }, 400);
+    // Authenticated writes are bounded across all Worker regions via D1.
+    if (!await reserveRoadReportQuota(env.USER_DB, reporter.id)) {
+      return json({ error: 'Road report limit reached. Try again tomorrow.' }, 429);
+    }
     try {
-      const reporter = env.USER_DB
-        ? await roadReportAuthor(env.USER_DB, request)
-        : null;
-      const report = await createRoadReport(
-        env,
-        await request.json<ProviderPayload>(),
-        reporter
-      );
+      const report = await createRoadReport(env, payload, reporter);
       return json({ ok: true, report }, 201);
     } catch (error) {
-      return json({ error: String(error.message || error) }, 400);
+      return json({ error: String(error.message || error) }, 503);
     }
   }
   if (url.pathname === '/api/cameras/sync' && request.method === 'POST') {
@@ -169,8 +181,9 @@ async function handleApi(request: Request, env, ctx) {
     const current = await readCameraState(env);
     const checkedAt = Date.parse(current.checkedAt || '');
     const recentlyChecked =
-      current.syncStatus === 'live' &&
+      current.syncStatus !== 'seed' &&
       Number.isFinite(checkedAt) &&
+      Date.now() >= checkedAt &&
       Date.now() - checkedAt < CAMERA_SYNC_COOLDOWN_MS;
     const state = recentlyChecked ? current : await syncCameras(env);
     return json({
@@ -214,9 +227,18 @@ async function handleApi(request: Request, env, ctx) {
     });
   }
   if (url.pathname === '/api/cameras') {
-    const state = await readCameraState(env);
-    if (state.syncStatus === 'seed') ctx.waitUntil(syncCameras(env));
-    return json({ ...state, source: SOURCE_URL });
+    // Public camera metadata is shared by every visitor. An edge read cache
+    // avoids one billable KV get per user, without caching private accounts.
+    const cacheKey = `${url.origin}/__edge-cache/cameras/v1`;
+    const cached = await readPublicEdgeJson<{ cameras: unknown[] }>(cacheKey);
+    const validCached = Array.isArray(cached?.cameras) && cached.cameras.length >= 50;
+    const state = validCached ? cached : await readCameraState(env);
+    if (!validCached) await writePublicEdgeJson(cacheKey, state, 3600);
+    // The bundled seed is safe to read; an empty KV must not cause every
+    // visitor to launch a competing global sync (and one KV put each).
+    const result = json({ ...state, source: SOURCE_URL });
+    result.headers.set('cache-control', 'public, max-age=300, s-maxage=3600');
+    return result;
   }
   if (url.pathname === '/api/road-events') {
     const reports = await readRoadReports(env);
@@ -531,7 +553,7 @@ export default {
       ctx.waitUntil(evaluateAllRouteWatches(env));
       return;
     }
-    if (event.cron === '0 */6 * * *') {
+    if (event.cron === '0 3 * * *') {
       ctx.waitUntil(syncCameras(env));
     }
   }

@@ -1,5 +1,6 @@
 import type { ProviderPayload } from "./types.ts";
 import { validCoordinate } from './geo.ts';
+import { readPublicEdgeJson, writePublicEdgeJson } from './public_edge_cache.ts';
 const UA = 'Waybi/1.0 (https://github.com/yaohuangguan/Waybi)';
 const RADIUS = 8000;
 const GROUPS = ['activities', 'parks', 'food', 'coffee', 'shopping'];
@@ -117,10 +118,11 @@ export async function enrichPlacePhotos(places, point, fetcher: typeof fetch, { 
   // Supplemental Wikipedia entries must have a usable real photo.
   for (let i = places.length - 1; i >= 0; i--) if (places[i].placeId.startsWith('wikipedia:') && !places[i].photoUrl) places.splice(i, 1);
 }
-async function loadNearby(env, point, language, fetcher: typeof fetch) {
+async function loadNearby(env, point, language, origin: string, fetcher: typeof fetch) {
   const cell = point.map(n => Math.round(n * 100) / 100);
-  const key = `waybi:explore:v2:${cell.join(',')}:${language}`;
-  const cached = await env.CAMERA_DATA?.get(key, 'json');
+  // The input is rounded and public; this cache never contains personal data.
+  const key = `${origin}/__edge-cache/explore/v3/${cell.join(',')}/${language}`;
+  const cached = await readPublicEdgeJson<unknown>(key);
   if (Array.isArray(cached)) return cached;
   const around = `(around:${RADIUS},${cell[1]},${cell[0]})`;
   const selectors = ['[amenity~"^(cafe|restaurant|fast_food|food_court|bar|pub|cinema|theatre|arts_centre)$"]',
@@ -141,7 +143,7 @@ async function loadNearby(env, point, language, fetcher: typeof fetch) {
     } catch (error) { raw = null; lastError = error; }
   }
   if (!places && !raw) {
-    const previous = await env.CAMERA_DATA?.get(`${key}:previous`, 'json');
+    const previous = await readPublicEdgeJson<unknown>(`${key}/previous`);
     if (Array.isArray(previous) && previous.length) return previous;
     throw lastError;
   }
@@ -150,8 +152,8 @@ async function loadNearby(env, point, language, fetcher: typeof fetch) {
   const pool = GROUPS.flatMap(group => selectNearby(places, cell, group).slice(0, 20));
   await enrichPlacePhotos(pool, cell, fetcher).catch(() => {});
   if (pool.length) {
-    await env.CAMERA_DATA?.put(key, JSON.stringify(pool), { expirationTtl: 86400 });
-    await env.CAMERA_DATA?.put(`${key}:previous`, JSON.stringify(pool), { expirationTtl: 2592000 });
+    await writePublicEdgeJson(key, pool, 86400);
+    await writePublicEdgeJson(`${key}/previous`, pool, 2592000);
   }
   return pool;
 }
@@ -161,7 +163,7 @@ export async function independentExplore(url, env, fetcher: typeof fetch = fetch
   const category = url.searchParams.get('category') || 'for-you', query = (url.searchParams.get('q') || '').trim();
   if (!['for-you', ...GROUPS].includes(category) || query.length > 120) return response({ error: 'Invalid category or query' }, 400);
   try {
-    const places = await loadNearby(env, point, url.searchParams.get('lang') === 'zh' ? 'zh' : 'en', fetcher);
+    const places = await loadNearby(env, point, url.searchParams.get('lang') === 'zh' ? 'zh' : 'en', url.origin, fetcher);
     return response(selectNearby(places, point, category, query));
   } catch (error) {
     console.warn('Waybi explore upstream unavailable:', error.message);

@@ -7,11 +7,13 @@ const MAX_GLOBAL_REPORTS_PER_DAY = 200;
 
 async function claim(db, day: string, bucket: string, limit: number): Promise<boolean> {
   const row = await db.prepare(`
-    INSERT INTO road_report_write_budget (day, bucket, used)
-    VALUES (?, ?, 1)
-    ON CONFLICT(day, bucket) DO UPDATE SET used = used + 1 WHERE used < ?
-    RETURNING used
-  `).bind(day, bucket, limit).first();
+    INSERT INTO api_usage_daily (day, provider, sku, calls, units, updated_at)
+    VALUES (?, '__waybi_quotas', ?, 1, 0, ?)
+    ON CONFLICT(day, provider, sku) DO UPDATE SET
+      calls = calls + 1, updated_at = excluded.updated_at
+    WHERE calls < ?
+    RETURNING calls
+  `).bind(day, bucket, Date.now(), limit).first();
   return Boolean(row);
 }
 

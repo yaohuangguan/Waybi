@@ -7,7 +7,7 @@ import worker from '../src/worker.ts';
 
 function quotaDb() {
   const sqlite = new DatabaseSync(':memory:');
-  sqlite.exec(readFileSync(new URL('../../../migrations/0015_road_report_write_budget.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../../../migrations/0005_cost_guard.sql', import.meta.url), 'utf8'));
   const db = { prepare(sql) { return { bind(...args) { return {
     async first() { return sqlite.prepare(sql).get(...args) ?? null; }
   }; } }; } };
@@ -31,8 +31,8 @@ test('global community report budget prevents more than 200 KV writes per day', 
     const now = new Date('2026-10-09T13:00:00Z');
     for (let i = 0; i < 200; i++) assert.equal(await reserveRoadReportQuota(db, `u-${i}`, now), true);
     assert.equal(await reserveRoadReportQuota(db, 'one-more-user', now), false);
-    const total = sqlite.prepare("SELECT used FROM road_report_write_budget WHERE day = '2026-10-09' AND bucket = 'global'").get();
-    assert.equal(total.used, 200);
+    const total = sqlite.prepare("SELECT calls FROM api_usage_daily WHERE day = '2026-10-09' AND provider = '__waybi_quotas' AND sku = 'global'").get();
+    assert.equal(total.calls, 200);
   } finally { sqlite.close(); }
 });
 

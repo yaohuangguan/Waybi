@@ -5,6 +5,7 @@ import 'package:waybi_friends/waybi_friends.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../data/account_repository.dart';
+import '../data/friends_backup_service.dart';
 import '../data/app_store_billing.dart';
 import '../data/plus_billing.dart';
 import 'plus_page.dart';
@@ -15,6 +16,7 @@ class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
     required this.account,
+    this.friendsBackup,
     this.plusBilling,
     required this.voiceEnabled,
     required this.lanesEnabled,
@@ -47,6 +49,7 @@ class ProfilePage extends StatefulWidget {
   });
 
   final AccountRepository account;
+  final FriendsBackupService? friendsBackup;
   final PlusBillingGateway? plusBilling;
   final bool voiceEnabled;
   final bool lanesEnabled;
@@ -634,6 +637,43 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               const SizedBox(height: 16),
               FriendsEntry(chinese: _appLanguage == 'zh'),
+              if (widget.friendsBackup case final backup?)
+                AnimatedBuilder(
+                  animation: backup,
+                  builder: (context, _) => ListTile(
+                    dense: true,
+                    leading: Icon(
+                      backup.status == FriendsBackupStatus.backedUp
+                          ? Icons.cloud_done_outlined
+                          : Icons.cloud_outlined,
+                    ),
+                    title: Text(switch (backup.status) {
+                      FriendsBackupStatus.deviceOnly => _text(
+                        'Journal saved on this device',
+                        '旅行日记已保存在这台设备',
+                      ),
+                      FriendsBackupStatus.syncing => _text(
+                        'Backing up your journal…',
+                        '正在备份旅行日记…',
+                      ),
+                      FriendsBackupStatus.backedUp => _text(
+                        'Journal backed up to your account',
+                        '旅行日记已备份到你的账号',
+                      ),
+                      FriendsBackupStatus.offline => _text(
+                        'Saved on this device · backup will retry',
+                        '已保存在本机 · 稍后重试云备份',
+                      ),
+                    }),
+                    trailing: backup.status == FriendsBackupStatus.offline
+                        ? IconButton(
+                            onPressed: backup.sync,
+                            icon: const Icon(Icons.refresh),
+                            tooltip: _text('Retry backup', '重试备份'),
+                          )
+                        : null,
+                  ),
+                ),
               const SizedBox(height: 16),
               _PlusCard(
                 isPlus: profile?.isPlus ?? false,

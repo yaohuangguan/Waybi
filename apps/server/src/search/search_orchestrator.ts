@@ -68,6 +68,11 @@ export function interpolateNumberedAddress(places, query) {
     }
   }
   if (!lower || !upper || upper.number === lower.number) return null;
+  const fullStreet = (place) => normalizedText(String(place.name || place.address || '')
+    .split(',')[0].replace(/^(?:\d+\/)?\d+[A-Za-z]?\s+/u, ''));
+  // A prefix can match several neighbouring streets. Do not interpolate a
+  // house between (for example) Verona Road and Verissimo Drive.
+  if (fullStreet(lower.place) !== fullStreet(upper.place)) return null;
   // Do not invent coordinates from wildly separated address ranges.
   if (upper.number - lower.number > 40) return null;
   // Equal road names recur in different cities. Nearby house numbers alone

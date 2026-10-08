@@ -4,6 +4,7 @@ import { pbkdf2, scrypt } from 'node:crypto';
 import { syncAppleForUser } from './apple_billing.ts';
 import { verifyGoogleIdToken } from './google_token.ts';
 import { validCoordinate } from './geo.ts';
+import { handleFriendsBackup } from './friends_backup.ts';
 
 const encoder = new TextEncoder();
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
@@ -312,6 +313,7 @@ export async function handleAccount(request: Request, env) {
 
   const user = await userFromRequest(db, request);
   if (!user) return response({ error: 'Not signed in' }, 401);
+  if (path === '/api/profile/friends') return handleFriendsBackup(request, db, user.id);
   if ((path === '/api/auth/me' || path === '/api/profile') && request.method === 'GET') {
     return response(await userProfile(db, user, env));
   }

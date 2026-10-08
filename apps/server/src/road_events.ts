@@ -115,7 +115,7 @@ function directionHeading(roadName: string): number | null {
   return { north: 0, east: 90, south: 180, west: 270 }[[...unique][0]];
 }
 
-export function normalizeRoadEvent(input: unknown, now = new Date()): OfficialRoadEvent | null {
+export function normalizeRoadEvent(input: unknown, now = new Date(), includeScheduled = false): OfficialRoadEvent | null {
   if (!input || typeof input !== 'object') return null;
   const event = input as NztaEvent;
   if (event.status !== 'Active' ||
@@ -126,7 +126,8 @@ export function normalizeRoadEvent(input: unknown, now = new Date()): OfficialRo
   const from = Date.parse(text(event.startDate));
   const until = Date.parse(text(event.endDate));
   const time = now.getTime();
-  if (Number.isFinite(from) && from > time) return null;
+  if (Number.isFinite(from) && from > time &&
+      (!includeScheduled || from > time + 48 * 60 * 60 * 1000)) return null;
   if (Number.isFinite(until) && until <= time) return null;
 
   const type = eventType(event);
@@ -175,7 +176,10 @@ export async function fetchNztaRoadEvents(fetcher: typeof fetch = fetch, now = n
   const body = await response.json<{ response?: { roadevent?: unknown } }>();
   const raw = body?.response?.roadevent;
   if (!Array.isArray(raw)) throw new Error('NZTA road events payload is invalid');
-  const events = raw.map((event) => normalizeRoadEvent(event, now)).filter(Boolean);
+  // Retain near-term schedules for route arrival-time checks. Map clients see
+  // only current events through currentSnapshot; tomorrow's closure is not
+  // presented as a road that is already closed.
+  const events = raw.map((event) => normalizeRoadEvent(event, now, true)).filter(Boolean);
   return {
     events,
     source: ROAD_EVENTS_SOURCE_PAGE,
@@ -214,24 +218,24 @@ export async function refreshRoadEventState(env: RoadEventEnv, fetcher: typeof f
     try {
       const live = await fetchNztaRoadEvents(fetcher, now);
       await env.CAMERA_DATA.put(CACHE_KEY, JSON.stringify(live));
-      return live;
+      return currentSnapshot(live, now);
     } catch (error) {
       const retrievedAt = stored?.retrievedAt ??
         (stored?.syncStatus === 'live' ? stored.checkedAt : null);
       const age = now.getTime() - Date.parse(retrievedAt || '');
       const usable = Number.isFinite(age) && age >= 0 && age <= MAX_STALE_MS;
-      const state = currentSnapshot({
+      const state: RoadEventState = {
         events: usable && Array.isArray(stored?.events) ? stored.events : [],
         source: ROAD_EVENTS_SOURCE_PAGE,
         retrievedAt,
         checkedAt: now.toISOString(),
         syncStatus: usable ? 'stale' : 'unavailable',
         syncError: String(error.message || error)
-      }, now);
+      };
       // Cache failure attempts too, so an outage does not trigger a retry per
       // user. The original retrieval timestamp is never moved forward.
       await env.CAMERA_DATA.put(CACHE_KEY, JSON.stringify(state));
-      return state;
+      return currentSnapshot(state, now);
     }
   })();
   refreshes.set(env.CAMERA_DATA, refresh);

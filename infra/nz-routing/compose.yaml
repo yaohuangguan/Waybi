@@ -1,0 +1,19 @@
+services:
+  valhalla:
+    image: ghcr.io/valhalla/valhalla-scripted:3.9.1@sha256:6238809f9dc3057743d70a20efd3911ec38e458bfa13a0601909b58f68dfd956
+    ports:
+      - "127.0.0.1:8002:8002"
+    volumes:
+      - nz-routing-data:/custom_files
+    environment:
+      tile_urls: https://download.geofabrik.de/australia-oceania/new-zealand-latest.osm.pbf
+      build_admins: "True"
+      build_time_zones: "True"
+      build_elevation: "False"
+      server_threads: "2"
+    mem_limit: 6g
+    cpus: 4
+    restart: unless-stopped
+
+volumes:
+  nz-routing-data:

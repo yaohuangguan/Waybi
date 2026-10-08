@@ -164,7 +164,10 @@ class SavedGame {
       if (memory.sourceTripId != null) tripIds.add(memory.sourceTripId!);
       combined.add(memory);
     }
-    combined.sort((a, b) => b.returnedAt.compareTo(a.returnedAt));
+    combined.sort((a, b) {
+      final date = b.returnedAt.compareTo(a.returnedAt);
+      return date != 0 ? date : b.id.compareTo(a.id);
+    });
     return SavedGame(
       activeJourney: activeJourney ?? archive.activeJourney,
       roomLife: roomLife ?? archive.roomLife,

@@ -18,6 +18,7 @@ jobs:
       - run: node --check scripts/flutter-dev.mjs
       - run: node --check scripts/ios-device.mjs
       - run: pnpm typecheck:server
+      - run: pnpm typecheck:nz-routing
       - run: pnpm test
       - run: pnpm build
       - run: pnpm seo:check

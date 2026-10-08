@@ -138,6 +138,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
       return _fetchWaybiMode(
         points,
         mode: mode,
+        language: language,
         alternatives: alternatives,
         headingDegrees: headingDegrees,
       );
@@ -298,6 +299,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
   Future<List<RouteOption>> _fetchWaybiMode(
     List<GeoPoint> points, {
     required WaybiTravelMode mode,
+    required String language,
     required bool alternatives,
     double? headingDegrees,
   }) async {
@@ -313,6 +315,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
               .join(';'),
         'mode': mode.apiValue,
         'provider': 'independent',
+        'lang': language,
         'alternatives': alternatives ? 'true' : 'false',
         if (headingDegrees != null && headingDegrees.isFinite)
           'heading': '${headingDegrees % 360}',
@@ -320,7 +323,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     );
     final response = await _client
         .get(uri, headers: const {'Accept': 'application/json'})
-        .timeout(Duration(seconds: alternatives ? 12 : 8));
+        .timeout(const Duration(seconds: 12));
     if (response.statusCode != 200) {
       throw StateError('Waybi directions unavailable: ${response.statusCode}');
     }
@@ -362,6 +365,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         transit: route.transit,
         steps: route.steps,
         waypoints: List.unmodifiable(points),
+        closureIds: route.closureIds,
       );
 
   Future<http.Response> _limitedGet(Uri uri, {required Duration timeout}) {

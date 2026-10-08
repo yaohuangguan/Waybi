@@ -1,5 +1,9 @@
 import type { ProviderPayload } from "./types.ts";
 import type { LonLat, RouteRequestOptions, UsageRecorder } from './types.ts';
+import { fetchNzRouting, nzRoutingEndpoint } from './nz_routing.ts';
+import { readRouteRoadSnapshots } from './regional_road_events.ts';
+import { matchRouteClosures, crossesExcludedRoads } from './routing_closures.ts';
+import type { ClosureLocation } from './routing_closures.ts';
 const GOOGLE_ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 
 function seconds(value) {
@@ -202,6 +206,10 @@ async function fallbackDrivingRoutes(from, to, stops: LonLat[] = [], mode = 'DRI
   if (!response.ok) throw new Error(`Fallback route HTTP ${response.status}`);
   const payload = await response.json<ProviderPayload>();
   if (payload.code !== 'Ok') throw new Error('Fallback route unavailable');
+  return normalizeOsrmRoutes(payload, mode);
+}
+
+export function normalizeOsrmRoutes(payload: ProviderPayload, mode: string) {
   return (payload.routes || []).slice(0, 3).map((route, index) => ({
     id: `${mode.toLowerCase()}-${index}`,
     mode: mode.toLowerCase(),
@@ -261,18 +269,61 @@ export async function routeOptions(
   }
 
   const modes = requestedModes?.length ? requestedModes : ['DRIVE'];
+  const points: LonLat[] = [from, ...stops, to];
+  const fetchIndependent = async (mode: string, exclusions: ClosureLocation[] = []) => {
+    if (nzRoutingEndpoint(env, points)) {
+      try {
+        return normalizeOsrmRoutes(await fetchNzRouting(env, points, mode, options, exclusions), mode);
+      } catch (error) {
+        // A failed exclusion request must not quietly drop its exclusions.
+        if (exclusions.length) throw error;
+      }
+    }
+    if (exclusions.length) throw new Error('No engine supports these road exclusions');
+    return fallbackDrivingRoutes(from, to, stops, mode, options);
+  };
   const settled = await Promise.allSettled(
-    modes.map((mode) =>
-      fallbackDrivingRoutes(from, to, stops, mode, {
-        alternatives: options.alternatives,
-        headingDegrees: options.headingDegrees,
-      })
-    )
+    modes.map(mode => fetchIndependent(mode))
   );
   let driving = settled.flatMap((result) =>
     result.status === 'fulfilled' ? result.value : []
   );
   if (!driving.length) throw new Error('No routes available for the requested travel mode');
+  let roadAwareness = null;
+  if (forceIndependent && driving.some(route => route.mode === 'drive')) {
+    const now = new Date();
+    const snapshot = await readRouteRoadSnapshots(env, driving, now);
+    const blocked = driving.filter(route => route.mode === 'drive').map(route => ({
+      route, matches: matchRouteClosures(route, snapshot.events, now),
+    }));
+    const clear = blocked.filter(item => !item.matches.length).map(item => item.route);
+    let selected = clear;
+    let avoidance = 'unchecked';
+    if (blocked.length && blocked.some(item => item.matches.length)) {
+      avoidance = clear.length ? 'alternative' : 'blocked';
+      if (!clear.length && nzRoutingEndpoint(env, points)) {
+        const locations = blocked.flatMap(item => item.matches.flatMap(match => match.locations));
+        const unique = [...new Map(locations.map(location =>
+          [`${location.lon.toFixed(5)}:${location.lat.toFixed(5)}:${Math.round(location.heading / 10)}`, location])).values()];
+        try {
+          const detours = await fetchIndependent('DRIVE', unique);
+          selected = detours.filter(route => !crossesExcludedRoads(route, unique) &&
+            !matchRouteClosures(route, snapshot.events, now).length);
+          if (selected.length) avoidance = 'detour';
+        } catch { /* Keep the blocked routes visibly blocked, without pretending avoidance succeeded. */ }
+      }
+      if (selected.length) {
+        driving = [...selected, ...driving.filter(route => route.mode !== 'drive')];
+      } else {
+        driving = driving.map(route => ({ ...route,
+          closureIds: blocked.find(item => item.route === route)?.matches.map(match => match.event.id) || [],
+        }));
+      }
+    }
+    roadAwareness = { status: snapshot.status, retrievedAt: snapshot.retrievedAt,
+      officialCoverage: snapshot.officialCoverage, avoidance,
+      matchedClosureIds: [...new Set(blocked.flatMap(item => item.matches.map(match => match.event.id)))] };
+  }
   if (forceIndependent) {
     driving = driving.map((route) => ({ ...route, provider: 'independent' }));
   }
@@ -280,6 +331,7 @@ export async function routeOptions(
     provider: forceIndependent ? 'independent' : 'osm-fallback',
     trafficAvailable: false,
     stopsApplied: stops.length,
-    options: driving
+    options: driving,
+    ...(roadAwareness ? { roadAwareness } : {}),
   };
 }

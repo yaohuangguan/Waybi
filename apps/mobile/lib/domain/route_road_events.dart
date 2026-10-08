@@ -47,6 +47,17 @@ List<RoadEvent> routeClosures(
       continue;
     }
     final points = event.geometry.isEmpty ? [event.location] : event.geometry;
+    final ramp =
+        RegExp(
+          r'\b(?:on[ -]?ramp|off[ -]?ramp)\b',
+          caseSensitive: false,
+        ).hasMatch(
+          [
+            event.roadName,
+            event.metadata['description'],
+            event.metadata['comments'],
+          ].join(' '),
+        );
     RouteProjection? best;
     for (final p in points) {
       if (!p.isValid ||
@@ -67,7 +78,8 @@ List<RoadEvent> routeClosures(
           match.alongMeters < progressMeters - 15) {
         continue;
       }
-      if (event.headingDegrees != null &&
+      if (!ramp &&
+          event.headingDegrees != null &&
           angleDifference(event.headingDegrees!, match.bearingDegrees) > 55) {
         continue;
       }

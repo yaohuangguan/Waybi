@@ -15,7 +15,10 @@ test('50 simultaneous address lookups use one upstream and independently readabl
   };
   const responses = await Promise.all(Array.from({ length: 50 }, () => cache.load('same address', load)));
   assert.equal(calls, 1);
-  for (const response of responses) assert.deepEqual(await response.json(), results);
+  for (const response of responses) {
+    assert.match(response.headers.get('server-timing')!, /^search;dur=\d+(?:\.\d+)?$/);
+    assert.deepEqual(await response.json(), results);
+  }
   assert.equal((await cache.load('same address', load)).headers.get('x-waybi-search-cache'), 'MEMORY');
   assert.equal(calls, 1);
 });

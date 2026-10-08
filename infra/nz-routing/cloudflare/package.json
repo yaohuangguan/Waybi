@@ -1,0 +1,11 @@
+{
+  "name": "@waybi/nz-routing",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "wrangler deploy --dry-run --outdir ../../../dist/nz-routing",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": { "@cloudflare/containers": "0.3.7" }
+}

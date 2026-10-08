@@ -268,7 +268,7 @@ async function fetchTomTom({ query, point, language, apiKey, trackUsage }) {
   }
 }
 
-async function fetchPhoton({ query, point, language, trackUsage }) {
+async function fetchPhoton({ query, point, language, trackUsage, timeoutMs = 1400 }) {
   const url = new URL('https://photon.komoot.io/api/');
   url.searchParams.set('q', query);
   url.searchParams.set('limit', '10');
@@ -285,7 +285,7 @@ async function fetchPhoton({ query, point, language, trackUsage }) {
         'user-agent': 'Waybi/1.0 (+https://waybi.co)',
         accept: 'application/json',
       },
-      signal: AbortSignal.timeout(1400),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return [];
     return mapPhotonPlaces(await response.json<ProviderPayload>());
@@ -316,12 +316,20 @@ async function searchIndependentGlobalUncached({
   let geoapify = [];
   let tomtom = [];
   let enrichments = [];
+  let photon = [];
+  let deliverUseful;
+  const firstUseful = new Promise<unknown[]>((resolve) => { deliverUseful = resolve; });
+  const considerEarlyResult = () => {
+    const results = mergeAndRankSearchResults([enrichments, tomtom, geoapify, photon], query, point, 12);
+    if (useful(results)) deliverUseful(results);
+  };
 
   const started = Date.now();
   const regionalPromise = Promise.resolve(enrichmentsPromise)
     .catch(() => [])
     .then((results) => {
       enrichments = results;
+      considerEarlyResult();
       return results;
     });
 
@@ -345,6 +353,7 @@ async function searchIndependentGlobalUncached({
     trackUsage,
   }).then((results) => {
     geoapify = results;
+    considerEarlyResult();
     return results;
   });
 
@@ -356,13 +365,16 @@ async function searchIndependentGlobalUncached({
     trackUsage,
   }).then((results) => {
     tomtom = results;
+    considerEarlyResult();
     return results;
   });
 
   const firstWave = [regionalPromise, geoPromise, tomtomPromise];
   // Use deadlines measured from request start. The old serial waits added
   // 280 + 520 + 720 ms, before a last-resort Photon request even began.
-  await Promise.race([Promise.allSettled(firstWave), wait(Math.max(0, 600 - (Date.now() - started)))]);
+  const early = await Promise.race([firstUseful, Promise.allSettled(firstWave).then(() => null),
+    wait(Math.max(0, 600 - (Date.now() - started))).then(() => null)]);
+  if (early) return early;
 
   let merged = mergeAndRankSearchResults(
     [enrichments, tomtom, geoapify],
@@ -377,19 +389,24 @@ async function searchIndependentGlobalUncached({
   // Give exact/numbered addresses a little more time for an authoritative
   // national adapter or commercial geocoder, without blocking typeahead for
   // multiple seconds.
-  await Promise.race([Promise.allSettled(firstWave), wait(Math.max(0, 1300 - (Date.now() - started)))]);
+  // Start the open fallback while slower providers are still running, rather
+  // than add its entire timeout after their deadline. No Google API is used.
+  const photonPromise = merged.length ? Promise.resolve([]) : fetchPhoton({
+    query, point, language, trackUsage, timeoutMs: Math.max(1, 1800 - (Date.now() - started)),
+  }).then((results) => { photon = results; considerEarlyResult(); return results; });
+  const later = await Promise.race([firstUseful,
+    Promise.allSettled([...firstWave, photonPromise]).then(() => null),
+    wait(Math.max(0, 1800 - (Date.now() - started))).then(() => null)]);
+  if (later) return later;
   merged = mergeAndRankSearchResults(
-    [enrichments, tomtom, geoapify],
+    [enrichments, tomtom, geoapify, photon],
     query,
     point,
     12
   );
   if (merged.length) return merged;
 
-  const photon = await fetchPhoton({ query, point, language, trackUsage });
-  // An official adapter can finish during the fallback. Keep that useful
-  // address rather than throwing it away when Photon has no matching door.
-  return mergeAndRankSearchResults([enrichments, tomtom, geoapify, photon], query, point, 12);
+  return merged;
 }
 
 export function searchIndependentGlobal(args) {

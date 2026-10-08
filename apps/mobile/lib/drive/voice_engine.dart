@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
+import '../domain/map_layer_settings.dart';
+
 /// One completion-aware queue for turns and camera alerts. Google runs
 /// silently and its live turn feed supplies our guidance text.
 class VoiceEngine {
@@ -31,6 +33,10 @@ class VoiceEngine {
     if (defaultTargetPlatform == TargetPlatform.android) {
       await _tts.setAudioAttributesForNavigation();
     }
+    await _configureIosAudio();
+  }
+
+  Future<void> _configureIosAudio() async {
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       await _tts.setSharedInstance(true);
       await _tts.setIosAudioCategory(IosTextToSpeechAudioCategory.playback, [
@@ -40,22 +46,39 @@ class VoiceEngine {
     }
   }
 
-  Future<void> _enqueue(
+  Future<bool> _enqueue(
     String Function() message, {
     String? language,
     bool Function()? stillRelevant,
   }) {
     final generation = _generation;
     final speech = _speechQueue.catchError((Object _) {}).then((_) async {
-      if (generation != _generation || !(stillRelevant?.call() ?? true)) return;
+      if (generation != _generation || !(stillRelevant?.call() ?? true)) {
+        return false;
+      }
       await initialize();
-      if (generation != _generation || !(stillRelevant?.call() ?? true)) return;
+      if (generation != _generation || !(stillRelevant?.call() ?? true)) {
+        return false;
+      }
       await _tts.setLanguage(language ?? _language);
-      if (generation != _generation || !(stillRelevant?.call() ?? true)) return;
+      // The native navigation SDK can change the shared session after our
+      // initial setup. Restore playback routing immediately before speech.
+      await _configureIosAudio();
+      if (generation != _generation || !(stillRelevant?.call() ?? true)) {
+        return false;
+      }
       final text = message().trim();
-      if (text.isNotEmpty) await _tts.speak(text);
+      if (text.isEmpty) return false;
+      final result = await _tts.speak(text);
+      if (result != 1 && result != true) {
+        throw StateError('Speech did not complete');
+      }
+      return true;
     });
-    _speechQueue = speech;
+    _speechQueue = speech.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
     return speech;
   }
 
@@ -63,8 +86,11 @@ class VoiceEngine {
     String message, {
     String? language,
     bool Function()? stillRelevant,
-  }) =>
-      _enqueue(() => message, language: language, stillRelevant: stillRelevant);
+  }) => _enqueue(
+    () => message,
+    language: language,
+    stillRelevant: stillRelevant,
+  ).then<void>((_) {});
 
   Future<void> stop() async {
     ++_generation;
@@ -77,30 +103,25 @@ class VoiceEngine {
     await stopped;
   }
 
-  Future<void> cameraAlert({
+  Future<bool> cameraAlert({
     required int distanceMeters,
     required String cameraType,
     required String roadName,
     String? speedLimit,
+    int Function()? currentDistanceMeters,
     bool Function()? stillRelevant,
   }) => _enqueue(() {
-    final lower = cameraType.toLowerCase();
-    final red = lower.contains('red light');
-    final average = lower.contains('average');
-    final type = _language == 'zh-CN'
-        ? (red
-              ? '红灯摄像头'
-              : average
-              ? '区间测速摄像头'
-              : '固定测速摄像头')
-        : (red
-              ? 'Red-light safety camera'
-              : average
-              ? 'Average-speed camera'
-              : 'Fixed speed camera');
+    final kind = CameraKindLabel.fromType(cameraType);
+    final type = kind == CameraKind.spotSpeed && _language != 'zh-CN'
+        ? 'Fixed speed camera'
+        : kind.cameraLabel(_language == 'zh-CN' ? 'zh' : 'en');
+    final metres = currentDistanceMeters?.call() ?? distanceMeters;
+    final road = roadName.trim().isEmpty
+        ? ''
+        : (_language == 'zh-CN' ? '，位于$roadName' : ' on $roadName');
     return _language == 'zh-CN'
-        ? '前方 $distanceMeters 米有$type，位于$roadName。请遵守限速。'
-        : '$type in $distanceMeters metres on $roadName. Observe the posted speed limit.';
+        ? '前方 $metres 米有$type$road。'
+        : '$type in $metres metres$road.';
   }, stillRelevant: stillRelevant);
 
   Future<void> dispose() => stop();

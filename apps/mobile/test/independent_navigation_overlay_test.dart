@@ -71,7 +71,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('54'), findsOneWidget);
       expect(find.text('LIMIT 50'), findsOneWidget);
-      expect(find.text('Safety camera ahead'), findsOneWidget);
+      expect(find.text('Speed camera ahead'), findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(const Key('navigationCameraAlert')),

@@ -16,7 +16,7 @@ void main() {
     await tester.pumpWidget(const NavigationPreview());
     await tester.pumpAndSettle();
     expect(find.text('推荐车道'), findsOneWidget);
-    expect(find.text('前方安全摄像头'), findsOneWidget);
+    expect(find.text('前方定点测速'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byKey(const Key('navigationCameraAlert')),
@@ -63,7 +63,7 @@ void main() {
     await tester.tap(find.text('EN'));
     await tester.pumpAndSettle();
     expect(find.text('USE LANE'), findsOneWidget);
-    expect(find.text('Safety camera ahead'), findsOneWidget);
+    expect(find.text('Speed camera ahead'), findsOneWidget);
     await tester.tap(find.byTooltip('Camera alert'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('navigationCameraAlert')), findsNothing);
@@ -85,7 +85,7 @@ void main() {
     });
     await tester.pumpWidget(const NavigationPreview());
     await tester.pumpAndSettle();
-    expect(find.text('前方安全摄像头'), findsOneWidget);
+    expect(find.text('前方定点测速'), findsOneWidget);
     expect(
       tester.getRect(find.byKey(const Key('navigationCameraAlert'))).bottom,
       lessThan(

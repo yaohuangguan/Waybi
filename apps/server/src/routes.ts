@@ -209,6 +209,20 @@ async function fallbackDrivingRoutes(from, to, stops: LonLat[] = [], mode = 'DRI
   return normalizeOsrmRoutes(payload, mode);
 }
 
+export function maneuverLanes(step: ProviderPayload) {
+  // OSRM's first intersection belongs to this maneuver. The rest describe
+  // junctions further along the outgoing road, not additional incoming lanes.
+  const intersection = step.intersections?.[0];
+  if (!intersection) return [];
+  const at = step.maneuver?.location;
+  const location = intersection.location;
+  if (Array.isArray(at) && Array.isArray(location) &&
+      (Math.abs(at[0] - location[0]) > 0.00001 || Math.abs(at[1] - location[1]) > 0.00001)) {
+    return [];
+  }
+  return Array.isArray(intersection.lanes) ? intersection.lanes : [];
+}
+
 export function normalizeOsrmRoutes(payload: ProviderPayload, mode: string) {
   return (payload.routes || []).slice(0, 3).map((route, index) => ({
     id: `${mode.toLowerCase()}-${index}`,
@@ -230,7 +244,7 @@ export function normalizeOsrmRoutes(payload: ProviderPayload, mode: string) {
       name: step.name || '', maneuver: step.maneuver?.type || '',
       modifier: step.maneuver?.modifier || '', location: step.maneuver?.location || [],
       instruction: step.maneuver?.instruction || '',
-      lanes: (step.intersections || []).flatMap((intersection) => intersection.lanes || [])
+      lanes: maneuverLanes(step)
     }))),
     transit: [],
     provider: 'osm-fallback'

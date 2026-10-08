@@ -3,11 +3,17 @@ import 'package:flutter/material.dart';
 import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
 import '../theme/waybi_theme.dart';
+import '../domain/map_layer_settings.dart';
 
 class NavigationCameraNotice {
-  const NavigationCameraNotice(this.road, this.metres);
+  const NavigationCameraNotice(
+    this.road,
+    this.metres, {
+    this.kind = CameraKind.other,
+  });
   final String road;
   final double metres;
+  final CameraKind kind;
 }
 
 NavigationCameraNotice? upcomingNavigationCamera(DriveEngine engine) {
@@ -19,7 +25,11 @@ NavigationCameraNotice? upcomingNavigationCamera(DriveEngine engine) {
       distance.isFinite &&
       distance >= 0 &&
       distance <= 1200) {
-    return NavigationCameraNotice(camera.location, distance);
+    return NavigationCameraNotice(
+      camera.location,
+      distance,
+      kind: CameraKindLabel.fromCamera(camera),
+    );
   }
   // Keep the same confirmed camera lifecycle used by spoken reminders.
   // Cameras merely visible in the trip timeline do not occupy the map.
@@ -72,7 +82,9 @@ class NavigationCameraAlert extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                language == 'zh' ? '前方安全摄像头' : 'Safety camera ahead',
+                language == 'zh'
+                    ? '前方${notice.kind == CameraKind.other ? notice.kind.cameraLabel(language) : notice.kind.localizedLabel(language)}'
+                    : '${notice.kind.cameraLabel(language)} ahead',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(

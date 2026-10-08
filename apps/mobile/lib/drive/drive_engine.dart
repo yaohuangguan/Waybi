@@ -87,6 +87,8 @@ class DriveEngine extends ChangeNotifier {
   Timer? _trafficFlowRefreshTimer;
   Duration? _trafficFlowRefreshInterval;
   final Set<String> _spokenAlerts = <String>{};
+  final Map<String, Object> _pendingCameraAlerts = {};
+  final Map<String, DateTime> _cameraRetryAfter = {};
   final RouteCameraMatcher _routeMatcher = const RouteCameraMatcher();
   final NavigationLocationFilter _localLocationFilter =
       NavigationLocationFilter();
@@ -644,6 +646,8 @@ class DriveEngine extends ChangeNotifier {
         : null;
     routeProgress = null;
     if (!preserveAlerts) _spokenAlerts.clear();
+    _pendingCameraAlerts.clear();
+    _cameraRetryAfter.clear();
     _lastRoadEventEvaluationAt = null;
     _recomputeRouteCameras();
     _cameraLifecycle.reset();
@@ -852,10 +856,14 @@ class DriveEngine extends ChangeNotifier {
 
   Future<void> speakMessage(String message) async {
     if (!voiceEnabled) return;
-    await _voiceEngine.guidance(
-      message,
-      language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
-    );
+    try {
+      await _voiceEngine.guidance(
+        message,
+        language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
+      );
+    } catch (_) {
+      debugPrint('Navigation audio unavailable');
+    }
   }
 
   void _speakNativeTurn(NavInfo info) {
@@ -963,23 +971,48 @@ class DriveEngine extends ChangeNotifier {
         ? 800
         : null;
     if (threshold == null) return;
-    if (threshold == 300) {
-      _spokenAlerts.add('${match.camera.id}:800');
-    }
     final key = '${match.camera.id}:$threshold';
-    if (!_spokenAlerts.add(key)) return;
-    await _voiceEngine.cameraAlert(
-      distanceMeters: threshold,
-      cameraType: match.camera.type,
-      roadName: match.camera.location,
-      speedLimit: speedLimitKph?.toString(),
-      stillRelevant: () =>
-          active &&
-          voiceEnabled &&
-          upcomingCamera?.id == match.camera.id &&
-          (upcomingCameraDistanceMeters ?? 0) > 0 &&
-          (threshold != 800 || (upcomingCameraDistanceMeters ?? 0) > 300),
-    );
+    if (_spokenAlerts.contains(key) ||
+        _pendingCameraAlerts.containsKey(key) ||
+        (_cameraRetryAfter[key]?.isAfter(DateTime.now()) ?? false)) {
+      return;
+    }
+    final token = Object();
+    _pendingCameraAlerts[key] = token;
+    final session = _locationSession;
+    final revision = _turnRevision;
+    try {
+      final spoken = await _voiceEngine.cameraAlert(
+        distanceMeters: threshold,
+        cameraType: match.camera.type,
+        roadName: match.camera.location,
+        speedLimit: speedLimitKph?.toString(),
+        currentDistanceMeters: () =>
+            (upcomingCameraDistanceMeters ?? distance).round(),
+        stillRelevant: () =>
+            active &&
+            session == _locationSession &&
+            revision == _turnRevision &&
+            voiceEnabled &&
+            upcomingCamera?.id == match.camera.id &&
+            (upcomingCameraDistanceMeters ?? 0) > 0 &&
+            (threshold != 800 || (upcomingCameraDistanceMeters ?? 0) > 300),
+      );
+      if (spoken && session == _locationSession && revision == _turnRevision) {
+        _spokenAlerts.add(key);
+        if (threshold == 300) _spokenAlerts.add('${match.camera.id}:800');
+      }
+    } catch (_) {
+      // Audio errors must not become unhandled navigation errors or consume
+      // this camera's reminder. Retry while it is still ahead.
+      if (identical(_pendingCameraAlerts[key], token)) {
+        _cameraRetryAfter[key] = DateTime.now().add(const Duration(seconds: 5));
+      }
+    } finally {
+      if (identical(_pendingCameraAlerts[key], token)) {
+        _pendingCameraAlerts.remove(key);
+      }
+    }
   }
 
   Future<void> stop() async {
@@ -1004,6 +1037,8 @@ class DriveEngine extends ChangeNotifier {
     }
     _subscriptions.clear();
     _spokenAlerts.clear();
+    _pendingCameraAlerts.clear();
+    _cameraRetryAfter.clear();
     _cameraLifecycle.reset();
     _route = null;
     _routeRoadEvents = const [];

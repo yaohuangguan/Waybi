@@ -147,24 +147,7 @@ class IndependentNavigationOverlay extends StatelessWidget {
               engine.distanceToStepMeters <= 300 &&
                   !engine.offRoute &&
                   !engine.arrived
-              ? [
-                  for (final lane in next?.lanes ?? <RouteLane>[])
-                    NavigationLane(
-                      lane.indications
-                          .map(
-                            (name) => name.contains('left')
-                                ? '←'
-                                : name.contains('right')
-                                ? '→'
-                                : name == 'uturn'
-                                ? '↶'
-                                : '↑',
-                          )
-                          .toSet()
-                          .join(),
-                      lane.recommended,
-                    ),
-                ]
+              ? routeNavigationLanes(next)
               : const [],
         ),
         destinationTitle: destination,

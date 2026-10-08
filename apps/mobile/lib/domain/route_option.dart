@@ -98,7 +98,9 @@ class RouteStepInfo {
               indications: (lane['indications'] as List<dynamic>? ?? const [])
                   .whereType<String>()
                   .toList(),
-              recommended: lane['valid'] == true,
+              recommended: lane['active'] is bool
+                  ? lane['active'] == true
+                  : lane['valid'] == true,
             ),
           )
           .toList(),

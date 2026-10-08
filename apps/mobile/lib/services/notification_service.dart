@@ -2,24 +2,28 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class WaybiNotificationService {
-  WaybiNotificationService._();
+  WaybiNotificationService({FlutterLocalNotificationsPlugin? plugin})
+    : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
-  static final WaybiNotificationService instance = WaybiNotificationService._();
-  final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  static final WaybiNotificationService instance = WaybiNotificationService();
+  final FlutterLocalNotificationsPlugin _plugin;
   bool _initialized = false;
 
   Future<void> initialize() async {
     if (_initialized || kIsWeb) return;
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-      iOS: DarwinInitializationSettings(),
+      iOS: DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      ),
     );
     await _plugin.initialize(settings);
     _initialized = true;
   }
 
-  Future<void> requestPermission() async {
+  Future<bool> requestPermission() async {
     await initialize();
     await _plugin
         .resolvePlatformSpecificImplementation<
@@ -31,6 +35,28 @@ class WaybiNotificationService {
           AndroidFlutterLocalNotificationsPlugin
         >()
         ?.requestNotificationsPermission();
+    return canShowAlerts();
+  }
+
+  Future<bool> canShowAlerts() async {
+    await initialize();
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final permissions = await _plugin
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >()
+          ?.checkPermissions();
+      return permissions?.isAlertEnabled == true;
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return await _plugin
+              .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin
+              >()
+              ?.areNotificationsEnabled() ??
+          false;
+    }
+    return !kIsWeb;
   }
 
   Future<void> showPlusCommuteAlert({
@@ -58,12 +84,12 @@ class WaybiNotificationService {
     );
   }
 
-  Future<void> showRoadAlert({
+  Future<bool> showRoadAlert({
     required String id,
     required String title,
     required String body,
   }) async {
-    await initialize();
+    if (!await canShowAlerts()) return false;
     await _plugin.show(
       id.hashCode & 0x7fffffff,
       title,
@@ -77,9 +103,15 @@ class WaybiNotificationService {
           importance: Importance.high,
           priority: Priority.high,
         ),
-        iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBanner: true,
+          presentList: true,
+          presentSound: true,
+        ),
       ),
       payload: id,
     );
+    return true;
   }
 }

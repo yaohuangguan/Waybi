@@ -2,6 +2,7 @@ import type { ProviderPayload } from "./types.ts";
 import type { PlacePhotoCandidate } from './types.ts';
 import { validCoordinate } from './geo.ts';
 import { enrichPlacePhotos } from './independent_explore.ts';
+import { readPublicEdgeJson, writePublicEdgeJson } from './public_edge_cache.ts';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'content-type': 'application/json; charset=utf-8',
@@ -44,8 +45,8 @@ export async function independentPlaceDetails(url, env, fetcher: typeof fetch = 
   // Address results remain useful immediately without a speculative nearby photo.
   if (/^\d+[a-z]?\s/i.test(name)) return json(result);
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name.toLowerCase()));
-  const key = `waybi:place-photos:v2:${point.map(n => n.toFixed(5)).join(',')}:${Array.from(new Uint8Array(digest)).map(n => n.toString(16).padStart(2, '0')).join('')}`;
-  const cached = await env.CAMERA_DATA?.get(key, 'json');
+  const key = `${url.origin}/__edge-cache/place-photos/v3/${point.map(n => n.toFixed(5)).join(',')}/${Array.from(new Uint8Array(digest)).map(n => n.toString(16).padStart(2, '0')).join('')}`;
+  const cached = await readPublicEdgeJson<unknown>(key);
   if (Array.isArray(cached)) return json({ ...result, photos: cached });
   const place: PlacePhotoCandidate = { placeId, name, latitude: point[1], longitude: point[0] };
   try {
@@ -56,7 +57,7 @@ export async function independentPlaceDetails(url, env, fetcher: typeof fetch = 
       sourceUrl: place.photoCredit?.sourceUrl || '',
       licenseUrl: place.photoCredit?.licenseUrl || '',
     });
-    await env.CAMERA_DATA?.put(key, JSON.stringify(result.photos), { expirationTtl: result.photos.length ? 86400 : 3600 });
+    await writePublicEdgeJson(key, result.photos, result.photos.length ? 86400 : 3600);
   } catch (_) {
     // Photo availability never prevents opening or navigating to a place.
   }

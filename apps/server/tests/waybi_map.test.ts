@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { normalizeNearby, selectNearby, commonsPhoto, independentExplore } from '../src/independent_explore.ts';
+import { mockEdgeCache } from './mock_edge_cache.ts';
 import { createRoadGraph, matchTrafficGeometry } from '../src/traffic_geometry.ts';
 import { withRoadGeometry } from '../src/traffic_flow.ts';
 import { trafficTileConfig, handleTrafficTile } from '../src/traffic_tiles.ts';
@@ -88,38 +89,46 @@ test('open map POIs decode MVT point coordinates and localized names at zoom 14'
   assert.ok((await nearbyTilePlaces(point, 'zh', fetcher)).length > 0);
   assert.equal(tiles, 4);
 });
-test('independent Explore uses bounded cached OSM results with no Google calls', async () => {
-  const store = new Map(), urls = [], env = { CAMERA_DATA: { get: async k => store.get(k), put: async (k, v) => store.set(k, JSON.parse(v)) } };
-  const fetcher = async url => {
-    urls.push(String(url));
-    if (String(url).includes('overpass')) return Response.json({ elements });
-    return Response.json({ query: { pages: [] } });
-  };
-  const url = new URL('https://example.test/api/explore?at=174.7633,-36.8485&lang=zh');
-  assert.equal((await independentExplore(url, env, fetcher)).status, 200);
-  const calls = urls.length; url.searchParams.set('category', 'parks');
-  const parks = await (await independentExplore(url, env, fetcher)).json();
-  assert.equal(urls.length, calls); assert.equal(parks[0].name, '公园');
-  assert.ok(!urls.some(url => url.includes('google')));
-  assert.equal((await independentExplore(new URL('https://example.test/?at=181,91'), env, fetcher)).status, 400);
+test('independent Explore uses public edge cache, never KV writes, and no Google calls', async () => {
+  const edge = mockEdgeCache();
+  const urls = [], env = { CAMERA_DATA: { get: async () => { throw Error('KV read forbidden'); }, put: async () => { throw Error('KV write forbidden'); } } };
+  try {
+    const fetcher = async url => {
+      urls.push(String(url));
+      if (String(url).includes('overpass')) return Response.json({ elements });
+      return Response.json({ query: { pages: [] } });
+    };
+    const url = new URL('https://example.test/api/explore?at=174.7633,-36.8485&lang=zh');
+    assert.equal((await independentExplore(url, env, fetcher)).status, 200);
+    assert.equal(edge.entries.size, 2, 'store fresh and fallback copies in edge cache');
+    const calls = urls.length; url.searchParams.set('category', 'parks');
+    const parks = await (await independentExplore(url, env, fetcher)).json();
+    assert.equal(urls.length, calls); assert.equal(parks[0].name, '公园');
+    assert.ok(!urls.some(url => url.includes('google')));
+    assert.equal((await independentExplore(new URL('https://example.test/?at=181,91'), env, fetcher)).status, 400);
+  } finally { edge.restore(); }
 });
 const way = (nodes, coordinates, oneway = 'yes') => ({ type: 'way', nodes, tags: { oneway }, geometry: coordinates.map(p => ({ lon: p[0], lat: p[1] })) });
 
-test('discovery retries another open-data endpoint and keeps previous places during outages', async () => {
-  let attempts = 0;
-  const env = { CAMERA_DATA: { get: async key => key.endsWith(':previous') ? normalizeNearby(elements, point) : null, put: async () => {} } };
-  const url = new URL('https://example.test/api/explore?at=174.7633,-36.8485');
-  const fallback = async target => {
-    if (String(target).includes('overpass')) {
-      attempts++;
-      return attempts === 1 ? new Response('Busy', { status: 429 }) : Response.json({ elements });
-    }
-    return Response.json({ query: { pages: [] } });
-  };
-  assert.equal((await independentExplore(url, env, fallback)).status, 200);
-  assert.equal(attempts, 2);
-  const previous = await (await independentExplore(url, env, async () => { throw new Error('Offline'); })).json();
-  assert.ok(previous.length > 0);
+test('discovery retries upstream and retains previous edge snapshot during outages', async () => {
+  const edge = mockEdgeCache();
+  try {
+    let attempts = 0;
+    const env = { CAMERA_DATA: { put: async () => { throw Error('No KV puts'); } } };
+    const url = new URL('https://example.test/api/explore?at=174.7633,-36.8485');
+    const fallback = async target => {
+      if (String(target).includes('overpass')) {
+        attempts++;
+        return attempts === 1 ? new Response('Busy', { status: 429 }) : Response.json({ elements });
+      }
+      return Response.json({ query: { pages: [] } });
+    };
+    assert.equal((await independentExplore(url, env, fallback)).status, 200);
+    assert.equal(attempts, 2);
+    for (const key of edge.entries.keys()) if (!key.endsWith('/previous')) edge.entries.delete(key);
+    const previous = await (await independentExplore(url, env, async () => { throw new Error('Offline'); })).json();
+    assert.ok(previous.length > 0);
+  } finally { edge.restore(); }
 });
 test('road matching follows curves and respects one-way disconnected carriageways', () => {
   const coords = [[174.7, -36.8], [174.701, -36.799], [174.702, -36.8], [174.703, -36.8]];

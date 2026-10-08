@@ -215,11 +215,11 @@ test('traffic and road-event crons write independently within the daily KV budge
 
     const config = JSON.parse(readFileSync(new URL('../../../wrangler.jsonc', import.meta.url), 'utf8'));
     assert.deepEqual(config.triggers.crons, [
-      '*/5 * * * *', '*/10 * * * *', '*/15 * * * *', '0 */6 * * *',
+      '*/5 * * * *', '*/10 * * * *', '*/15 * * * *', '0 3 * * *',
     ]);
-    // Three guaranteed KV writes across the 5m/10m jobs, plus 4 camera syncs.
-    const daily = 24 * ((60 / 5) + 2 * (60 / 10)) + 4;
-    assert.equal(daily, 580);
+    // Traffic and road events share snapshots; cameras refresh once per day.
+    const daily = 24 * ((60 / 5) + 2 * (60 / 10)) + 1;
+    assert.equal(daily, 577);
     assert.ok(daily < 650, 'reserve room for request-driven KV writes');
   } finally {
     globalThis.fetch = originalFetch;

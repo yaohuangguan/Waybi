@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { readCameraState, syncCameras } from '../src/worker.ts';
 import seed from '../data/cameras.json' with { type: 'json' };
+import { mockEdgeCache } from './mock_edge_cache.ts';
 
 test('valid overseas coordinates have unknown limits rather than rejecting navigation', async () => {
   for (const coordinate of ['-74,40.71','139.7,35.69','121.47,31.23','18.4,-33.9']) {
@@ -24,7 +25,7 @@ test('identity migration pauses API and scheduled writes while keeping assets av
     assert.equal(response.headers.get('Retry-After'), '60');
   }
   assert.equal(await (await worker.fetch(new Request('https://waybi.test/'), env, ctx)).text(), 'site');
-  await worker.scheduled({ cron: '0 */6 * * *' }, env, ctx);
+  await worker.scheduled({ cron: '0 3 * * *' }, env, ctx);
 });
 
 test('legacy public hosts canonicalize to waybi.co without breaking API clients', async () => {
@@ -473,4 +474,61 @@ test('manual camera sync is available to Plus users', async () => {
   const body = await response.json();
   assert.equal(body.skipped, true);
   assert.equal(body.cameras.length, seed.cameras.length);
+});
+
+
+test('a thousand camera reads on an empty KV never schedule a sync or a write', async () => {
+  let reads = 0;
+  const env = { CAMERA_DATA: {
+    async get() { reads++; return null; },
+    async put() { assert.fail('Public camera reads must never write KV'); }
+  }};
+  const ctx = { waitUntil() { assert.fail('Public camera reads must not start on-demand sync'); } };
+  for (let i = 0; i < 1000; i++) {
+    const response = await worker.fetch(new Request('https://example.test/api/cameras'), env, ctx);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).cameras.length, seed.cameras.length);
+  }
+  assert.equal(reads, 1000);
+});
+
+test('Plus cannot repeatedly write camera KV when official source is stale', async () => {
+  const cached = {
+    ...seed,
+    checkedAt: new Date(Date.now() - 60_000).toISOString(),
+    syncStatus: 'stale',
+    syncError: 'NZTA temporarily unavailable',
+    change: { added: 0, removed: 0 }
+  };
+  const env = { ...fakeEnv(cached), USER_DB: fakeUserDb('plus') };
+  env.CAMERA_DATA.put = async () => assert.fail('Stale snapshots must respect cooldown');
+  const response = await worker.fetch(new Request('https://example.test/api/cameras/sync', {
+    method: 'POST',
+    headers: { 'x-waybi-client': 'mobile', cookie: `waybi_session=${'c'.repeat(64)}` },
+  }), env, { waitUntil() {} });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.skipped, true);
+  assert.equal(result.syncStatus, 'stale');
+  assert.equal(result.cooldownSeconds, 86400);
+});
+
+
+test('a thousand public camera reads share one KV get through edge cache', async () => {
+  const edge = mockEdgeCache();
+  let reads = 0;
+  try {
+    const env = { CAMERA_DATA: {
+      async get() { reads++; return seed; },
+      async put() { assert.fail('Camera GET must never write KV'); }
+    }};
+    for (let i = 0; i < 1000; i++) {
+      const response = await worker.fetch(new Request('https://waybi.co/api/cameras'), env, { waitUntil() {} });
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get('cache-control'), /public/);
+      assert.equal((await response.json()).cameras.length, seed.cameras.length);
+    }
+    assert.equal(reads, 1);
+    assert.equal(edge.entries.size, 1);
+  } finally { edge.restore(); }
 });

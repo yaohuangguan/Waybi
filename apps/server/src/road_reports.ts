@@ -3,6 +3,10 @@ const KEY = 'road-reports/current';
 const MAX_REPORTS = 250;
 const ALLOWED = new Set(['incident', 'roadworks', 'roadClosure', 'congestion', 'flooding', 'slip']);
 
+export function validRoadReportInput(payload) {
+  return validCoordinate(Number(payload?.latitude), Number(payload?.longitude)) && ALLOWED.has(String(payload?.type || ''));
+}
+
 export async function readRoadReports(env, now = new Date()) {
   if (!env.CAMERA_DATA) return [];
   const state = await env.CAMERA_DATA.get(KEY, 'json');
@@ -17,7 +21,7 @@ export async function createRoadReport(env, payload, reporter = null, now = new 
   const latitude = Number(payload?.latitude);
   const longitude = Number(payload?.longitude);
   const type = String(payload?.type || '');
-  if (!validCoordinate(latitude, longitude) || !ALLOWED.has(type)) {
+  if (!validRoadReportInput(payload)) {
     throw new TypeError('Valid global road report required');
   }
   const heading = Number(payload?.headingDegrees);

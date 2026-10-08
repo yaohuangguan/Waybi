@@ -49,7 +49,7 @@ export async function readUsageSummary(env, days = 31) {
     const result = await env.USER_DB.prepare(`
       SELECT day, provider, sku, calls, units, updated_at AS updatedAt
       FROM api_usage_daily
-      WHERE day >= ?
+      WHERE day >= ? AND provider != '__waybi_quotas'
       ORDER BY day DESC, provider ASC, sku ASC
     `).bind(start).all();
     const rows = result.results || [];

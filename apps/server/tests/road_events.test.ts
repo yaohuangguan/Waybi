@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import {
   fetchNztaRoadEvents,
   loadRoadEventState,
-  normalizeRoadEvent
+  normalizeRoadEvent,
+  readRoadEventState
 } from '../src/road_events.ts';
 
 const NOW = new Date('2026-09-26T00:00:00Z');
@@ -49,6 +50,23 @@ test('drops future, expired and malformed road events', () => {
   assert.equal(normalizeRoadEvent(event({ startDate: '2026-09-27T00:00:00Z' }), NOW), null);
   assert.equal(normalizeRoadEvent(event({ endDate: '2026-09-25T00:00:00Z' }), NOW), null);
   assert.equal(normalizeRoadEvent(event({ geometry: 'POINT (0 0)' }), NOW), null);
+});
+
+test('shared snapshot retains imminent schedules for routing without showing them as current map closures', async () => {
+  let stored;
+  const env = { CAMERA_DATA: {
+    async get() { return stored ?? null; },
+    async put(_key, value) { stored = JSON.parse(value); },
+  } };
+  const fetcher = async () => Response.json({ response: { roadevent: [
+    event({ id: 99, startDate: '2026-09-26T00:30:00Z', impact: 'Road Closed' }),
+    event({ id: 100, startDate: '2026-09-29T00:30:00Z', impact: 'Road Closed', endDate: '2026-10-01T00:00:00Z' }),
+  ] } });
+  const current = await loadRoadEventState(env, fetcher, NOW);
+  assert.equal(current.events.length, 0);
+  const routing = await readRoadEventState(env);
+  assert.equal(routing.events.length, 1);
+  assert.equal(routing.events[0].id, 'nzta:event:99');
 });
 
 test('fetches official NZTA response shape and normalizes usable events', async () => {

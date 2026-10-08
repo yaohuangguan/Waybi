@@ -176,6 +176,7 @@ class RouteOption {
     this.transit = const [],
     this.steps = const [],
     this.waypoints = const [],
+    this.closureIds = const [],
   });
 
   final String id;
@@ -195,6 +196,8 @@ class RouteOption {
   final TrafficSummary traffic;
   final List<TrafficInterval> trafficIntervals;
   final String provider;
+  final List<String> closureIds;
+  bool get blockedByClosure => closureIds.isNotEmpty;
 
   bool get hasTrafficData =>
       trafficIntervals.isNotEmpty ||
@@ -235,6 +238,9 @@ class RouteOption {
           .whereType<String>()
           .toList(growable: false),
       warnings: (json['warnings'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
+      closureIds: (json['closureIds'] as List<dynamic>? ?? const [])
           .whereType<String>()
           .toList(growable: false),
       transit: (json['transit'] as List<dynamic>? ?? const [])

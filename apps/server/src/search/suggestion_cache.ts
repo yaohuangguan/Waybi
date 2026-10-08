@@ -35,15 +35,21 @@ export class SuggestionCache {
   }
 
   async load(key: string, loader: () => Promise<Response>, ctx?: SearchContext): Promise<Response> {
+    const started = performance.now();
+    const timed = (response: Response) => {
+      const output = response.clone();
+      output.headers.set('server-timing', `search;dur=${(performance.now() - started).toFixed(1)}`);
+      return output;
+    };
     const cached = this.memory.get(key);
-    if (cached && this.now() - cached.at < TTL_MS) return this.response(cached, 'MEMORY');
+    if (cached && this.now() - cached.at < TTL_MS) return timed(this.response(cached, 'MEMORY'));
     if (cached) this.memory.delete(key);
     const inFlight = this.pending.get(key);
-    if (inFlight) return (await inFlight).clone();
+    if (inFlight) return timed(await inFlight);
 
     const request = this.loadUncached(key, loader, ctx);
     this.pending.set(key, request);
-    try { return (await request).clone(); }
+    try { return timed(await request); }
     finally { if (this.pending.get(key) === request) this.pending.delete(key); }
   }
 

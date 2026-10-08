@@ -105,6 +105,10 @@ export async function refreshNswRoadEventState(env: Env, fetcher: typeof fetch =
   finally { if (pending.get(env.CAMERA_DATA) === job) pending.delete(env.CAMERA_DATA); }
 }
 
+export async function readNswRoadEventState(env: Env): Promise<RoadEventState | null> {
+  return env.CAMERA_DATA.get<RoadEventState>(KEY, 'json');
+}
+
 export async function loadNswRoadEventState(env: Env, fetcher: typeof fetch = fetch, now = new Date()): Promise<RoadEventState> {
   const stored = await env.CAMERA_DATA.get<RoadEventState>(KEY, 'json');
   const age = now.getTime() - Date.parse(stored?.checkedAt || '');

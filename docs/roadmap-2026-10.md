@@ -4,6 +4,40 @@
 
 Audited main through `1681d2b` (PR #86). “NZ owned, global available” is the strategy; **NZ independence is not yet complete**.
 
+### Follow-up after PR #89
+
+PR #89 (`246350e`) resolved sustained native iOS map pan jank with measured
+Sam release-device frame timings and restored four memories across the
+development bundle-ID change. The user confirmed smooth manual dragging.
+
+This follow-up adds account-scoped Friends backup in D1, revision conflicts,
+paginated recovery and incremental uploads; local primary/backup files remain
+available offline. The legacy journal is adopted by the first account once;
+another account does not inherit its memories. Export/restore UI remains work.
+
+Search already supported `42 veri` before this follow-up. Changes here remove
+waiting for slower providers after useful results arrive, bound fallback
+latency, select requested/nearby door numbers before the Council record limit,
+and add cache-aware response timing. They do not constitute an owned NZ index
+or establish production p95 under unique-query load.
+
+Official closure snapshots now check planning alternatives and can request
+directed exclusions from an optional NZ Valhalla service. Returned detours are
+verified; failed exclusion requests leave the route visibly blocked. The App
+can recalculate on new official closures without waiting for an off-route GPS
+fix. Imminent NZTA schedules are retained for arrival-time checks while map
+clients see only currently active events. Worldwide fallback is retained.
+
+The complete NZ graph and low-resource immutable serving image are tested
+locally. Cloudflare Containers deployment is prepared separately with one
+basic instance and idle sleep; it is **not deployed or enabled by main CI**.
+Paid hosting is deferred at the user's request while usage is low; production
+continues using the existing route provider. Keep the prototype for later evaluation.
+See [the routing runbook](../infra/nz-routing/README.md). Staging cold starts,
+actual road tests, congestion/ETA quality, route-choice behaviour and operating
+costs are still acceptance gates. Time-dependent prototype requests currently
+return one route. No paid Google Cloud project is required by this design.
+
 | Area | Main before this release | This release |
 | --- | --- | --- |
 | NZ basemap | Waybi-hosted PMTiles on R2; native MapLibre | Default Waybi Map; less Flutter/platform work during gestures |
@@ -47,13 +81,13 @@ NZTA/NSW feeds are fetched once into shared backend snapshots on the three-minut
 1. Host licensed glyphs/sprites/background assets on R2 and verify attribution. Test NZ with commercial providers, OpenFreeMap, public Photon and public OSRM disabled before calling independence complete.
 2. Build a versioned NZ address/POI index from LINZ, OSM and validated local datasets. Test prefix completion, Chinese/English names, missing-number cases, locality ambiguity and exact-address preference. Atomic index rollout, rollback and freshness reporting are required.
 3. Compare **OSRM and Valhalla on the same NZ OSM extract** before choosing production routing. OSRM is the lowest parser migration cost. Valhalla offers runtime costing, multiple modes and exclusion options; directed closure application still needs our matching/integration. Compare route quality, turns/lanes, walking/cycling, exclusions, memory, build time and warm/cold p95 on public Auckland/Hamilton and CBD/airport-area routes.
-4. Choose Cloud Run versus a small VM using graph memory, startup time and warm latency. Region-local private engine endpoints sit behind the existing Worker gateway. Rebuild graphs in scheduled jobs and publish immutable versioned artifacts.
+4. Defer paid routing infrastructure until usage justifies it. Then evaluate the prepared Cloudflare Containers service or a region-local VM, comparing actual cold/warm latency, time-dependent route choices and monthly spend. Rebuild graphs outside requests and publish immutable versioned artifacts.
 
-Friends journals currently belong to the app's local sandbox, independently of
-account login. Keep the production bundle ID stable. Local backup recovery and
-an explicit archive merge support development bundle migrations; they do not
-provide cross-device or reinstall recovery. Account-scoped cloud backup, conflict
-merging and a user-visible export/restore flow remain follow-up work.
+Friends journals now use account-scoped local saves and authenticated D1 backup,
+with conflict merging and automatic recovery after reinstall or on another device.
+Keep the production bundle ID stable. Local backup and legacy archive adoption
+also preserve development migrations. A user-visible export/restore flow and
+longer multi-device field testing remain follow-up work.
 
 ### P2 — differences users can feel
 

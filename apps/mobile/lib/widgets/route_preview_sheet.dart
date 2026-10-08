@@ -416,7 +416,9 @@ class RoutePreviewSheet extends StatelessWidget {
                     ],
                   ),
                   if (selected != null &&
-                      (routeClosures[selected.id]?.isNotEmpty ?? false)) ...[
+                      (selected.blockedByClosure ||
+                          (routeClosures[selected.id]?.isNotEmpty ??
+                              false))) ...[
                     Container(
                       margin: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
@@ -435,13 +437,15 @@ class RoutePreviewSheet extends StatelessWidget {
                           style: const TextStyle(fontWeight: FontWeight.w700),
                         ),
                         subtitle: Text(
-                          routeClosures[selected.id]!.first.roadName ??
+                          routeClosures[selected.id]?.firstOrNull?.roadName ??
                               (isChinese
                                   ? '查看详情，或选择其他路线。'
                                   : 'Check the details or choose another route.'),
                         ),
                         trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: onRoadEvent == null
+                        onTap:
+                            onRoadEvent == null ||
+                                (routeClosures[selected.id]?.isEmpty ?? true)
                             ? null
                             : () => onRoadEvent!(
                                 routeClosures[selected!.id]!.first,

@@ -10,6 +10,7 @@ export interface RouteRequestOptions {
   forceIndependent?: boolean;
   alternatives?: boolean;
   headingDegrees?: number;
+  language?: string;
 }
 export interface PlacePhoto {
   url: string;

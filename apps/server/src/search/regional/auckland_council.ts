@@ -36,6 +36,17 @@ export const aucklandCouncilAddressProvider = {
         : `UPPER(RoadName) LIKE '${safeRoad}%'`
     ];
     if (parsed.roadType) filters.push(`UPPER(RoadType)='${sql(parsed.roadType)}'`);
+    if (parsed.number) {
+      const house = Number(parsed.number.split('/').at(-1).match(/^\d+/)?.[0]);
+      if (Number.isSafeInteger(house)) {
+        // Restrict records before the upstream limit. Returning an arbitrary
+        // first forty addresses on a long street can omit the house requested
+        // and both neighbours needed to complete a missing number.
+        const nearby = Array.from({ length: 41 }, (_, index) => house - 20 + index)
+          .filter(number => number >= 0).map(number => `'${number}'`).join(',');
+        filters.push(`(FullNumber IN (${nearby}) OR UPPER(FullNumber)='${sql(parsed.number.toUpperCase())}' OR UPPER(FullNumber) LIKE '${sql(String(house))}%')`);
+      }
+    }
     url.searchParams.set('where', filters.join(' AND '));
     url.searchParams.set(
       'outFields',
@@ -44,7 +55,7 @@ export const aucklandCouncilAddressProvider = {
     url.searchParams.set('returnGeometry', 'true');
     url.searchParams.set('outSR', '4326');
     url.searchParams.set('f', 'geojson');
-    url.searchParams.set('resultRecordCount', '40');
+    url.searchParams.set('resultRecordCount', parsed.number ? '80' : '40');
     const response = await fetcher(url, {
       headers: {
         'user-agent': 'Waybi/1.0 (+https://waybi.co)',

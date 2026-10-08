@@ -343,7 +343,8 @@ async function handleApi(request: Request, env, ctx) {
       {
         forceIndependent: requestedProvider === 'independent',
         alternatives: alternatives == null ? undefined : alternatives === 'true',
-        headingDegrees
+        headingDegrees,
+        language: url.searchParams.get('lang') === 'zh' ? 'zh' : 'en',
       }
     ));
   }

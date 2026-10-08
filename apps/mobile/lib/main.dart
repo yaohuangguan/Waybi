@@ -12,6 +12,7 @@ import 'package:waybi_friends/waybi_friends.dart' show GameController;
 import 'package:flutter/services.dart';
 
 import 'data/account_repository.dart';
+import 'data/friends_backup_service.dart';
 import 'data/brand_migration.dart';
 import 'data/app_store_billing.dart';
 import 'data/explore_repository.dart';
@@ -326,6 +327,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final DriveEngine _driveEngine = DriveEngine();
   late final IndependentNavigationEngine _independentNavigation;
   final AccountRepository _account = AccountRepository();
+  late final _friendsBackup = FriendsBackupService(_account);
   late final _plusBilling = AppStoreBillingGateway(_account);
   final PlaceDetailsRepository _placeDetailsRepository =
       PlaceDetailsRepository();
@@ -551,7 +553,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
     _plusBilling.initialize();
-    unawaited(_account.restore());
+    unawaited(_account.restore().then((_) => _friendsBackup.start()));
     unawaited(_driveEngine.loadCameras());
     unawaited(
       _restoreMapSettings().then((_) async {
@@ -1006,6 +1008,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _driveEngine.stopTrafficFlowRefresh();
     }
     if (state == AppLifecycleState.resumed) {
+      unawaited(_friendsBackup.sync());
       if (_driveEngine.active) {
         unawaited(_driveEngine.recoverLocalLocation());
       } else {
@@ -1044,6 +1047,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _onEngineChanged() {
     if (!mounted) return;
+    _independentNavigation.checkClosureUpdates();
     final position = _driveEngine.latestPosition;
     if (position != null && position.timestamp != _lastDrivePositionAt) {
       _lastDrivePositionAt = position.timestamp;
@@ -1731,6 +1735,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _independentRoutes.dispose();
     _independentTransitRoutes.dispose();
     _plusBilling.dispose();
+    _friendsBackup.dispose();
     _account.dispose();
     _usageTelemetry.dispose();
     _navigationRewards.dispose();
@@ -2984,6 +2989,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       MaterialPageRoute<void>(
         builder: (_) => ProfilePage(
           account: _account,
+          friendsBackup: _friendsBackup,
           plusBilling: _plusBilling,
           voiceEnabled: _voiceEnabled,
           lanesEnabled: _lanesEnabled,
@@ -3623,6 +3629,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         selectedRoute == null ||
         destinationPlace == null ||
         _busy) {
+      return;
+    }
+
+    if (selectedRoute.blockedByClosure) {
+      setState(
+        () => _message = _text(
+          'This route crosses a reported closure. Choose another route or try again.',
+          '这条路线经过已报告的封路，请选择其他路线或重新规划。',
+        ),
+      );
       return;
     }
 
@@ -6987,7 +7003,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   key: const Key('routeStartFloatingButton'),
                   heroTag: 'route-start-floating',
                   elevation: 9,
-                  onPressed: _busy
+                  onPressed:
+                      _busy || (_selectedRoute?.blockedByClosure ?? false)
                       ? null
                       : () => unawaited(_navigateToSelectedPoi()),
                   backgroundColor: WaybiColors.ocean,

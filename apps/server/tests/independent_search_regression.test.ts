@@ -154,3 +154,29 @@ test('concurrent identical independent searches share one upstream request and t
     globalThis.fetch = previous;
   }
 });
+
+test('an official address arriving after the initial window returns immediately instead of waiting for a slow global provider', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async () => {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return Response.json({ results: [] });
+  };
+  try {
+    const started = performance.now();
+    const results = await searchIndependentGlobal({
+      query: '42 verissimo', point: [174.791, -36.981], language: 'zh',
+      env: { TOMTOM_SEARCH_API_KEY: 'test-key' },
+      enrichmentsPromise: new Promise(resolve => setTimeout(() => resolve(verissimoNeighbors), 280)),
+    });
+    assert.equal(results[0].name, '42 Verissimo Drive');
+    assert.ok(performance.now() - started < 500, 'do not wait for the 600ms wave deadline');
+  } finally { globalThis.fetch = previous; }
+});
+
+test('a partial street name never interpolates a house across different nearby streets', () => {
+  const results = mergeAndRankSearchResults([[
+    { ...verissimoNeighbors[0], name: '34 Verona Road', address: '34 Verona Road, Auckland' },
+    { ...verissimoNeighbors[1], name: '46 Verissimo Drive', address: '46 Verissimo Drive, Auckland' },
+  ]], '42 ver', [174.79, -36.98]);
+  assert.ok(results.every(result => !result.interpolated));
+});

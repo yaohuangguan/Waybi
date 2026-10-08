@@ -9,12 +9,17 @@ class GameController extends ChangeNotifier {
   static final embedded = GameController(saveKey: 'waybi_friends_v1');
   GameController({
     DateTime Function()? clock,
-    this.saveKey = 'waybis_way_home_v1',
+    String saveKey = 'waybis_way_home_v1',
     JourneyEngine? engine,
-  }) : clock = clock ?? DateTime.now,
+  }) : _baseSaveKey = saveKey,
+       clock = clock ?? DateTime.now,
        engine = engine ?? JourneyEngine();
 
-  final String saveKey;
+  final String _baseSaveKey;
+  String? _accountId;
+  String? get accountId => _accountId;
+  String get saveKey =>
+      _accountId == null ? _baseSaveKey : '$_baseSaveKey.account.$_accountId';
   String get backupKey => '$saveKey.backup';
   String get pendingRestoreKey => '$saveKey.pending_restore';
   final DateTime Function() clock;
@@ -25,6 +30,83 @@ class GameController extends ChangeNotifier {
   Future<void>? _loading;
   Future<void> _writes = Future<void>.value();
   bool _disposed = false;
+  Future<void> _accountChanges = Future<void>.value();
+
+  /// Keep each account's journal on the device, including after signing out.
+  /// The pre-account journal is adopted once; switching accounts never copies it.
+  Future<void> bindAccount(String? accountId) {
+    final change = _accountChanges.catchError((Object _) {}).then((_) async {
+      if (accountId == _accountId) {
+        await load();
+        return;
+      }
+      await load();
+      await _writes;
+      final prefs = await SharedPreferences.getInstance();
+      final ownerKey = '$_baseSaveKey.cloud_owner';
+      final owner = prefs.getString(ownerKey);
+      final guest = _accountId == null ? state : null;
+      _accountId = accountId;
+      _loading = null;
+      ready = false;
+      latestReturn = null;
+      state = const SavedGame();
+      _notify();
+      await load();
+      if (accountId != null && owner == null && guest != null) {
+        state = guest.mergeArchive(state);
+        await _save();
+        await prefs.setString(ownerKey, accountId);
+        // Preserve the guest archive independently for recovery, but do not
+        // display an account's old journal as a fresh guest's belongings.
+        await prefs.setString('$_baseSaveKey.pre_account', guest.encode());
+        final empty = SavedGame(roomLife: RoomLife(startedAt: clock()))
+            .encode();
+        await prefs.setString(_baseSaveKey, empty);
+        await prefs.setString('$_baseSaveKey.backup', empty);
+        _notify();
+      }
+    });
+    _accountChanges = change;
+    return change;
+  }
+
+  Future<void> mergeCloudArchive(
+    SavedGame archive, {
+    bool preferCloudState = false,
+    required String expectedAccountId,
+  }) async {
+    await load();
+    if (_accountId != expectedAccountId) return;
+    final before = state.encode();
+    final merged = archive.mergeArchive(state);
+    state = preferCloudState
+        ? merged
+        : SavedGame(
+            activeJourney: state.activeJourney ?? merged.activeJourney,
+            roomLife: state.roomLife ?? merged.roomLife,
+            selectedItemIds: state.selectedItemIds,
+            memories: merged.memories,
+          );
+    // A completed outing from another device must not be brought back to life.
+    final active = state.activeJourney;
+    if (active != null &&
+        state.memories.any(
+          (memory) =>
+              memory.id ==
+              '${active.departedAt.microsecondsSinceEpoch}-${active.destinationId}',
+        )) {
+      state = state.copyWith(
+        clearActiveJourney: true,
+        roomLife: roomLife.arriving(active.returnAt),
+      );
+    }
+    if (state.encode() != before) {
+      await _save();
+      _notify();
+    }
+    await tick();
+  }
 
   bool get waybiAway => state.activeJourney != null;
   bool isAway(FriendKind kind) => state.activeJourney?.traveller == kind;
@@ -176,14 +258,16 @@ class GameController extends ChangeNotifier {
 
   Future<void> _save() {
     final snapshot = state.encode();
+    final primary = saveKey;
+    final secondary = backupKey;
     final write = _writes.catchError((Object _) {}).then((_) async {
       final prefs = await SharedPreferences.getInstance();
       // Keep a complete, independently readable copy before replacing the
       // primary save. Serialized writes preserve the order of concurrent rewards.
-      if (!await prefs.setString(backupKey, snapshot)) {
+      if (!await prefs.setString(secondary, snapshot)) {
         throw StateError('Could not back up the Friends journal');
       }
-      if (!await prefs.setString(saveKey, snapshot)) {
+      if (!await prefs.setString(primary, snapshot)) {
         throw StateError('Could not save the Friends journal');
       }
     });

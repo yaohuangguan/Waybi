@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/domain/road_event.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/drive/navigation_language.dart';
 import 'package:waybi_mobile/drive/voice_engine.dart';
@@ -56,6 +57,18 @@ class FakeDrive extends DriveEngine {
     double accuracy = 10,
   }) {
     fix = LatLng(latitude: point.latitude, longitude: point.longitude);
+    latestPosition = Position(
+      latitude: point.latitude,
+      longitude: point.longitude,
+      timestamp: now,
+      accuracy: accuracy,
+      altitude: 0,
+      heading: 0,
+      speed: speed / 3.6,
+      speedAccuracy: 1,
+      altitudeAccuracy: 1,
+      headingAccuracy: 1,
+    );
     speedKph = speed;
     locationAccuracyMeters = accuracy;
     locationRevision++;
@@ -72,7 +85,10 @@ class FakeDrive extends DriveEngine {
 const origin = GeoPoint(-36.86, 174.76);
 const middle = GeoPoint(-36.855, 174.76);
 const destination = GeoPoint(-36.85, 174.76);
-RouteOption makeRoute({List<GeoPoint> waypoints = const []}) => RouteOption(
+RouteOption makeRoute({
+  List<GeoPoint> waypoints = const [],
+  List<String> closureIds = const [],
+}) => RouteOption(
   id: 'test',
   mode: WaybiTravelMode.drive,
   durationSeconds: 1000,
@@ -82,6 +98,7 @@ RouteOption makeRoute({List<GeoPoint> waypoints = const []}) => RouteOption(
   traffic: const TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
   trafficIntervals: const [],
   waypoints: waypoints,
+  closureIds: closureIds,
   steps: const [
     RouteStepInfo(
       instruction: 'Head north',
@@ -112,6 +129,105 @@ RouteOption makeRoute({List<GeoPoint> waypoints = const []}) => RouteOption(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  RoadEvent closure({
+    RoadEventObservation observation = RoadEventObservation.official,
+  }) => RoadEvent(
+    id: 'official-closure',
+    type: RoadEventType.roadClosure,
+    location: middle,
+    source: const RoadEventSource(
+      provider: 'NZTA',
+      country: 'NZ',
+      sourceId: '1',
+    ),
+    observation: observation,
+  );
+
+  test('a known blocked route cannot start navigation', () async {
+    final drive = FakeDrive();
+    final nav = IndependentNavigationEngine(drive);
+    addTearDown(() {
+      nav.dispose();
+      drive.dispose();
+    });
+    await expectLater(
+      nav.start(makeRoute(closureIds: ['closure'])),
+      throwsStateError,
+    );
+    expect(drive.active, isFalse);
+  });
+
+  test('a new official closure triggers rerouting while still on-route, inferred events do not', () async {
+    final drive = FakeDrive();
+    var now = DateTime.utc(2026, 10, 8);
+    var requests = 0;
+    final nav = IndependentNavigationEngine(
+      drive,
+      clock: () => now,
+      reroute: (origin, previous, stops) async {
+        requests++;
+        return makeRoute();
+      },
+    );
+    addTearDown(() {
+      nav.dispose();
+      drive.dispose();
+    });
+    await nav.start(makeRoute());
+    drive.emit(origin, now);
+    drive.roadEvents = [closure(observation: RoadEventObservation.inferred)];
+    nav.checkClosureUpdates();
+    await Future<void>.delayed(Duration.zero);
+    expect(requests, 0);
+    now = now.add(const Duration(seconds: 16));
+    drive.roadEvents = [closure()];
+    nav.checkClosureUpdates();
+    await Future<void>.delayed(Duration.zero);
+    expect(requests, 1);
+    expect(nav.offRoute, isFalse);
+    expect(nav.error, isNull);
+  });
+
+  test('failed closure reroutes preserve guidance and warnings, with bounded retry until the closure clears', () async {
+    final drive = FakeDrive()..navigationLanguage = 'zh';
+    var now = DateTime.utc(2026, 10, 8);
+    var requests = 0;
+    final nav = IndependentNavigationEngine(
+      drive,
+      clock: () => now,
+      reroute: (origin, previous, stops) async {
+        requests++;
+        return makeRoute(closureIds: ['official-closure']);
+      },
+    );
+    addTearDown(() {
+      nav.dispose();
+      drive.dispose();
+    });
+    final route = makeRoute();
+    await nav.start(route);
+    drive.emit(origin, now);
+    drive.roadEvents = [closure()];
+    nav.checkClosureUpdates();
+    await Future<void>.delayed(Duration.zero);
+    expect(nav.route, same(route));
+    expect(drive.active, isTrue);
+    expect(nav.error, contains('前方封路'));
+    now = now.add(const Duration(seconds: 16));
+    drive.emit(origin, now);
+    nav.checkClosureUpdates();
+    expect(nav.error, contains('前方封路'));
+    expect(requests, 1);
+    now = now.add(const Duration(seconds: 46));
+    nav.checkClosureUpdates();
+    await Future<void>.delayed(Duration.zero);
+    expect(requests, 2);
+    now = now.add(const Duration(seconds: 16));
+    drive.roadEvents = [];
+    nav.checkClosureUpdates();
+    expect(nav.error, isNull);
+  });
 
   test('empty OSRM instruction still produces an English road prompt', () {
     const step = RouteStepInfo(

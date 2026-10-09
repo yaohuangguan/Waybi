@@ -82,6 +82,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/data/transit-lanes.json
+    - assets/data/transit-corridors-review.json
     - assets/icon/app_icon.png
     - assets/markers/
     - assets/maps/positron_base.json

@@ -10,6 +10,7 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:waybi_friends/waybi_friends.dart' show GameController;
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'data/account_repository.dart';
 import 'data/friends_backup_service.dart';
@@ -36,6 +37,7 @@ import 'domain/route_road_events.dart' as road_routes;
 import 'domain/safety_camera.dart';
 import 'domain/traffic_flow.dart';
 import 'domain/transit_lane.dart';
+import 'domain/transit_review_corridor.dart';
 import 'drive/device_heading.dart';
 import 'drive/journey_tracker.dart';
 import 'drive/navigation_language.dart';
@@ -1597,6 +1599,70 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             Text(
               '© Auckland Transport · CC BY 4.0',
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showTransitReviewDetails(TransitReviewCorridor corridor) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              corridor.roadName,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 6),
+            Text(corridor.city),
+            const SizedBox(height: 12),
+            Text(
+              _text(
+                'Review-only road corridor · Not verified lane limits',
+                '待核实道路走廊 · 不是已确认的公交车道边界',
+              ),
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Colors.orange,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _appLanguage == 'zh'
+                  ? corridor.ruleSummaryZh
+                  : corridor.ruleSummary,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _text(
+                'This line is an approximate council STREET CENTRELINE, not the physical bus lane. Published rules may cover only part of the road and one direction. It is not used for route blocking or automatic lane alerts. Always follow roadside signs.',
+                '此线仅为市议会道路中心线示意，不是实际公交车道的精确边界。官方规则可能只覆盖部分路段或某个方向；Waybi 不会据此封禁路线或自动提醒违规。请以现场路牌为准。',
+              ),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '© ${corridor.authority}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            TextButton.icon(
+              onPressed: () => unawaited(
+                launchUrl(
+                  Uri.parse(corridor.ruleSource),
+                  mode: LaunchMode.externalApplication,
+                ),
+              ),
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: Text(_text('Council source', '查看市议会来源')),
             ),
           ],
         ),
@@ -4942,6 +5008,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             .where((s) => s.hasRoadGeometry)
             .length,
         transitLaneCount: _driveEngine.transitSnapshot?.lanes.length ?? 0,
+        reviewCorridorCount: _driveEngine.transitReviewCorridors.length,
         onChanged: (value) => unawaited(_setMapLayers(value)),
       ),
     );
@@ -6721,6 +6788,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     roadEvents: _visibleRoadEvents,
                     transitLanes:
                         _driveEngine.transitSnapshot?.lanes ?? const [],
+                    transitReviewCorridors: _driveEngine.transitReviewCorridors,
+                    onTransitReviewCorridor: (corridor) =>
+                        unawaited(_showTransitReviewDetails(corridor)),
                     onTransitLane: (lane) =>
                         unawaited(_showTransitLaneDetails(lane)),
                     onRoadEvent: (event) =>

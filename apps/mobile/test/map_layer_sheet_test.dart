@@ -51,6 +51,7 @@ void main() {
               mapProvider: MapProvider.independent,
               language: 'en',
               transitLaneCount: 361,
+              reviewCorridorCount: 54,
               onChanged: (value) => changed = value,
             ),
           ),
@@ -60,7 +61,7 @@ void main() {
       final toggle = find.widgetWithText(SwitchListTile, 'Bus & transit lanes');
       await tester.ensureVisible(toggle);
       expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
-      expect(find.textContaining('361 Auckland segments'), findsOneWidget);
+      expect(find.textContaining('54 Christchurch/Wellington'), findsOneWidget);
 
       await tester.tap(toggle);
       await tester.pumpAndSettle();

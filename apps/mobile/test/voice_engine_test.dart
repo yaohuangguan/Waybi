@@ -191,4 +191,30 @@ void main() {
     tts.holdStop = false;
     await voice.dispose();
   });
+  test('lane reminder waits for the turn and discards a restriction that has ended', () async {
+    final tts = ControlledTts();
+    final queued = VoiceEngine(tts: tts);
+    final turn = queued.guidance('Turn left onto Waterloo Quadrant');
+    await flush();
+    var active = true;
+    final lane = queued.roadAlert(
+      () => 'Bus lane. Active 24 hours, every day.',
+      stillRelevant: () => active,
+    );
+    await flush();
+    expect(tts.spoken, hasLength(1));
+    active = false;
+    tts.completeSpeech();
+    await turn;
+    expect(await lane, false);
+    expect(tts.spoken, hasLength(1));
+    final retry = queued.roadAlert(
+      () => 'Bus lane. Monday to Friday, 07:00 to 10:00.',
+    );
+    await flush();
+    expect(tts.spoken.last, contains('Monday to Friday'));
+    tts.completeSpeech();
+    expect(await retry, true);
+    await queued.dispose();
+  });
 }

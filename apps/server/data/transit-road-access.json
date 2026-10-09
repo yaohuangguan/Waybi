@@ -1,0 +1,9 @@
+[
+  {
+    "roadName": "Grafton Bridge",
+    "kind": "Bus",
+    "source": "https://at.govt.nz/driving-and-parking/carpooling-ridesharing/bus-transit-priority-lanes",
+    "verifiedOn": "2026-10-09",
+    "scope": "Both directions of the bridge; ordinary cars prohibited Monday to Friday 07:00–19:00, including public holidays. The GIS supplies directed geometry and schedule."
+  }
+]

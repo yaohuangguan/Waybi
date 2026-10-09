@@ -4,6 +4,7 @@ import { fetchNzRouting, nzRoutingEndpoint } from './nz_routing.ts';
 import { readRouteRoadSnapshots } from './regional_road_events.ts';
 import { matchRouteClosures, crossesExcludedRoads } from './routing_closures.ts';
 import type { ClosureLocation } from './routing_closures.ts';
+import { readTransitSnapshot, transitRoadBlocks } from './transit_lanes.ts';
 const GOOGLE_ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 
 function seconds(value) {
@@ -277,7 +278,7 @@ export async function routeOptions(
         provider: 'google',
         trafficAvailable: driving.some((option) => option.trafficIntervals.length > 0),
         stopsApplied: stops.length,
-        options
+        options: await applyTransitRoadRestrictions(options, env)
       };
     }
   }
@@ -345,7 +346,30 @@ export async function routeOptions(
     provider: forceIndependent ? 'independent' : 'osm-fallback',
     trafficAvailable: false,
     stopsApplied: stops.length,
-    options: driving,
+    options: await applyTransitRoadRestrictions(driving, env),
     ...(roadAwareness ? { roadAwareness } : {}),
   };
+}
+
+/** Filter legal alternatives; if none exist, retain explicit blocks for the
+ * client to refuse. A lane beside general traffic never blocks its road. */
+export async function applyTransitRoadRestrictions(options: any[], env: any, at = new Date()) {
+  const relevant = options.filter(route => route.mode === 'drive' && route.coordinates?.some(
+    ([x, y]) => x >= 174.3 && x <= 175.6 && y >= -37.5 && y <= -36.3
+  ));
+  if (!relevant.length) return options;
+  const snapshot = await readTransitSnapshot(env);
+  const checked = options.map(route => {
+    if (!relevant.includes(route)) return route;
+    const blocks = transitRoadBlocks(route, snapshot, at);
+    return blocks.length ? {
+      ...route,
+      restrictedRoadIds: blocks.map(m => m.lane.id),
+      warnings: [...(route.warnings || []), ...blocks.map(m =>
+        `Bus-only access: ${m.lane.roadName} · ${m.lane.operatingDays} ${m.lane.operatingHours}`
+      )]
+    } : route;
+  });
+  return checked.some(r => r.mode === 'drive' && !r.restrictedRoadIds?.length && !r.closureIds?.length)
+    ? checked.filter(r => !r.restrictedRoadIds?.length) : checked;
 }

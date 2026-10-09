@@ -2,6 +2,14 @@
 
 ## Production baseline
 
+### Auckland special vehicle lanes — October 9 follow-up
+
+Official AT geometry, local-time schedules, bilingual on-route reminders and
+verified whole-road access checks are implemented without new paid hosting.
+The snapshot refreshes weekly, with bundled offline data and one device check
+per week. Initial whole-road coverage is Grafton Bridge; individual bus lanes
+never close their entire road. See [coverage, budgets and validation](auckland-transit-lanes.md).
+
 Audited main through `1681d2b` (PR #86). “NZ owned, global available” is the strategy; **NZ independence is not yet complete**.
 
 ### Follow-up after PR #89

@@ -120,6 +120,11 @@ class IndependentNavigationOverlay extends StatelessWidget {
           ? _text('Updating route…', '正在重新规划路线…')
           : engine.offRoute
           ? _text('Off route · finding your way', '已偏离路线，正在更新')
+          : engine.transitRestrictionAhead
+          ? _text(
+              'Bus-only road ahead · choose another route',
+              '前方为公交专用路段，请选择其他路线',
+            )
           : engine.error != null
           ? _text('Route update unavailable · retrying', '路线更新暂不可用，正在重试')
           : null;

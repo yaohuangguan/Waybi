@@ -125,4 +125,9 @@ class VoiceEngine {
   }, stillRelevant: stillRelevant);
 
   Future<void> dispose() => stop();
+  Future<bool> roadAlert(
+    String Function() message, {
+    String? language,
+    bool Function()? stillRelevant,
+  }) => _enqueue(message, language: language, stillRelevant: stillRelevant);
 }

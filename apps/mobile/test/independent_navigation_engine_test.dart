@@ -6,6 +6,7 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/route_option.dart';
 import 'package:waybi_mobile/domain/road_event.dart';
+import 'package:waybi_mobile/domain/transit_lane.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/drive/navigation_language.dart';
 import 'package:waybi_mobile/drive/voice_engine.dart';
@@ -24,6 +25,11 @@ class FakeDrive extends DriveEngine {
   final spoken = <String>[];
   int stops = 0;
   RouteProgressTracker? trackerAtStart;
+  List<TransitLaneMatch> laneMatches = const [];
+  @override
+  Future<List<TransitLaneMatch>> transitMatchesForRoute(
+    RouteOption route,
+  ) async => laneMatches;
   @override
   LatLng? get snappedLocation => fix;
   @override

@@ -35,6 +35,7 @@ import 'domain/road_event.dart';
 import 'domain/route_road_events.dart' as road_routes;
 import 'domain/safety_camera.dart';
 import 'domain/traffic_flow.dart';
+import 'domain/transit_lane.dart';
 import 'drive/device_heading.dart';
 import 'drive/journey_tracker.dart';
 import 'drive/navigation_language.dart';
@@ -3709,6 +3710,15 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       return;
     }
 
+    if (selectedRoute.restrictedRoadIds.isNotEmpty) {
+      setState(
+        () => _message = _text(
+          'This route uses a bus-only road during restricted hours. Choose another route.',
+          '这条路线经过当前禁止普通汽车通行的公交专用路段，请选择其他路线。',
+        ),
+      );
+      return;
+    }
     if (selectedRoute.blockedByClosure) {
       setState(
         () => _message = _text(
@@ -3730,6 +3740,25 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     try {
       if (_selectedMode == WaybiTravelMode.transit) {
         await _startTransitTrip(poi, selectedRoute);
+        return;
+      }
+
+      final laneMatches = await _driveEngine.transitMatchesForRoute(
+        selectedRoute,
+      );
+      final restricted = transitRoadBlocks(
+        selectedRoute,
+        laneMatches,
+        DateTime.now(),
+      );
+      if (!mounted) return;
+      if (restricted.isNotEmpty) {
+        setState(
+          () => _message = _text(
+            'Bus-only access on ${restricted.first.lane.roadName}. Choose another route.',
+            '${restricted.first.lane.roadName} 当前禁止普通汽车通行，请选择其他路线。',
+          ),
+        );
         return;
       }
 
@@ -7088,7 +7117,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   heroTag: 'route-start-floating',
                   elevation: 9,
                   onPressed:
-                      _busy || (_selectedRoute?.blockedByClosure ?? false)
+                      _busy || (_selectedRoute?.blockedForDriving ?? false)
                       ? null
                       : () => unawaited(_navigateToSelectedPoi()),
                   backgroundColor: WaybiColors.ocean,

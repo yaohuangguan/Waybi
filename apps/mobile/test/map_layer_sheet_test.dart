@@ -38,4 +38,35 @@ void main() {
 
     expect(changed?.traffic, isFalse);
   });
+
+  testWidgets(
+    'Auckland transit-lane layer defaults on and stays independent of bus cameras',
+    (tester) async {
+      MapLayerSettings? changed;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MapLayerSheet(
+              settings: const MapLayerSettings(),
+              mapProvider: MapProvider.independent,
+              language: 'en',
+              transitLaneCount: 361,
+              onChanged: (value) => changed = value,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final toggle = find.widgetWithText(SwitchListTile, 'Bus & transit lanes');
+      await tester.ensureVisible(toggle);
+      expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
+      expect(find.textContaining('361 Auckland segments'), findsOneWidget);
+
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(changed?.transitLanes, isFalse);
+      expect(changed?.busLane, isTrue);
+      expect(changed?.alertBusLane, isTrue);
+    },
+  );
 }

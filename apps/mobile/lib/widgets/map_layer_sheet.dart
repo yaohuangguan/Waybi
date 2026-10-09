@@ -13,6 +13,7 @@ class MapLayerSheet extends StatefulWidget {
     required this.language,
     this.trafficStatus = 'not_loaded',
     this.trafficSegmentCount = 0,
+    this.transitLaneCount = 0,
   });
 
   final MapLayerSettings settings;
@@ -21,6 +22,7 @@ class MapLayerSheet extends StatefulWidget {
   final String language;
   final String trafficStatus;
   final int trafficSegmentCount;
+  final int transitLaneCount;
 
   @override
   State<MapLayerSheet> createState() => _MapLayerSheetState();
@@ -358,6 +360,21 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                       onChanged: (value) =>
                           update(current.copyWith(roadEvents: value)),
                     ),
+                    if (widget.mapProvider == MapProvider.independent)
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: const Icon(Icons.directions_bus_rounded),
+                        title: Text(_text('Bus & transit lanes', '公交与专用车道')),
+                        subtitle: Text(
+                          _text(
+                            '${widget.transitLaneCount} Auckland segments · blue: active, grey: inactive, amber: unknown. Dashed lines are lanes, not whole-road closures. Tap for hours.',
+                            '奥克兰 ${widget.transitLaneCount} 段 · 蓝色生效、灰色非生效、橙色时段未知。虚线不代表整路封闭，点击查看时段。',
+                          ),
+                        ),
+                        value: current.transitLanes,
+                        onChanged: (value) =>
+                            update(current.copyWith(transitLanes: value)),
+                      ),
                     const Divider(),
                     Theme(
                       data: Theme.of(

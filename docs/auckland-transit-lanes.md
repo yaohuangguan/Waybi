@@ -66,6 +66,20 @@ Waybi road exclusions; this release selects verified legal returned alternatives
 and never claims to have generated a detour when none was found. Google SDK
 automatic routing remains under Google's control.
 
+## Map layer
+
+The default **Waybi Map (Independent/MapLibre)** now renders the official
+Auckland bus, T2/T3 and special vehicle lane geometry as **thin dashed traces**.
+A separate **Bus & transit lanes / 公交与专用车道** switch under Map layers is on by
+default and is persisted independently of the bus-lane *camera* category.
+Blue traces indicate published hours that are currently operating; grey means
+outside the published hours; amber means the schedule is not confirmed.
+Tap a trace for type, operating days/hours, status and AT attribution.
+The overlay comes from the same weekly/offline snapshot as navigation alerts:
+no extra GPS-based requests, Cron jobs, Workers or KV writes are needed.
+It does not establish legal lane occupancy or replace road signs.
+Google's native map mode does not currently render this Waybi-owned overlay.
+
 ## Validation
 
 Replay Symonds Street northbound from Alfred Street towards Waterloo Quadrant:

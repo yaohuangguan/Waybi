@@ -23,6 +23,7 @@ import { createRoadReport, readRoadReports, validRoadReportInput } from './road_
 import { reserveRoadReportQuota } from './road_report_quota.ts';
 import { readPublicEdgeJson, writePublicEdgeJson } from './public_edge_cache.ts';
 import { recordApiUsage, readUsageSummary } from './cost_guard.ts';
+import { readTransitSnapshot, refreshTransitSnapshot } from './transit_lanes.ts';
 import {
   evaluateAllRouteWatches,
   handleRouteWatch,
@@ -238,6 +239,11 @@ async function handleApi(request: Request, env, ctx) {
     // visitor to launch a competing global sync (and one KV put each).
     const result = json({ ...state, source: SOURCE_URL });
     result.headers.set('cache-control', 'public, max-age=300, s-maxage=3600');
+    return result;
+  }
+  if (url.pathname === '/api/transit-lanes') {
+    const result=json(await readTransitSnapshot(env));
+    result.headers.set('cache-control','public, max-age=86400, s-maxage=86400');
     return result;
   }
   if (url.pathname === '/api/road-events') {
@@ -568,6 +574,7 @@ export default {
     }
     if (event.cron === '0 3 * * *') {
       ctx.waitUntil(syncCameras(env));
+      ctx.waitUntil(refreshTransitSnapshot(env));
     }
   }
 };

@@ -415,6 +415,27 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                     ],
                   ),
+                  if (selected?.restrictedRoadIds.isNotEmpty ?? false) ...[
+                    Container(
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: ListTile(
+                        leading: const Icon(Icons.bus_alert_rounded),
+                        title: Text(
+                          isChinese
+                              ? '当前时段禁止普通汽车通行'
+                              : 'Bus-only road during restricted hours',
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: Text(
+                          isChinese ? '请选择其他路线，Waybi 不会启动这条路线的导航。' : 'Choose another route. Navigation cannot start on this route.',
+                        ),
+                      ),
+                    ),
+                  ],
                   if (selected != null &&
                       (selected.blockedByClosure ||
                           (routeClosures[selected.id]?.isNotEmpty ??

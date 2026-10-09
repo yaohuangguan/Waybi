@@ -186,6 +186,14 @@ class _ProfilePageState extends State<ProfilePage> {
                 'OSRM routing over OpenStreetMap road data. Waybi-hosted regional routing is being introduced before public launch.',
               ),
             ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.directions_bus_rounded),
+              title: Text('Auckland special vehicle lanes'),
+              subtitle: Text(
+                '© Auckland Transport · Creative Commons Attribution 4.0. Published lane geometry and operating hours, adapted by Waybi. Source: AT Open GIS Transit Lanes. Operating times use Pacific/Auckland. Licence: creativecommons.org/licenses/by/4.0/',
+              ),
+            ),
           ],
         ),
       ),

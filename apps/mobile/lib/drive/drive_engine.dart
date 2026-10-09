@@ -7,6 +7,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../data/camera_repository.dart';
+import '../data/transit_lane_repository.dart';
+import '../domain/transit_lane.dart';
 import '../data/nzta_road_event_provider.dart';
 import '../data/nzta_traffic_road_event_provider.dart';
 import '../data/speed_limit_repository.dart';
@@ -38,6 +40,10 @@ enum NavigationGpsIssue {
   permissionDenied,
 }
 
+List<TransitLaneMatch> _matchTransitInBackground(
+  (RouteOption, List<TransitLane>) input,
+) => matchTransitLanes(input.$1, input.$2);
+
 class DriveEngine extends ChangeNotifier {
   DriveEngine({
     CameraRepository? cameraRepository,
@@ -47,13 +53,15 @@ class DriveEngine extends ChangeNotifier {
     TrafficFlowRepository? trafficFlowRepository,
     RoadIntelligenceEngine? roadIntelligence,
     CameraAlertLifecycle? cameraLifecycle,
+    TransitLaneRepository? transitLaneRepository,
   }) : _cameraMatcher = cameraMatcher ?? const CameraMatcher(),
        _voiceEngine = voiceEngine ?? VoiceEngine(),
        _speedLimitRepository = speedLimitRepository ?? SpeedLimitRepository(),
        _trafficFlowRepository =
            trafficFlowRepository ?? TrafficFlowRepository(),
        _roadIntelligence = roadIntelligence ?? RoadIntelligenceEngine(),
-       _cameraLifecycle = cameraLifecycle ?? CameraAlertLifecycle() {
+       _cameraLifecycle = cameraLifecycle ?? CameraAlertLifecycle(),
+       _transitRepository = transitLaneRepository ?? TransitLaneRepository() {
     _nztaProvider = NztaRoadEventProvider(
       cameraRepository ?? CameraRepository(),
     );
@@ -70,6 +78,151 @@ class DriveEngine extends ChangeNotifier {
   final TrafficFlowRepository _trafficFlowRepository;
   final RoadIntelligenceEngine _roadIntelligence;
   final CameraAlertLifecycle _cameraLifecycle;
+  final TransitLaneRepository _transitRepository;
+  TransitLaneSnapshot? transitSnapshot;
+  List<TransitLaneMatch> transitLaneMatches = const [];
+  TransitLaneNotice? upcomingTransitLane;
+  RouteOption? _transitMatchedRoute;
+  TransitLaneSnapshot? _transitMatchedSnapshot;
+  Future<List<TransitLaneMatch>>? _transitMatchJob;
+  final Map<String, DateTime> _spokenTransitAlerts = {};
+  final Map<String, Object> _pendingTransitAlerts = {};
+  final Map<String, DateTime> _transitRetryAfter = {};
+
+  Future<List<TransitLaneMatch>> transitMatchesForRoute(
+    RouteOption route,
+  ) async {
+    final snapshot = transitSnapshot ??= await _transitRepository.loadLocal();
+    if (identical(route, _transitMatchedRoute) &&
+        identical(snapshot, _transitMatchedSnapshot) &&
+        _transitMatchJob != null) {
+      return _transitMatchJob!;
+    }
+    _transitMatchedRoute = route;
+    _transitMatchedSnapshot = snapshot;
+    return _transitMatchJob = compute(_matchTransitInBackground, (
+      route,
+      snapshot.lanes,
+    ));
+  }
+
+  Future<void> loadTransitLanes({bool refresh = false}) async {
+    try {
+      transitSnapshot = refresh
+          ? await _transitRepository.refresh()
+          : await _transitRepository.loadLocal();
+      await _recomputeTransitLanes();
+    } catch (_) {
+      /* Navigation remains usable outside the supported dataset. */
+    }
+  }
+
+  Future<void> _recomputeTransitLanes() async {
+    final route = _route;
+    if (route == null) {
+      transitLaneMatches = const [];
+      upcomingTransitLane = null;
+      return;
+    }
+    try {
+      final matches = await transitMatchesForRoute(route);
+      if (_disposed || !identical(route, _route)) return;
+      transitLaneMatches = matches;
+      _updateTransitLane(DateTime.now());
+      notifyListeners();
+    } catch (_) {
+      /* The bundled lane snapshot is an additional reminder. */
+    }
+  }
+
+  void _updateTransitLane(DateTime now) {
+    final progress = routeProgress, route = _route;
+    if (!active ||
+        route == null ||
+        route.mode != WaybiTravelMode.drive ||
+        progress == null ||
+        progress.offsetMeters > 35) {
+      upcomingTransitLane = null;
+      return;
+    }
+    final match = transitLaneMatches
+        .where(
+          (m) =>
+              m.endMeters > progress.alongMeters &&
+              m.startMeters - progress.alongMeters <= 350 &&
+              m.lane.schedule.activeAt(now) != false,
+        )
+        .firstOrNull;
+    if (match == null) {
+      upcomingTransitLane = null;
+      return;
+    }
+    var along = 0.0, turningLeft = false;
+    for (final step in route.steps) {
+      if (along >= progress.alongMeters - 5 &&
+          along - progress.alongMeters <= 300 &&
+          step.maneuverModifier.contains('left')) {
+        turningLeft = true;
+        break;
+      }
+      along += step.distanceMeters;
+    }
+    upcomingTransitLane = TransitLaneNotice(
+      match: match,
+      distanceMeters: (match.startMeters - progress.alongMeters).clamp(
+        0,
+        double.infinity,
+      ),
+      turningLeft: turningLeft,
+    );
+    unawaited(_maybeAlertTransit(upcomingTransitLane!, now));
+  }
+
+  Future<void> _maybeAlertTransit(
+    TransitLaneNotice notice,
+    DateTime now,
+  ) async {
+    if (!voiceEnabled) return;
+    final key = notice.alertKey;
+    if (_pendingTransitAlerts.containsKey(key) ||
+        (_transitRetryAfter[key]?.isAfter(now) ?? false) ||
+        (_spokenTransitAlerts[key] != null &&
+            now.difference(_spokenTransitAlerts[key]!) <
+                const Duration(minutes: 10))) {
+      return;
+    }
+    final token = Object(),
+        session = _locationSession,
+        revision = _turnRevision;
+    _pendingTransitAlerts[key] = token;
+    try {
+      final spoken = await _voiceEngine.roadAlert(
+        () => upcomingTransitLane?.speech(navigationLanguage) ?? '',
+        language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
+        stillRelevant: () =>
+            active &&
+            voiceEnabled &&
+            session == _locationSession &&
+            revision == _turnRevision &&
+            upcomingTransitLane?.alertKey == key &&
+            notice.lane.schedule.activeAt(DateTime.now()) != false,
+      );
+      if (spoken && session == _locationSession) {
+        _spokenTransitAlerts[key] = DateTime.now();
+      }
+    } catch (_) {
+      if (identical(_pendingTransitAlerts[key], token)) {
+        _transitRetryAfter[key] = DateTime.now().add(
+          const Duration(seconds: 5),
+        );
+      }
+    } finally {
+      if (identical(_pendingTransitAlerts[key], token)) {
+        _pendingTransitAlerts.remove(key);
+      }
+    }
+  }
+
   late final NztaRoadEventProvider _nztaProvider;
   late final NztaTrafficRoadEventProvider _trafficProvider;
   late final RoadEventProviderRegistry _providerRegistry;
@@ -596,6 +749,13 @@ class DriveEngine extends ChangeNotifier {
     notifyListeners();
     try {
       _trafficProvider.regionCenter = location;
+      final inAuckland =
+          location != null &&
+          location.longitude >= 174.3 &&
+          location.longitude <= 175.6 &&
+          location.latitude >= -37.5 &&
+          location.latitude <= -36.3;
+      unawaited(loadTransitLanes(refresh: inAuckland));
       roadEvents = await _providerRegistry.load(country);
       final snapshot = _nztaProvider.lastSnapshot;
       _cameras = country.code == 'NZ'
@@ -639,6 +799,10 @@ class DriveEngine extends ChangeNotifier {
     ++_turnRevision;
     unawaited(_voiceEngine.stop());
     _route = route;
+    transitLaneMatches = const [];
+    upcomingTransitLane = null;
+    _pendingTransitAlerts.clear();
+    unawaited(_recomputeTransitLanes());
     _routeRoadEvents = RoadIntelligenceEngine.routeEvents(route);
     navInfoUpdatedAt = null;
     _progressTracker = route != null && route.points.length >= 2
@@ -787,6 +951,7 @@ class DriveEngine extends ChangeNotifier {
 
     final now = DateTime.now();
     final lastEventLocation = _lastRoadEventEvaluationLocation;
+    _updateTransitLane(now);
     final eventMove = lastEventLocation == null
         ? double.infinity
         : distanceMeters(
@@ -1038,6 +1203,11 @@ class DriveEngine extends ChangeNotifier {
     _subscriptions.clear();
     _spokenAlerts.clear();
     _pendingCameraAlerts.clear();
+    _pendingTransitAlerts.clear();
+    _spokenTransitAlerts.clear();
+    _transitRetryAfter.clear();
+    upcomingTransitLane = null;
+    transitLaneMatches = const [];
     _cameraRetryAfter.clear();
     _cameraLifecycle.reset();
     _route = null;

@@ -11,6 +11,7 @@ import '../drive/navigation_language.dart';
 import 'waybi_bird.dart';
 import 'road_event_timeline.dart';
 import 'navigation_camera_alert.dart';
+import 'navigation_transit_alert.dart';
 
 const _ink = WaybiColors.darkOcean;
 const _accent = WaybiColors.sky;
@@ -289,6 +290,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
           : getRegisteredImage(_laneDescriptor!).catchError((Object _) => null);
     }
     final cameraNotice = upcomingNavigationCamera(widget.engine);
+    final transitNotice = widget.engine.upcomingTransitLane;
     final remainingSeconds = guidance.remainingSeconds;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final arrival = remainingSeconds == null
@@ -542,6 +544,15 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                       PointerInterceptor(
                         child: NavigationCameraAlert(
                           notice: cameraNotice,
+                          language: widget.language,
+                        ),
+                      ),
+                    ],
+                    if (transitNotice != null && cameraNotice == null) ...[
+                      const SizedBox(height: 8),
+                      PointerInterceptor(
+                        child: NavigationTransitAlert(
+                          notice: transitNotice,
                           language: widget.language,
                         ),
                       ),
@@ -844,6 +855,14 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                   ],
                                   const SizedBox(height: 8),
                                   const Divider(height: 1),
+                                  if (transitNotice != null) ...[
+                                    const SizedBox(height: 8),
+                                    NavigationTransitAlert(
+                                      notice: transitNotice,
+                                      language: widget.language,
+                                      compact: true,
+                                    ),
+                                  ],
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 9,

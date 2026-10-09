@@ -348,6 +348,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         steps: route.steps,
         waypoints: List.unmodifiable(points),
         closureIds: route.closureIds,
+        restrictedRoadIds: route.restrictedRoadIds,
       );
 
   Future<http.Response> _limitedGet(Uri uri, {required Duration timeout}) {

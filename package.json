@@ -13,7 +13,7 @@
     "dev:web": "pnpm --filter @waybi/web dev",
     "dev:server": "pnpm --filter @waybi/server dev",
     "build": "pnpm build:web",
-    "build:web": "pnpm --filter @waybi/core build && pnpm --filter @waybi/web build",
+    "build:web": "node scripts/generate-about-pages.mjs && pnpm --filter @waybi/core build && pnpm --filter @waybi/web build",
     "seo:check": "node scripts/seo-smoke.mjs",
     "check:worker": "pnpm --filter @waybi/server build",
     "test": "pnpm --filter @waybi/core test && pnpm --filter @waybi/server test",

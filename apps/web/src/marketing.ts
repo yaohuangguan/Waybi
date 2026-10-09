@@ -20,7 +20,8 @@ const copy = {
       "The experience",
       "Road awareness",
       "Waybi & Friends",
-      "Good to know"
+      "Good to know",
+      "Our story"
     ],
     "open": "Get the app",
     "menu": "Menu",
@@ -137,6 +138,10 @@ const copy = {
         "Yes. Confirmed navigation arrivals add a keepsake to your journal. Japan, France, the UK, the US, New Zealand, Australia and China have illustrated country collections, with everyday keepsakes elsewhere. Landmark designs are country-themed gifts, not proof that you visited that landmark."
       ]
     ],
+    "storyLabel": "WHY WE MADE WAYBI",
+    "storyTitle": "We don't think the world needs a villain to make room for another map.",
+    "storyBody": "A bus-lane ticket. An unfamiliar city. And a question: what if the map could do a little more than tell us where to turn? We admire Google Maps. We just wanted more local road awareness, another kind of choice, and a few companions to make each journey feel more personal.",
+    "storyAction": "Read our story",
     "footer": "A clearer journey. A little company along the way.",
     "links": [
       "Get the app",
@@ -151,7 +156,8 @@ const copy = {
       "导航体验",
       "沿途提醒",
       "Waybi & Friends",
-      "出发前了解"
+      "出发前了解",
+      "关于我们"
     ],
     "open": "获取 App",
     "menu": "菜单",
@@ -268,6 +274,10 @@ const copy = {
         "会。确认到达后，纪念品会收入旅行册。日本、法国、英国、美国、新西兰、澳大利亚和中国有专属插画收藏，其他地区也有日常小礼物。地标插画是国家主题礼物，不代表实际到访过那个地标。"
       ]
     ],
+    "storyLabel": "为什么做 WAYBI",
+    "storyTitle": "做一张新地图，不一定要先证明旧地图不好。",
+    "storyBody": "一次公交车道罚单，让我们开始思考：地图已经知道该怎么走，能不能再提醒一点当地道路规则？Google Maps 很好用，但世界也需要不同的选择。再加上 Waybi、Clover 和 Sett，我们希望每一程不只是导航，还有一点陪伴。",
+    "storyAction": "读读我们的故事",
     "footer": "看清前方，多一点 Waybi 陪伴。",
     "links": [
       "获取 App",
@@ -301,7 +311,7 @@ function render() {
       <header class="header">
         <a class="brand" href="/" aria-label="Waybi">${logo}</a>
         <nav class="nav" id="site-nav" aria-label="${language === 'zh' ? '主导航' : 'Main navigation'}">
-          ${c.nav.map((label, i) => `<a href="#${['experience', 'awareness', 'friends', 'faq'][i]}">${label}</a>`).join('')}
+          ${c.nav.map((label, i) => `<a href="${['#experience', '#awareness', '#friends', '#faq', language === 'zh' ? '/zh/about/' : '/about/'][i]}">${label}</a>`).join('')}
         </nav>
         <div class="header-actions">
           <button class="language" type="button" aria-label="${language === 'zh' ? 'Switch to English' : '切换到中文'}">${language === 'zh' ? 'EN' : '中文'}</button>
@@ -349,6 +359,15 @@ function render() {
           <figure class="friends-preview"><span class="friends-preview-tag">WAYBI & FRIENDS</span><img src="/previews/waybi-friends.png" alt="${language === 'zh' ? 'Waybi、Clover 和 Sett 在 App 中的小屋生活' : 'Waybi, Clover and Sett in their companion room'}" width="446" height="960" loading="lazy" /><figcaption>${c.friendsCaption}</figcaption></figure>
           <div class="friend-introductions">${['Waybi','Clover','Sett'].map((name,i) => `<article class="friend-introduction friend-${name.toLowerCase()}"><div class="friend-portrait"><img src="/brand/${name.toLowerCase()}.png" alt="${name}" width="130" height="130" loading="lazy" /></div><span>${c.characterLabels[i]}</span><h3>${name}</h3><p>${c.characterNotes[i]}</p></article>`).join('')}</div>
         </section>
+        <section class="origin-teaser" aria-labelledby="origin-title">
+          <div class="origin-teaser-copy">
+            <span class="eyebrow">${c.storyLabel}</span>
+            <h2 id="origin-title">${c.storyTitle}</h2>
+            <p>${c.storyBody}</p>
+            <a class="text-link" href="${language === 'zh' ? '/zh/about/' : '/about/'}">${c.storyAction}<span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="origin-teaser-visual" aria-hidden="true"><span>${language === 'zh' ? '路上多一点体贴。' : 'A little more along the way.'}</span><img src="/brand/waybi.png" alt="" loading="lazy" width="205" height="205" /><i>↗</i></div>
+        </section>
         <section class="seo-guides" aria-labelledby="seo-guides-title">
           <div class="section-heading"><div><span class="eyebrow">${language === 'zh' ? '每一程，都有 WAYBI' : 'EVERY PART OF YOUR JOURNEY'}</span><h2 id="seo-guides-title">${language === 'zh' ? '从出发，到带回小回忆。' : 'From setting off to bringing something home.'}</h2></div><p>${language === 'zh' ? '清晰的导航、沿途的道路更新、熟悉的通勤，还有等你回家的伙伴。' : 'Clear guidance, a look at the road ahead, your familiar commute, and a little world to come home to.'}</p></div>
           <div class="seo-guide-grid">
@@ -369,7 +388,7 @@ function render() {
         </section>
 
       </main>
-      <footer class="footer"><a class="brand" href="/">${logo}</a><div class="footer-links">${c.links.map((label, i) => `<a href="${['#download', '/dashboard', 'https://github.com/yaohuangguan/Waybi/issues'][i]}">${label}</a>`).join('')}<a href="/new-zealand-navigation/">${language === 'zh' ? '导航指南' : 'Navigation guide'}</a><a href="/safety-camera-navigation/">${language === 'zh' ? '摄像头提醒' : 'Safety cameras'}</a><a href="/route-watch/">Route Watch</a><a href="/zh/" lang="zh-CN">中文</a></div><p>${c.footer}<br>${c.disclaimer}</p><small>© ${new Date().getFullYear()} Waybi</small></footer>
+      <footer class="footer"><a class="brand" href="/">${logo}</a><div class="footer-links">${c.links.map((label, i) => `<a href="${['#download', '/dashboard', 'https://github.com/yaohuangguan/Waybi/issues'][i]}">${label}</a>`).join('')}<a href="/new-zealand-navigation/">${language === 'zh' ? '导航指南' : 'Navigation guide'}</a><a href="/safety-camera-navigation/">${language === 'zh' ? '摄像头提醒' : 'Safety cameras'}</a><a href="/route-watch/">Route Watch</a><a href="${language === 'zh' ? '/zh/about/' : '/about/'}">${language === 'zh' ? '关于我们' : 'About us'}</a><a href="/zh/" lang="zh-CN">中文</a></div><p>${c.footer}<br>${c.disclaimer}</p><small>© ${new Date().getFullYear()} Waybi</small></footer>
     </div>`;
   document.querySelector('.language')?.addEventListener('click', () => {
     language = language === 'zh' ? 'en' : 'zh';

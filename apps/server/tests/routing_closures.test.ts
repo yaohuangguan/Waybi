@@ -94,11 +94,14 @@ test('all blocked alternatives request exclusions; a verified detour retains lan
 
 test('an engine that ignores exclusions cannot turn a blocked route into a valid detour', async () => {
   const previous = globalThis.fetch;
+  // The shared snapshot exists before the request. Generating its timestamp
+  // inside get() can put it after routing's captured clock on slower runners.
+  const retrievedAt = new Date(Date.now() - 1000).toISOString();
   globalThis.fetch = async () => Response.json(payload());
   try {
     const plan = await routeOptions(points[0], points[1], {
       WAYBI_NZ_ROUTING_URL: 'https://nz-route.example',
-      CAMERA_DATA: { async get() { return { events: [closure()], syncStatus: 'live', retrievedAt: new Date().toISOString() }; } },
+      CAMERA_DATA: { async get() { return { events: [closure()], syncStatus: 'live', retrievedAt }; } },
     }, [], ['DRIVE'], () => {}, { forceIndependent: true });
     assert.equal(plan.roadAwareness.avoidance, 'blocked');
     assert.deepEqual(plan.options[0].closureIds, ['ramp']);

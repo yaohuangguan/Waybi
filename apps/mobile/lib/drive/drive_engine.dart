@@ -112,6 +112,7 @@ class DriveEngine extends ChangeNotifier {
           ? await _transitRepository.refresh()
           : await _transitRepository.loadLocal();
       await _recomputeTransitLanes();
+      if (!_disposed && _route == null) notifyListeners();
     } catch (_) {
       /* Navigation remains usable outside the supported dataset. */
     }

@@ -567,6 +567,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _plusBilling.initialize();
     unawaited(_account.restore().then((_) => _friendsBackup.start()));
     unawaited(_driveEngine.loadCameras());
+    unawaited(_driveEngine.loadTransitLanes());
     unawaited(
       _restoreMapSettings().then((_) async {
         if (_mapProvider == MapProvider.independent && _layers.traffic) {
@@ -1557,6 +1558,52 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _showTransitLaneDetails(TransitLane lane) async {
+    final active = lane.schedule.activeAt(DateTime.now());
+    final status = switch (active) {
+      true => _text('Operating now', '当前生效'),
+      false => _text('Outside published hours', '当前不在公布时段内'),
+      null => _text('Hours not confirmed', '时段尚未确认'),
+    };
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 26),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              lane.roadName.isEmpty ? lane.label(_appLanguage) : lane.roadName,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(lane.label(_appLanguage)),
+            const SizedBox(height: 8),
+            Text(status, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text(lane.schedule.label(_appLanguage)),
+            const SizedBox(height: 14),
+            Text(
+              _text(
+                'Auckland Transport published lane geometry. Dashed lines do not mean the entire road is restricted. Check roadside signs before entering.',
+                '奥克兰交通局公布的专用车道位置。虚线不代表整条道路禁止通行，驶入前请以现场标志为准。',
+              ),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '© Auckland Transport · CC BY 4.0',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _showRoadEventDetails(RoadEvent event) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -1661,6 +1708,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       alertOther: prefs.getBool('waybi.alerts.other_camera') ?? false,
       traffic: prefs.getBool('waybi.layers.traffic') ?? true,
       roadEvents: prefs.getBool('waybi.layers.road_events') ?? true,
+      transitLanes: prefs.getBool('waybi.layers.transit_lanes') ?? true,
       style: BaseMapStyle.values.firstWhere(
         (value) => value.name == prefs.getString('waybi.layers.style'),
         orElse: () => BaseMapStyle.standard,
@@ -4859,6 +4907,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       prefs.setBool('waybi.alerts.other_camera', value.alertOther),
       prefs.setBool('waybi.layers.traffic', value.traffic),
       prefs.setBool('waybi.layers.road_events', value.roadEvents),
+      prefs.setBool('waybi.layers.transit_lanes', value.transitLanes),
       prefs.setString('waybi.layers.style', value.style.name),
     ]);
     if (trafficJustEnabled && _mapProvider == MapProvider.independent) {
@@ -4892,6 +4941,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         trafficSegmentCount: _driveEngine.trafficFlowSegments
             .where((s) => s.hasRoadGeometry)
             .length,
+        transitLaneCount: _driveEngine.transitSnapshot?.lanes.length ?? 0,
         onChanged: (value) => unawaited(_setMapLayers(value)),
       ),
     );
@@ -6669,6 +6719,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     cameras: _driveEngine.cameras,
                     onCamera: (camera) => unawaited(_showCameraDetails(camera)),
                     roadEvents: _visibleRoadEvents,
+                    transitLanes:
+                        _driveEngine.transitSnapshot?.lanes ?? const [],
+                    onTransitLane: (lane) =>
+                        unawaited(_showTransitLaneDetails(lane)),
                     onRoadEvent: (event) =>
                         unawaited(_showRoadEventDetails(event)),
                     trafficSegments: _driveEngine.trafficFlowSegments,

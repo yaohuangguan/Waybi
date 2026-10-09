@@ -13,6 +13,8 @@ import '../domain/map_provider.dart';
 import '../domain/safety_camera.dart';
 import '../domain/traffic_flow.dart';
 import '../domain/road_event.dart';
+import '../domain/transit_lane.dart';
+import '../domain/transit_lane_map.dart';
 import '../domain/route_traffic_match.dart';
 import 'location_marker_art.dart';
 import 'road_event_marker_art.dart';
@@ -33,6 +35,8 @@ class IndependentMapRenderer extends StatefulWidget {
     required this.onCamera,
     required this.roadEvents,
     required this.onRoadEvent,
+    this.transitLanes = const [],
+    this.onTransitLane,
     required this.trafficSegments,
     required this.routePaths,
     required this.selectedPlace,
@@ -61,6 +65,8 @@ class IndependentMapRenderer extends StatefulWidget {
   final ValueChanged<SafetyCamera> onCamera;
   final List<RoadEvent> roadEvents;
   final ValueChanged<RoadEvent> onRoadEvent;
+  final List<TransitLane> transitLanes;
+  final ValueChanged<TransitLane>? onTransitLane;
   final List<TrafficFlowSegment> trafficSegments;
   final List<MapRoutePath> routePaths;
   final PlaceSummary? selectedPlace;
@@ -165,6 +171,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         oldWidget.layers.markerSignature != widget.layers.markerSignature ||
         oldWidget.layers.traffic != widget.layers.traffic ||
         oldWidget.layers.roadEvents != widget.layers.roadEvents ||
+        oldWidget.layers.transitLanes != widget.layers.transitLanes ||
+        !listEquals(oldWidget.transitLanes, widget.transitLanes) ||
         oldWidget.trafficFresh != widget.trafficFresh ||
         oldWidget.navigating != widget.navigating ||
         !listEquals(oldWidget.cameras, widget.cameras) ||
@@ -375,6 +383,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       );
       for (final source in [
         'waybi-traffic',
+        'waybi-transit-lanes',
         'waybi-route-traffic',
         'waybi-route',
         'waybi-road-events',
@@ -422,6 +431,43 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           enableInteraction: false,
         );
       }
+      // A thin dashed official lane trace: never paint the whole road as
+      // restricted. Draw beneath live traffic and navigation routes.
+      await c.addLineLayer(
+        'waybi-transit-lanes',
+        'waybi-transit-casing',
+        const ml.LineLayerProperties(
+          lineColor: '#ffffff',
+          lineWidth: 6,
+          lineOpacity: .7,
+          lineCap: 'round',
+          lineJoin: 'round',
+        ),
+        belowLayerId: 'waybi-alternative-edge',
+        enableInteraction: false,
+      );
+      await c.addLineLayer(
+        'waybi-transit-lanes',
+        'waybi-transit-lines',
+        ml.LineLayerProperties(
+          lineColor: [
+            'match',
+            ['get', 'laneStatus'],
+            'active',
+            '#2674B5',
+            'unknown',
+            '#D59126',
+            '#A4AFBD',
+          ],
+          lineWidth: 3.6,
+          lineOpacity: .86,
+          lineDasharray: [2, 1.5],
+          lineCap: 'round',
+          lineJoin: 'round',
+        ),
+        belowLayerId: 'waybi-alternative-edge',
+        enableInteraction: false,
+      );
       await c.addLineLayer(
         'waybi-traffic',
         'waybi-traffic-casing',
@@ -775,6 +821,18 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           _sceneDirty = false;
           _trafficMinute = DateTime.now().millisecondsSinceEpoch ~/ 60000;
           await _syncTrafficTiles();
+          final transit = widget.layers.transitLanes
+              ? widget.transitLanes
+              : const <TransitLane>[];
+          await _setSource(
+            'waybi-transit-lanes',
+            Object.hash(
+              widget.layers.transitLanes,
+              _trafficMinute,
+              Object.hashAll(transit),
+            ),
+            () => transitLaneFeatureCollection(transit, DateTime.now()),
+          );
           final activeRoute = widget.routePaths
               .where((route) => route.active)
               .firstOrNull;
@@ -1026,6 +1084,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           'waybi-camera-icon',
           'waybi-event-icon',
           'waybi-road-events-line',
+          'waybi-transit-lines',
           'waybi-pins-dot',
           'waybi-pins-label',
           'waybi-poi-dot',
@@ -1052,6 +1111,15 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
               .firstOrNull;
           if (e != null) {
             widget.onRoadEvent(e);
+            return;
+          }
+        }
+        if (id.startsWith('transit:') && widget.layers.transitLanes) {
+          final lane = widget.transitLanes
+              .where((lane) => 'transit:${lane.id}' == id)
+              .firstOrNull;
+          if (lane != null) {
+            widget.onTransitLane?.call(lane);
             return;
           }
         }

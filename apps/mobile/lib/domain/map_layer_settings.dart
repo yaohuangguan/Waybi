@@ -89,6 +89,7 @@ class MapLayerSettings {
     this.alertOther = false,
     this.traffic = true,
     this.roadEvents = true,
+    this.transitLanes = true,
     this.style = BaseMapStyle.standard,
   });
 
@@ -109,6 +110,9 @@ class MapLayerSettings {
 
   final bool traffic;
   final bool roadEvents;
+
+  /// Official mapped transit/bus lane geometry, separate from bus-lane cameras.
+  final bool transitLanes;
   final BaseMapStyle style;
 
   bool shows(SafetyCamera camera) {
@@ -152,6 +156,7 @@ class MapLayerSettings {
     bool? alertOther,
     bool? traffic,
     bool? roadEvents,
+    bool? transitLanes,
     BaseMapStyle? style,
   }) => MapLayerSettings(
     cameras: cameras ?? this.cameras,
@@ -170,6 +175,7 @@ class MapLayerSettings {
     alertOther: alertOther ?? this.alertOther,
     traffic: traffic ?? this.traffic,
     roadEvents: roadEvents ?? this.roadEvents,
+    transitLanes: transitLanes ?? this.transitLanes,
     style: style ?? this.style,
   );
 }

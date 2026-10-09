@@ -1,4 +1,17 @@
 @import './tokens.css';
+/* A short, distinctly editorial route into the full About Us story. */
+.origin-teaser { display:grid;grid-template-columns:1.27fr .73fr;gap:35px;align-items:center;margin:12px 0 82px;padding:52px 60px;border:1px solid #d9e4cf;border-radius:34px;background:#f0f4e7;overflow:hidden; }
+.origin-teaser h2 { max-width:650px;margin:16px 0 20px;font-size:clamp(34px,3.8vw,53px);line-height:1.15;letter-spacing:-.04em; }
+.origin-teaser-copy > p { max-width:650px;color:var(--text-secondary);font-size:16px;line-height:1.8;margin:0 0 18px; }
+.origin-teaser .text-link {font-size:15px;font-weight:600;}
+.origin-teaser-visual { position:relative;min-height:305px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:26px;background:#dce9c8; }
+.origin-teaser-visual::before { content:'';position:absolute;width:245px;height:245px;border:1px dashed #99ba7f;border-radius:50%; }
+.origin-teaser-visual img {position:relative;width:210px;height:210px;object-fit:contain;transform:rotate(-9deg);filter:drop-shadow(0 14px 13px #36542924);}
+.origin-teaser-visual > span {position:relative;z-index:1;font-size:12px;font-weight:700;color:#426332;}
+.origin-teaser-visual > i {position:absolute;right:22px;bottom:12px;font-size:60px;font-weight:300;font-style:normal;color:#90b56d;}
+@media(max-width:900px){.origin-teaser{padding:38px;grid-template-columns:1fr .85fr;gap:18px;}.origin-teaser-visual{min-height:270px;}.origin-teaser-visual img{width:150px;height:165px;}}
+@media(max-width:690px){.origin-teaser{grid-template-columns:1fr;padding:29px 26px;margin-bottom:60px;}.origin-teaser h2{font-size:34px;}.origin-teaser-visual{min-height:205px;}.origin-teaser-visual::before{width:185px;height:185px;}.origin-teaser-visual img{width:150px;height:160px;}}
+
 :root { font-family: var(--font-ui); color: var(--text-primary); background: var(--surface-subtle); font-synthesis: none; }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 100px; }

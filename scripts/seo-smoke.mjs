@@ -67,6 +67,13 @@ for (const url of urls) {
   if (canonical !== url) fail(`${pathname}: canonical is ${canonical || 'missing'}, expected ${url}`);
   if (robots.includes('noindex')) fail(`${pathname}: sitemap URL is noindex`);
   if (h1Count !== 1) fail(`${pathname}: expected exactly one H1, found ${h1Count}`);
+  if (pathname === '/about/' || pathname === '/zh/about/') {
+    for (const target of ['https://waybi.co/about/', 'https://waybi.co/zh/about/']) {
+      if (!html.includes(`href="${target}"`)) fail(`${pathname}: missing alternate language page ${target}`);
+    }
+    if (!html.includes('application/ld+json')) fail(`${pathname}: missing about page structured data`);
+    if (!html.includes('/brand/waybi.png')) fail(`${pathname}: missing Waybi artwork`);
+  }
   if (contentUnits < 180) fail(`${pathname}: page is unexpectedly thin (${contentUnits} content units)`);
 
   for (const match of html.matchAll(/<script\s+[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {

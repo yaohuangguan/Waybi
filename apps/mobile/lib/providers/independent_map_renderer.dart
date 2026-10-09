@@ -15,6 +15,7 @@ import '../domain/traffic_flow.dart';
 import '../domain/road_event.dart';
 import '../domain/transit_lane.dart';
 import '../domain/transit_lane_map.dart';
+import '../domain/transit_review_corridor.dart';
 import '../domain/route_traffic_match.dart';
 import 'location_marker_art.dart';
 import 'road_event_marker_art.dart';
@@ -37,6 +38,8 @@ class IndependentMapRenderer extends StatefulWidget {
     required this.onRoadEvent,
     this.transitLanes = const [],
     this.onTransitLane,
+    this.transitReviewCorridors = const [],
+    this.onTransitReviewCorridor,
     required this.trafficSegments,
     required this.routePaths,
     required this.selectedPlace,
@@ -67,6 +70,8 @@ class IndependentMapRenderer extends StatefulWidget {
   final ValueChanged<RoadEvent> onRoadEvent;
   final List<TransitLane> transitLanes;
   final ValueChanged<TransitLane>? onTransitLane;
+  final List<TransitReviewCorridor> transitReviewCorridors;
+  final ValueChanged<TransitReviewCorridor>? onTransitReviewCorridor;
   final List<TrafficFlowSegment> trafficSegments;
   final List<MapRoutePath> routePaths;
   final PlaceSummary? selectedPlace;
@@ -173,6 +178,10 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         oldWidget.layers.roadEvents != widget.layers.roadEvents ||
         oldWidget.layers.transitLanes != widget.layers.transitLanes ||
         !listEquals(oldWidget.transitLanes, widget.transitLanes) ||
+        !listEquals(
+          oldWidget.transitReviewCorridors,
+          widget.transitReviewCorridors,
+        ) ||
         oldWidget.trafficFresh != widget.trafficFresh ||
         oldWidget.navigating != widget.navigating ||
         !listEquals(oldWidget.cameras, widget.cameras) ||
@@ -457,6 +466,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             '#2674B5',
             'unknown',
             '#D59126',
+            'candidate',
+            '#BD8131',
             '#A4AFBD',
           ],
           lineWidth: 3.6,
@@ -824,14 +835,22 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           final transit = widget.layers.transitLanes
               ? widget.transitLanes
               : const <TransitLane>[];
+          final reviewCorridors = widget.layers.transitLanes
+              ? widget.transitReviewCorridors
+              : const <TransitReviewCorridor>[];
           await _setSource(
             'waybi-transit-lanes',
             Object.hash(
               widget.layers.transitLanes,
               _trafficMinute,
               Object.hashAll(transit),
+              Object.hashAll(reviewCorridors),
             ),
-            () => transitLaneFeatureCollection(transit, DateTime.now()),
+            () => transitLaneFeatureCollection(
+              transit,
+              DateTime.now(),
+              reviewCorridors,
+            ),
           );
           final activeRoute = widget.routePaths
               .where((route) => route.active)
@@ -1120,6 +1139,15 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
               .firstOrNull;
           if (lane != null) {
             widget.onTransitLane?.call(lane);
+            return;
+          }
+        }
+        if (id.startsWith('review:') && widget.layers.transitLanes) {
+          final corridor = widget.transitReviewCorridors
+              .where((entry) => 'review:${entry.id}' == id)
+              .firstOrNull;
+          if (corridor != null) {
+            widget.onTransitReviewCorridor?.call(corridor);
             return;
           }
         }

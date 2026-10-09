@@ -9,6 +9,7 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import '../data/camera_repository.dart';
 import '../data/transit_lane_repository.dart';
 import '../domain/transit_lane.dart';
+import '../domain/transit_review_corridor.dart';
 import '../data/nzta_road_event_provider.dart';
 import '../data/nzta_traffic_road_event_provider.dart';
 import '../data/speed_limit_repository.dart';
@@ -80,6 +81,21 @@ class DriveEngine extends ChangeNotifier {
   final CameraAlertLifecycle _cameraLifecycle;
   final TransitLaneRepository _transitRepository;
   TransitLaneSnapshot? transitSnapshot;
+  List<TransitReviewCorridor> transitReviewCorridors = const [];
+  Future<void>? _transitReviewLoad;
+
+  Future<void> loadTransitReviewCorridors() =>
+      _transitReviewLoad ??= _loadTransitReviewCorridors();
+
+  Future<void> _loadTransitReviewCorridors() async {
+    try {
+      transitReviewCorridors = await loadBundledTransitReviewCorridors();
+      if (!_disposed) notifyListeners();
+    } catch (error) {
+      debugPrint('Review-only bus corridor data unavailable: $error');
+    }
+  }
+
   List<TransitLaneMatch> transitLaneMatches = const [];
   TransitLaneNotice? upcomingTransitLane;
   RouteOption? _transitMatchedRoute;
@@ -757,6 +773,7 @@ class DriveEngine extends ChangeNotifier {
           location.latitude >= -37.5 &&
           location.latitude <= -36.3;
       unawaited(loadTransitLanes(refresh: inAuckland));
+      unawaited(loadTransitReviewCorridors());
       roadEvents = await _providerRegistry.load(country);
       final snapshot = _nztaProvider.lastSnapshot;
       _cameras = country.code == 'NZ'

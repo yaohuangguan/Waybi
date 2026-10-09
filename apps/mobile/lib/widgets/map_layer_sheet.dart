@@ -14,6 +14,7 @@ class MapLayerSheet extends StatefulWidget {
     this.trafficStatus = 'not_loaded',
     this.trafficSegmentCount = 0,
     this.transitLaneCount = 0,
+    this.reviewCorridorCount = 0,
   });
 
   final MapLayerSettings settings;
@@ -23,6 +24,7 @@ class MapLayerSheet extends StatefulWidget {
   final String trafficStatus;
   final int trafficSegmentCount;
   final int transitLaneCount;
+  final int reviewCorridorCount;
 
   @override
   State<MapLayerSheet> createState() => _MapLayerSheetState();
@@ -367,8 +369,8 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                         title: Text(_text('Bus & transit lanes', '公交与专用车道')),
                         subtitle: Text(
                           _text(
-                            '${widget.transitLaneCount} Auckland segments · blue: active, grey: inactive, amber: unknown. Dashed lines are lanes, not whole-road closures. Tap for hours.',
-                            '奥克兰 ${widget.transitLaneCount} 段 · 蓝色生效、灰色非生效、橙色时段未知。虚线不代表整路封闭，点击查看时段。',
+                            '${widget.transitLaneCount} Auckland lanes · ${widget.reviewCorridorCount} Christchurch/Wellington centreline hints (amber, not verified lane bounds). Tap for details.',
+                            '奥克兰 ${widget.transitLaneCount} 段 · 基督城/惠灵顿 ${widget.reviewCorridorCount} 段候选道路中心线（橙色，非车道边界），点击了解。',
                           ),
                         ),
                         value: current.transitLanes,

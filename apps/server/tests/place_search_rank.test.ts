@@ -50,6 +50,19 @@ test('a city centre outranks the wider administrative region with the same name'
   assert.equal(results[0].resultType, 'city');
 });
 
+test('overseas namesakes retain global relevance rather than choosing the least distant continent', () => {
+  for (const [name, country, longitude, latitude] of [
+    ['London', 'United Kingdom', -0.12, 51.5],
+    ['Paris', 'France', 2.35, 48.86],
+  ]) {
+    const results = rankPlaces([
+      { name, resultType: 'city', address: country, longitude, latitude },
+      { name, resultType: 'city', address: 'United States', longitude: -111, latitude: 42 },
+    ], name, [174.76, -36.85]);
+    assert.equal(results[0].address, country);
+  }
+});
+
 test('nearby matching POIs outrank remote namesakes', () => {
   const near = [174.7633, -36.8485];
   const ranked = rankPlaces([

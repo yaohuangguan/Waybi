@@ -1,4 +1,6 @@
 /** Keep word boundaries: Christchurch and Christ Church have different intent. */
+export const GEOGRAPHIC_REGIONAL_RADIUS_METERS = 2_000_000;
+
 export function normalizedPlaceName(value: unknown): string {
   return String(value || '').normalize('NFKD').replace(/\p{M}/gu, '')
     .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();

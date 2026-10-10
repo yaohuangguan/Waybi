@@ -1,5 +1,6 @@
 import type { ProviderPayload } from "./../types.ts";
-import { isGeographicPlace, matchesGeographicName, maySearchGeographicName } from './place_intent.ts';
+import { GEOGRAPHIC_REGIONAL_RADIUS_METERS, isGeographicPlace, matchesGeographicName, maySearchGeographicName } from './place_intent.ts';
+import { distanceMeters } from '../geo.ts';
 import {
   mergeAndRankSearchResults,
   needsAddressEnrichment,
@@ -369,7 +370,8 @@ async function searchIndependentGlobalUncached({
   const useful = (results) => {
     if (!results.length) return false;
     if (geographicQuery && !geographicFinished &&
-      !results.some(place => matchesGeographicName(place, query))) return false;
+      !results.some(place => matchesGeographicName(place, query) && point &&
+        distanceMeters(point, [place.longitude, place.latitude]) <= GEOGRAPHIC_REGIONAL_RADIUS_METERS)) return false;
     if (!needsAddressEnrichment(results, query)) return true;
     // A bounded nearby address completion is usable typeahead. Genuine exact
     // results still win whenever they are present; waiting for every external

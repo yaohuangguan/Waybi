@@ -74,6 +74,27 @@ test('geographic lookup failure leaves local results usable', async () => {
   } finally { globalThis.fetch = previous; }
 });
 
+test('a fast overseas namesake waits for the globally ranked geographic candidate', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async input => {
+    if (new URL(input).hostname === 'photon.komoot.io') {
+      await new Promise(resolve => setTimeout(resolve, 50));
+      return Response.json({ features: [{ properties: {
+        name: 'London', osm_key: 'place', osm_value: 'city', osm_id: 'uk', country: 'United Kingdom',
+      }, geometry: { coordinates: [-0.12, 51.5] } }] });
+    }
+    return Response.json({ results: [{ type: 'Geography', entityType: 'Municipality',
+      address: { municipality: 'London', freeformAddress: 'London, Kentucky, United States' },
+      position: { lat: 37.13, lon: -84.08 },
+    }] });
+  };
+  try {
+    const results = await searchIndependentGlobal({ query: 'London', point: [174.76, -36.85], env: { TOMTOM_SEARCH_API_KEY: 'test' } });
+    assert.equal(results[0].address, 'United Kingdom');
+    assert.ok(results.some(place => /Kentucky/u.test(place.address)));
+  } finally { globalThis.fetch = previous; }
+});
+
 test('Chinese cities retain native names and administrative boundaries remain geographic', async () => {
   const previous = globalThis.fetch;
   globalThis.fetch = async input => {

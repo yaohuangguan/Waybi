@@ -1,5 +1,5 @@
 import { distanceMeters } from './geo.ts';
-import { matchesGeographicName } from './search/place_intent.ts';
+import { GEOGRAPHIC_REGIONAL_RADIUS_METERS, matchesGeographicName } from './search/place_intent.ts';
 
 function compact(value) {
   return String(value || '')
@@ -56,6 +56,12 @@ export function rankPlaces(results, query, near) {
       const settlement = place => ['city', 'town', 'municipality', 'postal_town', 'locality'].includes(place.resultType);
       const destination = Number(settlement(b.place)) - Number(settlement(a.place));
       if (destination) return destination;
+      const aRegional = a.distance <= GEOGRAPHIC_REGIONAL_RADIUS_METERS;
+      const bRegional = b.distance <= GEOGRAPHIC_REGIONAL_RADIUS_METERS;
+      if (aRegional !== bRegional) return Number(bRegional) - Number(aRegional);
+      // For overseas namesakes, retain the global provider's relevance and
+      // prominence order. A small US Paris is closer to NZ than Paris, France.
+      if (!aRegional && !bRegional) return a.index - b.index;
     }
     const aLocal = a.distance <= 80000 ? 1 : 0;
     const bLocal = b.distance <= 80000 ? 1 : 0;

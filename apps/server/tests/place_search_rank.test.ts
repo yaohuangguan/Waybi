@@ -1,6 +1,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rankPlaces } from '../src/place_search_rank.ts';
+import { maySearchGeographicName } from '../src/search/place_intent.ts';
+
+test('exact city names outrank nearby spaced namesakes, streets and businesses worldwide', () => {
+  for (const [query, city, nearby] of [
+    ['christchurch', 'Christchurch, Canterbury, New Zealand', 'Christ Church'],
+    ['wellington', 'Wellington', 'Wellington Street'],
+    ['tokyo', 'Tōkyō', 'Tokyo Restaurant'],
+    ['北京', '北京', '北京烤鸭'],
+    ['上海', '上海市', '上海小吃'],
+    ['new york', 'New York', 'New York Pizza'],
+  ]) {
+    const results = rankPlaces([
+      { name: nearby, resultType: 'restaurant', isPoi: true, latitude: -36.85, longitude: 174.76 },
+      { name: city, resultType: 'city', isPoi: false, latitude: 35, longitude: 139 },
+    ], query, [174.76, -36.85]);
+    assert.equal(results[0].name, city, query);
+    assert.equal(rankPlaces(results.reverse(), query, null)[0].name, city);
+  }
+});
+
+test('an explicit church/business name and category retain local intent', () => {
+  const places = [
+    { name: 'Christchurch', resultType: 'city', isPoi: false, latitude: -43.53, longitude: 172.64 },
+    { name: 'Christ Church Ellerslie', resultType: 'place_of_worship', isPoi: true, latitude: -36.89, longitude: 174.81 },
+  ];
+  assert.equal(rankPlaces(places, 'Christ Church Ellerslie', [174.76, -36.85])[0].name, places[1].name);
+  for (const query of ['church', 'cafes', 'Auckland Airport', '42 veri', '附近超市', 'Wellington Street']) {
+    assert.equal(maySearchGeographicName(query), false, query);
+  }
+  assert.equal(maySearchGeographicName('St Albans'), true);
+});
+
+test('same-name cities use proximity and explicit geographic qualifiers', () => {
+  const places = [
+    { name: 'Wellington', address: 'Florida, United States', countryCode: 'US', resultType: 'city', latitude: 26.65, longitude: -80.26 },
+    { name: 'Wellington', address: 'New Zealand', countryCode: 'NZ', resultType: 'city', latitude: -41.29, longitude: 174.78 },
+  ];
+  assert.equal(rankPlaces(places, 'Wellington', [174.76, -36.85])[0].countryCode, 'NZ');
+  assert.equal(rankPlaces(places, 'Wellington US', [174.76, -36.85])[0].countryCode, 'US');
+});
 
 test('nearby matching POIs outrank remote namesakes', () => {
   const near = [174.7633, -36.8485];

@@ -38,6 +38,11 @@ class WorkerSearchProvider implements CachedSearchProvider, ExploreProvider {
   }) {
     final normalized = query.trim().toLowerCase();
     if (normalized.runes.length < 2) return const [];
+    final exact = _searchCache[_searchKey(query, proximity, language)];
+    if (exact != null &&
+        DateTime.now().difference(exact.$1) < const Duration(minutes: 5)) {
+      return exact.$2;
+    }
     final suffix = _searchKey('', proximity, language);
     final seen = <String>{};
     final matches = <PlaceCandidate>[];
@@ -57,7 +62,7 @@ class WorkerSearchProvider implements CachedSearchProvider, ExploreProvider {
         if (seen.add(identity)) matches.add(candidate);
       }
     }
-    return matches.take(8).toList(growable: false);
+    return matches.take(12).toList(growable: false);
   }
 
   @override
@@ -531,6 +536,7 @@ class IndependentSearchProvider
   static const _administrativeCategories = {
     'country',
     'state',
+    'province',
     'county',
     'district',
     'city',
@@ -549,8 +555,12 @@ class IndependentSearchProvider
   }
 
   bool _strongNameMatch(PlaceSummary place, String query) {
-    final name = _compactSearchText(place.name);
-    final wanted = _compactSearchText(query);
+    String words(String value) => value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')
+        .trim();
+    final name = words(place.name);
+    final wanted = words(query);
     return wanted.isNotEmpty && name == wanted;
   }
 
@@ -734,7 +744,7 @@ class IndependentSearchProvider
           language: language,
         );
         if (fast.isNotEmpty || workerOnly) {
-          return fast.take(8).toList(growable: false);
+          return fast.take(12).toList(growable: false);
         }
       } catch (_) {
         if (workerOnly) {
@@ -842,6 +852,16 @@ class IndependentSearchProvider
 
     results = results.toList(growable: false)
       ..sort((a, b) {
+        final geographic =
+            (_administrativeCategories.contains(b.category) &&
+                    _strongNameMatch(b, plainQuery)
+                ? 1
+                : 0) -
+            (_administrativeCategories.contains(a.category) &&
+                    _strongNameMatch(a, plainQuery)
+                ? 1
+                : 0);
+        if (geographic != 0) return geographic;
         // Keep explicitly named destinations and brand intent, then rank
         // equally relevant addresses/places by actual distance without a cap.
         if (proximity != null && intentQuery == null) {
@@ -891,7 +911,7 @@ class IndependentSearchProvider
       });
 
     return results
-        .take(8)
+        .take(12)
         .map(
           (p) => PlaceCandidate(
             name: p.name,

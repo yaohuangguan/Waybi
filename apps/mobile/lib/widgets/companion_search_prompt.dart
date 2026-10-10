@@ -84,6 +84,7 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
   bool? _reduceMotion;
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+  final ScrollController _suggestionScroll = ScrollController();
   Timer? _debounce;
   int _requestId = 0;
   bool _loading = false;
@@ -104,18 +105,17 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
       _loading = true;
       final cached =
           widget.cachedSuggestions?.call(query) ?? const <PlaceCandidate>[];
-      if (cached.isNotEmpty) {
-        _suggestions = cached.take(4).toList(growable: false);
-      }
+      _suggestions = cached;
     });
     _debounce = Timer(const Duration(milliseconds: 120), () async {
       try {
         final results = await widget.loadSuggestions(query);
         if (!mounted || request != _requestId) return;
         setState(() {
-          _suggestions = results.take(4).toList(growable: false);
+          _suggestions = results;
           _loading = false;
         });
+        if (_suggestionScroll.hasClients) _suggestionScroll.jumpTo(0);
       } catch (_) {
         if (!mounted || request != _requestId) return;
         setState(() => _loading = false);
@@ -139,9 +139,13 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
 
   void _select(PlaceCandidate candidate) {
     _debounce?.cancel();
+    ++_requestId;
     _focusNode.unfocus();
     _controller.clear();
-    setState(() => _suggestions = const []);
+    setState(() {
+      _suggestions = const [];
+      _loading = false;
+    });
     widget.onSuggestionSelected(candidate);
   }
 
@@ -175,6 +179,7 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
     _debounce?.cancel();
     _controller.dispose();
     _focusNode.dispose();
+    _suggestionScroll.dispose();
     _greeting.dispose();
     super.dispose();
   }
@@ -185,6 +190,18 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
     final chinese = widget.language == 'zh';
     final name = companionName(widget.marker);
     final question = chinese ? '去哪里？' : 'Where to?';
+    final media = MediaQuery.of(context);
+    final suggestionHeight = math.min(
+      320.0,
+      math.max(
+        0.0,
+        media.size.height -
+            media.viewInsets.bottom -
+            media.padding.top -
+            media.padding.bottom -
+            230,
+      ),
+    );
     return Material(
       color: scheme.surface,
       shape: RoundedRectangleBorder(
@@ -291,53 +308,70 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
             if (_loading) const LinearProgressIndicator(minHeight: 2),
             if (_suggestions.isNotEmpty) ...[
               const Divider(height: 8),
-              for (final suggestion in _suggestions)
-                InkWell(
-                  key: ValueKey('mapSuggestion-${suggestion.name}'),
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => _select(suggestion),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 7),
-                    child: Row(
-                      children: [
-                        Icon(
-                          suggestion.kind == PlaceKind.address
-                              ? Icons.signpost_outlined
-                              : Icons.place_outlined,
-                          size: 20,
-                          color: scheme.primary,
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: suggestionHeight),
+                child: Scrollbar(
+                  controller: _suggestionScroll,
+                  child: ListView.builder(
+                    key: const Key('mapSearchSuggestions'),
+                    controller: _suggestionScroll,
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: _suggestions.length,
+                    itemBuilder: (context, index) {
+                      final suggestion = _suggestions[index];
+                      return InkWell(
+                        key: ValueKey(
+                          'mapSuggestion-$index-${suggestion.name}',
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => _select(suggestion),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 7),
+                          child: Row(
                             children: [
-                              Text(
-                                suggestion.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
+                              Icon(
+                                suggestion.kind == PlaceKind.address
+                                    ? Icons.signpost_outlined
+                                    : Icons.place_outlined,
+                                size: 20,
+                                color: scheme.primary,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      suggestion.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    if (suggestion.secondaryAddress.isNotEmpty)
+                                      Text(
+                                        suggestion.secondaryAddress,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
-                              if (suggestion.secondaryAddress.isNotEmpty)
-                                Text(
-                                  suggestion.secondaryAddress,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: scheme.onSurfaceVariant,
-                                  ),
-                                ),
+                              finalDistance(suggestion.location, _distance),
                             ],
                           ),
                         ),
-                        finalDistance(suggestion.location, _distance),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
+              ),
             ],
           ],
         ),

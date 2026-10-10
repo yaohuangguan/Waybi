@@ -1,4 +1,5 @@
 import type { ProviderPayload } from "./../types.ts";
+import { isGeographicPlace, matchesGeographicName, maySearchGeographicName } from './place_intent.ts';
 import {
   mergeAndRankSearchResults,
   needsAddressEnrichment,
@@ -94,6 +95,7 @@ function mapGeoapifyPlaces(data) {
       );
       const isPoi =
         categoryPoi || (namedPlace && !addressTypes.has(place.result_type));
+      const geographic = isGeographicPlace({ resultType: place.result_type, isPoi });
       const address =
         [place.address_line1, place.address_line2]
           .map(text)
@@ -105,11 +107,12 @@ function mapGeoapifyPlaces(data) {
         sourceName: 'Geoapify',
         name: isPoi
           ? text(place.name) || text(place.address_line1) || formatted
-          : formatted,
+          : geographic ? text(place.name) || text(place[place.result_type]) || text(place.city) || formatted.split(',')[0] : formatted,
         address: isPoi ? address : formatted,
         label: formatted,
         isPoi,
         resultType: place.result_type || '',
+        countryCode: text(place.country_code),
         latitude: Number(place.lat),
         longitude: Number(place.lon),
       };
@@ -141,7 +144,18 @@ function mapTomTomPlaces(data) {
     const poiName = text(place?.poi?.name);
     const type = String(place?.type || '');
     const isPoi = type === 'POI' || Boolean(poiName);
-    const name = isPoi ? poiName || address : streetAddress || address;
+    const geographyType = {
+      Municipality: 'city', MunicipalitySubdivision: 'suburb',
+      Country: 'country', CountrySubdivision: 'state',
+      CountrySecondarySubdivision: 'county', CountryTertiarySubdivision: 'district',
+    }[place.entityType];
+    const geographicName = type === 'Geography' && geographyType
+      ? text(place.address?.[{
+        city: 'municipality', suburb: 'municipalitySubdivision', country: 'country',
+        state: 'countrySubdivision', county: 'countrySecondarySubdivision',
+        district: 'countryTertiarySubdivision',
+      }[geographyType]]) : '';
+    const name = isPoi ? poiName || address : geographicName || streetAddress || address;
 
     if (!name) return [];
     return [
@@ -153,7 +167,8 @@ function mapTomTomPlaces(data) {
         address,
         label: address || name,
         isPoi,
-        resultType: type,
+        resultType: geographyType || type,
+        countryCode: text(place.address?.countryCode),
         latitude,
         longitude,
       },
@@ -219,6 +234,7 @@ function mapPhotonPlaces(data) {
         label: address || name,
         isPoi,
         resultType: props.osm_value || '',
+        countryCode: text(props.countrycode),
         latitude: Number(coordinates[1]),
         longitude: Number(coordinates[0]),
       },
@@ -268,17 +284,23 @@ async function fetchTomTom({ query, point, language, apiKey, trackUsage }) {
   }
 }
 
-async function fetchPhoton({ query, point, language, trackUsage, timeoutMs = 1400 }) {
+async function fetchPhoton({ query, point, language, trackUsage, timeoutMs = 1400, geographicOnly = false }) {
   const url = new URL('https://photon.komoot.io/api/');
   url.searchParams.set('q', query);
   url.searchParams.set('limit', '10');
   url.searchParams.set('lang', language === 'zh' ? 'en' : language || 'en');
-  if (point) {
+  if (geographicOnly) {
+    // Search geographic layers globally, without a local bounding box or POIs
+    // consuming every slot. This is bounded and shares the suggestion cache.
+    for (const layer of ['city', 'state', 'country', 'locality', 'district']) {
+      url.searchParams.append('layer', layer);
+    }
+  } else if (point) {
     url.searchParams.set('lon', String(point[0]));
     url.searchParams.set('lat', String(point[1]));
     url.searchParams.set('location_bias_scale', '0.18');
   }
-  trackUsage('osm', 'photon_autocomplete', 1);
+  trackUsage('osm', geographicOnly ? 'photon_geographic' : 'photon_autocomplete', 1);
   try {
     const response = await fetch(url, {
       headers: {
@@ -286,6 +308,7 @@ async function fetchPhoton({ query, point, language, trackUsage, timeoutMs = 140
         accept: 'application/json',
       },
       signal: AbortSignal.timeout(timeoutMs),
+      ...(geographicOnly ? { cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 86400, '400-599': 0 } } } : {}),
     });
     if (!response.ok) return [];
     return mapPhotonPlaces(await response.json<ProviderPayload>());
@@ -304,7 +327,8 @@ function wait(ms) {
 ///
 /// Fast path: Geoapify + TomTom + applicable official regional/national address
 /// adapters run concurrently. We return as soon as that first wave settles or
-/// reaches a short UI deadline. Photon is only a last-resort open-data fallback.
+/// reaches a short UI deadline. Bare names also retrieve geographic candidates
+/// so a fast nearby street/POI cannot hide a distant city.
 async function searchIndependentGlobalUncached({
   query,
   point,
@@ -317,10 +341,13 @@ async function searchIndependentGlobalUncached({
   let tomtom = [];
   let enrichments = [];
   let photon = [];
+  let geographic = [];
+  const geographicQuery = maySearchGeographicName(query);
+  let geographicFinished = !geographicQuery;
   let deliverUseful;
   const firstUseful = new Promise<unknown[]>((resolve) => { deliverUseful = resolve; });
   const considerEarlyResult = () => {
-    const results = mergeAndRankSearchResults([enrichments, tomtom, geoapify, photon], query, point, 12);
+    const results = mergeAndRankSearchResults([geographic, enrichments, tomtom, geoapify, photon], query, point, 12);
     if (useful(results)) deliverUseful(results);
   };
 
@@ -335,6 +362,8 @@ async function searchIndependentGlobalUncached({
 
   const useful = (results) => {
     if (!results.length) return false;
+    if (geographicQuery && !geographicFinished &&
+      !results.some(place => matchesGeographicName(place, query))) return false;
     if (!needsAddressEnrichment(results, query)) return true;
     // A bounded nearby address completion is usable typeahead. Genuine exact
     // results still win whenever they are present; waiting for every external
@@ -369,7 +398,16 @@ async function searchIndependentGlobalUncached({
     return results;
   });
 
-  const firstWave = [regionalPromise, geoPromise, tomtomPromise];
+  const geographicPromise = geographicQuery ? fetchPhoton({
+    query, point, language, trackUsage, geographicOnly: true,
+    timeoutMs: Math.max(1, 1800 - (Date.now() - started)),
+  }).then(results => {
+    geographic = results.filter(place => matchesGeographicName(place, query));
+    geographicFinished = true;
+    considerEarlyResult();
+    return results;
+  }) : Promise.resolve([]);
+  const firstWave = [regionalPromise, geoPromise, tomtomPromise, geographicPromise];
   // Use deadlines measured from request start. The old serial waits added
   // 280 + 520 + 720 ms, before a last-resort Photon request even began.
   const early = await Promise.race([firstUseful, Promise.allSettled(firstWave).then(() => null),
@@ -377,7 +415,7 @@ async function searchIndependentGlobalUncached({
   if (early) return early;
 
   let merged = mergeAndRankSearchResults(
-    [enrichments, tomtom, geoapify],
+    [geographic, enrichments, tomtom, geoapify],
     query,
     point,
     12
@@ -399,7 +437,7 @@ async function searchIndependentGlobalUncached({
     wait(Math.max(0, 1800 - (Date.now() - started))).then(() => null)]);
   if (later) return later;
   merged = mergeAndRankSearchResults(
-    [enrichments, tomtom, geoapify, photon],
+    [geographic, enrichments, tomtom, geoapify, photon],
     query,
     point,
     12

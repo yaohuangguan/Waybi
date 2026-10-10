@@ -29,6 +29,69 @@ const verissimoNeighbors = [
   },
 ];
 
+test('a fast nearby street cannot finish a city search before geographic candidates arrive', async () => {
+  const previous = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(input);
+    calls.push(url);
+    if (url.hostname === 'photon.komoot.io') {
+      assert.ok(url.searchParams.getAll('layer').includes('city'));
+      assert.equal(url.searchParams.has('bbox'), false);
+      await new Promise(resolve => setTimeout(resolve, 80));
+      return Response.json({ features: [{
+        properties: { name: 'Wellington', osm_key: 'place', osm_value: 'city', osm_id: 1, country: 'New Zealand' },
+        geometry: { coordinates: [174.78, -41.29] },
+      }] });
+    }
+    return Response.json({ results: [{
+      id: 'nearby-street', type: 'Street',
+      address: { streetName: 'Wellington Street', freeformAddress: 'Wellington Street, Auckland' },
+      position: { lat: -36.85, lon: 174.76 },
+    }] });
+  };
+  try {
+    const args = { query: 'Wellington', point: [174.762, -36.852], env: { TOMTOM_SEARCH_API_KEY: 'test' } };
+    const [results, duplicate] = await Promise.all([searchIndependentGlobal(args), searchIndependentGlobal(args)]);
+    assert.equal(results[0].name, 'Wellington');
+    assert.equal(results[0].resultType, 'city');
+    assert.ok(results.some(place => place.name === 'Wellington Street'));
+    assert.deepEqual(results, duplicate);
+    await searchIndependentGlobal(args);
+    assert.equal(calls.length, 2, 'one shared city request and one shared general request');
+  } finally { globalThis.fetch = previous; }
+});
+
+test('geographic lookup failure leaves local results usable', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    if (new URL(input).hostname === 'photon.komoot.io') throw new Error('unavailable');
+    return Response.json({ results: [{ id: 'business', type: 'POI', poi: { name: 'Sample Business' }, position: { lat: -36.85, lon: 174.76 } }] });
+  };
+  try {
+    const results = await searchIndependentGlobal({ query: 'Sample Business', point: [174.76, -36.85], env: { TOMTOM_SEARCH_API_KEY: 'test' } });
+    assert.equal(results[0].name, 'Sample Business');
+  } finally { globalThis.fetch = previous; }
+});
+
+test('commercial geographic candidates expose canonical names and types', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const host = new URL(input).hostname;
+    if (host === 'api.geoapify.com') return Response.json({ results: [{ result_type: 'city', city: 'City Alpha', formatted: 'City Alpha, Example Region, New Zealand', lat: -43.5, lon: 172.6 }] });
+    if (host === 'api.tomtom.com') return Response.json({ results: [{ type: 'Geography', entityType: 'Municipality', address: { municipality: 'City Beta', freeformAddress: 'City Beta, Example Region, New Zealand' }, position: { lat: -43.5, lon: 172.6 } }] });
+    return Response.json({ features: [] });
+  };
+  try {
+    const alpha = await searchIndependentGlobal({ query: 'City Alpha', env: { GEOAPIFY_API_KEY: 'test' } });
+    assert.equal(alpha[0].name, 'City Alpha');
+    assert.equal(alpha[0].resultType, 'city');
+    const beta = await searchIndependentGlobal({ query: 'City Beta', env: { TOMTOM_SEARCH_API_KEY: 'test' } });
+    assert.equal(beta[0].name, 'City Beta');
+    assert.equal(beta[0].resultType, 'city');
+  } finally { globalThis.fetch = previous; }
+});
+
 test('partial 42 veri produces a selectable exact/interpolated address without Google', async () => {
   const previous = globalThis.fetch;
   const hosts = [];

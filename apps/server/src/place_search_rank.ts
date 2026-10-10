@@ -1,4 +1,5 @@
 import { distanceMeters } from './geo.ts';
+import { matchesGeographicName } from './search/place_intent.ts';
 
 function compact(value) {
   return String(value || '')
@@ -26,11 +27,11 @@ function relevance(place, query) {
 }
 
 export function rankPlaces(results, query, near) {
-  if (!Array.isArray(results) || !near) return results || [];
+  if (!Array.isArray(results)) return [];
   const wantedHouse = houseNumber(query);
   return results.map((place, index) => {
     const point: [number, number] = [Number(place.longitude), Number(place.latitude)];
-    const distance = point.every(Number.isFinite) ? distanceMeters(near, point) : Infinity;
+    const distance = near && point.every(Number.isFinite) ? distanceMeters(near, point) : Infinity;
     const candidateHouse = houseNumber(place.name) ?? houseNumber(place.address || place.label);
     const houseDelta = wantedHouse != null && candidateHouse != null
       ? Math.abs(candidateHouse - wantedHouse)
@@ -44,8 +45,11 @@ export function rankPlaces(results, query, near) {
       relevance: relevance(place, query)
     };
   }).sort((a, b) => {
-    // Default search intent is local-first, not country-locked. Any plausible
-    // result within an everyday driving radius outranks a remote namesake.
+    // An exact geographic name expresses a destination before proximity.
+    // Local businesses/categories still use local-first ranking below.
+    const geographic = Number(matchesGeographicName(b.place, query)) -
+      Number(matchesGeographicName(a.place, query));
+    if (geographic) return geographic;
     const aLocal = a.distance <= 80000 ? 1 : 0;
     const bLocal = b.distance <= 80000 ? 1 : 0;
     if (aLocal !== bLocal) return bLocal - aLocal;

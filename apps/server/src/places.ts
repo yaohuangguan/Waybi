@@ -4,6 +4,7 @@ import { independentExplore } from './independent_explore.ts';
 import { geoapifyExplore } from './compatible_places.ts';
 import { parseLonLat } from './geo.ts';
 import { rankPlaces } from './place_search_rank.ts';
+import { isGeographicPlace } from './search/place_intent.ts';
 import { loadSearchEnrichments, mergeAndRankSearchResults, needsAddressEnrichment } from './search/search_orchestrator.ts';
 import { searchIndependentGlobal } from './search/independent_global_search.ts';
 import { independentSuggestionCache, suggestionCacheKey } from './search/suggestion_cache.ts';
@@ -38,7 +39,7 @@ const GOOGLE_ADDRESS_TYPES = new Set([
 
 export function googlePlaceIsPoi(place, query = '') {
   const types = Array.isArray(place?.types) ? place.types : [];
-  if (types.some((type) => GOOGLE_ADDRESS_TYPES.has(type))) return false;
+  if (types.some((type) => GOOGLE_ADDRESS_TYPES.has(type) || isGeographicPlace({ resultType: type }))) return false;
   const formatted = String(place?.formattedAddress || '').trim().toLowerCase();
   const requestedHouse = String(query).trim().match(/^\d+[A-Za-z]?(?:[-/]\d+[A-Za-z]?)?\s+/)?.[0]?.trim().toLowerCase();
   return !(requestedHouse && formatted.startsWith(requestedHouse + ' '));
@@ -140,7 +141,7 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
         address: place.formattedAddress || '',
         label: place.formattedAddress || localizedText(place.displayName) || query,
         isPoi: googlePlaceIsPoi(place, query),
-        resultType: localizedText(place.primaryTypeDisplayName),
+        resultType: (place.types || []).find(type => isGeographicPlace({ resultType: type })) || localizedText(place.primaryTypeDisplayName),
         latitude: Number(place.location?.latitude),
         longitude: Number(place.location?.longitude)
       })).filter((place) => Number.isFinite(place.latitude) && Number.isFinite(place.longitude));
@@ -205,7 +206,9 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
       const streetAddress = [place.address_line1, place.address_line2].filter(Boolean).join(', ');
       const name = isPoi
         ? (place.name || place.address_line1 || fullAddress)
-        : fullAddress;
+        : isGeographicPlace({ resultType: place.result_type })
+          ? place.name || place[place.result_type] || place.city || fullAddress.split(',')[0]
+          : fullAddress;
       return {
         id: place.place_id || place.datasource?.raw?.osm_id || fullAddress,
         provider: 'geoapify',

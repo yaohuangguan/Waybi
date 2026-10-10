@@ -39,11 +39,12 @@ class IndependentNavigationCamera {
         .cos(location.latitude * math.pi / 180)
         .abs()
         .clamp(.2, 1.0);
-    final baseZoom =
+    double zoomFor(double metres) =>
         // MapLibre's world is 512 logical pixels wide at zoom zero.
-        (math.log(78271.51696 * latitudeScale * pixelsAhead / forwardMetres) /
+        (math.log(78271.51696 * latitudeScale * pixelsAhead / metres) /
                 math.ln2)
-            .clamp(14.9, 17.0);
+            .clamp(14.9, 18.2);
+    final baseZoom = zoomFor(forwardMetres).clamp(14.9, 17.0);
     var desired = baseZoom;
     final step = nextStep;
     final junction =
@@ -67,14 +68,21 @@ class IndependentNavigationCamera {
     if (!offRoute &&
         step != null &&
         (junction || step.maneuverType == 'arrive') &&
-        distanceToStep.isFinite) {
-      final approach = mode == WaybiTravelMode.walk
-          ? 100.0
-          : (140 + speed * 3).clamp(180.0, 450.0);
-      final fraction = (1 - distanceToStep / approach).clamp(0.0, 1.0);
-      final blend = fraction * fraction * (3 - 2 * fraction);
-      final closeZoom = step.maneuverType == 'arrive' ? 17.1 : 17.35;
-      desired = baseZoom + (math.max(baseZoom, closeZoom) - baseZoom) * blend;
+        distanceToStep.isFinite &&
+        distanceToStep >= 0) {
+      // Frame the actual junction with space beyond it, instead of reaching a
+      // fixed zoom only when the vehicle is already at the turn. Slow city
+      // approaches show the last 55–65 m; motorway exits retain more context.
+      final minimumAhead = switch (mode) {
+        WaybiTravelMode.walk => 40.0,
+        WaybiTravelMode.bicycle => 50.0,
+        _ => (45 + speed * .4).clamp(55.0, 90.0),
+      };
+      final junctionAhead = math.max(minimumAhead, distanceToStep * 1.2 + 18);
+      desired = math.max(
+        baseZoom,
+        zoomFor(math.min(forwardMetres, junctionAhead)),
+      );
     }
     final elapsed = _lastAt == null
         ? 1.0
@@ -83,7 +91,7 @@ class IndependentNavigationCamera {
     // Widen gradually after a turn; consecutive junctions retain detail.
     _zoom = _zoom == null
         ? desired
-        : _zoom! + (desired - _zoom!).clamp(-.28 * dt, .85 * dt);
+        : _zoom! + (desired - _zoom!).clamp(-.28 * dt, 1.15 * dt);
     final targetHeading = heading.isFinite ? heading % 360 : (_bearing ?? 0);
     if (_bearing == null || northUp) {
       _bearing = northUp ? 0 : targetHeading;

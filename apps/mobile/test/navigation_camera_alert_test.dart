@@ -28,13 +28,30 @@ void main() {
       );
       expect(
         find.text(
-          language == 'zh' ? '前方闯红灯 + 测速' : 'Red-light + speed camera ahead',
+          language == 'zh' ? '前方红灯及测速摄像头' : 'Red-light + speed camera ahead',
         ),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
     }
   });
+  for (final kind in CameraKind.values) {
+    testWidgets('Chinese ${kind.name} reminder names a camera', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NavigationCameraAlert(
+              notice: NavigationCameraNotice('Symonds Street', 120, kind: kind),
+              language: 'zh',
+            ),
+          ),
+        ),
+      );
+      expect(find.text('前方${kind.cameraLabel('zh')}'), findsOneWidget);
+      expect(kind.cameraLabel('zh'), contains('摄像头'));
+      expect(kind.cameraLabel('zh'), isNot(contains('闯红灯')));
+    });
+  }
   RoadEvent camera(
     String id,
     double? distance, {

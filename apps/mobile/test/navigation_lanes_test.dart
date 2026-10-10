@@ -38,8 +38,12 @@ void main() {
         ),
       );
       expect(lanes.map((lane) => lane.recommended), [true, false]);
-      expect(laneSymbol('unknown'), isNull);
-      expect(laneSymbol('uTurnRight'), '↶');
+      expect(laneDirection('unknown'), isNull);
+      expect(laneDirection('uTurnRight'), LaneArrowDirection.uTurnRight);
+      expect(lanes.first.directions, {
+        LaneArrowDirection.straight,
+        LaneArrowDirection.left,
+      });
     },
   );
   test(

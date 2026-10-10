@@ -5,18 +5,16 @@ import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
 import '../providers/independent_navigation_engine.dart';
 import 'navigation_overlay.dart';
+import 'navigation_maneuver_icon.dart';
 
 IconData independentManeuverIcon(RouteStepInfo? step) {
   final type = step?.maneuverType ?? '';
-  final modifier = step?.maneuverModifier ?? '';
-  if (type == 'arrive') return Icons.flag_rounded;
-  if (modifier == 'uturn') return Icons.u_turn_left_rounded;
+  // Preserve the existing circulation symbol; OSRM's modifier describes the
+  // exit direction, not the direction of travel around the roundabout.
   if (type.contains('roundabout') || type == 'rotary') {
     return Icons.roundabout_left_rounded;
   }
-  if (modifier.contains('right')) return Icons.turn_right_rounded;
-  if (modifier.contains('left')) return Icons.turn_left_rounded;
-  return Icons.straight_rounded;
+  return navigationManeuverIcon(type, step?.maneuverModifier ?? '');
 }
 
 class IndependentNavigationOverlay extends StatelessWidget {

@@ -48,6 +48,29 @@ Future<void> flush() => Future<void>.delayed(Duration.zero);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  for (final entry in {
+    'red light': '红灯摄像头',
+    'red light + speed': '红灯及测速摄像头',
+    'spot speed': '定点测速摄像头',
+    'average speed': '区间测速摄像头',
+    'bus lane': '专用车道摄像头',
+  }.entries) {
+    test('Chinese voice names ${entry.key} as a camera', () async {
+      final tts = ControlledTts();
+      final voice = VoiceEngine(tts: tts);
+      await voice.setLanguage('zh-CN');
+      final alert = voice.cameraAlert(
+        distanceMeters: 150,
+        cameraType: entry.key,
+        roadName: 'Symonds Street',
+      );
+      await flush();
+      expect(tts.spoken.single, '前方 150 米有${entry.value}，位于Symonds Street。');
+      tts.completeSpeech();
+      expect(await alert, true);
+      await voice.dispose();
+    });
+  }
   test('camera waits for guidance completion and never overlaps', () async {
     final tts = ControlledTts();
     final voice = VoiceEngine(tts: tts);

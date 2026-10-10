@@ -24,8 +24,8 @@ extension CameraKindLabel on CameraKind {
     return switch (this) {
       CameraKind.spotSpeed => '定点测速',
       CameraKind.averageSpeed => '区间测速',
-      CameraKind.redLight => '闯红灯',
-      CameraKind.dualRedLightSpeed => '闯红灯 + 测速',
+      CameraKind.redLight => '红灯',
+      CameraKind.dualRedLightSpeed => '红灯 + 测速',
       CameraKind.busLane => '公交 / 专用车道',
       CameraKind.other => '其他',
     };
@@ -62,9 +62,9 @@ extension CameraKindLabel on CameraKind {
     CameraKind.spotSpeed => language == 'zh' ? '定点测速摄像头' : 'Speed camera',
     CameraKind.averageSpeed =>
       language == 'zh' ? '区间测速摄像头' : 'Average-speed camera',
-    CameraKind.redLight => language == 'zh' ? '闯红灯摄像头' : 'Red-light camera',
+    CameraKind.redLight => language == 'zh' ? '红灯摄像头' : 'Red-light camera',
     CameraKind.dualRedLightSpeed =>
-      language == 'zh' ? '闯红灯及测速摄像头' : 'Red-light + speed camera',
+      language == 'zh' ? '红灯及测速摄像头' : 'Red-light + speed camera',
     CameraKind.busLane => language == 'zh' ? '专用车道摄像头' : 'Bus-lane camera',
     CameraKind.other => language == 'zh' ? '安全摄像头' : 'Safety camera',
   };

@@ -83,7 +83,7 @@ class NavigationCameraAlert extends StatelessWidget {
             children: [
               Text(
                 language == 'zh'
-                    ? '前方${notice.kind == CameraKind.other ? notice.kind.cameraLabel(language) : notice.kind.localizedLabel(language)}'
+                    ? '前方${notice.kind.cameraLabel(language)}'
                     : '${notice.kind.cameraLabel(language)} ahead',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -111,12 +111,18 @@ class NavigationCameraAlert extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Text(
-          navigationMetres(notice.metres, language),
-          style: const TextStyle(
-            color: WaybiColors.darkOcean,
-            fontSize: 23,
-            fontWeight: FontWeight.w800,
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 90),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              navigationMetres(notice.metres, language),
+              style: const TextStyle(
+                color: WaybiColors.darkOcean,
+                fontSize: 23,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
           ),
         ),
       ],

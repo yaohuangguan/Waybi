@@ -437,7 +437,7 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                     _cameraToggle(
                       icon: Icons.traffic_rounded,
                       en: 'Red light',
-                      zh: '闯红灯',
+                      zh: '红灯',
                       visible: current.redLight,
                       onVisible: (v) => update(current.copyWith(redLight: v)),
                       alert: current.alertRedLight,
@@ -447,7 +447,7 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                     _cameraToggle(
                       icon: Icons.emergency_share_outlined,
                       en: 'Red light + speed',
-                      zh: '闯红灯 + 测速',
+                      zh: '红灯 + 测速',
                       visible: current.dualRedLightSpeed,
                       onVisible: (v) =>
                           update(current.copyWith(dualRedLightSpeed: v)),

@@ -113,7 +113,8 @@ test('independent search keeps proximity bias without country locking', async ()
       { GEOAPIFY_API_KEY: 'geo-key' });
     assert.equal(response.status, 200);
     const [place] = await response.json();
-    assert.equal(place.name, '石家庄市, 河北省, 中国');
+    assert.equal(place.name, '石家庄市');
+    assert.equal(place.address, '石家庄市, 河北省, 中国');
     assert.equal(place.latitude, 38.0428);
     assert.equal(urls.length, 2);
     assert.equal(urls[0].searchParams.get('filter'), null);

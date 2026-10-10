@@ -1,4 +1,5 @@
 import { rankPlaces } from '../place_search_rank.ts';
+import { isGeographicPlace, normalizedPlaceName } from './place_intent.ts';
 import { distanceMeters } from '../geo.ts';
 import { searchRegionalAddressEnrichments } from './regional_address_registry.ts';
 import { parseNumberedStreetQuery, parseStreetQuery } from './numbered_street_query.ts';
@@ -148,7 +149,9 @@ export function dedupeSearchResults(places) {
   return ordered.filter((place) => {
     if (!place) return false;
     const id = place.id ? `${place.provider || ''}:${place.id}` : '';
-    const address = normalizedAddressKey(place);
+    const address = isGeographicPlace(place)
+      ? `geographic:${normalizedPlaceName(place.name)}:${normalizedAddressKey(place)}`
+      : normalizedAddressKey(place);
     if (id && seenIds.has(id)) return false;
     if (address && seenAddresses.has(address)) return false;
     if (id) seenIds.add(id);

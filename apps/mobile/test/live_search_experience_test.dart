@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
@@ -28,6 +30,106 @@ class _FakeSearchProvider implements SearchProvider {
 }
 
 void main() {
+  testWidgets('map dropdown scrolls through every result above the keyboard', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final selected = <PlaceCandidate>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(viewInsets: const EdgeInsets.only(bottom: 300)),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned(
+                top: 8,
+                left: 16,
+                right: 16,
+                child: CompanionSearchPrompt(
+                  marker: LocationMarkerStyle.kiwi,
+                  language: 'en',
+                  onSearch: (_) {},
+                  loadSuggestions: (_) async => List.generate(
+                    12,
+                    (index) => PlaceCandidate(
+                      name: 'Result $index',
+                      address: 'Canterbury, New Zealand',
+                      kind: PlaceKind.address,
+                      location: const GeoPoint(-43.53, 172.64),
+                    ),
+                  ),
+                  onSuggestionSelected: selected.add,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const Key('companionSearchInput')),
+      'christchurch',
+    );
+    await tester.pump(const Duration(milliseconds: 130));
+    await tester.pump();
+    final scrollable = find.descendant(
+      of: find.byKey(const Key('mapSearchSuggestions')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Result 11'),
+      150,
+      scrollable: scrollable,
+    );
+    await tester.tap(find.text('Result 11'));
+    await tester.pump();
+    expect(selected.single.name, 'Result 11');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('selecting a cached result cancels a pending dropdown update', (
+    tester,
+  ) async {
+    final pending = Completer<List<PlaceCandidate>>();
+    const cached = PlaceCandidate(
+      name: 'Christchurch',
+      kind: PlaceKind.address,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CompanionSearchPrompt(
+            marker: LocationMarkerStyle.kiwi,
+            language: 'en',
+            onSearch: (_) {},
+            cachedSuggestions: (_) => [cached],
+            loadSuggestions: (_) => pending.future,
+            onSuggestionSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const Key('companionSearchInput')),
+      'christchurch',
+    );
+    await tester.pump(const Duration(milliseconds: 130));
+    await tester.tap(find.text('Christchurch'));
+    pending.complete([
+      const PlaceCandidate(name: 'Late result', kind: PlaceKind.address),
+    ]);
+    await tester.pump();
+    expect(find.text('Late result'), findsNothing);
+    expect(find.byKey(const Key('mapSearchSuggestions')), findsNothing);
+  });
+
   testWidgets('map search shows live suggestions without Enter', (
     tester,
   ) async {

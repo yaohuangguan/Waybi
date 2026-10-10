@@ -66,7 +66,7 @@ export class SuggestionCache {
       if (edge) {
         const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
         const id = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
-        cacheRequest = new Request(`https://waybi.co/__suggestions/v1/${id}`);
+        cacheRequest = new Request(`https://waybi.co/__suggestions/v2/${id}`);
         const hit = await edge.match(cacheRequest);
         if (hit) {
           const entry = { at: this.now(), body: await hit.text(), headers: hit.headers };

@@ -1,4 +1,5 @@
 import { distanceMeters } from './geo.ts';
+import { GEOGRAPHIC_REGIONAL_RADIUS_METERS, matchesGeographicName } from './search/place_intent.ts';
 
 function compact(value) {
   return String(value || '')
@@ -26,11 +27,11 @@ function relevance(place, query) {
 }
 
 export function rankPlaces(results, query, near) {
-  if (!Array.isArray(results) || !near) return results || [];
+  if (!Array.isArray(results)) return [];
   const wantedHouse = houseNumber(query);
   return results.map((place, index) => {
     const point: [number, number] = [Number(place.longitude), Number(place.latitude)];
-    const distance = point.every(Number.isFinite) ? distanceMeters(near, point) : Infinity;
+    const distance = near && point.every(Number.isFinite) ? distanceMeters(near, point) : Infinity;
     const candidateHouse = houseNumber(place.name) ?? houseNumber(place.address || place.label);
     const houseDelta = wantedHouse != null && candidateHouse != null
       ? Math.abs(candidateHouse - wantedHouse)
@@ -40,12 +41,28 @@ export function rankPlaces(results, query, near) {
       index,
       distance,
       houseDelta,
+      geographic: matchesGeographicName(place, query),
       exactness: place?.approximate === true || place?.interpolated === true ? 0 : 1,
       relevance: relevance(place, query)
     };
   }).sort((a, b) => {
-    // Default search intent is local-first, not country-locked. Any plausible
-    // result within an everyday driving radius outranks a remote namesake.
+    // An exact geographic name expresses a destination before proximity.
+    // Local businesses/categories still use local-first ranking below.
+    const geographic = Number(b.geographic) - Number(a.geographic);
+    if (geographic) return geographic;
+    // A municipality's centre is a better destination than the centre of its
+    // surrounding province. Same-name cities/towns still use proximity.
+    if (a.geographic && b.geographic) {
+      const settlement = place => ['city', 'town', 'municipality', 'postal_town', 'locality'].includes(place.resultType);
+      const destination = Number(settlement(b.place)) - Number(settlement(a.place));
+      if (destination) return destination;
+      const aRegional = a.distance <= GEOGRAPHIC_REGIONAL_RADIUS_METERS;
+      const bRegional = b.distance <= GEOGRAPHIC_REGIONAL_RADIUS_METERS;
+      if (aRegional !== bRegional) return Number(bRegional) - Number(aRegional);
+      // For overseas namesakes, retain the global provider's relevance and
+      // prominence order. A small US Paris is closer to NZ than Paris, France.
+      if (!aRegional && !bRegional) return a.index - b.index;
+    }
     const aLocal = a.distance <= 80000 ? 1 : 0;
     const bLocal = b.distance <= 80000 ? 1 : 0;
     if (aLocal !== bLocal) return bLocal - aLocal;

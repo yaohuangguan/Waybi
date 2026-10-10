@@ -41,15 +41,22 @@ export function rankPlaces(results, query, near) {
       index,
       distance,
       houseDelta,
+      geographic: matchesGeographicName(place, query),
       exactness: place?.approximate === true || place?.interpolated === true ? 0 : 1,
       relevance: relevance(place, query)
     };
   }).sort((a, b) => {
     // An exact geographic name expresses a destination before proximity.
     // Local businesses/categories still use local-first ranking below.
-    const geographic = Number(matchesGeographicName(b.place, query)) -
-      Number(matchesGeographicName(a.place, query));
+    const geographic = Number(b.geographic) - Number(a.geographic);
     if (geographic) return geographic;
+    // A municipality's centre is a better destination than the centre of its
+    // surrounding province. Same-name cities/towns still use proximity.
+    if (a.geographic && b.geographic) {
+      const settlement = place => ['city', 'town', 'municipality', 'postal_town', 'locality'].includes(place.resultType);
+      const destination = Number(settlement(b.place)) - Number(settlement(a.place));
+      if (destination) return destination;
+    }
     const aLocal = a.distance <= 80000 ? 1 : 0;
     const bLocal = b.distance <= 80000 ? 1 : 0;
     if (aLocal !== bLocal) return bLocal - aLocal;

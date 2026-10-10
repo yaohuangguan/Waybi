@@ -233,7 +233,9 @@ function mapPhotonPlaces(data) {
         address,
         label: address || name,
         isPoi,
-        resultType: props.osm_value || '',
+        resultType: isGeographicPlace({ resultType: props.osm_value })
+          ? props.osm_value
+          : isGeographicPlace({ resultType: props.type }) ? props.type : props.osm_value || '',
         countryCode: text(props.countrycode),
         latitude: Number(coordinates[1]),
         longitude: Number(coordinates[0]),
@@ -288,12 +290,16 @@ async function fetchPhoton({ query, point, language, trackUsage, timeoutMs = 140
   const url = new URL('https://photon.komoot.io/api/');
   url.searchParams.set('q', query);
   url.searchParams.set('limit', '10');
-  url.searchParams.set('lang', language === 'zh' ? 'en' : language || 'en');
+  // The public instance lacks a Chinese display language. Native names retain
+  // 北京市/上海市 for geographic matching instead of translating them to English.
+  if (!geographicOnly || !/\p{Script=Han}/u.test(query)) {
+    url.searchParams.set('lang', language === 'zh' ? 'en' : language || 'en');
+  }
   if (geographicOnly) {
-    // Search geographic layers globally, without a local bounding box or POIs
-    // consuming every slot. This is bounded and shares the suggestion cache.
-    for (const layer of ['city', 'state', 'country', 'locality', 'district']) {
-      url.searchParams.append('layer', layer);
+    // Retrieve settlements/regions globally. Tiny neighbourhoods and POIs must
+    // not consume every slot before a city's full administrative name.
+    for (const type of ['city', 'town', 'province', 'state', 'country']) {
+      url.searchParams.append('osm_tag', `place:${type}`);
     }
   } else if (point) {
     url.searchParams.set('lon', String(point[0]));

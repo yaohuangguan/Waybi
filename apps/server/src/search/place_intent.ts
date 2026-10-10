@@ -31,7 +31,7 @@ export function matchesGeographicName(place, query: string): boolean {
   if (!isGeographicPlace(place) || !maySearchGeographicName(query)) return false;
   let name = normalizedPlaceName(String(place.name || '').split(',')[0]);
   const wanted = normalizedPlaceName(query);
-  if (['city', 'municipality', 'locality'].includes(String(place.resultType).toLowerCase()) && /\p{Script=Han}市$/u.test(name)) {
+  if (/\p{Script=Han}市$/u.test(name)) {
     name = name.slice(0, -1);
     if (wanted === name + '市') return true;
   }

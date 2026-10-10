@@ -42,6 +42,14 @@ test('same-name cities use proximity and explicit geographic qualifiers', () => 
   assert.equal(rankPlaces(places, 'Wellington US', [174.76, -36.85])[0].countryCode, 'US');
 });
 
+test('a city centre outranks the wider administrative region with the same name', () => {
+  const results = rankPlaces([
+    { name: '上海市', resultType: 'state', latitude: 31, longitude: 121 },
+    { name: '上海市', resultType: 'city', latitude: 31.23, longitude: 121.47 },
+  ], '上海', [174.76, -36.85]);
+  assert.equal(results[0].resultType, 'city');
+});
+
 test('nearby matching POIs outrank remote namesakes', () => {
   const near = [174.7633, -36.8485];
   const ranked = rankPlaces([

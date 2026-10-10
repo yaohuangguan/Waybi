@@ -167,12 +167,12 @@ void main() {
   });
 
   test(
-    'short local brand search is locally bounded without country locking',
+    'explicit spaced local brand stays local beside an unspaced city namesake',
     () async {
       final provider = IndependentSearchProvider(
         requestSpacing: Duration.zero,
         client: MockClient((request) async {
-          expect(request.url.queryParameters['q'], 'taiping');
+          expect(request.url.queryParameters['q'], 'Tai Ping');
           expect(request.url.queryParameters['bbox'], isNotNull);
           expect(request.url.queryParameters['lat'], isNotNull);
           expect(request.url.queryParameters['lon'], isNotNull);
@@ -218,7 +218,7 @@ void main() {
       );
 
       final results = await provider.search(
-        'taiping',
+        'Tai Ping',
         proximity: const GeoPoint(-36.8485, 174.7633),
         language: 'en',
       );

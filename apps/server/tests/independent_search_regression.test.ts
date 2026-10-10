@@ -36,7 +36,7 @@ test('a fast nearby street cannot finish a city search before geographic candida
     const url = new URL(input);
     calls.push(url);
     if (url.hostname === 'photon.komoot.io') {
-      assert.ok(url.searchParams.getAll('layer').includes('city'));
+      assert.ok(url.searchParams.getAll('osm_tag').includes('place:city'));
       assert.equal(url.searchParams.has('bbox'), false);
       await new Promise(resolve => setTimeout(resolve, 80));
       return Response.json({ features: [{
@@ -71,6 +71,27 @@ test('geographic lookup failure leaves local results usable', async () => {
   try {
     const results = await searchIndependentGlobal({ query: 'Sample Business', point: [174.76, -36.85], env: { TOMTOM_SEARCH_API_KEY: 'test' } });
     assert.equal(results[0].name, 'Sample Business');
+  } finally { globalThis.fetch = previous; }
+});
+
+test('Chinese cities retain native names and administrative boundaries remain geographic', async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = new URL(input);
+    assert.equal(url.searchParams.has('lang'), false);
+    assert.ok(url.searchParams.getAll('osm_tag').includes('place:city'));
+    const name = url.searchParams.get('q') + '市';
+    return Response.json({ features: [{ properties: {
+      name, type: 'city', osm_key: 'boundary', osm_value: 'administrative',
+      osm_id: name, country: '中国', countrycode: 'CN',
+    }, geometry: { coordinates: [121, 31] } }] });
+  };
+  try {
+    for (const query of ['北京', '上海']) {
+      const results = await searchIndependentGlobal({ query, point: [174.76, -36.85], language: 'zh', env: {} });
+      assert.equal(results[0].name, query + '市');
+      assert.equal(results[0].resultType, 'city');
+    }
   } finally { globalThis.fetch = previous; }
 });
 

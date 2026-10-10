@@ -90,8 +90,8 @@ String _cameraTypeLabel(String value, {required bool isChinese}) {
   return switch (value.toLowerCase()) {
     'spot speed' => '定点测速',
     'average speed' => '区间测速',
-    'red light' => '闯红灯',
-    'red light + speed' => '闯红灯 + 测速',
+    'red light' => '红灯',
+    'red light + speed' => '红灯 + 测速',
     'bus / transit lane' => '公交 / 专用车道',
     'other' => '其他',
     _ => value,

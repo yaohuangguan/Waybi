@@ -12,6 +12,8 @@ import 'waybi_bird.dart';
 import 'road_event_timeline.dart';
 import 'navigation_camera_alert.dart';
 import 'navigation_transit_alert.dart';
+import 'lane_arrow.dart';
+import 'navigation_maneuver_icon.dart';
 
 const _ink = WaybiColors.darkOcean;
 const _accent = WaybiColors.sky;
@@ -23,34 +25,18 @@ String navigationDistanceLabel(num? metres) {
   return '${safe.round()} m';
 }
 
-IconData _maneuverIcon(Maneuver? maneuver) {
-  final name = maneuver?.name.toLowerCase() ?? '';
-  if (name.contains('uturn')) return Icons.u_turn_left_rounded;
-  if (name.contains('roundabout')) return Icons.roundabout_right_rounded;
-  if (name.contains('right')) return Icons.turn_right_rounded;
-  if (name.contains('left')) return Icons.turn_left_rounded;
-  return Icons.straight_rounded;
-}
-
 class NavigationLane {
-  const NavigationLane(this.symbol, this.recommended);
-  final String symbol;
+  const NavigationLane(this.directions, this.recommended);
+  final Set<LaneArrowDirection> directions;
   final bool recommended;
 }
 
 List<NavigationLane> routeNavigationLanes(RouteStepInfo? step) => [
   for (final lane in step?.lanes ?? const <RouteLane>[])
     NavigationLane(
-      lane.indications
-              .map(laneSymbol)
-              .whereType<String>()
-              .toSet()
-              .join()
-              .isEmpty
-          ? '·'
-          : lane.indications.map(laneSymbol).whereType<String>().toSet().join(),
+      laneDirections(lane.indications),
       lane.recommended &&
-          lane.indications.any((s) => laneSymbol(s) != null) &&
+          lane.indications.any((s) => laneDirection(s) != null) &&
           laneSupportsManeuver(lane.indications, step!.maneuverModifier),
     ),
 ];
@@ -252,24 +238,20 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
               ? _text('Updating route…', '正在重新规划路线…')
               : navigationInstruction(step, widget.language),
           lanesImage: step?.lanesImage,
-          maneuverIcon: _maneuverIcon(step?.maneuver),
+          maneuverIcon: navigationManeuverIcon(step?.maneuver.name ?? ''),
           stepMeters: nav?.distanceToCurrentStepMeters,
           remainingMeters: nav?.distanceToFinalDestinationMeters,
           remainingSeconds: nav?.timeToFinalDestinationSeconds,
           lanes: [
             for (final lane in step?.lanes ?? <Lane>[])
               NavigationLane(
-                lane.laneDirections
-                    .map((direction) {
-                      final name = direction.laneShape.name.toLowerCase();
-                      return laneSymbol(name) ?? '·';
-                    })
-                    .toSet()
-                    .join(),
+                laneDirections(
+                  lane.laneDirections.map((d) => d.laneShape.name),
+                ),
                 lane.laneDirections.any(
                   (direction) =>
                       direction.isRecommended &&
-                      laneSymbol(direction.laneShape.name) != null &&
+                      laneDirection(direction.laneShape.name) != null &&
                       laneSupportsManeuver([
                         direction.laneShape.name,
                       ], step!.maneuver.name),
@@ -495,22 +477,18 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                                                 10,
                                                               ),
                                                         ),
-                                                        child: Text(
-                                                          guidance
+                                                        child: LaneArrow(
+                                                          directions: guidance
                                                               .lanes[index]
-                                                              .symbol,
-                                                          style: TextStyle(
-                                                            color:
-                                                                guidance
-                                                                    .lanes[index]
-                                                                    .recommended
-                                                                ? _ink
-                                                                : Colors
-                                                                      .white54,
-                                                            fontSize: 25,
-                                                            fontWeight:
-                                                                FontWeight.w700,
-                                                          ),
+                                                              .directions,
+                                                          language:
+                                                              widget.language,
+                                                          color:
+                                                              guidance
+                                                                  .lanes[index]
+                                                                  .recommended
+                                                              ? _ink
+                                                              : Colors.white54,
                                                         ),
                                                       ),
                                                     ),

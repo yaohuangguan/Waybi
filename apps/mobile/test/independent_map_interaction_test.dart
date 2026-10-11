@@ -105,6 +105,21 @@ void main() {
         tester.view.resetDevicePixelRatio();
       });
       final platform = RecordingMapPlatform();
+      List<MapRoutePath> paths = const [
+        MapRoutePath(
+          id: 'route-1',
+          active: true,
+          points: [GeoPoint(-36.8485, 174.7633), GeoPoint(-36.8518, 174.7634)],
+        ),
+        MapRoutePath(
+          id: 'route-2',
+          points: [GeoPoint(-36.8485, 174.7633), GeoPoint(-36.8520, 174.7650)],
+        ),
+        MapRoutePath(
+          id: 'route-3',
+          points: [GeoPoint(-36.8485, 174.7633), GeoPoint(-36.8522, 174.7618)],
+        ),
+      ];
       final original = ml.MapLibrePlatform.createInstance;
       ml.MapLibrePlatform.createInstance = () => platform;
       addTearDown(() => ml.MapLibrePlatform.createInstance = original);
@@ -176,30 +191,7 @@ void main() {
                       ],
                     ),
                   ],
-                  routePaths: const [
-                    MapRoutePath(
-                      id: 'route-1',
-                      active: true,
-                      points: [
-                        GeoPoint(-36.8485, 174.7633),
-                        GeoPoint(-36.8518, 174.7634),
-                      ],
-                    ),
-                    MapRoutePath(
-                      id: 'route-2',
-                      points: [
-                        GeoPoint(-36.8485, 174.7633),
-                        GeoPoint(-36.8520, 174.7650),
-                      ],
-                    ),
-                    MapRoutePath(
-                      id: 'route-3',
-                      points: [
-                        GeoPoint(-36.8485, 174.7633),
-                        GeoPoint(-36.8522, 174.7618),
-                      ],
-                    ),
-                  ],
+                  routePaths: paths,
                   selectedPlace: null,
                   explorePlaces: const [],
                   onExplorePlace: (_) {},
@@ -359,6 +351,56 @@ void main() {
       await tester.pumpAndSettle();
       expect(selected!.name, 'Aotea Square');
       expect(selected!.reference!.provider, 'osm');
+      expect(tester.takeException(), isNull);
+      const start = GeoPoint(-36.8485, 174.7633);
+      const boundary = GeoPoint(-36.85, 174.76335);
+      const end = GeoPoint(-36.8518, 174.7634);
+      update!(
+        () => paths = const [
+          MapRoutePath(id: 'past', points: [start, boundary], traversed: true),
+          MapRoutePath(id: 'future', points: [boundary, end], active: true),
+        ],
+      );
+      await tester.pumpAndSettle();
+      final progressed = platform.sources['waybi-route']!['features'] as List;
+      expect(progressed, hasLength(2));
+      expect(progressed.first['properties']['traversed'], isTrue);
+      expect(progressed.last['geometry']['coordinates'].first, [
+        boundary.longitude,
+        boundary.latitude,
+      ]);
+      update!(
+        () => paths = const [
+          MapRoutePath(id: 'past', points: [start, end], traversed: true),
+        ],
+      );
+      await tester.pumpAndSettle();
+      expect(
+        (platform.sources['waybi-pins']!['features'] as List).any(
+          (p) => p['id'] == 'destination',
+        ),
+        isTrue,
+      );
+      update!(
+        () => paths = const [
+          MapRoutePath(
+            id: 'trail',
+            points: [start, boundary],
+            active: true,
+            trail: true,
+          ),
+        ],
+      );
+      await tester.pumpAndSettle();
+      expect(
+        (platform.sources['waybi-pins']!['features'] as List).any(
+          (p) => p['id'] == 'destination',
+        ),
+        isFalse,
+      );
+      update!(() => paths = const []);
+      await tester.pumpAndSettle();
+      expect(platform.sources['waybi-route']!['features'], isEmpty);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },

@@ -89,8 +89,6 @@ class NavigationLocationFilter {
           _anchor = fix.point;
           return _commit(fix);
         }
-      } else if (fix.accuracyMeters > 25) {
-        return null;
       }
 
       // A single indoor fix can look deceptively accurate. While stationary,
@@ -155,8 +153,12 @@ class NavigationLocationFilter {
       }
     }
 
+    final plausibleSpeed = math.min(
+      math.max(speed, math.max(0, previous.speedMetresPerSecond)),
+      math.max(0, previous.speedMetresPerSecond) + 6 * elapsed,
+    );
     final plausibleTravel =
-        speed * elapsed * 2.75 +
+        plausibleSpeed * elapsed * 1.5 +
         fix.accuracyMeters * 1.5 +
         previous.accuracyMeters;
     if (delta > math.max(55.0, plausibleTravel)) return null;
@@ -165,7 +167,7 @@ class NavigationLocationFilter {
   }
 
   bool _confirmedRelocation(NavigationLocationFix fix) {
-    if (fix.accuracyMeters > 12) {
+    if (fix.accuracyMeters > 35) {
       _candidate = null;
       _relocationFixes = 0;
       _relocationSince = null;
@@ -178,14 +180,17 @@ class NavigationLocationFilter {
     final consistent =
         previous != null &&
         fix.timestamp.difference(previous.timestamp) <=
-            const Duration(seconds: 5) &&
+            const Duration(seconds: 15) &&
         distanceMeters(
               previous.point.latitude,
               previous.point.longitude,
               fix.point.latitude,
               fix.point.longitude,
             ) <=
-            math.max(10, fix.accuracyMeters * 1.25);
+            math.max(
+              10,
+              math.max(previous.accuracyMeters, fix.accuracyMeters) * 1.25,
+            );
     if (!consistent || _relocationSince == null) {
       _relocationFixes = 0;
       _relocationSince = fix.timestamp;

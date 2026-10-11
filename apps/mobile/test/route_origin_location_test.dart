@@ -59,4 +59,21 @@ void main() {
       expect(origin.point, isNull);
     },
   );
+  test('fresh OS fix replaces an expired confirmed origin', () {
+    var time = now;
+    final origin = RouteOriginLocation(clock: () => time)
+      ..update(fix(), confirmed: true);
+    time = time.add(const Duration(seconds: 45));
+    const recovered = GeoPoint(-36.90, 174.84);
+    origin.update(
+      NavigationLocationFix(
+        point: recovered,
+        accuracyMeters: 18,
+        speedMetresPerSecond: 0,
+        timestamp: time,
+      ),
+      confirmed: false,
+    );
+    expect(origin.point, recovered);
+  });
 }

@@ -14,6 +14,7 @@ import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
 import '../drive/route_camera_matcher.dart';
 import '../drive/route_progress_tracker.dart';
+import '../drive/route_display.dart';
 import 'provider_contracts.dart';
 
 typedef IndependentReroute = Future<RouteOption> Function(
@@ -48,6 +49,20 @@ class IndependentNavigationEngine extends ChangeNotifier
   int _offRouteFixes = 0;
   int _arrivalFixes = 0;
   DateTime? _offRouteSince;
+  DateTime? _lastDeviationAt;
+  GeoPoint? _previousPoint;
+
+  bool get _usableGps {
+    final position = drive.latestPosition;
+    if (position == null || drive.locationIssue != null) return false;
+    final age = _clock().difference(position.timestamp);
+    return position.accuracy.isFinite &&
+        position.accuracy > 0 &&
+        position.accuracy <= 35 &&
+        age >= const Duration(seconds: -5) &&
+        age <= const Duration(seconds: 10);
+  }
+
   DateTime? _lastReroute;
   DateTime? _lastClosureCheck;
   String? _lastClosureAttempt;
@@ -97,6 +112,7 @@ class IndependentNavigationEngine extends ChangeNotifier
       }
       return;
     }
+    if (!_usableGps) return;
     final fingerprint = matches
         .map((event) => '${event.id}:${event.validFrom}:${event.validUntil}')
         .followedBy(restricted.map((m) => m.lane.id))
@@ -122,6 +138,9 @@ class IndependentNavigationEngine extends ChangeNotifier
   String? error;
 
   RouteOption? get route => _route;
+  List<MapRoutePath> get displayPaths => _route == null
+      ? const []
+      : navigationRoutePaths(_route!.id, _route!.points, _alongMeters);
   RouteStepInfo? get nextStep => _nextStep;
   RouteStepInfo? get followingStep {
     final route = _route;
@@ -180,6 +199,8 @@ class IndependentNavigationEngine extends ChangeNotifier
     _offRouteFixes = 0;
     _offRouteSince = null;
     _arrivalFixes = 0;
+    _lastDeviationAt = null;
+    _previousPoint = null;
     offRoute = false;
     arrived = false;
     drive.setRoute(route, preserveAlerts: preserveAlerts);
@@ -250,23 +271,62 @@ class IndependentNavigationEngine extends ChangeNotifier
       return;
     }
     _lastLocationRevision = drive.locationRevision;
+    if (!_usableGps) {
+      _offRouteFixes = 0;
+      _offRouteSince = null;
+      _lastDeviationAt = null;
+      _previousPoint = null;
+      return;
+    }
     final point = GeoPoint(location.latitude, location.longitude);
     final progress = drive.routeProgress;
     if (progress == null) return;
     final now = _clock();
+    final previousPoint = _previousPoint;
+    _previousPoint = point;
+    final moved = previousPoint == null
+        ? 0.0
+        : distanceMeters(
+            previousPoint.latitude,
+            previousPoint.longitude,
+            point.latitude,
+            point.longitude,
+          );
+    // A course sensor alone cannot justify a U-turn: real displacement must
+    // corroborate it, with several fresh fixes outside the accuracy corridor.
+    final wrongDirection =
+        drive.speedKph >= 25 &&
+        drive.locationAccuracyMeters <= 20 &&
+        drive.rawHeadingDegrees != null &&
+        previousPoint != null &&
+        moved >= math.max(15, drive.locationAccuracyMeters * 1.5) &&
+        angleDifference(drive.rawHeadingDegrees!, progress.bearingDegrees) >
+            135 &&
+        angleDifference(
+              bearingDegrees(
+                previousPoint.latitude,
+                previousPoint.longitude,
+                point.latitude,
+                point.longitude,
+              ),
+              progress.bearingDegrees,
+            ) >
+            135;
     offRoute =
         progress.offsetMeters >
-            math.max(30, drive.locationAccuracyMeters * 1.4) ||
-        (drive.speedKph >= 20 &&
-            drive.rawHeadingDegrees != null &&
-            progress.offsetMeters < 30 &&
-            angleDifference(drive.rawHeadingDegrees!, progress.bearingDegrees) >
-                120);
+            math.max(40, drive.locationAccuracyMeters * 1.8) ||
+        wrongDirection;
     if (offRoute) {
+      if (_lastDeviationAt != null &&
+          now.difference(_lastDeviationAt!) > const Duration(seconds: 10)) {
+        _offRouteFixes = 0;
+        _offRouteSince = null;
+      }
+      _lastDeviationAt = now;
       _offRouteSince ??= now;
       _offRouteFixes++;
-      if (_offRouteFixes >= 2 &&
-          now.difference(_offRouteSince!).inMilliseconds >= 1500 &&
+      if (_offRouteFixes >= 3 &&
+          now.difference(_offRouteSince!).inMilliseconds >= 4000 &&
           !rerouting &&
           reroute != null &&
           (_lastReroute == null ||
@@ -278,6 +338,7 @@ class IndependentNavigationEngine extends ChangeNotifier
     }
     _offRouteFixes = 0;
     _offRouteSince = null;
+    _lastDeviationAt = null;
     if (!_closureWarning) error = null;
     _alongMeters = progress.alongMeters;
     final fraction = _geometryMeters > 0
@@ -377,6 +438,7 @@ class IndependentNavigationEngine extends ChangeNotifier
     bool closureTriggered = false,
     bool transitRestriction = false,
   }) async {
+    if (!_usableGps || rerouting || _route == null) return;
     final session = _session;
     final previous = _route!;
     final stops = remainingStops;
@@ -404,7 +466,9 @@ class IndependentNavigationEngine extends ChangeNotifier
       }
       if (transitRoadBlocks(
         replacement,
-        await drive.transitMatchesForRoute(replacement),
+        await drive
+            .transitMatchesForRoute(replacement)
+            .timeout(const Duration(seconds: 5)),
         _clock(),
       ).isNotEmpty) {
         throw StateError('Reroute uses a restricted bus-only road');
@@ -415,6 +479,16 @@ class IndependentNavigationEngine extends ChangeNotifier
           arrived) {
         return;
       }
+      if (!_usableGps) throw StateError('GPS unavailable during rerouting');
+      final current = drive.latestPosition!;
+      final currentProjection = _matcher.project(
+        GeoPoint(current.latitude, current.longitude),
+        replacement.points,
+      );
+      if (currentProjection == null ||
+          currentProjection.offsetMeters > math.max(50, current.accuracy * 2)) {
+        throw StateError('Reroute no longer matches the current location');
+      }
       _setRoute(replacement, preserveAlerts: true);
       _closureWarning = false;
       transitRestrictionAhead = false;
@@ -423,7 +497,10 @@ class IndependentNavigationEngine extends ChangeNotifier
       rerouting = false;
       _onLocation();
     } catch (_) {
-      if (session == _session && _route != null) {
+      if (session == _session &&
+          identical(_route, previous) &&
+          (offRoute || closureTriggered) &&
+          !arrived) {
         _closureWarning = closureTriggered;
         error = transitRestriction
             ? drive.navigationLanguage == 'zh'

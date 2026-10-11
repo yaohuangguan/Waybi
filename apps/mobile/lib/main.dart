@@ -380,6 +380,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   double _navigationTopInset = 125;
   double _navigationBottomInset = 215;
   ReliableLocationFeed? _browseLocationFeed;
+  String? _browseLocationMessage;
   Position? _lastReliableBrowsePosition;
   final _independentCamera = IndependentNavigationCamera();
   final _browseMotion = NavigationMotionEstimator();
@@ -944,10 +945,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         }
         final point = GeoPoint(latitude.toDouble(), longitude.toDouble());
         if (!point.isValid) continue;
-        final provider = MapProvider.values.firstWhere(
-          (value) => value.name == item['provider']?.toString(),
-          orElse: () => MapProvider.google,
-        );
+        const provider = MapProvider.independent;
         remote[label!] = (
           place: PlaceSummary(
             name: item['name']?.toString() ?? label,
@@ -1690,16 +1688,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _restoreMapSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _useCarMarker = prefs.getBool('waybi.map.car_marker') ?? false;
-    _mapProvider = MapProvider.values.firstWhere(
-      (value) => value.name == prefs.getString('waybi.map.provider'),
-      orElse: () =>
-          const String.fromEnvironment('WAYBI_DEFAULT_MAP_PROVIDER') == 'google'
-          ? MapProvider.google
-          : MapProvider.independent,
-    );
-    if (prefs.getString('waybi.map.provider') == 'mapbox') {
-      _mapProvider = MapProvider.independent;
-    }
+    _mapProvider = MapProvider.independent;
+    await prefs.setString('waybi.map.provider', MapProvider.independent.name);
     _locationMarker = LocationMarkerStyle.values.firstWhere(
       (value) => value.name == prefs.getString('waybi.map.location_marker'),
       orElse: () => LocationMarkerStyle.kiwi,
@@ -1863,8 +1853,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (!mounted) return false;
     setState(() {
       _message = whenInUse.isPermanentlyDenied
-          ? 'Location is disabled for Waybi. Enable it in system settings.'
-          : 'Location permission is required for navigation.';
+          ? _text(
+              'Location is disabled for Waybi. Enable it in system settings.',
+              'Waybi 的定位权限已关闭，请在系统设置中开启。',
+            )
+          : _text(
+              'Location permission is required for navigation.',
+              '导航需要定位权限，请允许 Waybi 使用当前位置。',
+            );
     });
     return false;
   }
@@ -1902,12 +1898,36 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               distanceFilter: 0,
             ),
       onPosition: _onPosition,
-      onIssue: (error) {
-        if (!mounted || error == null || _driveEngine.active) return;
-        // Navigation and route requests show actionable status at the point of use.
-        debugPrint('Location recovery: ${error.runtimeType}');
-      },
+      onIssue: _onBrowseLocationIssue,
     )..start();
+  }
+
+  void _onBrowseLocationIssue(Object? error) {
+    if (!mounted || _driveEngine.active) return;
+    if (error == null) {
+      if (_message == _browseLocationMessage) setState(() => _message = null);
+      _browseLocationMessage = null;
+      return;
+    }
+    if (_externalPreview == null && _locationForRoute != null) return;
+    final message = error is LocationServiceDisabledException
+        ? _text(
+            'Location services are off. Enable them in Settings.',
+            '系统定位已关闭，请在系统设置中打开定位。',
+          )
+        : error is PermissionDeniedException
+        ? _text(
+            'Location access is disabled. Allow Waybi to use your location in Settings.',
+            '定位权限已关闭，请在系统设置中允许 Waybi 使用定位。',
+          )
+        : _text(
+            'Waiting for a reliable location. Retrying automatically…',
+            '暂时未获取到可靠定位，正在自动重试…',
+          );
+    setState(() {
+      _browseLocationMessage = message;
+      _message = message;
+    });
   }
 
   bool _onPosition(Position position) {
@@ -2411,6 +2431,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   void _recenter() {
+    if (_driveEngine.active) {
+      unawaited(_driveEngine.recoverLocalLocation());
+    } else {
+      unawaited(_recoverRouteLocation());
+    }
     _independentCamera.reset();
     setState(() {
       _following = true;
@@ -3130,14 +3155,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   List<MapRoutePath> get _visibleIndependentRoutePaths {
     final navigationRoute = _independentNavigation.route;
     if (navigationRoute != null) {
-      return [
-        MapRoutePath(
-          id: navigationRoute.id,
-          points: navigationRoute.points,
-          active: true,
-        ),
-      ];
+      return _independentNavigation.displayPaths;
     }
+    if (_driveEngine.active) return _driveEngine.trailPaths;
     final plan = _routePlan;
     if (plan == null) return const [];
     return plan
@@ -4824,6 +4844,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _applyMapProvider(MapProvider provider) async {
+    provider = MapProvider.independent;
     if (provider == _mapProvider) return;
     if (_guidanceRunning || _driveEngine.active || _transitTripRunning) {
       setState(

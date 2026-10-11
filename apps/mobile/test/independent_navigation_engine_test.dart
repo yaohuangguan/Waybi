@@ -21,6 +21,9 @@ class SilentVoice extends VoiceEngine {
 class FakeDrive extends DriveEngine {
   FakeDrive() : super(voiceEngine: SilentVoice());
   LatLng? fix;
+  double? course;
+  @override
+  double? get rawHeadingDegrees => course;
   RouteProgressTracker? tracker;
   final spoken = <String>[];
   int stops = 0;
@@ -94,12 +97,13 @@ const destination = GeoPoint(-36.85, 174.76);
 RouteOption makeRoute({
   List<GeoPoint> waypoints = const [],
   List<String> closureIds = const [],
+  List<GeoPoint> points = const [origin, middle, destination],
 }) => RouteOption(
   id: 'test',
   mode: WaybiTravelMode.drive,
   durationSeconds: 1000,
   distanceMeters: 1000,
-  points: const [origin, middle, destination],
+  points: points,
   provider: 'independent',
   traffic: const TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
   trafficIntervals: const [],
@@ -152,7 +156,10 @@ void main() {
 
   test('a known blocked route cannot start navigation', () async {
     final drive = FakeDrive();
-    final nav = IndependentNavigationEngine(drive);
+    final nav = IndependentNavigationEngine(
+      drive,
+      clock: () => drive.latestPosition?.timestamp ?? DateTime.now(),
+    );
     addTearDown(() {
       nav.dispose();
       drive.dispose();
@@ -234,6 +241,7 @@ void main() {
     nav.checkClosureUpdates();
     expect(requests, 1);
     now = now.add(const Duration(seconds: 46));
+    drive.emit(origin, now);
     nav.checkClosureUpdates();
     await Future<void>.delayed(Duration.zero);
     expect(requests, 2);
@@ -266,6 +274,7 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(requests, 0);
     now = now.add(const Duration(seconds: 16));
+    drive.emit(origin, now);
     drive.roadEvents = [closure()];
     nav.checkClosureUpdates();
     await Future<void>.delayed(Duration.zero);
@@ -305,6 +314,7 @@ void main() {
     expect(nav.error, contains('前方封路'));
     expect(requests, 1);
     now = now.add(const Duration(seconds: 46));
+    drive.emit(origin, now);
     nav.checkClosureUpdates();
     await Future<void>.delayed(Duration.zero);
     expect(requests, 2);
@@ -328,7 +338,10 @@ void main() {
 
   test('near turn speaks once and ETA uses remaining step durations', () async {
     final drive = FakeDrive();
-    final nav = IndependentNavigationEngine(drive);
+    final nav = IndependentNavigationEngine(
+      drive,
+      clock: () => drive.latestPosition?.timestamp ?? DateTime.now(),
+    );
     addTearDown(() {
       nav.dispose();
       drive.dispose();
@@ -348,7 +361,10 @@ void main() {
 
   test('arrival requires two close, slow accurate fixes', () async {
     final drive = FakeDrive();
-    final nav = IndependentNavigationEngine(drive);
+    final nav = IndependentNavigationEngine(
+      drive,
+      clock: () => drive.latestPosition?.timestamp ?? DateTime.now(),
+    );
     addTearDown(() {
       nav.dispose();
       drive.dispose();
@@ -404,7 +420,11 @@ void main() {
       expect(stops, [middle]);
       expect(nav.rerouting, isTrue);
       expect(nav.nextStep?.instruction, 'Turn right');
-      pending.complete(makeRoute());
+      pending.complete(
+        makeRoute(
+          points: const [GeoPoint(-36.859, 174.7615), middle, destination],
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
       expect(nav.rerouting, isFalse);
       expect(nav.offRoute, isFalse);
@@ -516,9 +536,91 @@ void main() {
       drive.emit(const GeoPoint(-36.859, 174.7615), now);
       expect(attempts, 1);
       now = now.add(const Duration(seconds: 15));
-      drive.emit(const GeoPoint(-36.859, 174.7615), now);
+      for (var i = 0; i < 3; i++) {
+        drive.emit(const GeoPoint(-36.859, 174.7615), now);
+        now = now.add(const Duration(seconds: 2));
+      }
       await Future<void>.delayed(Duration.zero);
       expect(attempts, 2);
+    },
+  );
+  test('one bad course and short GPS drift never request a U-turn', () async {
+    final drive = FakeDrive()..course = 180;
+    var now = DateTime(2026);
+    var requests = 0;
+    final nav = IndependentNavigationEngine(
+      drive,
+      clock: () => now,
+      reroute: (_, _, _) async {
+        requests++;
+        return makeRoute();
+      },
+    );
+    addTearDown(() {
+      nav.dispose();
+      drive.dispose();
+    });
+    await nav.start(makeRoute());
+    for (var i = 0; i < 6; i++) {
+      drive.emit(GeoPoint(-36.86 + i * .0001, 174.76), now);
+      now = now.add(const Duration(seconds: 1));
+    }
+    expect(requests, 0);
+    drive.emit(const GeoPoint(-36.859, 174.7615), now);
+    now = now.add(const Duration(seconds: 1));
+    drive.emit(const GeoPoint(-36.859, 174.76), now);
+    expect(requests, 0);
+    expect(nav.offRoute, isFalse);
+  });
+  test('stale GPS cannot trigger closure rerouting', () async {
+    final drive = FakeDrive();
+    var now = DateTime(2026);
+    var requests = 0;
+    final nav = IndependentNavigationEngine(
+      drive,
+      clock: () => now,
+      reroute: (_, _, _) async {
+        requests++;
+        return makeRoute();
+      },
+    );
+    addTearDown(() {
+      nav.dispose();
+      drive.dispose();
+    });
+    await nav.start(makeRoute());
+    drive.emit(origin, now);
+    now = now.add(const Duration(seconds: 20));
+    drive.roadEvents = [closure()];
+    nav.checkClosureUpdates();
+    expect(requests, 0);
+  });
+  test(
+    'reroute returned behind the car is rejected without losing guidance',
+    () async {
+      final drive = FakeDrive();
+      var now = DateTime(2026);
+      final nav = IndependentNavigationEngine(
+        drive,
+        clock: () => now,
+        reroute: (_, _, _) async => makeRoute(),
+      );
+      addTearDown(() {
+        nav.dispose();
+        drive.dispose();
+      });
+      final original = makeRoute();
+      await nav.start(original);
+      for (var i = 0; i < 3; i++) {
+        drive.emit(const GeoPoint(-36.859, 174.7615), now);
+        now = now.add(const Duration(seconds: 2));
+      }
+      await Future<void>.delayed(Duration.zero);
+      expect(nav.route, same(original));
+      expect(nav.rerouting, isFalse);
+      expect(nav.offRoute, isTrue);
+      expect(nav.error, isNotNull);
+      expect(drive.active, isTrue);
     },
   );
 }

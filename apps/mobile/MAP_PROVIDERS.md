@@ -1,7 +1,8 @@
 # Map providers and navigation
 
-Settings offers Google Maps and **Waybi Map**, an independent experiment.
-Existing `mapbox` preferences migrate to Practice. The Mapbox SDK and token requirement have been removed; old usage records remain readable.
+**Waybi Map** is the only selectable mobile map. Existing Google/Mapbox settings and Home/Work shortcuts migrate to Waybi Map on launch. Google Maps is not initialized, and iOS/Android builds no longer require a Maps API key. Google sign-in remains independent of the map choice.
+
+Legacy Google adapter types are still compiled for compatibility; the application always restores and applies the independent provider.
 
 ## Waybi Map
 
@@ -34,11 +35,13 @@ No map token is needed. Optional `--dart-define` overrides:
 | `KIWI_OSRM_BIKE_URL` | `https://routing.openstreetmap.de/routed-bike` |
 | `KIWI_MOTIS_URL` | `https://api.transitous.org` (development only; self-host for production) |
 
-The ignored `.dart-defines.local.json` is supported by existing launch scripts. Google platform keys remain configured separately. Google Places content is never requested or displayed in Practice; independent OSM/AT data retains its provenance.
+The ignored `.dart-defines.local.json` is supported by existing launch scripts. Google Maps platform keys are no longer required. Google Places content is never requested or displayed in Practice; independent OSM/AT data retains its provenance.
 
-## Google navigation
+## Route progress and GPS recovery
 
-Native SDK guidance retains one native location indicator. Flutter's extra Waybi marker and radar polygons are restricted to browsing: the SDK has no public API to replace its navigation vehicle indicator. This removes projection races during junction zoom. Native junction zoom is retained without repeated forced zoom levels. On iOS, a platform channel explicitly releases the SDK follow camera after a user gesture. The shared HUD reports top and bottom insets to the native map.
+Navigation draws confirmed travelled geometry in muted grey and keeps the remaining route highlighted. Route traffic is clipped to the remaining path. Just Drive draws an in-memory trail, splitting at GPS gaps and clearing it on exit; no trip history is persisted.
+
+Stationary startup accepts consistent fixes up to 35 m accuracy. Reacquisition permits three consistent ordinary-accuracy fixes with sparse callbacks. Fresh provisional route origins can replace expired confirmed origins. Deviation requires three fresh observations over at least four seconds; heading-only U-turn detection requires corroborating displacement. Reroute results are checked against the current GPS position, and route and restriction checks have bounded timeouts.
 
 ## Verification
 

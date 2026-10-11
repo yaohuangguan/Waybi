@@ -544,6 +544,37 @@ void main() {
       expect(attempts, 2);
     },
   );
+  test(
+    'sustained reverse travel is detected at city speed with frequent fixes',
+    () async {
+      final drive = FakeDrive()..course = 180;
+      var now = DateTime(2026);
+      var requests = 0;
+      final nav = IndependentNavigationEngine(
+        drive,
+        clock: () => now,
+        reroute: (_, _, _) async {
+          requests++;
+          return makeRoute();
+        },
+      );
+      addTearDown(() {
+        nav.dispose();
+        drive.dispose();
+      });
+      await nav.start(makeRoute());
+      for (var i = 0; i < 10; i++) {
+        drive.emit(
+          GeoPoint(middle.latitude - i * .00007, middle.longitude),
+          now,
+          speed: 28,
+        );
+        now = now.add(const Duration(seconds: 1));
+      }
+      await Future<void>.delayed(Duration.zero);
+      expect(requests, 1);
+    },
+  );
   test('one bad course and short GPS drift never request a U-turn', () async {
     final drive = FakeDrive()..course = 180;
     var now = DateTime(2026);

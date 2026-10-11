@@ -50,7 +50,7 @@ class IndependentNavigationEngine extends ChangeNotifier
   int _arrivalFixes = 0;
   DateTime? _offRouteSince;
   DateTime? _lastDeviationAt;
-  GeoPoint? _previousPoint;
+  final List<({GeoPoint point, DateTime time})> _directionHistory = [];
 
   bool get _usableGps {
     final position = drive.latestPosition;
@@ -200,7 +200,7 @@ class IndependentNavigationEngine extends ChangeNotifier
     _offRouteSince = null;
     _arrivalFixes = 0;
     _lastDeviationAt = null;
-    _previousPoint = null;
+    _directionHistory.clear();
     offRoute = false;
     arrived = false;
     drive.setRoute(route, preserveAlerts: preserveAlerts);
@@ -275,15 +275,21 @@ class IndependentNavigationEngine extends ChangeNotifier
       _offRouteFixes = 0;
       _offRouteSince = null;
       _lastDeviationAt = null;
-      _previousPoint = null;
+      _directionHistory.clear();
       return;
     }
     final point = GeoPoint(location.latitude, location.longitude);
     final progress = drive.routeProgress;
     if (progress == null) return;
     final now = _clock();
-    final previousPoint = _previousPoint;
-    _previousPoint = point;
+    _directionHistory.removeWhere(
+      (sample) => now.difference(sample.time) > const Duration(seconds: 6),
+    );
+    final previousPoint = _directionHistory.isEmpty
+        ? null
+        : _directionHistory.first.point;
+    _directionHistory.add((point: point, time: now));
+    if (_directionHistory.length > 64) _directionHistory.removeAt(0);
     final moved = previousPoint == null
         ? 0.0
         : distanceMeters(

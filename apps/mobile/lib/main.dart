@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -444,6 +445,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final _systemNavigation = SystemNavigation();
   DateTime? _lastDrivePositionAt;
   JourneyTracker? _journey;
+  Future<void>? _pendingRouteFlush;
   bool _lanesEnabled = true;
   bool _notifySafetyCameras = false;
   bool _notifyRoadIncidents = false;
@@ -3634,20 +3636,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     saved.insert(0, record);
     if (saved.length > 20) saved.removeRange(20, saved.length);
     await prefs.setStringList('waybi.saved.routes', saved);
-    if (_account.profile != null && _mapProvider == MapProvider.google) {
-      try {
-        await _account.recordRoute(
-          destinationName: poi.name,
-          latitude: poi.latLng.latitude,
-          longitude: poi.latLng.longitude,
-          mode: selected.mode.apiValue,
-          distanceMeters: selected.distanceMeters,
-          durationSeconds: selected.durationSeconds,
-        );
-      } catch (_) {
-        /* The on-device save remains available while offline. */
-      }
-    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Route saved on this device')),
@@ -3810,22 +3798,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _stopTransitTrip() async {
     if (!_transitTripRunning) return;
-    final route = _activeTransitRoute;
-    if (_account.profile != null && route != null && route.points.isNotEmpty) {
-      final destination = route.points.last;
-      unawaited(
-        _account
-            .recordRoute(
-              destinationName: _destinationTitle,
-              latitude: destination.latitude,
-              longitude: destination.longitude,
-              mode: WaybiTravelMode.transit.apiValue,
-              distanceMeters: route.distanceMeters,
-              durationSeconds: route.durationSeconds,
-            )
-            .catchError((_) {}),
-      );
-    }
     setState(() {
       _transitTripRunning = false;
       _activeTransitRoute = null;
@@ -4164,31 +4136,33 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         }
         await navigationController?.setNavigationUIEnabled(false);
       }
-      // Guests also keep a small, on-device aggregate (no location history).
-      if (!_account.signedIn &&
-          summary != null &&
+      // Only count GPS-tracked travel, never the entire planned route.
+      if (summary != null &&
           summary.distanceMeters.isFinite &&
           summary.distanceMeters > 0) {
-        unawaited(_recordGuestJourney(summary).catchError((Object _) {}));
-      }
-      if (_account.profile != null &&
-          route != null &&
-          route.points.isNotEmpty) {
-        final destination = route.points.last;
-        unawaited(
-          _account
-              .recordRoute(
-                destinationName: _destinationTitle,
-                latitude: destination.latitude,
-                longitude: destination.longitude,
-                mode: _selectedMode.apiValue,
-                distanceMeters:
-                    summary?.distanceMeters.round() ?? route.distanceMeters,
-                durationSeconds:
-                    summary?.elapsed.inSeconds ?? route.durationSeconds,
-              )
-              .catchError((_) {}),
-        );
+        if (_account.profile != null &&
+            route != null &&
+            route.points.isNotEmpty) {
+          final destination = route.points.last;
+          try {
+            await _queueAccountJourney(
+              destinationName: _destinationTitle,
+              latitude: destination.latitude,
+              longitude: destination.longitude,
+              mode: _selectedMode.apiValue,
+              distanceMeters: summary.distanceMeters.round(),
+              durationSeconds: summary.elapsed.inSeconds.clamp(0, 2000000),
+            );
+          } catch (_) {
+            // Navigation still ends if local persistence is unavailable.
+          }
+        } else {
+          try {
+            await _recordGuestJourney(summary);
+          } catch (_) {
+            // Navigation still ends if local persistence is unavailable.
+          }
+        }
       }
       if (!mounted) return;
       ++_arrivalRequest;
@@ -5648,6 +5622,109 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
+  String _newJourneyId() =>
+      'wb_${DateTime.now().microsecondsSinceEpoch}_${math.Random.secure().nextInt(0x7fffffff).toRadixString(16)}';
+
+  Future<void> _queueAccountJourney({
+    required String destinationName,
+    required double latitude,
+    required double longitude,
+    required String mode,
+    required int distanceMeters,
+    required int durationSeconds,
+  }) async {
+    final userId = _account.profile?.id;
+    if (userId == null || userId.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final journeyId = _newJourneyId();
+    final key = 'waybi.companion.outbox.v1.$userId.$journeyId';
+    // Persist before network I/O: offline trips survive app restarts.
+    await prefs.setString(
+      key,
+      jsonEncode({
+        'journeyId': journeyId,
+        'destinationName': destinationName,
+        'latitude': latitude,
+        'longitude': longitude,
+        'mode': mode,
+        'distanceMeters': distanceMeters,
+        'durationSeconds': durationSeconds,
+      }),
+    );
+    unawaited(_syncPendingAccountJourneys().catchError((Object _) {}));
+  }
+
+  Future<void> _syncPendingAccountJourneys() {
+    final active = _pendingRouteFlush;
+    if (active != null) return active;
+    final future = _flushPendingAccountJourneys();
+    _pendingRouteFlush = future;
+    return future.whenComplete(() => _pendingRouteFlush = null);
+  }
+
+  Future<void> _flushPendingAccountJourneys() async {
+    final userId = _account.profile?.id;
+    if (userId == null ||
+        userId.isEmpty ||
+        !_account.signedIn ||
+        _account.profile?.companionTotals == null) {
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final prefix = 'waybi.companion.outbox.v1.$userId.';
+    final keys = prefs.getKeys().where((key) => key.startsWith(prefix)).toList()
+      ..sort();
+    for (final key in keys) {
+      if (_account.profile?.id != userId || !_account.signedIn) break;
+      final raw = prefs.getString(key);
+      if (raw == null) continue;
+      try {
+        final route = jsonDecode(raw) as Map<String, dynamic>;
+        await _account.recordRoute(
+          journeyId: route['journeyId'] as String,
+          destinationName: route['destinationName'] as String,
+          latitude: (route['latitude'] as num).toDouble(),
+          longitude: (route['longitude'] as num).toDouble(),
+          mode: route['mode'] as String,
+          distanceMeters: (route['distanceMeters'] as num).toInt(),
+          durationSeconds: (route['durationSeconds'] as num).toInt(),
+        );
+        await prefs.remove(key); // Only after the backend confirms success.
+      } catch (_) {
+        // Keep the exact same idempotent payload for the next reconnect.
+        break;
+      }
+    }
+  }
+
+  Future<void> _syncGuestCompanionJourneys() async {
+    if (!_account.signedIn || _account.profile?.companionTotals == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    const prefix = 'waybi.companion.guest.v1.';
+    final trips = prefs.getInt('${prefix}trips') ?? 0;
+    if (trips <= 0) return;
+    var importId = prefs.getString('${prefix}import_id');
+    if (importId == null) {
+      importId = _newJourneyId();
+      await prefs.setString('${prefix}import_id', importId);
+    }
+    try {
+      await _account.importGuestJourneys(
+        importId: importId,
+        distanceMeters: prefs.getInt('${prefix}distance') ?? 0,
+        tripCount: trips,
+        durationSeconds: prefs.getInt('${prefix}duration') ?? 0,
+      );
+      // The import ID ensures a retry after a crash cannot double count.
+      await prefs.remove('${prefix}distance');
+      await prefs.remove('${prefix}duration');
+      await prefs.remove('${prefix}trips');
+      await prefs.remove('${prefix}import_id');
+    } catch (_) {
+      // Preserve local totals and import ID until a later successful sync.
+    }
+  }
+
   Future<void> _recordGuestJourney(JourneySummary summary) async {
     final prefs = await SharedPreferences.getInstance();
     const prefix = 'waybi.companion.guest.v1.';
@@ -5667,6 +5744,15 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<TripsSnapshot> _loadTripsSnapshot() async {
+    if (_account.signedIn) {
+      try {
+        await _account.refresh(); // Detect newly deployed lifetime API.
+      } catch (_) {
+        // Cached profile and local guest totals still work offline.
+      }
+      await _syncGuestCompanionJourneys();
+      await _syncPendingAccountJourneys();
+    }
     await _refreshQuickCommutes(force: true);
 
     final quickPlaces = <String, TripDestination>{};
@@ -5748,6 +5834,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     const guestPrefix = 'waybi.companion.guest.v1.';
     return TripsSnapshot(
+      lifetimeDistanceMeters: _account.profile?.companionTotals?.distanceMeters,
+      lifetimeTripCount: _account.profile?.companionTotals?.tripCount,
+      lifetimeDurationSeconds:
+          _account.profile?.companionTotals?.durationSeconds,
       guestDistanceMeters: prefs.getInt('${guestPrefix}distance') ?? 0,
       guestTripCount: prefs.getInt('${guestPrefix}trips') ?? 0,
       guestDurationSeconds: prefs.getInt('${guestPrefix}duration') ?? 0,

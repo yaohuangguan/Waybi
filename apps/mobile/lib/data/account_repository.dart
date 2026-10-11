@@ -7,6 +7,25 @@ import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
 
+class CompanionTotals {
+  const CompanionTotals({
+    required this.distanceMeters,
+    required this.tripCount,
+    required this.durationSeconds,
+  });
+
+  factory CompanionTotals.fromJson(Map<String, dynamic>? json) =>
+      CompanionTotals(
+        distanceMeters: (json?['distanceMeters'] as num?)?.toInt() ?? 0,
+        tripCount: (json?['tripCount'] as num?)?.toInt() ?? 0,
+        durationSeconds: (json?['durationSeconds'] as num?)?.toInt() ?? 0,
+      );
+
+  final int distanceMeters;
+  final int tripCount;
+  final int durationSeconds;
+}
+
 class AccountProfile {
   const AccountProfile({
     required this.email,
@@ -18,6 +37,7 @@ class AccountProfile {
     required this.recentDestinations,
     required this.plan,
     this.quickLocations = const [],
+    this.companionTotals,
     this.id = '',
     this.subscriptionSource,
     this.subscriptionExpiresAt,
@@ -32,6 +52,7 @@ class AccountProfile {
   final List<Map<String, dynamic>> recentDestinations;
   final List<Map<String, dynamic>> quickLocations;
   final String plan;
+  final CompanionTotals? companionTotals;
   final String id;
   final String? subscriptionSource;
   final DateTime? subscriptionExpiresAt;
@@ -55,6 +76,11 @@ class AccountProfile {
               .whereType<String>()
               .toList(),
       routes: list('routeHistory'),
+      companionTotals: json['companionTotals'] is Map<String, dynamic>
+          ? CompanionTotals.fromJson(
+              json['companionTotals'] as Map<String, dynamic>,
+            )
+          : null,
       places: list('savedPlaces'),
       reviews: list('reviews'),
       recentDestinations: list('recentDestinations'),
@@ -375,6 +401,7 @@ class AccountRepository extends ChangeNotifier {
   }
 
   Future<void> recordRoute({
+    required String journeyId,
     required String destinationName,
     required double latitude,
     required double longitude,
@@ -389,11 +416,36 @@ class AccountRepository extends ChangeNotifier {
           '/api/profile/routes',
           method: 'POST',
           body: {
+            'journeyId': journeyId,
             'destinationName': destinationName,
             'latitude': latitude,
             'longitude': longitude,
             'mode': mode,
             'distanceMeters': distanceMeters,
+            'durationSeconds': durationSeconds,
+          },
+        ),
+      ),
+    );
+    notifyListeners();
+  }
+
+  Future<void> importGuestJourneys({
+    required String importId,
+    required int distanceMeters,
+    required int tripCount,
+    required int durationSeconds,
+  }) async {
+    if (_session == null) throw StateError('Sign in to sync journeys');
+    profile = AccountProfile.fromJson(
+      _body(
+        await _request(
+          '/api/profile/companion/import',
+          method: 'POST',
+          body: {
+            'importId': importId,
+            'distanceMeters': distanceMeters,
+            'tripCount': tripCount,
             'durationSeconds': durationSeconds,
           },
         ),

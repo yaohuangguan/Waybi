@@ -420,8 +420,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
             const SizedBox(height: 8),
             Text(
               _text(
-                'Saved account trips (up to 100 recent) and trips recorded on this device as a guest.',
-                '统计最近最多 100 段账号行程及本机访客行程，不代表全部实际里程。',
+                'Account totals keep growing; guest journeys stay on this device until synced. Earlier deleted trips cannot be recovered.',
+                '账号累计不再受 100 条限制；访客记录保存在本机，历史已删除行程无法恢复。',
               ),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,

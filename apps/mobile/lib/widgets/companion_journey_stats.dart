@@ -11,12 +11,19 @@ class CompanionJourneyStats {
   factory CompanionJourneyStats.fromSnapshot(TripsSnapshot? snapshot) {
     final history = snapshot?.history ?? const <TripHistoryItem>[];
     final recorded = CompanionJourneyStats.fromHistory(history);
+    if (snapshot?.signedIn == true) {
+      return CompanionJourneyStats(
+        distanceMeters:
+            snapshot?.lifetimeDistanceMeters ?? recorded.distanceMeters,
+        tripCount: snapshot?.lifetimeTripCount ?? recorded.tripCount,
+        durationSeconds:
+            snapshot?.lifetimeDurationSeconds ?? recorded.durationSeconds,
+      );
+    }
     return CompanionJourneyStats(
-      distanceMeters:
-          recorded.distanceMeters + (snapshot?.guestDistanceMeters ?? 0),
-      tripCount: recorded.tripCount + (snapshot?.guestTripCount ?? 0),
-      durationSeconds:
-          recorded.durationSeconds + (snapshot?.guestDurationSeconds ?? 0),
+      distanceMeters: snapshot?.guestDistanceMeters ?? 0,
+      tripCount: snapshot?.guestTripCount ?? 0,
+      durationSeconds: snapshot?.guestDurationSeconds ?? 0,
     );
   }
 

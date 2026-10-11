@@ -117,6 +117,9 @@ class TripsSnapshot {
     this.guestDistanceMeters = 0,
     this.guestTripCount = 0,
     this.guestDurationSeconds = 0,
+    this.lifetimeDistanceMeters,
+    this.lifetimeTripCount,
+    this.lifetimeDurationSeconds,
   });
 
   final Map<String, TripDestination> quickPlaces;
@@ -130,6 +133,9 @@ class TripsSnapshot {
   final int guestDistanceMeters;
   final int guestTripCount;
   final int guestDurationSeconds;
+  final int? lifetimeDistanceMeters;
+  final int? lifetimeTripCount;
+  final int? lifetimeDurationSeconds;
 }
 
 class TripsResult {

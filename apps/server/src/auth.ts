@@ -171,6 +171,9 @@ async function userProfile(db, user, env) {
   const reviews = await db.prepare(`SELECT place_id AS placeId, place_name AS placeName,
     rating, comment, updated_at AS updatedAt
     FROM place_reviews WHERE user_id = ? ORDER BY updated_at DESC LIMIT 100`).bind(user.id).all();
+  const companion = await db.prepare(`SELECT distance_meters AS distanceMeters,
+    trip_count AS tripCount, duration_seconds AS durationSeconds
+    FROM companion_totals WHERE user_id = ?`).bind(user.id).first();
   const subscription = await subscriptionForUser(db, user.id);
   return {
     user: { id: user.id, email: user.email, displayName: profile?.display_name || '', providers: [
@@ -186,6 +189,11 @@ async function userProfile(db, user, env) {
     })),
     quickLocations: quickLocationsFromBookmarks(quick.results || []),
     routeHistory: routes.results || [],
+    companionTotals: {
+      distanceMeters: companion?.distanceMeters ?? 0,
+      tripCount: companion?.tripCount ?? 0,
+      durationSeconds: companion?.durationSeconds ?? 0,
+    },
     reviews: reviews.results || []
   };
 }
@@ -433,20 +441,44 @@ export async function handleAccount(request: Request, env) {
     const mode = body?.mode;
     const distance = body?.distanceMeters;
     const duration = body?.durationSeconds;
+    // A stable client-generated ID makes network retries exactly-once.
+    const recordId = body?.journeyId == null ? crypto.randomUUID() : body.journeyId;
+    if (typeof recordId !== 'string' || !/^[a-zA-Z0-9_-]{12,100}$/.test(recordId)) {
+      return response({ error: 'Invalid journey id' }, 400);
+    }
     if (!name || name.length > 200 || !['drive', 'transit', 'walk', 'bicycle'].includes(mode) ||
       !validCoordinate(body.latitude, body.longitude) ||
       (distance != null && (!Number.isFinite(distance) || distance < 0 || distance > 5_000_000)) ||
       (duration != null && (!Number.isFinite(duration) || duration < 0 || duration > 2_000_000))) {
       return response({ error: 'Invalid route history' }, 400);
     }
-    await db.prepare(`INSERT INTO route_history (id, user_id, destination_name,
+    await db.prepare(`INSERT OR IGNORE INTO route_history (id, user_id, destination_name,
       destination_latitude, destination_longitude, mode, distance_meters, duration_seconds, started_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(crypto.randomUUID(), user.id, name, body.latitude, body.longitude, mode,
-        distance == null ? null : Math.round(distance), duration == null ? null : Math.round(duration), Date.now()).run();
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM companion_route_receipts WHERE user_id = ? AND journey_id = ?
+      )`)
+      .bind(recordId, user.id, name, body.latitude, body.longitude, mode,
+        distance == null ? null : Math.round(distance), duration == null ? null : Math.round(duration), Date.now(),
+        user.id, recordId).run();
     await db.prepare(`DELETE FROM route_history WHERE user_id = ? AND id NOT IN
       (SELECT id FROM route_history WHERE user_id = ? ORDER BY started_at DESC LIMIT 100)`)
       .bind(user.id, user.id).run();
+    return response(await userProfile(db, user, env));
+  }
+  if (path === '/api/profile/companion/import' && request.method === 'POST') {
+    const body = await readBody(request);
+    const { importId, distanceMeters, tripCount, durationSeconds } = body || {};
+    if (typeof importId !== 'string' || !/^[a-zA-Z0-9_-]{12,100}$/.test(importId) ||
+        !Number.isSafeInteger(distanceMeters) || distanceMeters < 0 || distanceMeters > 1_000_000_000 ||
+        !Number.isSafeInteger(tripCount) || tripCount < 1 || tripCount > 1_000_000 ||
+        !Number.isSafeInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > 1_000_000_000) {
+      return response({ error: 'Invalid companion import' }, 400);
+    }
+    await db.prepare(`INSERT OR IGNORE INTO companion_guest_imports
+      (user_id, import_id, distance_meters, trip_count, duration_seconds, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)`)
+      .bind(user.id, importId, distanceMeters, tripCount, durationSeconds, Date.now()).run();
     return response(await userProfile(db, user, env));
   }
   if (path === '/api/profile/reviews' && request.method === 'POST') {

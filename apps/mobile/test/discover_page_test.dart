@@ -12,6 +12,10 @@ void main() {
         quickPlaces: const {},
         quickRoutes: const {},
         recent: const [],
+        signedIn: true,
+        lifetimeDistanceMeters: 151000,
+        lifetimeTripCount: 23,
+        lifetimeDurationSeconds: 36000,
         history: [
           TripHistoryItem(
             destination: const TripDestination(
@@ -68,9 +72,9 @@ void main() {
       expect(find.text('Discover'), findsOneWidget);
       expect(find.text('2 journeys · 2 places'), findsOneWidget);
       expect(find.text('Waybi has been with you for'), findsOneWidget);
-      expect(find.text('51.0'), findsOneWidget);
-      expect(find.text('2 trips'), findsOneWidget);
-      expect(find.text('1.3 hours'), findsOneWidget);
+      expect(find.text('151'), findsOneWidget);
+      expect(find.text('23 trips'), findsOneWidget);
+      expect(find.text('10.0 hours'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('A different direction'), 200);
       expect(find.text('A different direction'), findsOneWidget);
       expect(
@@ -78,7 +82,7 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.ensureVisible(find.text('Choose somewhere new'));
+      await tester.scrollUntilVisible(find.text('Choose somewhere new'), -200);
       await tester.tap(find.text('Choose somewhere new'));
       await tester.pumpAndSettle();
       expect(result, DiscoverAction.newDestination);

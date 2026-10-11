@@ -35,7 +35,7 @@ void main() {
     final results = await provider.search('42 veri', proximity: _auckland, language: 'en');
     expect(calls, 1);
     expect(results.single.name, '42 Verissimo Drive');
-    expect(results.single.category, isEmpty);
+    expect(results.single.category, 'approximate_address');
     expect(results.single.kind, PlaceKind.address);
   });
 

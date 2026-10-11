@@ -44,6 +44,27 @@ test('partial numbered street input uses a safe street-prefix lookup for autocom
   assert.deepEqual(results.map((item) => item.name), ['46 Verissimo Drive', '34 Verissimo Drive']);
 });
 
+
+test('street-only queries collapse address points into a distinguishable street result', async () => {
+  const parsed = parseNumberedStreetQuery('42 Verissimo Drive');
+  const streetParsed = { ...parsed, number: null };
+  const fetcher = async () => new Response(JSON.stringify({
+    features: [
+      { properties: { OBJECTID: 1, FullNumber: '34', RoadName: 'VERISSIMO', RoadType: 'DRIVE', FullAddress: '34 VERISSIMO DRIVE MANGERE AUCKLAND 2022', Locality: 'MANGERE' }, geometry: { coordinates: [174.788, -36.989] } },
+      { properties: { OBJECTID: 2, FullNumber: '46', RoadName: 'VERISSIMO', RoadType: 'DRIVE', FullAddress: '46 VERISSIMO DRIVE MANGERE AUCKLAND 2022', Locality: 'MANGERE' }, geometry: { coordinates: [174.787, -36.991] } }
+    ]
+  }), { headers: { 'content-type': 'application/json' } });
+  const results = await aucklandCouncilAddressProvider.search({
+    parsed: streetParsed,
+    near: [174.79, -36.98],
+    fetcher
+  });
+  assert.equal(results.length, 1);
+  assert.equal(results[0].name, 'Verissimo Drive');
+  assert.match(results[0].address, /Mangere, Auckland 2022, New Zealand/);
+  assert.equal(results[0].resultType, 'street');
+});
+
 test('street-only Auckland query collapses official addresses into one street result', async () => {
   const fetcher = async () => Response.json({
     features: [

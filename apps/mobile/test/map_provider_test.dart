@@ -40,6 +40,10 @@ void main() {
       isTrue,
     );
     expect(
+      independent.canDisplay(const ProviderReference('here', 'h1')),
+      isTrue,
+    );
+    expect(
       independent.canDisplay(const ProviderReference('google', 'g1')),
       isFalse,
     );

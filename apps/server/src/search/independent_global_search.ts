@@ -1,3 +1,4 @@
+import { parseNumberedStreetQuery } from './numbered_street_query.ts';
 import type { ProviderPayload } from "./../types.ts";
 import { GEOGRAPHIC_REGIONAL_RADIUS_METERS, isGeographicPlace, matchesGeographicName, maySearchGeographicName } from './place_intent.ts';
 import { distanceMeters } from '../geo.ts';
@@ -181,6 +182,29 @@ function ifStreetAddress(isStreetOnly, street) {
   return isStreetOnly ? '' : street;
 }
 
+function mapHerePlaces(data) {
+  return (data?.items || []).flatMap((item) => {
+    const latitude = Number(item?.position?.lat);
+    const longitude = Number(item?.position?.lng);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
+    const label = text(item?.address?.label) || text(item?.title);
+    const resultType = text(item?.resultType);
+    const isPoi = resultType === 'place';
+    const name = isPoi ? (text(item?.title) || label) : label;
+    return [{
+      id: text(item?.id) || label,
+      provider: 'here',
+      name,
+      address: label,
+      label,
+      isPoi,
+      resultType,
+      latitude,
+      longitude
+    }];
+  });
+}
+
 function mapPhotonPlaces(data) {
   return (data?.features || []).flatMap((feature) => {
     const props = feature?.properties || {};
@@ -287,6 +311,32 @@ async function fetchTomTom({ query, point, language, apiKey, trackUsage }) {
   }
 }
 
+async function fetchHere({ query, point, language, apiKey, trackUsage }) {
+  if (!apiKey) return [];
+  const numberedAddress = Boolean(parseNumberedStreetQuery(query));
+  const url = new URL(
+    numberedAddress
+      ? 'https://geocode.search.hereapi.com/v1/geocode'
+      : 'https://discover.search.hereapi.com/v1/discover'
+  );
+  url.searchParams.set('q', query);
+  url.searchParams.set('limit', '10');
+  url.searchParams.set('lang', language === 'zh' ? 'zh-CN' : 'en');
+  url.searchParams.set('apiKey', apiKey);
+  if (point) url.searchParams.set('at', `${point[1]},${point[0]}`);
+  trackUsage('here', numberedAddress ? 'geocode' : 'discover', 1);
+  try {
+    const response = await fetch(url, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(1400)
+    });
+    if (!response.ok) return [];
+    return mapHerePlaces(await response.json<ProviderPayload>());
+  } catch {
+    return [];
+  }
+}
+
 async function fetchPhoton({ query, point, language, trackUsage, timeoutMs = 1400, geographicOnly = false }) {
   const url = new URL('https://photon.komoot.io/api/');
   url.searchParams.set('q', query);
@@ -346,6 +396,7 @@ async function searchIndependentGlobalUncached({
 }) {
   let geoapify = [];
   let tomtom = [];
+  let here = [];
   let enrichments = [];
   let photon = [];
   let geographic = [];
@@ -354,7 +405,7 @@ async function searchIndependentGlobalUncached({
   let deliverUseful;
   const firstUseful = new Promise<unknown[]>((resolve) => { deliverUseful = resolve; });
   const considerEarlyResult = () => {
-    const results = mergeAndRankSearchResults([geographic, enrichments, tomtom, geoapify, photon], query, point, 12);
+    const results = mergeAndRankSearchResults([geographic, enrichments, here, tomtom, geoapify, photon], query, point, 12);
     if (useful(results)) deliverUseful(results);
   };
 
@@ -373,10 +424,12 @@ async function searchIndependentGlobalUncached({
       !results.some(place => matchesGeographicName(place, query) && point &&
         distanceMeters(point, [place.longitude, place.latitude]) <= GEOGRAPHIC_REGIONAL_RADIUS_METERS)) return false;
     if (!needsAddressEnrichment(results, query)) return true;
-    // A bounded nearby address completion is usable typeahead. Genuine exact
-    // results still win whenever they are present; waiting for every external
-    // provider to confirm a missing door number does not help the user.
-    return results.some(place => place.interpolated === true);
+    // Partial typeahead can use a bounded regional completion immediately.
+    // A full address gives exact providers the first-wave deadline so an
+    // interpolated door number cannot beat a real geocoder match.
+    const parsed = parseNumberedStreetQuery(query);
+    return Boolean(parsed && !parsed.roadType &&
+      results.some(place => place.interpolated === true));
   };
   await Promise.race([regionalPromise, wait(220)]);
   const regionalOnly = mergeAndRankSearchResults([enrichments], query, point, 12);
@@ -406,6 +459,14 @@ async function searchIndependentGlobalUncached({
     return results;
   });
 
+  const herePromise = fetchHere({
+    query, point, language, apiKey: env?.HERE_API_KEY, trackUsage,
+  }).then(results => {
+    here = results;
+    considerEarlyResult();
+    return results;
+  });
+
   const geographicPromise = geographicQuery ? fetchPhoton({
     query, point, language, trackUsage, geographicOnly: true,
     timeoutMs: Math.max(1, 1800 - (Date.now() - started)),
@@ -415,7 +476,7 @@ async function searchIndependentGlobalUncached({
     considerEarlyResult();
     return results;
   }) : Promise.resolve([]);
-  const firstWave = [regionalPromise, geoPromise, tomtomPromise, geographicPromise];
+  const firstWave = [regionalPromise, geoPromise, tomtomPromise, herePromise, geographicPromise];
   // Use deadlines measured from request start. The old serial waits added
   // 280 + 520 + 720 ms, before a last-resort Photon request even began.
   const early = await Promise.race([firstUseful, Promise.allSettled(firstWave).then(() => null),
@@ -423,12 +484,12 @@ async function searchIndependentGlobalUncached({
   if (early) return early;
 
   let merged = mergeAndRankSearchResults(
-    [geographic, enrichments, tomtom, geoapify],
+    [geographic, enrichments, here, tomtom, geoapify],
     query,
     point,
     12
   );
-  if (useful(merged)) {
+  if (useful(merged) || merged.some(place => place.interpolated === true)) {
     return merged;
   }
 
@@ -445,7 +506,7 @@ async function searchIndependentGlobalUncached({
     wait(Math.max(0, 1800 - (Date.now() - started))).then(() => null)]);
   if (later) return later;
   merged = mergeAndRankSearchResults(
-    [geographic, enrichments, tomtom, geoapify, photon],
+    [geographic, enrichments, here, tomtom, geoapify, photon],
     query,
     point,
     12

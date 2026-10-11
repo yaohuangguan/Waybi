@@ -159,8 +159,11 @@ class WorkerSearchProvider implements CachedSearchProvider, ExploreProvider {
               item['isPoi'] == false || RegExp(r'^\d+\s').hasMatch(displayName);
           return PlaceCandidate(
             name: displayName,
-            category: item['resultType']?.toString() ?? '',
             address: address.isEmpty ? label : address,
+            category:
+                (item['approximate'] == true || item['interpolated'] == true)
+                ? 'approximate_address'
+                : item['resultType']?.toString() ?? '',
             kind: isAddress ? PlaceKind.address : PlaceKind.poi,
             location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
             reference: ProviderReference(
@@ -454,6 +457,7 @@ class IndependentSearchProvider
             final provider = item['provider']?.toString() ?? 'osm';
             if (provider != 'osm' &&
                 provider != 'geoapify' &&
+                provider != 'here' &&
                 provider != 'tomtom' &&
                 !provider.startsWith('derived:') &&
                 !provider.startsWith('regional:')) {
@@ -463,8 +467,11 @@ class IndependentSearchProvider
             final address = item['address']?.toString().trim() ?? '';
             return PlaceSummary(
               name: name.isEmpty ? address : name,
-              category: item['resultType']?.toString() ?? '',
               address: address,
+              category:
+                  (item['approximate'] == true || item['interpolated'] == true)
+                  ? 'approximate_address'
+                  : item['resultType']?.toString() ?? '',
               location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
               kind: PlaceKind.address,
               reference: ProviderReference(

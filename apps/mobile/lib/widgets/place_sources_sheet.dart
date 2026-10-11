@@ -76,6 +76,14 @@ void showPlaceSources(
                 ),
                 child: const Text('© TomTom'),
               ),
+            if (providerSet.contains('here'))
+              TextButton(
+                onPressed: () => launchUrl(
+                  Uri.parse('https://www.here.com'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: const Text('© HERE'),
+              ),
             for (final credit in regionalCredits)
               TextButton(
                 onPressed: () => launchUrl(

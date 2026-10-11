@@ -119,6 +119,7 @@ export const aucklandCouncilAddressProvider = {
         provider: 'regional:auckland-council',
         sourceName: 'Auckland Council',
         name: road,
+        resultType: 'street',
         address: locality,
         label: [road, locality].filter(Boolean).join(', '),
         isPoi: false,

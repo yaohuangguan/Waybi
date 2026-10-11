@@ -67,6 +67,10 @@ void main() {
 
       expect(find.text('Discover'), findsOneWidget);
       expect(find.text('2 journeys · 2 places'), findsOneWidget);
+      expect(find.text('Waybi has been with you for'), findsOneWidget);
+      expect(find.text('51.0'), findsOneWidget);
+      expect(find.text('2 trips'), findsOneWidget);
+      expect(find.text('1.3 hours'), findsOneWidget);
       await tester.scrollUntilVisible(find.text('A different direction'), 200);
       expect(find.text('A different direction'), findsOneWidget);
       expect(

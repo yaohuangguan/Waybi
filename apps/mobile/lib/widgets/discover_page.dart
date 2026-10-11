@@ -6,6 +6,7 @@ import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import '../domain/road_event.dart';
 import '../theme/waybi_theme.dart';
+import 'companion_journey_stats.dart';
 import 'discover_memory.dart';
 import 'trips_page.dart';
 
@@ -176,8 +177,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
   };
   Widget _roadCard() {
     final nearby = _nearbyEvents;
-    final unavailable = _roads?.status == 'not_loaded' ||
-      (_roads?.status == 'unavailable' && _roads?.checkedAt == null);
+    final unavailable =
+        _roads?.status == 'not_loaded' ||
+        (_roads?.status == 'unavailable' && _roads?.checkedAt == null);
     final coverage = _roads?.officialCoverage ?? const <String>[];
     final publisher = coverage.contains('NZ')
         ? 'NZTA'
@@ -309,6 +311,128 @@ class _DiscoverPageState extends State<DiscoverPage> {
     );
   }
 
+  Widget _companionCard(TripsSnapshot? snapshot) {
+    final theme = Theme.of(context);
+    final stats = CompanionJourneyStats.fromSnapshot(snapshot);
+    final busy = _loading;
+    final hasTrips = stats.tripCount > 0;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: .50),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: .12),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.route_rounded, color: theme.colorScheme.primary),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  _text('Our journeys together', '我们一起走过的路'),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            _text('Waybi has been with you for', 'Waybi 已陪你走过'),
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 4),
+          Semantics(
+            label: _text(
+              '${stats.kilometres} kilometres recorded with Waybi',
+              'Waybi 已记录 ${stats.kilometres} 公里',
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Flexible(
+                  child: Text(
+                    busy ? '—' : stats.kilometres,
+                    maxLines: 1,
+                    style: theme.textTheme.displayMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -1.5,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Text(
+                  _text('km', '公里'),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (!busy && !_historyError && hasTrips)
+            Row(
+              children: [
+                Icon(
+                  Icons.flag_outlined,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _text('${stats.tripCount} trips', '${stats.tripCount} 段旅程'),
+                ),
+                const SizedBox(width: 18),
+                Icon(
+                  Icons.schedule_outlined,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(_text('${stats.hours} hours', '${stats.hours} 小时')),
+              ],
+            )
+          else
+            Text(
+              busy
+                  ? _text('Loading your recorded journeys…', '正在读取已记录的旅程…')
+                  : _historyError
+                  ? _text(
+                      'Journey data is unavailable. Pull down to retry.',
+                      '旅程数据暂时不可用，下拉可重试。',
+                    )
+                  : _text(
+                      'Every new trip is a memory we make together.',
+                      '从下一段旅程开始，一起积累新的回忆。',
+                    ),
+              style: theme.textTheme.bodySmall,
+            ),
+          if (hasTrips && !busy && !_historyError) ...[
+            const SizedBox(height: 8),
+            Text(
+              _text(
+                'Saved account trips (up to 100 recent) and trips recorded on this device as a guest.',
+                '统计最近最多 100 段账号行程及本机访客行程，不代表全部实际里程。',
+              ),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -382,6 +506,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 ],
               ),
             ),
+            const SizedBox(height: 14),
+            _companionCard(_snapshot),
             const SizedBox(height: 12),
             Wrap(
               alignment: WrapAlignment.spaceBetween,

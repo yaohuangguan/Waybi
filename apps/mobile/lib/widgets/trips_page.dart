@@ -114,6 +114,9 @@ class TripsSnapshot {
     this.smartCommuteRoutes = const {},
     this.signedIn = false,
     this.isPlus = false,
+    this.guestDistanceMeters = 0,
+    this.guestTripCount = 0,
+    this.guestDurationSeconds = 0,
   });
 
   final Map<String, TripDestination> quickPlaces;
@@ -124,6 +127,9 @@ class TripsSnapshot {
   final Map<String, RouteOption> smartCommuteRoutes;
   final bool signedIn;
   final bool isPlus;
+  final int guestDistanceMeters;
+  final int guestTripCount;
+  final int guestDurationSeconds;
 }
 
 class TripsResult {

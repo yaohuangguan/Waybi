@@ -4164,8 +4164,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         }
         await navigationController?.setNavigationUIEnabled(false);
       }
+      // Guests also keep a small, on-device aggregate (no location history).
+      if (!_account.signedIn &&
+          summary != null &&
+          summary.distanceMeters.isFinite &&
+          summary.distanceMeters > 0) {
+        unawaited(_recordGuestJourney(summary).catchError((Object _) {}));
+      }
       if (_account.profile != null &&
-          route?.provider != 'independent' &&
           route != null &&
           route.points.isNotEmpty) {
         final destination = route.points.last;
@@ -5642,6 +5648,24 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _recordGuestJourney(JourneySummary summary) async {
+    final prefs = await SharedPreferences.getInstance();
+    const prefix = 'waybi.companion.guest.v1.';
+    await prefs.setInt(
+      '${prefix}distance',
+      (prefs.getInt('${prefix}distance') ?? 0) + summary.distanceMeters.round(),
+    );
+    await prefs.setInt(
+      '${prefix}duration',
+      (prefs.getInt('${prefix}duration') ?? 0) +
+          summary.elapsed.inSeconds.clamp(0, 86400),
+    );
+    await prefs.setInt(
+      '${prefix}trips',
+      (prefs.getInt('${prefix}trips') ?? 0) + 1,
+    );
+  }
+
   Future<TripsSnapshot> _loadTripsSnapshot() async {
     await _refreshQuickCommutes(force: true);
 
@@ -5690,7 +5714,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           mode: record['mode']?.toString() ?? 'drive',
           distanceMeters: distance.toInt(),
           durationSeconds: duration.toInt(),
-          createdAt: DateTime.tryParse(record['createdAt']?.toString() ?? ''),
+          createdAt: record['startedAt'] is num
+              ? DateTime.fromMillisecondsSinceEpoch(
+                  (record['startedAt'] as num).toInt(),
+                )
+              : DateTime.tryParse(
+                  (record['createdAt'] ?? record['startedAt'])?.toString() ??
+                      '',
+                ),
         ),
       );
     }
@@ -5714,7 +5745,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       setState(_smartCommuteRoutes.clear);
     }
 
+    final prefs = await SharedPreferences.getInstance();
+    const guestPrefix = 'waybi.companion.guest.v1.';
     return TripsSnapshot(
+      guestDistanceMeters: prefs.getInt('${guestPrefix}distance') ?? 0,
+      guestTripCount: prefs.getInt('${guestPrefix}trips') ?? 0,
+      guestDurationSeconds: prefs.getInt('${guestPrefix}duration') ?? 0,
       quickPlaces: quickPlaces,
       quickRoutes: Map<String, RouteOption>.from(_quickCommuteRoutes),
       recent: recent,

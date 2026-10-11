@@ -419,10 +419,16 @@ class _DiscoverPageState extends State<DiscoverPage> {
           if (hasTrips && !busy && !_historyError) ...[
             const SizedBox(height: 8),
             Text(
-              _text(
-                'Account totals keep growing; guest journeys stay on this device until synced. Earlier deleted trips cannot be recovered.',
-                '账号累计不再受 100 条限制；访客记录保存在本机，历史已删除行程无法恢复。',
-              ),
+              snapshot?.signedIn == true &&
+                      snapshot?.lifetimeDistanceMeters == null
+                  ? _text(
+                      'Showing recent saved trips while lifetime sync is being enabled.',
+                      '终身累计同步尚未启用，目前展示最近已保存的行程。',
+                    )
+                  : _text(
+                      'Account totals keep growing; guest journeys stay on this device until synced. Earlier deleted trips cannot be recovered.',
+                      '账号累计不再受 100 条限制；访客记录保存在本机，历史已删除行程无法恢复。',
+                    ),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

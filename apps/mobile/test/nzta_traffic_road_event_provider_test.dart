@@ -57,8 +57,12 @@ void main() {
               'roadName': 'SH 1 Auckland',
               'severity': 'warning',
               'confidence': 0.95,
-              'validFrom': '2026-09-25T00:00:00Z',
-              'validUntil': '2026-09-27T00:00:00Z',
+              'validFrom': DateTime.now()
+                  .subtract(const Duration(hours: 1))
+                  .toIso8601String(),
+              'validUntil': DateTime.now()
+                  .add(const Duration(hours: 1))
+                  .toIso8601String(),
               'source': {
                 'provider': 'NZTA Traffic and Travel',
                 'country': 'NZ',

@@ -217,10 +217,19 @@ pnpm mobile:test
 pnpm mobile:build:apk
 pnpm mobile:ios
 pnpm mobile:ios:install
+pnpm mobile:ios:check
 pnpm mobile:ios:ipa
 ```
 
 Provider keys/tokens for local mobile builds belong in local, uncommitted configuration. Do not commit API keys, retired provider tokens or unrestricted server credentials.
+
+Each Mac worktree needs its ignored native iOS configuration as well as any Dart
+defines. `MAPS_API_KEY` comes from the private xcconfig included by
+`ios/Flutter/Release.xcconfig`; a Dart defines file alone does not populate the
+native Maps SDK key. Release installation and IPA commands check the assembled
+app's Info.plist and stop on a missing, empty or unresolved key, without printing
+the value. `pnpm mobile:ios:check` checks an existing release bundle; use
+`node scripts/ios-device.mjs check /path/to/Runner.app` for an archived bundle.
 
 ## Testing
 

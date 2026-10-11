@@ -13,6 +13,8 @@ class MapLayerSheet extends StatefulWidget {
     required this.language,
     this.trafficStatus = 'not_loaded',
     this.trafficSegmentCount = 0,
+    this.transitLaneCount = 0,
+    this.reviewCorridorCount = 0,
   });
 
   final MapLayerSettings settings;
@@ -21,6 +23,8 @@ class MapLayerSheet extends StatefulWidget {
   final String language;
   final String trafficStatus;
   final int trafficSegmentCount;
+  final int transitLaneCount;
+  final int reviewCorridorCount;
 
   @override
   State<MapLayerSheet> createState() => _MapLayerSheetState();
@@ -342,6 +346,37 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                             update(current.copyWith(traffic: value)),
                       ),
                     ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      secondary: const Icon(Icons.add_road_rounded),
+                      title: Text(
+                        _text('Road closures & incidents', '封路与道路事件'),
+                      ),
+                      subtitle: Text(
+                        _text(
+                          'Official updates and driver reports. Driving alerts stay on separately.',
+                          '官方路况与用户报告；驾驶提醒可独立设置。',
+                        ),
+                      ),
+                      value: current.roadEvents,
+                      onChanged: (value) =>
+                          update(current.copyWith(roadEvents: value)),
+                    ),
+                    if (widget.mapProvider == MapProvider.independent)
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        secondary: const Icon(Icons.directions_bus_rounded),
+                        title: Text(_text('Bus & transit lanes', '公交与专用车道')),
+                        subtitle: Text(
+                          _text(
+                            '${widget.transitLaneCount} Auckland lanes · ${widget.reviewCorridorCount} Christchurch/Wellington centreline hints (amber, not verified lane bounds). Tap for details.',
+                            '奥克兰 ${widget.transitLaneCount} 段 · 基督城/惠灵顿 ${widget.reviewCorridorCount} 段候选道路中心线（橙色，非车道边界），点击了解。',
+                          ),
+                        ),
+                        value: current.transitLanes,
+                        onChanged: (value) =>
+                            update(current.copyWith(transitLanes: value)),
+                      ),
                     const Divider(),
                     Theme(
                       data: Theme.of(
@@ -402,7 +437,7 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                     _cameraToggle(
                       icon: Icons.traffic_rounded,
                       en: 'Red light',
-                      zh: '闯红灯',
+                      zh: '红灯',
                       visible: current.redLight,
                       onVisible: (v) => update(current.copyWith(redLight: v)),
                       alert: current.alertRedLight,
@@ -412,7 +447,7 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                     _cameraToggle(
                       icon: Icons.emergency_share_outlined,
                       en: 'Red light + speed',
-                      zh: '闯红灯 + 测速',
+                      zh: '红灯 + 测速',
                       visible: current.dualRedLightSpeed,
                       onVisible: (v) =>
                           update(current.copyWith(dualRedLightSpeed: v)),

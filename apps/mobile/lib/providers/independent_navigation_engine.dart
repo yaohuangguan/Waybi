@@ -7,6 +7,9 @@ import 'package:geolocator/geolocator.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
+import '../domain/road_event.dart';
+import '../domain/route_road_events.dart';
+import '../domain/transit_lane.dart';
 import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
 import '../drive/route_camera_matcher.dart';
@@ -46,6 +49,73 @@ class IndependentNavigationEngine extends ChangeNotifier
   int _arrivalFixes = 0;
   DateTime? _offRouteSince;
   DateTime? _lastReroute;
+  DateTime? _lastClosureCheck;
+  String? _lastClosureAttempt;
+  bool _closureWarning = false;
+  bool transitRestrictionAhead = false;
+
+  /// Called when shared road events refresh, including while GPS is stationary.
+  /// Official closures ahead can trigger rerouting before the car goes off-route.
+  void checkClosureUpdates() {
+    final route = _route;
+    final location = drive.latestPosition;
+    if (route == null ||
+        route.mode != WaybiTravelMode.drive ||
+        location == null ||
+        arrived ||
+        rerouting ||
+        reroute == null) {
+      return;
+    }
+    final now = _clock();
+    if (_lastClosureCheck != null &&
+        now.difference(_lastClosureCheck!).inSeconds < 15) {
+      return;
+    }
+    _lastClosureCheck = now;
+    final matches = routeClosures(
+      route,
+      drive.roadEvents
+          .where((event) => event.observation == RoadEventObservation.official)
+          .toList(),
+      progressMeters: _alongMeters,
+      now: now,
+    );
+    final restricted = transitRoadBlocks(
+      route,
+      drive.transitLaneMatches,
+      now,
+      progressMeters: _alongMeters,
+    );
+    transitRestrictionAhead = restricted.isNotEmpty;
+    if (matches.isEmpty && restricted.isEmpty) {
+      _lastClosureAttempt = null;
+      if (_closureWarning) {
+        _closureWarning = false;
+        error = null;
+        notifyListeners();
+      }
+      return;
+    }
+    final fingerprint = matches
+        .map((event) => '${event.id}:${event.validFrom}:${event.validUntil}')
+        .followedBy(restricted.map((m) => m.lane.id))
+        .join('|');
+    if (_lastClosureAttempt == fingerprint &&
+        _lastReroute != null &&
+        now.difference(_lastReroute!).inSeconds < 60) {
+      return;
+    }
+    _lastClosureAttempt = fingerprint;
+    unawaited(
+      _reroute(
+        GeoPoint(location.latitude, location.longitude),
+        closureTriggered: true,
+        transitRestriction: restricted.isNotEmpty,
+      ),
+    );
+  }
+
   bool rerouting = false;
   bool offRoute = false;
   bool arrived = false;
@@ -117,15 +187,30 @@ class IndependentNavigationEngine extends ChangeNotifier
 
   @override
   Future<void> start(RouteOption route, {Position? initialPosition}) async {
-    if (route.provider != 'independent' || route.points.length < 2) {
+    if (route.provider != 'independent' ||
+        route.points.length < 2 ||
+        route.blockedForDriving) {
       throw StateError(
         'Independent navigation requires a valid Independent route',
+      );
+    }
+    if (transitRoadBlocks(
+      route,
+      await drive.transitMatchesForRoute(route),
+      _clock(),
+    ).isNotEmpty) {
+      throw StateError(
+        'This route uses a bus-only road during restricted hours',
       );
     }
     ++_session;
     drive.removeListener(_onLocation);
     _lastLocationRevision = -1;
     _lastReroute = null;
+    _lastClosureCheck = null;
+    _lastClosureAttempt = null;
+    _closureWarning = false;
+    transitRestrictionAhead = false;
     rerouting = false;
     error = null;
     // Geolocator keeps the settings of its first active stream. Restart an
@@ -193,7 +278,7 @@ class IndependentNavigationEngine extends ChangeNotifier
     }
     _offRouteFixes = 0;
     _offRouteSince = null;
-    error = null;
+    if (!_closureWarning) error = null;
     _alongMeters = progress.alongMeters;
     final fraction = _geometryMeters > 0
         ? (_alongMeters / _geometryMeters).clamp(0.0, 1.0)
@@ -251,6 +336,7 @@ class IndependentNavigationEngine extends ChangeNotifier
       _arrivalFixes = 0;
     }
     if (!arrived &&
+        !transitRestrictionAhead &&
         _nextStep != null &&
         _nextStep!.maneuverType != 'arrive' &&
         drive.voiceEnabled) {
@@ -286,7 +372,11 @@ class IndependentNavigationEngine extends ChangeNotifier
     notifyListeners();
   }
 
-  Future<void> _reroute(GeoPoint point) async {
+  Future<void> _reroute(
+    GeoPoint point, {
+    bool closureTriggered = false,
+    bool transitRestriction = false,
+  }) async {
     final session = _session;
     final previous = _route!;
     final stops = remainingStops;
@@ -299,20 +389,53 @@ class IndependentNavigationEngine extends ChangeNotifier
         point,
         previous,
         stops,
-      ).timeout(const Duration(seconds: 10));
-      if (session != _session || _route == null || !offRoute || arrived) return;
+      ).timeout(const Duration(seconds: 12));
+      if (session != _session ||
+          !identical(_route, previous) ||
+          (!offRoute && !closureTriggered) ||
+          arrived) {
+        return;
+      }
       if (replacement.provider != 'independent' ||
           replacement.mode != previous.mode ||
-          replacement.points.length < 2) {
+          replacement.points.length < 2 ||
+          replacement.blockedForDriving) {
         throw StateError('Invalid reroute');
       }
+      if (transitRoadBlocks(
+        replacement,
+        await drive.transitMatchesForRoute(replacement),
+        _clock(),
+      ).isNotEmpty) {
+        throw StateError('Reroute uses a restricted bus-only road');
+      }
+      if (session != _session ||
+          !identical(_route, previous) ||
+          (!offRoute && !closureTriggered) ||
+          arrived) {
+        return;
+      }
       _setRoute(replacement, preserveAlerts: true);
+      _closureWarning = false;
+      transitRestrictionAhead = false;
+      error = null;
       _lastLocationRevision = -1;
       rerouting = false;
       _onLocation();
     } catch (_) {
       if (session == _session && _route != null) {
-        error = 'Could not update route. Retrying when connected.';
+        _closureWarning = closureTriggered;
+        error = transitRestriction
+            ? drive.navigationLanguage == 'zh'
+                  ? '前方公交专用路段禁止通行，暂时未找到可用的绕行路线。'
+                  : 'Bus-only road ahead. Could not find a legal alternative yet.'
+            : closureTriggered
+            ? drive.navigationLanguage == 'zh'
+                  ? '前方封路，暂时未找到可用的绕行路线。'
+                  : 'Closure ahead. Could not find a detour yet.'
+            : drive.navigationLanguage == 'zh'
+            ? '暂时无法更新路线，连接恢复后重试。'
+            : 'Could not update route. Retrying when connected.';
       }
     } finally {
       if (session == _session && _route != null) {
@@ -332,6 +455,10 @@ class IndependentNavigationEngine extends ChangeNotifier
     offRoute = false;
     arrived = false;
     error = null;
+    _closureWarning = false;
+    transitRestrictionAhead = false;
+    _lastClosureCheck = null;
+    _lastClosureAttempt = null;
     _distanceToStep = 0;
     _remainingMeters = 0;
     _remainingSeconds = 0;

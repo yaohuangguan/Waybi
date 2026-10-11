@@ -18,7 +18,9 @@ void main() {
         'waybi.cache.cameras.v1': jsonEncode({
           'syncStatus': 'live',
           'sourceUpdatedAt': '2026-10-01T00:00:00Z',
-          'checkedAt': '2026-10-01T00:05:00Z',
+          'checkedAt': DateTime.now()
+              .subtract(const Duration(minutes: 3))
+              .toIso8601String(),
           'cameras': [
             {
               'id': 'camera-1',
@@ -52,7 +54,9 @@ void main() {
       SharedPreferences.setMockInitialValues({
         'waybi.cache.road_events.v1': jsonEncode({
           'syncStatus': 'live',
-          'checkedAt': '2026-10-01T00:05:00Z',
+          'checkedAt': DateTime.now()
+              .subtract(const Duration(minutes: 3))
+              .toIso8601String(),
           'events': [
             {
               'id': 'roadworks-1',

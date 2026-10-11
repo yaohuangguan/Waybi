@@ -98,7 +98,9 @@ class RouteStepInfo {
               indications: (lane['indications'] as List<dynamic>? ?? const [])
                   .whereType<String>()
                   .toList(),
-              recommended: lane['valid'] == true,
+              recommended: lane['active'] is bool
+                  ? lane['active'] == true
+                  : lane['valid'] == true,
             ),
           )
           .toList(),
@@ -176,6 +178,8 @@ class RouteOption {
     this.transit = const [],
     this.steps = const [],
     this.waypoints = const [],
+    this.closureIds = const [],
+    this.restrictedRoadIds = const [],
   });
 
   final String id;
@@ -195,6 +199,11 @@ class RouteOption {
   final TrafficSummary traffic;
   final List<TrafficInterval> trafficIntervals;
   final String provider;
+  final List<String> closureIds;
+  final List<String> restrictedRoadIds;
+  bool get blockedByClosure => closureIds.isNotEmpty;
+  bool get blockedForDriving =>
+      blockedByClosure || restrictedRoadIds.isNotEmpty;
 
   bool get hasTrafficData =>
       trafficIntervals.isNotEmpty ||
@@ -237,6 +246,13 @@ class RouteOption {
       warnings: (json['warnings'] as List<dynamic>? ?? const [])
           .whereType<String>()
           .toList(growable: false),
+      closureIds: (json['closureIds'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(growable: false),
+      restrictedRoadIds:
+          (json['restrictedRoadIds'] as List<dynamic>? ?? const [])
+              .whereType<String>()
+              .toList(growable: false),
       transit: (json['transit'] as List<dynamic>? ?? const [])
           .whereType<Map<String, dynamic>>()
           .map(TransitLeg.fromJson)

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { fetchNztaTrafficFlow } from '../apps/server/src/traffic_flow.mjs';
-import { createRoadGraph, matchTrafficGeometry } from '../apps/server/src/traffic_geometry.mjs';
+import { fetchNztaTrafficFlow } from '../apps/server/src/traffic_flow.ts';
+import { createRoadGraph, matchTrafficGeometry } from '../apps/server/src/traffic_geometry.ts';
 
 const flow = await fetchNztaTrafficFlow();
 const points = flow.segments.flatMap(s => [s.start, s.end]);

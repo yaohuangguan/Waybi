@@ -3,22 +3,66 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../domain/map_region_capabilities.dart';
+import '../domain/map_provider.dart';
+
+class WaybiMapSourceConfig {
+  const WaybiMapSourceConfig._();
+
+  static const vectorSourceOverride = String.fromEnvironment(
+    'WAYBI_MAP_VECTOR_SOURCE',
+  );
+
+  static String vectorSourceFor(GeoPoint center) {
+    if (vectorSourceOverride.isNotEmpty) return vectorSourceOverride;
+    return MapRegionCapabilities.forPoint(center).vectorSource;
+  }
+
+  static const naturalEarthTemplate = String.fromEnvironment(
+    'WAYBI_MAP_NATURAL_EARTH_TILES',
+    defaultValue:
+        'https://tiles.openfreemap.org/natural_earth/ne2sr/{z}/{x}/{y}.png',
+  );
+  static const spriteUrl = String.fromEnvironment(
+    'WAYBI_MAP_SPRITE_URL',
+    defaultValue: 'https://tiles.openfreemap.org/sprites/ofm_f384/ofm',
+  );
+  static const glyphsUrl = String.fromEnvironment(
+    'WAYBI_MAP_GLYPHS_URL',
+    defaultValue: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',
+  );
+
+  static bool usingWaybiHostedTilesAt(GeoPoint center) =>
+      !vectorSourceFor(center).contains('openfreemap.org');
+}
+
 /// Native MapLibre style. Land use, road hierarchy and POIs remain distinct.
 Map<String, dynamic> waybiMapStyle(
   Map<String, dynamic> base, {
   required bool dark,
   required String language,
+  String vectorSource = MapRegionCapabilities.globalVectorSource,
+  String naturalEarthTemplate = WaybiMapSourceConfig.naturalEarthTemplate,
+  String spriteUrl = WaybiMapSourceConfig.spriteUrl,
+  String glyphsUrl = WaybiMapSourceConfig.glyphsUrl,
 }) {
   final result = jsonDecode(jsonEncode(base)) as Map<String, dynamic>;
   result['id'] = 'waybi-${dark ? "night" : "day"}-$language';
   final sources = result['sources'] as Map<String, dynamic>?;
   final openMapTiles = sources?['openmaptiles'] as Map<String, dynamic>?;
   if (openMapTiles != null) {
-    // Keep attribution in the native MapLibre info control instead of a large
-    // custom badge that floats over navigation content.
+    openMapTiles['url'] = vectorSource;
+    // Keep source attribution machine-readable even when Waybi presents the
+    // legal credits through its own splash/settings experience.
     openMapTiles['attribution'] =
         '© OpenStreetMap contributors · © OpenMapTiles · Routing: OSRM';
   }
+  final naturalEarth = sources?['ne2_shaded'] as Map<String, dynamic>?;
+  if (naturalEarth != null) {
+    naturalEarth['tiles'] = [naturalEarthTemplate];
+  }
+  result['sprite'] = spriteUrl;
+  result['glyphs'] = glyphsUrl;
   final paper = dark ? '#192329' : '#f6f7f8';
   final park = dark ? '#294333' : '#cfe6bf';
   final water = dark ? '#204557' : '#e5eef3';
@@ -140,7 +184,18 @@ Map<String, dynamic> waybiMapStyle(
   final poiColor = <dynamic>[
     'match',
     ['get', 'class'],
-    ['food', 'shop', 'grocery'],
+    [
+      'food',
+      'restaurant',
+      'cafe',
+      'fast_food',
+      'bar',
+      'beer',
+      'shop',
+      'clothing_store',
+      'bakery',
+      'grocery',
+    ],
     dark ? '#efbd7c' : '#a46b2c',
     ['hospital', 'doctor', 'pharmacy'],
     dark ? '#eea3b6' : '#b25878',
@@ -167,11 +222,40 @@ Map<String, dynamic> waybiMapStyle(
         ['zoom'],
         4,
         14,
-        10,
+        30,
         15,
-        25,
-        16,
         100,
+        16,
+        300,
+      ],
+    ],
+  ];
+  // Dots remain selectable at full density. Names increase more gradually;
+  // expanding to rank 300 at z16 flooded the label index in dense city tiles.
+  final labelFilter = <dynamic>[
+    'all',
+    ['has', 'name'],
+    [
+      '<=',
+      [
+        'coalesce',
+        ['get', 'rank'],
+        1,
+      ],
+      [
+        'step',
+        ['zoom'],
+        4,
+        14,
+        30,
+        15,
+        50,
+        16,
+        80,
+        17,
+        150,
+        18,
+        300,
       ],
     ],
   ];
@@ -199,7 +283,7 @@ Map<String, dynamic> waybiMapStyle(
     'source': 'openmaptiles',
     'source-layer': 'poi',
     'minzoom': 13,
-    'filter': filter,
+    'filter': labelFilter,
     'layout': {
       'text-field': names,
       'text-font': ['Noto Sans Regular'],
@@ -238,6 +322,7 @@ class IndependentMapStyle {
   static Future<String> load({
     required bool dark,
     required String language,
+    required GeoPoint center,
   }) async {
     if (!_licensesRegistered) {
       _licensesRegistered = true;
@@ -252,7 +337,12 @@ class IndependentMapStyle {
         .loadString('assets/maps/positron_base.json')
         .then((s) => jsonDecode(s) as Map<String, dynamic>);
     return jsonEncode(
-      waybiMapStyle(await _base!, dark: dark, language: language),
+      waybiMapStyle(
+        await _base!,
+        dark: dark,
+        language: language,
+        vectorSource: WaybiMapSourceConfig.vectorSourceFor(center),
+      ),
     );
   }
 }

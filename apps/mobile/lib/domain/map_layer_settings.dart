@@ -24,23 +24,23 @@ extension CameraKindLabel on CameraKind {
     return switch (this) {
       CameraKind.spotSpeed => '定点测速',
       CameraKind.averageSpeed => '区间测速',
-      CameraKind.redLight => '闯红灯',
-      CameraKind.dualRedLightSpeed => '闯红灯 + 测速',
+      CameraKind.redLight => '红灯',
+      CameraKind.dualRedLightSpeed => '红灯 + 测速',
       CameraKind.busLane => '公交 / 专用车道',
       CameraKind.other => '其他',
     };
   }
 
-  static CameraKind fromCamera(SafetyCamera camera) {
-    final type = camera.type.toLowerCase();
+  static CameraKind fromCamera(SafetyCamera camera) => fromType(camera.type);
+
+  static CameraKind fromType(String cameraType) {
+    final type = cameraType.toLowerCase().replaceAll(RegExp(r'[_-]+'), ' ');
     if (type.contains('average') ||
-        type.contains('point-to-point') ||
+        type.contains('point to point') ||
         type.contains('p2p')) {
       return CameraKind.averageSpeed;
     }
-    if (type.contains('dual') &&
-        type.contains('red') &&
-        type.contains('speed')) {
+    if (type.contains('red') && type.contains('speed')) {
       return CameraKind.dualRedLightSpeed;
     }
     if (type.contains('bus lane') ||
@@ -49,12 +49,25 @@ extension CameraKindLabel on CameraKind {
         type.contains('svl')) {
       return CameraKind.busLane;
     }
-    if (type.contains('red light')) return CameraKind.redLight;
+    if (type.contains('red light') || type.contains('redlight')) {
+      return CameraKind.redLight;
+    }
     if (type.contains('spot speed') || type.contains('speed')) {
       return CameraKind.spotSpeed;
     }
     return CameraKind.other;
   }
+
+  String cameraLabel(String language) => switch (this) {
+    CameraKind.spotSpeed => language == 'zh' ? '定点测速摄像头' : 'Speed camera',
+    CameraKind.averageSpeed =>
+      language == 'zh' ? '区间测速摄像头' : 'Average-speed camera',
+    CameraKind.redLight => language == 'zh' ? '红灯摄像头' : 'Red-light camera',
+    CameraKind.dualRedLightSpeed =>
+      language == 'zh' ? '红灯及测速摄像头' : 'Red-light + speed camera',
+    CameraKind.busLane => language == 'zh' ? '专用车道摄像头' : 'Bus-lane camera',
+    CameraKind.other => language == 'zh' ? '安全摄像头' : 'Safety camera',
+  };
 }
 
 enum BaseMapStyle { standard, satellite, terrain, hybrid }
@@ -75,6 +88,8 @@ class MapLayerSettings {
     this.alertBusLane = true,
     this.alertOther = false,
     this.traffic = true,
+    this.roadEvents = true,
+    this.transitLanes = true,
     this.style = BaseMapStyle.standard,
   });
 
@@ -94,6 +109,10 @@ class MapLayerSettings {
   final bool alertOther;
 
   final bool traffic;
+  final bool roadEvents;
+
+  /// Official mapped transit/bus lane geometry, separate from bus-lane cameras.
+  final bool transitLanes;
   final BaseMapStyle style;
 
   bool shows(SafetyCamera camera) {
@@ -136,6 +155,8 @@ class MapLayerSettings {
     bool? alertBusLane,
     bool? alertOther,
     bool? traffic,
+    bool? roadEvents,
+    bool? transitLanes,
     BaseMapStyle? style,
   }) => MapLayerSettings(
     cameras: cameras ?? this.cameras,
@@ -153,6 +174,8 @@ class MapLayerSettings {
     alertBusLane: alertBusLane ?? this.alertBusLane,
     alertOther: alertOther ?? this.alertOther,
     traffic: traffic ?? this.traffic,
+    roadEvents: roadEvents ?? this.roadEvents,
+    transitLanes: transitLanes ?? this.transitLanes,
     style: style ?? this.style,
   );
 }

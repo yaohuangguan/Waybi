@@ -8,9 +8,12 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:waybi_friends/waybi_friends.dart' show GameController;
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'data/account_repository.dart';
+import 'data/friends_backup_service.dart';
 import 'data/brand_migration.dart';
 import 'data/app_store_billing.dart';
 import 'data/explore_repository.dart';
@@ -30,12 +33,16 @@ import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
 import 'domain/route_preference.dart';
 import 'domain/road_event.dart';
+import 'domain/route_road_events.dart' as road_routes;
 import 'domain/safety_camera.dart';
 import 'domain/traffic_flow.dart';
+import 'domain/transit_lane.dart';
+import 'domain/transit_review_corridor.dart';
 import 'drive/device_heading.dart';
 import 'drive/journey_tracker.dart';
 import 'drive/navigation_language.dart';
 import 'drive/navigation_location_filter.dart';
+import 'drive/route_origin_location.dart';
 import 'drive/reliable_location_feed.dart';
 import 'drive/independent_navigation_camera.dart';
 import 'drive/navigation_motion.dart';
@@ -63,6 +70,7 @@ import 'widgets/arrival_experience_panel.dart';
 import 'widgets/map_symbols.dart';
 import 'widgets/independent_navigation_overlay.dart';
 import 'widgets/drive_hud.dart';
+import 'widgets/discover_page.dart';
 import 'widgets/explore_search.dart';
 import 'widgets/explore_page.dart';
 import 'widgets/full_screen_search.dart';
@@ -73,13 +81,22 @@ import 'widgets/profile_page.dart';
 import 'widgets/map_layer_sheet.dart';
 import 'widgets/splash_gate.dart';
 import 'widgets/route_preview_sheet.dart';
+import 'widgets/road_event_details_sheet.dart';
 import 'widgets/transit_trip_overlay.dart';
 import 'widgets/trips_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ExternalNavigationInbox.instance.start();
-  await migrateWaybiPreferences(await SharedPreferences.getInstance());
+  final prefs = await SharedPreferences.getInstance();
+  await migrateWaybiPreferences(prefs);
+  if (prefs.containsKey(GameController.embedded.pendingRestoreKey)) {
+    try {
+      await GameController.embedded.load();
+    } catch (_) {
+      // Keep the archive for retry; the room presents its existing load error UI.
+    }
+  }
   runApp(const WaybiApp());
 }
 
@@ -314,6 +331,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final DriveEngine _driveEngine = DriveEngine();
   late final IndependentNavigationEngine _independentNavigation;
   final AccountRepository _account = AccountRepository();
+  late final _friendsBackup = FriendsBackupService(_account);
   late final _plusBilling = AppStoreBillingGateway(_account);
   final PlaceDetailsRepository _placeDetailsRepository =
       PlaceDetailsRepository();
@@ -327,10 +345,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final IndependentSearchProvider _independentSearch =
       IndependentSearchProvider(useWorkerSuggestions: true);
   final IndependentRoutingProvider _independentRoutes =
-      IndependentRoutingProvider();
+      IndependentRoutingProvider(useWaybiProxy: true);
   final IndependentTransitRoutingProvider _independentTransitRoutes =
       IndependentTransitRoutingProvider();
-  MapProvider _mapProvider = MapProvider.google;
+  MapProvider _mapProvider = MapProvider.independent;
   MapProvider? _requestedMapProvider;
   Future<void> _providerSwitchQueue = Future<void>.value();
   LocationMarkerStyle _locationMarker = LocationMarkerStyle.kiwi;
@@ -368,6 +386,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   StreamSubscription<double>? _headingSubscription;
   Timer? _mapRefreshTimer;
   LatLng? _gpsLocation;
+  final _routeOriginLocation = RouteOriginLocation();
+  LatLng? get _locationForRoute {
+    final point = _routeOriginLocation.point;
+    return point == null
+        ? null
+        : LatLng(latitude: point.latitude, longitude: point.longitude);
+  }
+
   DestinationSuggestion? _manualOrigin;
   final List<DestinationSuggestion> _guestRecent = [];
   final Map<String, RouteOption> _quickCommuteRoutes = {};
@@ -429,6 +455,43 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   WaybiTravelMode _selectedMode = WaybiTravelMode.drive;
   String? _selectedRouteId;
   bool _routePreviewLoading = false;
+  final _closureCache =
+      <
+        String,
+        ({
+          RouteOption route,
+          List<RoadEvent> events,
+          DateTime checkedAt,
+          List<RoadEvent> matches,
+        })
+      >{};
+
+  List<RoadEvent> _closuresOnRoute(RouteOption route) {
+    final cached = _closureCache[route.id];
+    final now = DateTime.now();
+    if (cached != null &&
+        identical(cached.route, route) &&
+        identical(cached.events, _driveEngine.roadEvents) &&
+        now.difference(cached.checkedAt).inSeconds < 30) {
+      return cached.matches;
+    }
+    final matches = road_routes.routeClosures(
+      route,
+      _driveEngine.roadEvents,
+      now: now,
+    );
+    if (_closureCache.length >= 12) {
+      _closureCache.remove(_closureCache.keys.first);
+    }
+    _closureCache[route.id] = (
+      route: route,
+      events: _driveEngine.roadEvents,
+      checkedAt: now,
+      matches: matches,
+    );
+    return matches;
+  }
+
   int _routeRequest = 0;
   bool _transitTripRunning = false;
   RouteOption? _activeTransitRoute;
@@ -476,8 +539,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _busy = false;
   bool _checkingRouteWatchAlerts = false;
   String? _message;
-  String? _lastNotifiedCameraId;
   final Set<String> _notifiedRoadEventIds = <String>{};
+  final Set<String> _pendingRoadNotifications = {};
+  final Map<String, DateTime> _roadNotificationRetryAfter = {};
+  int _roadNotificationSession = 0;
 
   @override
   void initState() {
@@ -502,8 +567,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
     _plusBilling.initialize();
-    unawaited(_account.restore());
+    unawaited(_account.restore().then((_) => _friendsBackup.start()));
     unawaited(_driveEngine.loadCameras());
+    unawaited(_driveEngine.loadTransitLanes());
     unawaited(
       _restoreMapSettings().then((_) async {
         if (_mapProvider == MapProvider.independent && _layers.traffic) {
@@ -686,7 +752,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     });
     _selectPlace(destination, SelectionSource.search);
     if (!link.showPlaceOnly && _selectedPoi != null) {
-      if (_manualOrigin == null && _gpsLocation == null) {
+      if (_manualOrigin == null && _locationForRoute == null) {
         _externalPreview = (
           request: request,
           selected: _selectedPlace!,
@@ -714,7 +780,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _externalPreview = null;
       return;
     }
-    if (_gpsLocation == null || _selectedPoi == null || _busy) return;
+    if (_locationForRoute == null || _selectedPoi == null || _busy) return;
     _externalPreview = null;
     unawaited(_loadRoutePreview(_selectedPoi!, preferredMode: pending.mode));
   }
@@ -957,6 +1023,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _driveEngine.stopTrafficFlowRefresh();
     }
     if (state == AppLifecycleState.resumed) {
+      unawaited(_friendsBackup.sync());
       if (_driveEngine.active) {
         unawaited(_driveEngine.recoverLocalLocation());
       } else {
@@ -995,6 +1062,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _onEngineChanged() {
     if (!mounted) return;
+    _independentNavigation.checkClosureUpdates();
     final position = _driveEngine.latestPosition;
     if (position != null && position.timestamp != _lastDrivePositionAt) {
       _lastDrivePositionAt = position.timestamp;
@@ -1005,7 +1073,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     _journey?.cameraPassed(_driveEngine.passedCamera?.id);
     unawaited(_notifyRoadIntelligence());
-    final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
+    final reportIds = _visibleRoadEvents.map((event) => event.id).join(',');
     final signature =
         '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}:${_driveEngine.trafficFlowRevision}';
     if (signature != _markerSignature) {
@@ -1081,24 +1149,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       stepMeters: distanceToStep.isFinite ? distanceToStep : remainingMeters,
       remainingMeters: remainingMeters,
       remainingSeconds: remainingSeconds,
-      lanes: [
-        for (final lane in next?.lanes ?? const <RouteLane>[])
-          NavigationLane(
-            lane.indications
-                .map(
-                  (name) => name.contains('left')
-                      ? '←'
-                      : name.contains('right')
-                      ? '→'
-                      : name == 'uturn'
-                      ? '↶'
-                      : '↑',
-                )
-                .toSet()
-                .join(),
-            lane.recommended,
-          ),
-      ],
+      lanes: routeNavigationLanes(next),
     );
   }
 
@@ -1287,13 +1338,23 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  List<RoadEvent> get _communityRoadEvents => _driveEngine.roadEvents
-      .where(
-        (event) =>
-            event.metadata['userReported'] == true &&
-            event.isCurrent(DateTime.now()),
-      )
-      .toList(growable: false);
+  List<RoadEvent> get _visibleRoadEvents => _layers.roadEvents
+      ? _driveEngine.roadEvents
+            .where(
+              (event) =>
+                  (event.metadata['userReported'] == true ||
+                      (event.observation == RoadEventObservation.official &&
+                          {
+                            RoadEventType.roadClosure,
+                            RoadEventType.roadworks,
+                            RoadEventType.incident,
+                            RoadEventType.flooding,
+                            RoadEventType.slip,
+                          }.contains(event.type))) &&
+                  event.isCurrent(DateTime.now()),
+            )
+            .toList(growable: false)
+      : const [];
 
   String _roadEventLabel(RoadEventType type) => switch (type) {
     RoadEventType.incident => _text('Crash / hazard', '事故 / 危险'),
@@ -1335,21 +1396,19 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (_notifySafetyCameras &&
         camera != null &&
         cameraDistance != null &&
-        cameraDistance <= 600 &&
-        _lastNotifiedCameraId != camera.id) {
-      _lastNotifiedCameraId = camera.id;
+        cameraDistance > 0 &&
+        cameraDistance <= 800) {
       final cameraType = CameraKindLabel.fromCamera(camera)
-          .localizedLabel(_appLanguage);
-      await WaybiNotificationService.instance.showRoadAlert(
+          .cameraLabel(_appLanguage);
+      await _showNavigationNotification(
         id: 'camera:${camera.id}',
-        title: _text('Safety camera ahead', '前方安全摄像头'),
+        title: _text('$cameraType ahead', '前方$cameraType'),
         body: _text(
-          '$cameraType · ${cameraDistance.round()} m',
-          '$cameraType · ${cameraDistance.round()} 米',
+          '${cameraDistance.round()} m · ${camera.location}',
+          '${cameraDistance.round()} 米 · ${camera.location}',
         ),
       );
     }
-    if (camera == null) _lastNotifiedCameraId = null;
 
     for (final event in _driveEngine.upcomingRoadEvents) {
       final distance = event.distanceAlongRoute ?? event.distanceFromDriver;
@@ -1361,9 +1420,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       final enabled = community
           ? _notifyCommunityReports
           : _notifyRoadIncidents && importantOfficial;
-      if (!enabled || !_notifiedRoadEventIds.add(event.id)) continue;
+      if (!enabled || event.type == RoadEventType.safetyCamera) continue;
       final reporter = event.metadata['reporterName']?.toString();
-      await WaybiNotificationService.instance.showRoadAlert(
+      await _showNavigationNotification(
         id: event.id,
         title: _roadEventLabel(event.type),
         body: reporter == null
@@ -1501,86 +1560,129 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _showRoadEventDetails(RoadEvent event) async {
-    final reporter =
-        event.metadata['reporterName']?.toString() ??
-        _text('Waybi driver', 'Waybi 用户');
-    final description = event.metadata['description']?.toString();
-    final reportedAt =
-        DateTime.tryParse(event.metadata['reportedAt']?.toString() ?? '') ??
-        event.source.updatedAt;
+  Future<void> _showTransitLaneDetails(TransitLane lane) async {
+    final active = lane.schedule.activeAt(DateTime.now());
+    final status = switch (active) {
+      true => _text('Operating now', '当前生效'),
+      false => _text('Outside published hours', '当前不在公布时段内'),
+      null => _text('Hours not confirmed', '时段尚未确认'),
+    };
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
+      showDragHandle: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 26),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 44,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).dividerColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
+            Text(
+              lane.roadName.isEmpty ? lane.label(_appLanguage) : lane.roadName,
+              style: Theme.of(context).textTheme.titleLarge,
             ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: WaybiColors.ice,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: const Icon(
-                    Icons.add_alert_rounded,
-                    color: WaybiColors.ocean,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _roadEventLabel(event.type),
-                    style: const TextStyle(
-                      fontSize: 21,
-                      fontWeight: FontWeight.w700,
-                      color: WaybiColors.deepOcean,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            const SizedBox(height: 8),
+            Text(lane.label(_appLanguage)),
+            const SizedBox(height: 8),
+            Text(status, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Text(lane.schedule.label(_appLanguage)),
             const SizedBox(height: 14),
             Text(
               _text(
-                '$reporter reported this ${_relativeTime(reportedAt)}',
-                '$reporter · ${_relativeTime(reportedAt)}报告',
+                'Auckland Transport published lane geometry. Dashed lines do not mean the entire road is restricted. Check roadside signs before entering.',
+                '奥克兰交通局公布的专用车道位置。虚线不代表整条道路禁止通行，驶入前请以现场标志为准。',
               ),
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: WaybiColors.deepOcean,
-              ),
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
-            if (description != null && description.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(description),
-            ],
             const SizedBox(height: 8),
             Text(
-              _remainingTime(event.validUntil),
-              style: const TextStyle(
-                color: WaybiColors.lightTextSecondary,
-                fontWeight: FontWeight.w700,
-              ),
+              '© Auckland Transport · CC BY 4.0',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showTransitReviewDetails(TransitReviewCorridor corridor) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              corridor.roadName,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 6),
+            Text(corridor.city),
+            const SizedBox(height: 12),
+            Text(
+              _text(
+                'Review-only road corridor · Not verified lane limits',
+                '待核实道路走廊 · 不是已确认的公交车道边界',
+              ),
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Colors.orange,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _appLanguage == 'zh'
+                  ? corridor.ruleSummaryZh
+                  : corridor.ruleSummary,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _text(
+                'This line is an approximate council STREET CENTRELINE, not the physical bus lane. Published rules may cover only part of the road and one direction. It is not used for route blocking or automatic lane alerts. Always follow roadside signs.',
+                '此线仅为市议会道路中心线示意，不是实际公交车道的精确边界。官方规则可能只覆盖部分路段或某个方向；Waybi 不会据此封禁路线或自动提醒违规。请以现场路牌为准。',
+              ),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '© ${corridor.authority}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            TextButton.icon(
+              onPressed: () => unawaited(
+                launchUrl(
+                  Uri.parse(corridor.ruleSource),
+                  mode: LaunchMode.externalApplication,
+                ),
+              ),
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: Text(_text('Council source', '查看市议会来源')),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRoadEventDetails(RoadEvent event) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .8,
+      ),
+      builder: (_) => RoadEventDetailsSheet(
+        event: event,
+        title: _roadEventLabel(event.type),
+        language: _appLanguage,
       ),
     );
   }
@@ -1591,10 +1693,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _mapProvider = MapProvider.values.firstWhere(
       (value) => value.name == prefs.getString('waybi.map.provider'),
       orElse: () =>
-          const String.fromEnvironment('WAYBI_DEFAULT_MAP_PROVIDER') ==
-              'independent'
-          ? MapProvider.independent
-          : MapProvider.google,
+          const String.fromEnvironment('WAYBI_DEFAULT_MAP_PROVIDER') == 'google'
+          ? MapProvider.google
+          : MapProvider.independent,
     );
     if (prefs.getString('waybi.map.provider') == 'mapbox') {
       _mapProvider = MapProvider.independent;
@@ -1672,6 +1773,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       alertBusLane: prefs.getBool('waybi.alerts.bus_lane') ?? true,
       alertOther: prefs.getBool('waybi.alerts.other_camera') ?? false,
       traffic: prefs.getBool('waybi.layers.traffic') ?? true,
+      roadEvents: prefs.getBool('waybi.layers.road_events') ?? true,
+      transitLanes: prefs.getBool('waybi.layers.transit_lanes') ?? true,
       style: BaseMapStyle.values.firstWhere(
         (value) => value.name == prefs.getString('waybi.layers.style'),
         orElse: () => BaseMapStyle.standard,
@@ -1739,6 +1842,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _independentRoutes.dispose();
     _independentTransitRoutes.dispose();
     _plusBilling.dispose();
+    _friendsBackup.dispose();
     _account.dispose();
     _usageTelemetry.dispose();
     _navigationRewards.dispose();
@@ -1832,10 +1936,25 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
     );
 
+    _routeOriginLocation.update(
+      NavigationLocationFix(
+        point: GeoPoint(position.latitude, position.longitude),
+        accuracyMeters: position.accuracy,
+        speedMetresPerSecond: speedMetresPerSecond,
+        timestamp: position.timestamp,
+      ),
+      confirmed: accepted != null,
+    );
+    _retryExternalPreview();
+
     // Keep the last reliable browse fix instead of letting a single indoor
     // GPS jump move route origins, arrival checks and the map by 50–100 m.
     if (accepted == null) {
       setState(() {});
+      final place = _selectedPlace?.place;
+      if (place != null && !_driveEngine.active && _routePlan == null) {
+        unawaited(_loadPlaceQuickRoute(place));
+      }
       return _browseLocationFilter.accepted?.timestamp == position.timestamp &&
           DateTime.now().difference(position.timestamp) <=
               const Duration(seconds: 10);
@@ -1884,7 +2003,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _loadPlaceQuickRoute(PlaceSummary place) async {
     if (!mounted || _driveEngine.active || _routePlan != null) return;
     if (!place.location.isValid) return;
-    final origin = _gpsLocation;
+    final origin = _locationForRoute;
     if (origin == null) return;
     final key = _placeRouteKey(place);
     final cached = _placeQuickRouteCache[key];
@@ -2750,12 +2869,83 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _recoverRouteLocation() async {
+    try {
+      if (!await _ensureLocationPermission()) return;
+      await _startTracking();
+      await _browseLocationFeed?.recover(force: true);
+      _retryExternalPreview();
+    } catch (_) {
+      if (mounted && _externalPreview != null) {
+        setState(
+          () => _message = _text(
+            'Location unavailable. Check location access and try again.',
+            '暂时无法定位，请检查定位权限后重试。',
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _showNavigationNotification({
+    required String id,
+    required String title,
+    required String body,
+  }) async {
+    if (_notifiedRoadEventIds.contains(id) ||
+        _pendingRoadNotifications.contains(id) ||
+        (_roadNotificationRetryAfter[id]?.isAfter(DateTime.now()) ?? false)) {
+      return;
+    }
+    _pendingRoadNotifications.add(id);
+    final session = _roadNotificationSession;
+    try {
+      final shown = await WaybiNotificationService.instance.showRoadAlert(
+        id: id,
+        title: title,
+        body: body,
+      );
+      if (session != _roadNotificationSession) return;
+      if (shown) {
+        _notifiedRoadEventIds.add(id);
+      } else {
+        _roadNotificationRetryAfter[id] = DateTime.now().add(
+          const Duration(seconds: 20),
+        );
+      }
+    } catch (_) {
+      if (session == _roadNotificationSession) {
+        _roadNotificationRetryAfter[id] = DateTime.now().add(
+          const Duration(seconds: 20),
+        );
+      }
+    } finally {
+      if (session == _roadNotificationSession) {
+        _pendingRoadNotifications.remove(id);
+      }
+    }
+  }
+
+  Future<void> _prepareRoadNotifications() async {
+    if (!_notifySafetyCameras &&
+        !_notifyRoadIncidents &&
+        !_notifyCommunityReports) {
+      return;
+    }
+    try {
+      await WaybiNotificationService.instance.requestPermission();
+    } catch (_) {
+      // OS notifications are optional; navigation and spoken guidance continue.
+    }
+  }
+
   Future<void> _loadRoutePreview(
     PointOfInterest poi, {
     WaybiTravelMode preferredMode = WaybiTravelMode.drive,
   }) async {
+    FocusManager.instance.primaryFocus?.unfocus();
     _externalPreview = null;
-    final origin = _manualOrigin?.location ?? _gpsLocation;
+    final origin = _manualOrigin?.location ?? _locationForRoute;
     if (origin == null) {
       final selected = _selectedPlace;
       if (selected != null) {
@@ -2771,8 +2961,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           '正在获取位置，定位成功后会自动显示路线。',
         ),
       );
-      unawaited(_startTracking());
-      unawaited(_browseLocationFeed?.recover(force: true));
+      unawaited(_recoverRouteLocation());
       return;
     }
     final request = ++_routeRequest;
@@ -2829,8 +3018,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           .forMode(preferredMode)
           .take(3)
           .toList(growable: false);
+      final routesWithoutKnownClosures = preferredRoutes
+          .where((route) => _closuresOnRoute(route).isEmpty)
+          .toList(growable: false);
       final preferredRoute = preferredMode == WaybiTravelMode.drive
-          ? recommendedRoute(preferredRoutes, preferenceSummaries)
+          ? recommendedRoute(
+              routesWithoutKnownClosures.isEmpty
+                  ? preferredRoutes
+                  : routesWithoutKnownClosures,
+              preferenceSummaries,
+            )
           : preferredRoutes.firstOrNull;
       if (!mounted || request != _routeRequest) return;
       setState(() {
@@ -2984,6 +3181,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       MaterialPageRoute<void>(
         builder: (_) => ProfilePage(
           account: _account,
+          friendsBackup: _friendsBackup,
           plusBilling: _plusBilling,
           voiceEnabled: _voiceEnabled,
           lanesEnabled: _lanesEnabled,
@@ -3626,6 +3824,25 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       return;
     }
 
+    if (selectedRoute.restrictedRoadIds.isNotEmpty) {
+      setState(
+        () => _message = _text(
+          'This route uses a bus-only road during restricted hours. Choose another route.',
+          '这条路线经过当前禁止普通汽车通行的公交专用路段，请选择其他路线。',
+        ),
+      );
+      return;
+    }
+    if (selectedRoute.blockedByClosure) {
+      setState(
+        () => _message = _text(
+          'This route crosses a reported closure. Choose another route or try again.',
+          '这条路线经过已报告的封路，请选择其他路线或重新规划。',
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _busy = true;
       _message = null;
@@ -3639,6 +3856,27 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         await _startTransitTrip(poi, selectedRoute);
         return;
       }
+
+      final laneMatches = await _driveEngine.transitMatchesForRoute(
+        selectedRoute,
+      );
+      final restricted = transitRoadBlocks(
+        selectedRoute,
+        laneMatches,
+        DateTime.now(),
+      );
+      if (!mounted) return;
+      if (restricted.isNotEmpty) {
+        setState(
+          () => _message = _text(
+            'Bus-only access on ${restricted.first.lane.roadName}. Choose another route.',
+            '${restricted.first.lane.roadName} 当前禁止普通汽车通行，请选择其他路线。',
+          ),
+        );
+        return;
+      }
+
+      await _prepareRoadNotifications();
 
       if (_mapProvider == MapProvider.independent) {
         if (!await _ensureLocationPermission()) return;
@@ -3930,6 +4168,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ++_arrivalRequest;
       setState(() {
         _guidanceRunning = false;
+        ++_roadNotificationSession;
+        _notifiedRoadEventIds.clear();
+        _pendingRoadNotifications.clear();
+        _roadNotificationRetryAfter.clear();
 
         _activeNavigationRoute = null;
         _activeDestinationPlace = null;
@@ -3993,6 +4235,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _message = null;
     });
     try {
+      await _prepareRoadNotifications();
       if (_gpsLocation == null) {
         await _startTracking();
       }
@@ -4350,7 +4593,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         : _browseController;
     if (controller == null) return;
     _markerSyncing = true;
-    final reportIds = _communityRoadEvents.map((event) => event.id).join(',');
+    final reportIds = _visibleRoadEvents.map((event) => event.id).join(',');
     final signature =
         '${_driveEngine.cameras.length}:${_driveEngine.routeCameras.map((match) => match.camera.id).join(',')}:$reportIds:${_layers.markerSignature}:${_driveEngine.trafficFlowRevision}';
     try {
@@ -4395,7 +4638,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           ? []
           : (await controller.addMarkers(options)).whereType<Marker>().toList();
       final roadEventOptions = [
-        for (final event in _communityRoadEvents)
+        for (final event in _visibleRoadEvents)
           MarkerOptions(
             position: LatLng(
               latitude: event.location.latitude,
@@ -4433,7 +4676,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _markerSignature = signature;
     } finally {
       _markerSyncing = false;
-      final latestReportIds = _communityRoadEvents
+      final latestReportIds = _visibleRoadEvents
           .map((event) => event.id)
           .join(',');
       final latest =
@@ -4729,6 +4972,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       prefs.setBool('waybi.alerts.bus_lane', value.alertBusLane),
       prefs.setBool('waybi.alerts.other_camera', value.alertOther),
       prefs.setBool('waybi.layers.traffic', value.traffic),
+      prefs.setBool('waybi.layers.road_events', value.roadEvents),
+      prefs.setBool('waybi.layers.transit_lanes', value.transitLanes),
       prefs.setString('waybi.layers.style', value.style.name),
     ]);
     if (trafficJustEnabled && _mapProvider == MapProvider.independent) {
@@ -4762,6 +5007,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         trafficSegmentCount: _driveEngine.trafficFlowSegments
             .where((s) => s.hasRoadGeometry)
             .length,
+        transitLaneCount: _driveEngine.transitSnapshot?.lanes.length ?? 0,
+        reviewCorridorCount: _driveEngine.transitReviewCorridors.length,
         onChanged: (value) => unawaited(_setMapLayers(value)),
       ),
     );
@@ -5488,6 +5735,64 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _showDiscover() async {
+    final origin = _gpsLocation == null
+        ? _viewport.center
+        : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude);
+    final action = await Navigator.of(context).push<DiscoverAction>(
+      MaterialPageRoute(
+        builder: (_) => DiscoverPage(
+          language: _appLanguage,
+          loader: _loadTripsSnapshot,
+          roadLoader: () async {
+            await _driveEngine.loadCameras(force: true, center: origin);
+            return DiscoverRoadSnapshot(
+              events: _driveEngine.roadEvents,
+              status: _driveEngine.roadEventSyncStatus,
+              checkedAt: _driveEngine.roadEventCheckedAt,
+              officialCoverage: _driveEngine.roadEventOfficialCoverage,
+            );
+          },
+          origin: origin,
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action.kind) {
+      case DiscoverActionKind.search:
+        _showGoSearch();
+      case DiscoverActionKind.trips:
+        await _showTrips();
+      case DiscoverActionKind.destination:
+        final place = action.destination!;
+        _selectPlace(
+          PlaceSummary(
+            name: place.name,
+            address: place.address,
+            location: place.location,
+          ),
+          SelectionSource.frequent,
+        );
+      case DiscoverActionKind.direction:
+        await _showExplore(center: action.center);
+      case DiscoverActionKind.roadEvent:
+        final event = action.event!;
+        await _setMapLayers(_layers.copyWith(roadEvents: true));
+        if (!_driveEngine.active) {
+          setState(() => _following = false);
+          await _browseRenderer?.moveTo(
+            _viewport.copyWith(
+              center: event.location,
+              zoom: 15.5,
+              bearing: 0,
+              pitch: 0,
+            ),
+          );
+        }
+        if (mounted) await _showRoadEventDetails(event);
+    }
+  }
+
   Future<void> _showSaved() async {
     final prefs = await SharedPreferences.getInstance();
     final savedRoutes = prefs.getStringList('waybi.saved.routes') ?? [];
@@ -5610,6 +5915,21 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ? _independentSearch
         : _workerSearch;
     return provider.search(query, proximity: point, language: _appLanguage);
+  }
+
+  List<PlaceCandidate> _cachedMapSearchSuggestions(String query) {
+    final point = _gpsLocation == null
+        ? _viewport.center
+        : GeoPoint(_gpsLocation!.latitude, _gpsLocation!.longitude);
+    final CachedSearchProvider provider =
+        _mapProvider == MapProvider.independent
+        ? _independentSearch
+        : _workerSearch;
+    return provider.cachedSuggestions(
+      query,
+      proximity: point,
+      language: _appLanguage,
+    );
   }
 
   void _selectMapSearchSuggestion(PlaceCandidate candidate) {
@@ -6184,9 +6504,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             children: [
               item(Icons.map_outlined, _text('Map', '地图'), _recenter),
               item(
-                Icons.explore_outlined,
-                _text('Explore', '探索'),
-                () => unawaited(_showExplore()),
+                Icons.travel_explore_outlined,
+                _text('Discover', '发现'),
+                () => unawaited(_showDiscover()),
               ),
               Expanded(
                 child: InkWell(
@@ -6465,7 +6785,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     language: _appLanguage,
                     cameras: _driveEngine.cameras,
                     onCamera: (camera) => unawaited(_showCameraDetails(camera)),
-                    roadEvents: _communityRoadEvents,
+                    roadEvents: _visibleRoadEvents,
+                    transitLanes:
+                        _driveEngine.transitSnapshot?.lanes ?? const [],
+                    transitReviewCorridors: _driveEngine.transitReviewCorridors,
+                    onTransitReviewCorridor: (corridor) =>
+                        unawaited(_showTransitReviewDetails(corridor)),
+                    onTransitLane: (lane) =>
+                        unawaited(_showTransitLaneDetails(lane)),
                     onRoadEvent: (event) =>
                         unawaited(_showRoadEventDetails(event)),
                     trafficSegments: _driveEngine.trafficFlowSegments,
@@ -6659,6 +6986,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                               _gpsLocation!.longitude,
                             ),
                       loadSuggestions: _loadMapSearchSuggestions,
+                      cachedSuggestions: _cachedMapSearchSuggestions,
                       onSuggestionSelected: _selectMapSearchSuggestion,
                       onSearch: (query) => unawaited(_openSearch(query: query)),
                     ),
@@ -6870,6 +7198,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 cameraCount: _driveEngine.routeCameraCount,
                 routeCameraSummaries: _routeCameraSummaries,
                 routePreferenceSummaries: _routePreferenceSummaries,
+                routeClosures: {
+                  for (final route in _routePlan!.forMode(_selectedMode))
+                    route.id: _closuresOnRoute(route),
+                },
+                onRoadEvent: (event) => unawaited(_showRoadEventDetails(event)),
                 canRequestTransit: _mapProvider == MapProvider.independent,
                 canRequestModes: true,
                 customOrigin: _manualOrigin != null,
@@ -6907,7 +7240,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   key: const Key('routeStartFloatingButton'),
                   heroTag: 'route-start-floating',
                   elevation: 9,
-                  onPressed: _busy
+                  onPressed:
+                      _busy || (_selectedRoute?.blockedForDriving ?? false)
                       ? null
                       : () => unawaited(_navigateToSelectedPoi()),
                   backgroundColor: WaybiColors.ocean,

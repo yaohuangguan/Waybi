@@ -1,0 +1,4 @@
+*
+!Dockerfile
+!artifact/
+!artifact/**

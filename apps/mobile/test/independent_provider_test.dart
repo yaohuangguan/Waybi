@@ -550,4 +550,118 @@ void main() {
       isTrue,
     );
   });
+
+  test(
+    'worker-only Waybi search falls back inside the Worker boundary',
+    () async {
+      final urls = <Uri>[];
+      final provider = IndependentSearchProvider(
+        useWorkerSuggestions: true,
+        workerOnly: true,
+        requestSpacing: Duration.zero,
+        client: MockClient((request) async {
+          urls.add(request.url);
+          if (request.url.path == '/api/suggest') {
+            expect(request.url.queryParameters['provider'], 'independent');
+            return http.Response(
+              jsonEncode({'error': 'Independent place search unavailable'}),
+              502,
+            );
+          }
+          expect(request.url.path, '/api/search');
+          return http.Response(
+            jsonEncode([
+              {
+                'id': 'osm-fallback',
+                'provider': 'osm',
+                'name': 'Quiet Road',
+                'isPoi': false,
+                'latitude': -36.85,
+                'longitude': 174.76,
+              },
+            ]),
+            200,
+          );
+        }),
+      );
+      addTearDown(provider.dispose);
+
+      final results = await provider.search(
+        'quiet road',
+        proximity: const GeoPoint(-36.85, 174.76),
+        language: 'en',
+      );
+
+      expect(results.single.name, 'Quiet Road');
+      expect(urls.map((url) => url.path), ['/api/suggest', '/api/search']);
+      expect(urls.every((url) => url.host == 'waybi.co'), isTrue);
+    },
+  );
+
+  test('shipping Waybi routing proxies reroutes through Waybi only', () async {
+    final urls = <Uri>[];
+    final provider = IndependentRoutingProvider(
+      useWaybiProxy: true,
+      proxyBaseUrl: 'https://waybi.test',
+      client: MockClient((request) async {
+        urls.add(request.url);
+        expect(request.url.path, '/api/route-options');
+        expect(request.url.queryParameters['provider'], 'independent');
+        expect(request.url.queryParameters['mode'], 'drive');
+        return http.Response(
+          jsonEncode({
+            'provider': 'independent',
+            'trafficAvailable': false,
+            'stopsApplied': 0,
+            'options': [
+              {
+                'id': 'drive-0',
+                'mode': 'drive',
+                'durationSeconds': 120,
+                'distanceMeters': 1800,
+                'coordinates': [
+                  [174.76, -36.85],
+                  [174.78, -36.86],
+                ],
+                'provider': 'independent',
+                'traffic': {'normal': 0, 'slow': 0, 'trafficJam': 0},
+                'trafficIntervals': const [],
+                'steps': [
+                  {
+                    'distance': 1800,
+                    'duration': 120,
+                    'name': 'Waybi Road',
+                    'maneuver': 'depart',
+                    'modifier': '',
+                    'instruction': 'Head south',
+                    'location': [174.76, -36.85],
+                  },
+                ],
+              },
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+    addTearDown(provider.dispose);
+
+    final route = await provider.reroute(
+      origin: const GeoPoint(-36.85, 174.76),
+      destination: const GeoPoint(-36.86, 174.78),
+      mode: WaybiTravelMode.drive,
+      language: 'en',
+      headingDegrees: 45,
+    );
+
+    expect(urls, hasLength(1));
+    expect(urls.single.host, 'waybi.test');
+    expect(urls.single.queryParameters['alternatives'], 'false');
+    expect(urls.single.queryParameters['heading'], '45.0');
+    expect(route.provider, 'independent');
+    expect(route.waypoints, const [
+      GeoPoint(-36.85, 174.76),
+      GeoPoint(-36.86, 174.78),
+    ]);
+  });
 }

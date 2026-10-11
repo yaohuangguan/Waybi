@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/navigation_lanes.dart';
 import 'package:waybi_mobile/domain/traffic_flow.dart';
 import 'package:waybi_mobile/domain/map_layer_settings.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
@@ -228,8 +229,8 @@ class _PreviewState extends State<_Preview> {
                       remainingMeters: 180,
                       remainingSeconds: 45,
                       lanes: [
-                        NavigationLane('↑', false),
-                        NavigationLane('→', true),
+                        NavigationLane({LaneArrowDirection.straight}, false),
+                        NavigationLane({LaneArrowDirection.right}, true),
                       ],
                     ),
                     destinationTitle: 'Aotea Square',

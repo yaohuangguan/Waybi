@@ -1,4 +1,6 @@
 import '../theme/waybi_theme.dart';
+import '../domain/navigation_lanes.dart';
+import '../domain/route_option.dart';
 
 import 'package:flutter/material.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
@@ -9,6 +11,9 @@ import '../drive/navigation_language.dart';
 import 'waybi_bird.dart';
 import 'road_event_timeline.dart';
 import 'navigation_camera_alert.dart';
+import 'navigation_transit_alert.dart';
+import 'lane_arrow.dart';
+import 'navigation_maneuver_icon.dart';
 
 const _ink = WaybiColors.darkOcean;
 const _accent = WaybiColors.sky;
@@ -20,20 +25,21 @@ String navigationDistanceLabel(num? metres) {
   return '${safe.round()} m';
 }
 
-IconData _maneuverIcon(Maneuver? maneuver) {
-  final name = maneuver?.name.toLowerCase() ?? '';
-  if (name.contains('uturn')) return Icons.u_turn_left_rounded;
-  if (name.contains('roundabout')) return Icons.roundabout_right_rounded;
-  if (name.contains('right')) return Icons.turn_right_rounded;
-  if (name.contains('left')) return Icons.turn_left_rounded;
-  return Icons.straight_rounded;
-}
-
 class NavigationLane {
-  const NavigationLane(this.symbol, this.recommended);
-  final String symbol;
+  const NavigationLane(this.directions, this.recommended);
+  final Set<LaneArrowDirection> directions;
   final bool recommended;
 }
+
+List<NavigationLane> routeNavigationLanes(RouteStepInfo? step) => [
+  for (final lane in step?.lanes ?? const <RouteLane>[])
+    NavigationLane(
+      laneDirections(lane.indications),
+      lane.recommended &&
+          lane.indications.any((s) => laneDirection(s) != null) &&
+          laneSupportsManeuver(lane.indications, step!.maneuverModifier),
+    ),
+];
 
 /// Both providers feed the same Waybi HUD without manufacturing Google events.
 class NavigationGuidance {
@@ -232,25 +238,24 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
               ? _text('Updating route…', '正在重新规划路线…')
               : navigationInstruction(step, widget.language),
           lanesImage: step?.lanesImage,
-          maneuverIcon: _maneuverIcon(step?.maneuver),
+          maneuverIcon: navigationManeuverIcon(step?.maneuver.name ?? ''),
           stepMeters: nav?.distanceToCurrentStepMeters,
           remainingMeters: nav?.distanceToFinalDestinationMeters,
           remainingSeconds: nav?.timeToFinalDestinationSeconds,
           lanes: [
             for (final lane in step?.lanes ?? <Lane>[])
               NavigationLane(
-                lane.laneDirections
-                    .map((direction) {
-                      final name = direction.laneShape.name.toLowerCase();
-                      return name.contains('left')
-                          ? '←'
-                          : name.contains('right')
-                          ? '→'
-                          : '↑';
-                    })
-                    .toSet()
-                    .join(),
-                lane.laneDirections.any((direction) => direction.isRecommended),
+                laneDirections(
+                  lane.laneDirections.map((d) => d.laneShape.name),
+                ),
+                lane.laneDirections.any(
+                  (direction) =>
+                      direction.isRecommended &&
+                      laneDirection(direction.laneShape.name) != null &&
+                      laneSupportsManeuver([
+                        direction.laneShape.name,
+                      ], step!.maneuver.name),
+                ),
               ),
           ],
         );
@@ -267,6 +272,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
           : getRegisteredImage(_laneDescriptor!).catchError((Object _) => null);
     }
     final cameraNotice = upcomingNavigationCamera(widget.engine);
+    final transitNotice = widget.engine.upcomingTransitLane;
     final remainingSeconds = guidance.remainingSeconds;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final arrival = remainingSeconds == null
@@ -471,22 +477,18 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                                                 10,
                                                               ),
                                                         ),
-                                                        child: Text(
-                                                          guidance
+                                                        child: LaneArrow(
+                                                          directions: guidance
                                                               .lanes[index]
-                                                              .symbol,
-                                                          style: TextStyle(
-                                                            color:
-                                                                guidance
-                                                                    .lanes[index]
-                                                                    .recommended
-                                                                ? _ink
-                                                                : Colors
-                                                                      .white54,
-                                                            fontSize: 25,
-                                                            fontWeight:
-                                                                FontWeight.w700,
-                                                          ),
+                                                              .directions,
+                                                          language:
+                                                              widget.language,
+                                                          color:
+                                                              guidance
+                                                                  .lanes[index]
+                                                                  .recommended
+                                                              ? _ink
+                                                              : Colors.white54,
                                                         ),
                                                       ),
                                                     ),
@@ -520,6 +522,15 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                       PointerInterceptor(
                         child: NavigationCameraAlert(
                           notice: cameraNotice,
+                          language: widget.language,
+                        ),
+                      ),
+                    ],
+                    if (transitNotice != null && cameraNotice == null) ...[
+                      const SizedBox(height: 8),
+                      PointerInterceptor(
+                        child: NavigationTransitAlert(
+                          notice: transitNotice,
                           language: widget.language,
                         ),
                       ),
@@ -641,13 +652,33 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                       key: const Key('navigationRecenterButton'),
                       color: scheme.surface.withValues(alpha: .98),
                       elevation: 6,
-                      shape: const CircleBorder(),
-                      child: IconButton(
-                        tooltip: _text('Re-center', '回正导航'),
-                        onPressed: widget.onRecenter,
-                        icon: const Icon(Icons.my_location_rounded),
-                        color: WaybiColors.ocean,
-                      ),
+                      borderRadius: BorderRadius.circular(28),
+                      child: widget.following && !widget.overviewMode
+                          ? IconButton(
+                              tooltip: _text('Re-center', '回正导航'),
+                              onPressed: widget.onRecenter,
+                              icon: const Icon(Icons.my_location_rounded),
+                              color: WaybiColors.ocean,
+                            )
+                          : TextButton.icon(
+                              onPressed: widget.onRecenter,
+                              icon: const Icon(
+                                Icons.navigation_rounded,
+                                size: 20,
+                              ),
+                              label: Text(_text('Re-center', '回到当前位置')),
+                              style: TextButton.styleFrom(
+                                foregroundColor: WaybiColors.ocean,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
                     ),
                   ),
                 ),
@@ -802,6 +833,14 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                   ],
                                   const SizedBox(height: 8),
                                   const Divider(height: 1),
+                                  if (transitNotice != null) ...[
+                                    const SizedBox(height: 8),
+                                    NavigationTransitAlert(
+                                      notice: transitNotice,
+                                      language: widget.language,
+                                      compact: true,
+                                    ),
+                                  ],
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 9,

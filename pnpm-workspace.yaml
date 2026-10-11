@@ -2,6 +2,7 @@ packages:
   - apps/web
   - apps/server
   - packages/*
+  - infra/nz-routing/cloudflare
 
 autoDedupe: true
 

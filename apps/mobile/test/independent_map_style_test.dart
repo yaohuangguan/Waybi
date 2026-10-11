@@ -38,6 +38,8 @@ void main() {
       expect(layer('waybi-poi-label')['layout']['text-font'], [
         'Noto Sans Regular',
       ]);
+      expect(layer('waybi-poi-label')['filter'].toString(), contains('30'));
+      expect(layer('waybi-poi-label')['filter'].toString(), contains('300'));
       expect(
         layer('waybi-landuse')['paint']['fill-color'].toString(),
         contains('hospital'),
@@ -120,4 +122,33 @@ void main() {
     );
     expect(custom['layers'][0]['layout']['text-field'], '{name:latin}');
   });
+
+  test(
+    'Waybi-hosted map endpoints can replace every runtime basemap asset',
+    () {
+      final styled = waybiMapStyle(
+        base,
+        dark: false,
+        language: 'en',
+        vectorSource: 'pmtiles://https://maps.waybi.co/nz.pmtiles',
+        naturalEarthTemplate:
+            'https://maps.waybi.co/natural-earth/{z}/{x}/{y}.png',
+        spriteUrl: 'https://maps.waybi.co/sprites/waybi',
+        glyphsUrl: 'https://maps.waybi.co/fonts/{fontstack}/{range}.pbf',
+      );
+      final sources = styled['sources'] as Map<String, dynamic>;
+      expect(
+        (sources['openmaptiles'] as Map<String, dynamic>)['url'],
+        'pmtiles://https://maps.waybi.co/nz.pmtiles',
+      );
+      expect((sources['ne2_shaded'] as Map<String, dynamic>)['tiles'], [
+        'https://maps.waybi.co/natural-earth/{z}/{x}/{y}.png',
+      ]);
+      expect(styled['sprite'], 'https://maps.waybi.co/sprites/waybi');
+      expect(
+        styled['glyphs'],
+        'https://maps.waybi.co/fonts/{fontstack}/{range}.pbf',
+      );
+    },
+  );
 }

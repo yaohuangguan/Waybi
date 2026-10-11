@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../domain/road_event.dart';
+import '../domain/map_layer_settings.dart';
 import '../theme/waybi_theme.dart';
 
 class RoadEventTimeline extends StatelessWidget {
@@ -31,7 +32,9 @@ class RoadEventTimeline extends StatelessWidget {
   }
 
   String _label(RoadEvent event) => switch (event.type) {
-    RoadEventType.safetyCamera => _text('Camera', '摄像头'),
+    RoadEventType.safetyCamera => CameraKindLabel.fromType(
+      event.metadata['cameraType']?.toString() ?? '',
+    ).cameraLabel(language),
     RoadEventType.speedLimitChange => _text('Speed change', '限速变化'),
     RoadEventType.temporarySpeedLimit => _text('Temp. limit', '临时限速'),
     RoadEventType.roadworks => _text('Roadworks', '道路施工'),

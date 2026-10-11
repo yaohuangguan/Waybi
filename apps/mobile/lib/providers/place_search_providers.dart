@@ -12,7 +12,7 @@ import '../domain/map_provider.dart';
 import 'regional_query_aliases.dart';
 import 'provider_contracts.dart';
 
-class WorkerSearchProvider implements SearchProvider, ExploreProvider {
+class WorkerSearchProvider implements CachedSearchProvider, ExploreProvider {
   WorkerSearchProvider({http.Client? client, this.mapCompatible = false})
     : _client = client ?? http.Client();
 
@@ -29,6 +29,41 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
     if (proximity != null)
       '${proximity.latitude.toStringAsFixed(2)},${proximity.longitude.toStringAsFixed(2)}',
   ].join('|');
+
+  @override
+  List<PlaceCandidate> cachedSuggestions(
+    String query, {
+    GeoPoint? proximity,
+    required String language,
+  }) {
+    final normalized = query.trim().toLowerCase();
+    if (normalized.runes.length < 2) return const [];
+    final exact = _searchCache[_searchKey(query, proximity, language)];
+    if (exact != null &&
+        DateTime.now().difference(exact.$1) < const Duration(minutes: 5)) {
+      return exact.$2;
+    }
+    final suffix = _searchKey('', proximity, language);
+    final seen = <String>{};
+    final matches = <PlaceCandidate>[];
+    for (final entry in _searchCache.entries.toList().reversed) {
+      if (!entry.key.endsWith(suffix) ||
+          DateTime.now().difference(entry.value.$1) >=
+              const Duration(minutes: 5)) {
+        continue;
+      }
+      for (final candidate in entry.value.$2) {
+        if (!candidate.name.toLowerCase().startsWith(normalized) &&
+            !candidate.address.toLowerCase().startsWith(normalized)) {
+          continue;
+        }
+        final identity =
+            '${candidate.reference}:${candidate.name}:${candidate.location}';
+        if (seen.add(identity)) matches.add(candidate);
+      }
+    }
+    return matches.take(12).toList(growable: false);
+  }
 
   @override
   Future<List<PlaceCandidate>> search(
@@ -52,7 +87,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
         if (_searchCache.length >= 48) {
           _searchCache.remove(_searchCache.keys.first);
         }
-        _searchCache[key] = (DateTime.now(), results);
+        if (results.isNotEmpty) _searchCache[key] = (DateTime.now(), results);
         return results;
       } finally {
         _searchPending.remove(key);
@@ -79,6 +114,7 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
       queryParameters: {
         'q': query,
         'lang': language,
+        if (mapCompatible) 'provider': 'independent',
         if (proximity != null)
           'near':
               '${proximity.longitude.toStringAsFixed(3)},${proximity.latitude.toStringAsFixed(3)}',
@@ -88,10 +124,9 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
     var data = response.statusCode == 200
         ? jsonDecode(response.body) as List<dynamic>
         : const <dynamic>[];
-    if (!mapCompatible &&
-        (response.statusCode == 502 ||
-            response.statusCode == 503 ||
-            data.isEmpty)) {
+    if (response.statusCode == 502 ||
+        response.statusCode == 503 ||
+        data.isEmpty) {
       response = await _client
           .get(fallbackUri)
           .timeout(const Duration(seconds: 4));
@@ -125,7 +160,8 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
           return PlaceCandidate(
             name: displayName,
             address: address.isEmpty ? label : address,
-            category: item['approximate'] == true
+            category:
+                (item['approximate'] == true || item['interpolated'] == true)
                 ? 'approximate_address'
                 : item['resultType']?.toString() ?? '',
             kind: isAddress ? PlaceKind.address : PlaceKind.poi,
@@ -171,11 +207,16 @@ class WorkerSearchProvider implements SearchProvider, ExploreProvider {
 
 /// Keyless OSM search. Every candidate carries coordinates and provenance.
 class IndependentSearchProvider
-    implements ExpandedSearchProvider, PlaceProvider, ExploreProvider {
+    implements
+        ExpandedSearchProvider,
+        CachedSearchProvider,
+        PlaceProvider,
+        ExploreProvider {
   IndependentSearchProvider({
     http.Client? client,
     this.requestSpacing = const Duration(milliseconds: 750),
     this.useWorkerSuggestions = false,
+    this.workerOnly = false,
   }) : _client = client ?? http.Client() {
     if (useWorkerSuggestions) {
       _fastSearch = WorkerSearchProvider(client: _client, mapCompatible: true);
@@ -189,7 +230,20 @@ class IndependentSearchProvider
 
   final Duration requestSpacing;
   final bool useWorkerSuggestions;
+  final bool workerOnly;
   WorkerSearchProvider? _fastSearch;
+  @override
+  List<PlaceCandidate> cachedSuggestions(
+    String query, {
+    GeoPoint? proximity,
+    required String language,
+  }) =>
+      _fastSearch?.cachedSuggestions(
+        query,
+        proximity: proximity,
+        language: language,
+      ) ??
+      const [];
   final _cache = <String, (DateTime, List<PlaceSummary>)>{};
   final _pending = <String, Future<List<PlaceSummary>>>{};
   static Future<void>? _queue;
@@ -404,6 +458,8 @@ class IndependentSearchProvider
             if (provider != 'osm' &&
                 provider != 'geoapify' &&
                 provider != 'here' &&
+                provider != 'tomtom' &&
+                !provider.startsWith('derived:') &&
                 !provider.startsWith('regional:')) {
               return null;
             }
@@ -412,7 +468,8 @@ class IndependentSearchProvider
             return PlaceSummary(
               name: name.isEmpty ? address : name,
               address: address,
-              category: item['approximate'] == true
+              category:
+                  (item['approximate'] == true || item['interpolated'] == true)
                   ? 'approximate_address'
                   : item['resultType']?.toString() ?? '',
               location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
@@ -486,6 +543,7 @@ class IndependentSearchProvider
   static const _administrativeCategories = {
     'country',
     'state',
+    'province',
     'county',
     'district',
     'city',
@@ -504,8 +562,12 @@ class IndependentSearchProvider
   }
 
   bool _strongNameMatch(PlaceSummary place, String query) {
-    final name = _compactSearchText(place.name);
-    final wanted = _compactSearchText(query);
+    String words(String value) => value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ')
+        .trim();
+    final name = words(place.name);
+    final wanted = words(query);
     return wanted.isNotEmpty && name == wanted;
   }
 
@@ -678,15 +740,29 @@ class IndependentSearchProvider
     // quality identical regardless of which map renderer is selected. Photon
     // remains the open-data fallback if Waybi search is slow or unavailable.
     final fastSearch = _fastSearch;
-    if (!expanded && fastSearch != null) {
+    if (fastSearch != null && (!expanded || workerOnly)) {
       try {
-        final fast = await fastSearch
-            .search(trimmed, proximity: proximity, language: language)
-            .timeout(const Duration(milliseconds: 1200));
-        if (fast.isNotEmpty) return fast.take(8).toList(growable: false);
+        // The Worker owns the provider deadline. A second, shorter timeout
+        // here used to discard its valid response and start a serial Photon
+        // fallback, which cannot resolve many partial numbered addresses.
+        final fast = await fastSearch.search(
+          trimmed,
+          proximity: proximity,
+          language: language,
+        );
+        if (fast.isNotEmpty || workerOnly) {
+          return fast.take(12).toList(growable: false);
+        }
       } catch (_) {
-        // Fall through to the independent global provider below.
+        if (workerOnly) {
+          throw StateError('Waybi Search is temporarily unavailable');
+        }
+        // Development/direct mode may still fall through to Photon.
       }
+    }
+
+    if (workerOnly) {
+      throw StateError('Waybi Search is temporarily unavailable');
     }
 
     var results = await _load(
@@ -783,6 +859,16 @@ class IndependentSearchProvider
 
     results = results.toList(growable: false)
       ..sort((a, b) {
+        final geographic =
+            (_administrativeCategories.contains(b.category) &&
+                    _strongNameMatch(b, plainQuery)
+                ? 1
+                : 0) -
+            (_administrativeCategories.contains(a.category) &&
+                    _strongNameMatch(a, plainQuery)
+                ? 1
+                : 0);
+        if (geographic != 0) return geographic;
         // Keep explicitly named destinations and brand intent, then rank
         // equally relevant addresses/places by actual distance without a cap.
         if (proximity != null && intentQuery == null) {
@@ -832,7 +918,7 @@ class IndependentSearchProvider
       });
 
     return results
-        .take(8)
+        .take(12)
         .map(
           (p) => PlaceCandidate(
             name: p.name,
@@ -858,12 +944,44 @@ class IndependentSearchProvider
     GeoPoint point, {
     required String language,
     String preferredName = '',
-  }) async => (await _load('reverse', {
-    'lat': '${point.latitude}',
-    'lon': '${point.longitude}',
-    'limit': '1',
-    'lang': 'en',
-  })).firstOrNull;
+  }) async {
+    if (workerOnly) {
+      try {
+        final uri = Uri.parse('$workerBaseUrl/api/reverse').replace(
+          queryParameters: {
+            'at': '${point.longitude},${point.latitude}',
+            'lang': language,
+          },
+        );
+        final response = await _client
+            .get(uri)
+            .timeout(const Duration(seconds: 4));
+        if (response.statusCode != 200) return null;
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        if (data is! Map<String, dynamic>) return null;
+        final label = data['label']?.toString().trim() ?? '';
+        if (label.isEmpty) return null;
+        return PlaceSummary(
+          name: preferredName.trim().isEmpty ? label : preferredName.trim(),
+          address: label,
+          kind: PlaceKind.address,
+          location: point,
+          reference: ProviderReference(
+            'osm',
+            'reverse:${point.latitude},${point.longitude}',
+          ),
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+    return (await _load('reverse', {
+      'lat': '${point.latitude}',
+      'lon': '${point.longitude}',
+      'limit': '1',
+      'lang': 'en',
+    })).firstOrNull;
+  }
 
   @override
   Future<List<PlaceSummary>> nearby(

@@ -151,8 +151,12 @@ void main() {
 
     expect(find.byTooltip('Re-center on my location'), findsOneWidget);
     expect(find.byKey(const Key('navigationRecenterButton')), findsOneWidget);
-    await tester.tap(find.byTooltip('Re-center on my location'));
+    expect(find.text('Re-center'), findsOneWidget);
+    await tester.tap(find.text('Re-center'));
     await tester.pump();
     expect(taps, 1);
+    await tester.tap(find.byTooltip('Re-center on my location'));
+    await tester.pump();
+    expect(taps, 2);
   });
 }

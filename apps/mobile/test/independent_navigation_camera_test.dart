@@ -60,11 +60,12 @@ void main() {
     final far = frame(camera);
     final approaching = frame(camera, distance: 180, seconds: 1);
     final near = frame(camera, distance: 30, seconds: 2);
-    final after = frame(camera, distance: 1000, seconds: 3);
+    final close = frame(camera, distance: 15, seconds: 3);
+    final after = frame(camera, distance: 1000, seconds: 4);
     expect(approaching.zoom, greaterThan(far.zoom));
     expect(near.zoom, greaterThan(approaching.zoom));
-    expect(near.zoom, lessThanOrEqualTo(17.35));
-    expect(after.zoom, closeTo(near.zoom - .28, .001));
+    expect(close.zoom, inInclusiveRange(18.0, 18.2));
+    expect(after.zoom, closeTo(close.zoom - .28, .001));
   });
   test(
     'straight instructions and stale off-route maneuvers do not zoom in',
@@ -89,6 +90,43 @@ void main() {
         frame(IndependentNavigationCamera(), step: null, distance: 0).zoom,
         base.zoom,
       );
+      expect(
+        frame(IndependentNavigationCamera(), distance: -20).zoom,
+        base.zoom,
+      );
+      expect(
+        frame(IndependentNavigationCamera(), distance: double.nan).zoom,
+        base.zoom,
+      );
+    },
+  );
+  test(
+    'last city blocks are legible before the turn, with more motorway context',
+    () {
+      final hundred = frame(
+        IndependentNavigationCamera(),
+        speed: 30,
+        distance: 100,
+      );
+      final fifty = frame(
+        IndependentNavigationCamera(),
+        speed: 30,
+        distance: 50,
+      );
+      final twenty = frame(
+        IndependentNavigationCamera(),
+        speed: 30,
+        distance: 20,
+      );
+      final motorway = frame(
+        IndependentNavigationCamera(),
+        speed: 100,
+        distance: 20,
+      );
+      expect(hundred.zoom, greaterThan(17));
+      expect(fifty.zoom, greaterThan(17.8));
+      expect(twenty.zoom, inInclusiveRange(18.1, 18.2));
+      expect(motorway.zoom, lessThan(twenty.zoom));
     },
   );
   test('recenter resets overview framing and north-up remains north', () {

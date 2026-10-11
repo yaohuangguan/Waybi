@@ -20,6 +20,8 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
   final String baseUrl;
   String lastSyncStatus = 'not_loaded';
   DateTime? lastCheckedAt;
+  GeoPoint? regionCenter;
+  List<String> officialCoverage = const [];
 
   @override
   bool supports(CountryProfile country) => country.roadIntelligenceAvailable;
@@ -28,28 +30,41 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
 
   @override
   Future<List<RoadEvent>> load() async {
+    final cacheKey = _regionalCacheKey;
+    lastSyncStatus = 'unavailable';
+    officialCoverage = const [];
+    lastCheckedAt = null;
     Object? networkError;
     try {
       final response = await _client
-          .get(Uri.parse('$baseUrl/api/road-events'))
+          .get(
+            Uri.parse('$baseUrl/api/road-events').replace(
+              queryParameters: {
+                if (regionCenter != null)
+                  'near':
+                      '${regionCenter!.longitude},${regionCenter!.latitude}',
+              },
+            ),
+          )
           .timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) {
         throw StateError('Road events API failed: ${response.statusCode}');
       }
+      final events = _decode(response.body, stale: false);
       try {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_cacheKey, response.body);
+        await prefs.setString(cacheKey, response.body);
       } catch (_) {
         // A missing preferences binding must not hide a successful live feed.
       }
-      return _decode(response.body, stale: false);
+      return events;
     } catch (error) {
       networkError = error;
     }
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString(_cacheKey);
+      final cached = prefs.getString(cacheKey);
       if (cached != null) return _decode(cached, stale: true);
     } catch (_) {
       // Fall through to the original network failure.
@@ -63,12 +78,35 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
         ? 'stale'
         : body['syncStatus']?.toString() ?? 'unknown';
     lastCheckedAt = DateTime.tryParse(body['checkedAt']?.toString() ?? '');
+    officialCoverage =
+        (body['officialCoverage'] as List<dynamic>?)
+            ?.whereType<String>()
+            .toList() ??
+        const ['NZ'];
+    final retrievedAt =
+        DateTime.tryParse(body['retrievedAt']?.toString() ?? '') ??
+        lastCheckedAt;
+    final expiredSnapshot =
+        stale &&
+        (retrievedAt == null ||
+            DateTime.now().difference(retrievedAt) >
+                const Duration(minutes: 15));
+    if (expiredSnapshot) lastSyncStatus = 'unavailable';
     return (body['events'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(_fromJson)
         .whereType<RoadEvent>()
+        .where(
+          (event) =>
+              event.isCurrent(DateTime.now()) &&
+              (!expiredSnapshot || event.metadata['userReported'] == true),
+        )
         .toList(growable: false);
   }
+
+  String get _regionalCacheKey => regionCenter == null
+      ? _cacheKey
+      : '$_cacheKey.${CountryProfiles.at(regionCenter!)?.code ?? 'GLOBAL'}';
 
   RoadEvent? _fromJson(Map<String, dynamic> json) {
     final location = json['location'];

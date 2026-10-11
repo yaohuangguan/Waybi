@@ -5,12 +5,17 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../domain/map_layer_settings.dart';
+import '../domain/map_region_capabilities.dart';
 import '../domain/map_provider.dart';
 import '../domain/safety_camera.dart';
 import '../domain/traffic_flow.dart';
 import '../domain/road_event.dart';
+import '../domain/transit_lane.dart';
+import '../domain/transit_lane_map.dart';
+import '../domain/transit_review_corridor.dart';
 import '../domain/route_traffic_match.dart';
 import 'location_marker_art.dart';
 import 'road_event_marker_art.dart';
@@ -31,6 +36,10 @@ class IndependentMapRenderer extends StatefulWidget {
     required this.onCamera,
     required this.roadEvents,
     required this.onRoadEvent,
+    this.transitLanes = const [],
+    this.onTransitLane,
+    this.transitReviewCorridors = const [],
+    this.onTransitReviewCorridor,
     required this.trafficSegments,
     required this.routePaths,
     required this.selectedPlace,
@@ -59,6 +68,10 @@ class IndependentMapRenderer extends StatefulWidget {
   final ValueChanged<SafetyCamera> onCamera;
   final List<RoadEvent> roadEvents;
   final ValueChanged<RoadEvent> onRoadEvent;
+  final List<TransitLane> transitLanes;
+  final ValueChanged<TransitLane>? onTransitLane;
+  final List<TransitReviewCorridor> transitReviewCorridors;
+  final ValueChanged<TransitReviewCorridor>? onTransitReviewCorridor;
   final List<TrafficFlowSegment> trafficSegments;
   final List<MapRoutePath> routePaths;
   final PlaceSummary? selectedPlace;
@@ -75,7 +88,11 @@ class IndependentMapRenderer extends StatefulWidget {
   final bool navigating;
   final TrafficTileOverlay? trafficTileOverlay;
   final bool trafficFresh;
-  final Future<String> Function({required bool dark, required String language})
+  final Future<String> Function({
+    required bool dark,
+    required String language,
+    required GeoPoint center,
+  })
   styleLoader;
   @override
   State<IndependentMapRenderer> createState() => _IndependentMapRendererState();
@@ -89,11 +106,17 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   EdgeInsets? _appliedPadding;
   Future<String>? _style;
   bool? _dark;
+  late WaybiMapRegion _region;
   bool _ready = false, _syncing = false, _dirty = false;
+  bool _sceneDirty = true;
+  int _cameraRevision = 0;
+  int _trafficMinute = 0;
+  Timer? _creditTimer;
+  bool _creditsVisible = false;
+  bool _styleEventReceived = false;
+  bool _initializingStyle = false;
   int _generation = 0;
   String? _trafficTileSignature;
-  Timer? _creditTimer;
-  bool _showCredit = true;
   final _signatures = <String, int>{};
   final _pointers = <int, Offset>{};
   bool _gestureReported = false;
@@ -105,6 +128,13 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   ml.LatLng _point(GeoPoint p) => ml.LatLng(p.latitude, p.longitude);
 
   @override
+  void initState() {
+    super.initState();
+    _region = MapRegionCapabilities.forPoint(widget.initialViewport.center)
+        .region;
+  }
+
+  @override
   void dispose() {
     _creditTimer?.cancel();
     super.dispose();
@@ -113,11 +143,17 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   void _loadStyle() {
     _dark = Theme.of(context).brightness == Brightness.dark;
     _ready = false;
+    _styleEventReceived = false;
     _generation++;
     _trafficTileSignature = null;
     _signatures.clear();
+    _sceneDirty = true;
     _appliedPadding = null;
-    _style = widget.styleLoader(dark: _dark!, language: widget.language);
+    _style = widget.styleLoader(
+      dark: _dark!,
+      language: widget.language,
+      center: _viewport.center,
+    );
   }
 
   @override
@@ -134,6 +170,28 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.language != widget.language) _loadStyle();
     if (widget.navigating && !oldWidget.navigating) _placePadding = null;
+    // Position/compass updates are frequent. Do not reproject traffic or hash
+    // every route point unless the scene inputs actually changed.
+    _sceneDirty |=
+        oldWidget.layers.markerSignature != widget.layers.markerSignature ||
+        oldWidget.layers.traffic != widget.layers.traffic ||
+        oldWidget.layers.roadEvents != widget.layers.roadEvents ||
+        oldWidget.layers.transitLanes != widget.layers.transitLanes ||
+        !listEquals(oldWidget.transitLanes, widget.transitLanes) ||
+        !listEquals(
+          oldWidget.transitReviewCorridors,
+          widget.transitReviewCorridors,
+        ) ||
+        oldWidget.trafficFresh != widget.trafficFresh ||
+        oldWidget.navigating != widget.navigating ||
+        !listEquals(oldWidget.cameras, widget.cameras) ||
+        !listEquals(oldWidget.roadEvents, widget.roadEvents) ||
+        !listEquals(oldWidget.trafficSegments, widget.trafficSegments) ||
+        !listEquals(oldWidget.explorePlaces, widget.explorePlaces) ||
+        oldWidget.selectedPlace != widget.selectedPlace ||
+        !_sameRoutes(oldWidget.routePaths, widget.routePaths) ||
+        oldWidget.trafficTileOverlay != widget.trafficTileOverlay ||
+        _trafficMinute != DateTime.now().millisecondsSinceEpoch ~/ 60000;
     _queueSync();
     if (oldWidget.contentPadding != widget.contentPadding) {
       unawaited(_updatePadding());
@@ -157,6 +215,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   @override
   Future<void> moveTo(MapViewportState viewport) async {
     if (!_ready) return;
+    _cameraRevision++;
     _viewport = viewport;
     await _applyPadding();
     await _controller!.easeCamera(
@@ -196,6 +255,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     required double bottomInset,
   }) async {
     if (!_ready || points.length < 2) return;
+    _cameraRevision++;
     final south = points.map((p) => p.latitude).reduce(math.min);
     final north = points.map((p) => p.latitude).reduce(math.max);
     final west = points.map((p) => p.longitude).reduce(math.min);
@@ -230,19 +290,83 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     widget.onViewportChanged(_viewport);
   }
 
+  Future<void> _cameraIdle() async {
+    final controller = _controller;
+    if (controller == null || !_ready) return;
+    final generation = _generation;
+    final revision = _cameraRevision;
+    // Native gestures stay entirely on the native thread. Read the exact final
+    // camera once on idle instead of sending a platform message on every frame.
+    ml.CameraPosition? camera;
+    try {
+      camera = await controller.queryCameraPosition();
+    } catch (error) {
+      if (mounted) debugPrint('Waybi final camera unavailable: $error');
+      return;
+    }
+    if (!mounted || generation != _generation || revision != _cameraRevision) {
+      return;
+    }
+    if (camera != null) _cameraMoved(camera);
+
+    // MapLibre can report a transient/default camera while a new style is
+    // still being attached. Never let that tear down the first overlay setup:
+    // Waybi driver, POIs, routes and traffic are all installed in
+    // _styleLoaded(). Region switching is only safe after that setup is ready.
+    if (!_ready) return;
+
+    final next = MapRegionCapabilities.forPoint(_viewport.center).region;
+    if (next == _region) return;
+    setState(() {
+      _region = next;
+      _loadStyle();
+    });
+  }
+
   void _pan() {
     if (_gestureReported) return;
     _gestureReported = true;
+    _cameraRevision++;
+    if (_creditsVisible) setState(() => _creditsVisible = false);
     widget.onUserPan();
   }
 
+  void _mapCreated(ml.MapLibreMapController controller) {
+    _controller = controller;
+    if (_styleEventReceived) unawaited(_styleLoaded());
+  }
+
+  void _styleDidLoad() {
+    _styleEventReceived = true;
+    if (_controller != null) unawaited(_styleLoaded());
+  }
+
   Future<void> _styleLoaded() async {
+    if (_initializingStyle || !_styleEventReceived) return;
+    final c = _controller;
+    if (c == null) return;
+
+    _initializingStyle = true;
     final generation = _generation;
-    final c = _controller!;
-    final imageScale = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS
-        ? View.of(context).devicePixelRatio
-        : 1.0;
     try {
+      final imageScale = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS
+          ? View.of(context).devicePixelRatio
+          : 1.0;
+      Set<String> existingLayerIds = const {};
+      try {
+        existingLayerIds = (await c.getLayerIds())
+            .map((id) => id.toString())
+            .toSet();
+      } catch (e) {
+        debugPrint(
+          'Waybi map layer discovery unavailable; using safe overlay fallback: $e',
+        );
+      }
+      final overlayAnchor = existingLayerIds.contains('waybi-poi-dot')
+          ? 'waybi-poi-dot'
+          : existingLayerIds.contains('waterway_line_label')
+          ? 'waterway_line_label'
+          : null;
       for (final style in LocationMarkerStyle.values) {
         await c.addImage(
           'waybi-puck-${style.name}',
@@ -268,8 +392,10 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       );
       for (final source in [
         'waybi-traffic',
+        'waybi-transit-lanes',
         'waybi-route-traffic',
         'waybi-route',
+        'waybi-road-events',
         'waybi-pins',
         'waybi-driver',
       ]) {
@@ -292,7 +418,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             ['get', 'active'],
             active,
           ],
-          belowLayerId: 'waybi-poi-dot',
+          belowLayerId: overlayAnchor,
           enableInteraction: false,
         );
         await c.addLineLayer(
@@ -310,10 +436,49 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             ['get', 'active'],
             active,
           ],
-          belowLayerId: 'waybi-poi-dot',
+          belowLayerId: overlayAnchor,
           enableInteraction: false,
         );
       }
+      // A thin dashed official lane trace: never paint the whole road as
+      // restricted. Draw beneath live traffic and navigation routes.
+      await c.addLineLayer(
+        'waybi-transit-lanes',
+        'waybi-transit-casing',
+        const ml.LineLayerProperties(
+          lineColor: '#ffffff',
+          lineWidth: 6,
+          lineOpacity: .7,
+          lineCap: 'round',
+          lineJoin: 'round',
+        ),
+        belowLayerId: 'waybi-alternative-edge',
+        enableInteraction: false,
+      );
+      await c.addLineLayer(
+        'waybi-transit-lanes',
+        'waybi-transit-lines',
+        ml.LineLayerProperties(
+          lineColor: [
+            'match',
+            ['get', 'laneStatus'],
+            'active',
+            '#2674B5',
+            'unknown',
+            '#D59126',
+            'candidate',
+            '#BD8131',
+            '#A4AFBD',
+          ],
+          lineWidth: 3.6,
+          lineOpacity: .86,
+          lineDasharray: [2, 1.5],
+          lineCap: 'round',
+          lineJoin: 'round',
+        ),
+        belowLayerId: 'waybi-alternative-edge',
+        enableInteraction: false,
+      );
       await c.addLineLayer(
         'waybi-traffic',
         'waybi-traffic-casing',
@@ -374,7 +539,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           lineCap: 'round',
           lineJoin: 'round',
         ),
-        belowLayerId: 'waybi-poi-dot',
+        belowLayerId: overlayAnchor,
         enableInteraction: false,
       );
       await c.addCircleLayer(
@@ -492,6 +657,30 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         ],
         enableInteraction: false,
       );
+      await c.addLineLayer(
+        'waybi-road-events',
+        'waybi-road-events-casing',
+        const ml.LineLayerProperties(lineColor: '#ffffff', lineWidth: 11),
+        belowLayerId: 'waybi-pins-dot',
+        enableInteraction: false,
+      );
+      await c.addLineLayer(
+        'waybi-road-events',
+        'waybi-road-events-line',
+        const ml.LineLayerProperties(
+          lineColor: [
+            'match',
+            ['get', 'type'],
+            'roadClosure',
+            '#d63b3b',
+            '#d88d22',
+          ],
+          lineWidth: 7,
+          lineDasharray: [2, 1.5],
+        ),
+        belowLayerId: 'waybi-pins-dot',
+        enableInteraction: false,
+      );
       await c.addSymbolLayer(
         'waybi-driver',
         'waybi-driver-light',
@@ -519,18 +708,33 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         enableInteraction: false,
       );
       if (!mounted || generation != _generation) return;
+      _styleEventReceived = false;
       _ready = true;
-      _creditTimer?.cancel();
-      _creditTimer = Timer(const Duration(seconds: 5), () {
-        if (mounted) setState(() => _showCredit = false);
-      });
+      if (_creditTimer == null) {
+        setState(() => _creditsVisible = true);
+        _creditTimer = Timer(const Duration(seconds: 5), () {
+          if (mounted) setState(() => _creditsVisible = false);
+        });
+      }
       _signatures.clear();
       await _updatePadding();
       _queueSync();
       debugPrint('Waybi native map layers ready');
       widget.onReady(this);
-    } catch (e) {
-      if (mounted) debugPrint('Practice map initialization failed: $e');
+    } catch (e, stack) {
+      if (mounted) {
+        debugPrint('Practice map initialization failed: $e');
+        debugPrintStack(stackTrace: stack);
+      }
+    } finally {
+      _initializingStyle = false;
+      if (mounted &&
+          !_ready &&
+          _styleEventReceived &&
+          _controller != null &&
+          generation == _generation) {
+        scheduleMicrotask(_styleLoaded);
+      }
     }
   }
 
@@ -606,99 +810,95 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     if (_ready && !_syncing) unawaited(_sync());
   }
 
+  bool _sameRoutes(List<MapRoutePath> a, List<MapRoutePath> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id ||
+          a[i].active != b[i].active ||
+          !identical(a[i].points, b[i].points)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Future<void> _sync() async {
     _syncing = true;
     final generation = _generation;
     try {
       while (mounted && _ready && _dirty && generation == _generation) {
         _dirty = false;
-        await _syncTrafficTiles();
-        final activeRoute = widget.routePaths
-            .where((route) => route.active)
-            .firstOrNull;
-        final allTraffic = widget.layers.traffic
-            ? widget.trafficSegments
-                  .where((segment) => segment.hasRoadGeometry)
-                  .toList(growable: false)
-            : const <TrafficFlowSegment>[];
-        final traffic = widget.navigating
-            ? const <TrafficFlowSegment>[]
-            : allTraffic;
-        final routeTraffic = widget.navigating && activeRoute != null
-            ? allTraffic
-                  .where(
-                    (segment) =>
-                        trafficSegmentMatchesRoute(segment, activeRoute),
-                  )
-                  .toList(growable: false)
-            : const <TrafficFlowSegment>[];
-        final trafficHash = Object.hash(
-          widget.layers.traffic,
-          widget.trafficFresh,
-          widget.navigating,
-          Object.hashAll(
-            traffic.map(
-              (segment) => Object.hash(
-                segment.id,
-                segment.level,
-                segment.start,
-                segment.end,
-                Object.hashAll(segment.geometry),
+        if (_sceneDirty) {
+          _sceneDirty = false;
+          _trafficMinute = DateTime.now().millisecondsSinceEpoch ~/ 60000;
+          await _syncTrafficTiles();
+          final transit = widget.layers.transitLanes
+              ? widget.transitLanes
+              : const <TransitLane>[];
+          final reviewCorridors = widget.layers.transitLanes
+              ? widget.transitReviewCorridors
+              : const <TransitReviewCorridor>[];
+          await _setSource(
+            'waybi-transit-lanes',
+            Object.hash(
+              widget.layers.transitLanes,
+              _trafficMinute,
+              Object.hashAll(transit),
+              Object.hashAll(reviewCorridors),
+            ),
+            () => transitLaneFeatureCollection(
+              transit,
+              DateTime.now(),
+              reviewCorridors,
+            ),
+          );
+          final activeRoute = widget.routePaths
+              .where((route) => route.active)
+              .firstOrNull;
+          final allTraffic = widget.layers.traffic
+              ? widget.trafficSegments
+                    .where((segment) => segment.hasRoadGeometry)
+                    .toList(growable: false)
+              : const <TrafficFlowSegment>[];
+          final traffic = widget.navigating
+              ? const <TrafficFlowSegment>[]
+              : allTraffic;
+          final routeTraffic = widget.navigating && activeRoute != null
+              ? allTraffic
+                    .where(
+                      (segment) =>
+                          trafficSegmentMatchesRoute(segment, activeRoute),
+                    )
+                    .toList(growable: false)
+              : const <TrafficFlowSegment>[];
+          final trafficHash = Object.hash(
+            widget.layers.traffic,
+            widget.trafficFresh,
+            widget.navigating,
+            Object.hashAll(
+              traffic.map(
+                (segment) => Object.hash(
+                  segment.id,
+                  segment.level,
+                  segment.start,
+                  segment.end,
+                  Object.hashAll(segment.geometry),
+                ),
               ),
             ),
-          ),
-        );
-        await _setSource(
-          'waybi-traffic',
-          trafficHash,
-          () => _collection([
-            for (final segment in traffic)
-              {
-                'type': 'Feature',
-                'id': segment.id,
-                'geometry': {
-                  'type': 'LineString',
-                  'coordinates': [
-                    for (final p in segment.geometry) [p.longitude, p.latitude],
-                  ],
-                },
-                'properties': {
-                  'level': widget.trafficFresh ? segment.level.name : 'unknown',
-                  'name': segment.name,
-                  'direction': segment.direction,
-                  'congestion': segment.congestion,
-                },
-              },
-          ]),
-        );
-        final routeTrafficHash = Object.hash(
-          widget.trafficFresh,
-          Object.hashAll(
-            routeTraffic.map(
-              (segment) => Object.hash(
-                segment.id,
-                segment.level,
-                Object.hashAll(segment.geometry),
-              ),
-            ),
-          ),
-        );
-        await _setSource(
-          'waybi-route-traffic',
-          routeTrafficHash,
-          () => _collection([
-            for (final segment in routeTraffic)
-              if (trafficGeometryOnRoute(segment, activeRoute!).length >= 2)
+          );
+          await _setSource(
+            'waybi-traffic',
+            trafficHash,
+            () => _collection([
+              for (final segment in traffic)
                 {
                   'type': 'Feature',
-                  'id': 'route-${segment.id}',
+                  'id': segment.id,
                   'geometry': {
                     'type': 'LineString',
                     'coordinates': [
-                      for (final p in trafficGeometryOnRoute(
-                        segment,
-                        activeRoute,
-                      ))
+                      for (final p in segment.geometry)
                         [p.longitude, p.latitude],
                     ],
                   },
@@ -706,75 +906,144 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                     'level': widget.trafficFresh
                         ? segment.level.name
                         : 'unknown',
+                    'name': segment.name,
+                    'direction': segment.direction,
+                    'congestion': segment.congestion,
                   },
                 },
-          ]),
-        );
-        final routeHash = Object.hashAll(
-          widget.routePaths.map(
-            (route) => Object.hash(
-              route.id,
-              route.active,
-              Object.hashAll(route.points),
-            ),
-          ),
-        );
-        await _setSource(
-          'waybi-route',
-          routeHash,
-          () => _collection([
-            for (final route in widget.routePaths)
-              if (route.points.length > 1)
-                {
-                  'type': 'Feature',
-                  'id': route.id,
-                  'geometry': {
-                    'type': 'LineString',
-                    'coordinates': [
-                      for (final p in route.points) [p.longitude, p.latitude],
-                    ],
-                  },
-                  'properties': <String, dynamic>{'active': route.active},
-                },
-          ]),
-        );
-        final cameras = widget.cameras
-            .where(widget.layers.shows)
-            .toList(growable: false);
-        final pinsHash = Object.hash(
-          Object.hashAll(cameras),
-          Object.hashAll(widget.roadEvents),
-          Object.hashAll(widget.explorePlaces),
-          widget.selectedPlace,
-          activeRoute?.points.lastOrNull,
-        );
-        await _setSource(
-          'waybi-pins',
-          pinsHash,
-          () => _collection([
-            for (final c in cameras) _cameraPin(c),
-            for (final e in widget.roadEvents)
-              {
-                ..._pin('event:${e.id}', e.location, 'event', e.roadName ?? ''),
-                'properties': {
-                  'kind': 'event',
-                  'name': e.roadName ?? '',
-                  'icon': 'waybi-event-${e.type.name}',
-                },
-              },
-            for (var i = 0; i < widget.explorePlaces.length; i++)
-              _pin(
-                'explore:$i',
-                widget.explorePlaces[i].location,
-                'explore',
-                widget.explorePlaces[i].name,
+            ]),
+          );
+          final routeTrafficHash = Object.hash(
+            widget.trafficFresh,
+            Object.hashAll(
+              routeTraffic.map(
+                (segment) => Object.hash(
+                  segment.id,
+                  segment.level,
+                  Object.hashAll(segment.geometry),
+                ),
               ),
-            if (widget.selectedPlace case final p?)
-              _pin('selected', p.location, 'selected', p.name),
-            if (activeRoute != null && activeRoute.points.isNotEmpty)
-              _pin('destination', activeRoute.points.last, 'destination', ''),
-          ]),
-        );
+            ),
+          );
+          await _setSource(
+            'waybi-route-traffic',
+            routeTrafficHash,
+            () => _collection([
+              for (final segment in routeTraffic)
+                if (trafficGeometryOnRoute(segment, activeRoute!).length >= 2)
+                  {
+                    'type': 'Feature',
+                    'id': 'route-${segment.id}',
+                    'geometry': {
+                      'type': 'LineString',
+                      'coordinates': [
+                        for (final p in trafficGeometryOnRoute(
+                          segment,
+                          activeRoute,
+                        ))
+                          [p.longitude, p.latitude],
+                      ],
+                    },
+                    'properties': {
+                      'level': widget.trafficFresh
+                          ? segment.level.name
+                          : 'unknown',
+                    },
+                  },
+            ]),
+          );
+          final routeHash = Object.hashAll(
+            widget.routePaths.map(
+              (route) => Object.hash(
+                route.id,
+                route.active,
+                Object.hashAll(route.points),
+              ),
+            ),
+          );
+          await _setSource(
+            'waybi-route',
+            routeHash,
+            () => _collection([
+              for (final route in widget.routePaths)
+                if (route.points.length > 1)
+                  {
+                    'type': 'Feature',
+                    'id': route.id,
+                    'geometry': {
+                      'type': 'LineString',
+                      'coordinates': [
+                        for (final p in route.points) [p.longitude, p.latitude],
+                      ],
+                    },
+                    'properties': <String, dynamic>{'active': route.active},
+                  },
+            ]),
+          );
+          final cameras = widget.cameras
+              .where(widget.layers.shows)
+              .toList(growable: false);
+          await _setSource(
+            'waybi-road-events',
+            Object.hashAll(widget.roadEvents),
+            () => _collection([
+              for (final event in widget.roadEvents)
+                if (event.geometry.length >= 2 &&
+                    event.metadata['geometryType'] == 'LINESTRING')
+                  {
+                    'type': 'Feature',
+                    'id': 'event:${event.id}',
+                    'geometry': {
+                      'type': 'LineString',
+                      'coordinates': [
+                        for (final p in event.geometry)
+                          [p.longitude, p.latitude],
+                      ],
+                    },
+                    'properties': {'type': event.type.name},
+                  },
+            ]),
+          );
+          final pinsHash = Object.hash(
+            Object.hashAll(cameras),
+            Object.hashAll(widget.roadEvents),
+            Object.hashAll(widget.explorePlaces),
+            widget.selectedPlace,
+            activeRoute?.points.lastOrNull,
+          );
+          await _setSource(
+            'waybi-pins',
+            pinsHash,
+            () => _collection([
+              for (final c in cameras) _cameraPin(c),
+              for (final e in widget.roadEvents)
+                {
+                  ..._pin(
+                    'event:${e.id}',
+                    e.location,
+                    'event',
+                    e.roadName ?? '',
+                  ),
+                  'properties': {
+                    'kind': 'event',
+                    'name': e.roadName ?? '',
+                    'icon': 'waybi-event-${e.type.name}',
+                  },
+                },
+              for (var i = 0; i < widget.explorePlaces.length; i++)
+                _pin(
+                  'explore:$i',
+                  widget.explorePlaces[i].location,
+                  'explore',
+                  widget.explorePlaces[i].name,
+                ),
+              if (widget.selectedPlace case final p?)
+                _pin('selected', p.location, 'selected', p.name),
+              if (activeRoute != null && activeRoute.points.isNotEmpty)
+                _pin('destination', activeRoute.points.last, 'destination', ''),
+            ]),
+          );
+        }
         final driverHash = Object.hash(
           widget.locationEnabled,
           widget.location,
@@ -833,6 +1102,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         [
           'waybi-camera-icon',
           'waybi-event-icon',
+          'waybi-road-events-line',
+          'waybi-transit-lines',
           'waybi-pins-dot',
           'waybi-pins-label',
           'waybi-poi-dot',
@@ -859,6 +1130,24 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
               .firstOrNull;
           if (e != null) {
             widget.onRoadEvent(e);
+            return;
+          }
+        }
+        if (id.startsWith('transit:') && widget.layers.transitLanes) {
+          final lane = widget.transitLanes
+              .where((lane) => 'transit:${lane.id}' == id)
+              .firstOrNull;
+          if (lane != null) {
+            widget.onTransitLane?.call(lane);
+            return;
+          }
+        }
+        if (id.startsWith('review:') && widget.layers.transitLanes) {
+          final corridor = widget.transitReviewCorridors
+              .where((entry) => 'review:${entry.id}' == id)
+              .firstOrNull;
+          if (corridor != null) {
+            widget.onTransitReviewCorridor?.call(corridor);
             return;
           }
         }
@@ -955,21 +1244,15 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                   bearing: widget.initialViewport.bearing,
                 ),
                 minMaxZoomPreference: const ml.MinMaxZoomPreference(3, 20),
-                trackCameraPosition: true,
+                trackCameraPosition: false,
                 compassEnabled: false,
+                attributionButtonEnabled: kIsWeb,
                 tiltGesturesEnabled: false,
                 dragEnabled: false,
                 annotationOrder: const [],
-                onMapCreated: (c) => _controller = c,
-                onStyleLoadedCallback: () => unawaited(_styleLoaded()),
-                onCameraMove: _cameraMoved,
-                onCameraIdle: () {
-                  // Native iOS reports the settled position separately from
-                  // movement frames. Keep follow calculations on that final
-                  // bearing and zoom, rather than the last animation frame.
-                  final camera = _controller?.cameraPosition;
-                  if (camera != null) _cameraMoved(camera);
-                },
+                onMapCreated: _mapCreated,
+                onStyleLoadedCallback: _styleDidLoad,
+                onCameraIdle: _cameraIdle,
                 onMapClick: (p, ll) => unawaited(_tap(p, ll)),
                 onMapLongClick: (_, p) => widget.onMapPlace(
                   PlaceSummary(
@@ -986,20 +1269,23 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           },
         ),
       ),
-      if (_showCredit)
+      if (_creditsVisible && !kIsWeb)
         Positioned(
-          bottom: 8,
-          left: 8,
-          child: IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface
-                    .withValues(alpha: .92),
-                borderRadius: BorderRadius.circular(5),
+          right: 8,
+          bottom: _padding.bottom + 8,
+          child: Material(
+            color: Theme.of(context).colorScheme.surface.withValues(alpha: .9),
+            borderRadius: BorderRadius.circular(6),
+            child: InkWell(
+              onTap: () => launchUrl(
+                Uri.parse('https://www.openstreetmap.org/copyright'),
               ),
               child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                child: Text('© OpenStreetMap', style: TextStyle(fontSize: 10)),
+                padding: EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                child: Text(
+                  '© OpenStreetMap contributors · © OpenMapTiles',
+                  style: TextStyle(fontSize: 11),
+                ),
               ),
             ),
           ),

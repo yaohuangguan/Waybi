@@ -6,6 +6,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:waybi_mobile/domain/map_provider.dart';
+import 'package:waybi_mobile/domain/navigation_lanes.dart';
 import 'package:waybi_mobile/domain/safety_camera.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/drive/journey_tracker.dart';
@@ -110,9 +111,12 @@ class _NavigationPreviewState extends State<NavigationPreview> {
                   remainingMeters: 2400,
                   remainingSeconds: 360,
                   lanes: const [
-                    NavigationLane('←', true),
-                    NavigationLane('↑', false),
-                    NavigationLane('↑→', false),
+                    NavigationLane({LaneArrowDirection.left}, true),
+                    NavigationLane({LaneArrowDirection.straight}, false),
+                    NavigationLane({
+                      LaneArrowDirection.straight,
+                      LaneArrowDirection.right,
+                    }, false),
                   ],
                 ),
                 destinationTitle: 'Waybi Cafe · Auckland',

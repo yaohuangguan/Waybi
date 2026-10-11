@@ -552,10 +552,9 @@ packages:
   maplibre_gl:
     dependency: "direct main"
     description:
-      name: maplibre_gl
-      sha256: "52e5c873137f8bcb2646802cf1d811575cb4b5bab52d1373d8d23a48f656f166"
-      url: "https://pub.dev"
-    source: hosted
+      path: "../../packages/maplibre_gl"
+      relative: true
+    source: path
     version: "0.27.1"
   maplibre_gl_platform_interface:
     dependency: transitive
@@ -931,7 +930,7 @@ packages:
     source: hosted
     version: "0.7.12"
   timezone:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: timezone
       sha256: dd14a3b83cfd7cb19e7888f1cbc20f258b8d71b54c06f79ac585f14093a287d1

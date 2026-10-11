@@ -5,6 +5,7 @@ import 'package:waybi_friends/waybi_friends.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../data/account_repository.dart';
+import '../data/friends_backup_service.dart';
 import '../data/app_store_billing.dart';
 import '../data/plus_billing.dart';
 import 'plus_page.dart';
@@ -15,6 +16,7 @@ class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
     required this.account,
+    this.friendsBackup,
     this.plusBilling,
     required this.voiceEnabled,
     required this.lanesEnabled,
@@ -47,6 +49,7 @@ class ProfilePage extends StatefulWidget {
   });
 
   final AccountRepository account;
+  final FriendsBackupService? friendsBackup;
   final PlusBillingGateway? plusBilling;
   final bool voiceEnabled;
   final bool lanesEnabled;
@@ -103,6 +106,99 @@ class _ProfilePageState extends State<ProfilePage> {
 
   String _text(String english, String chinese) =>
       _appLanguage == 'zh' ? chinese : english;
+
+  Future<void> _showMapDataLicences() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .66,
+        minChildSize: .48,
+        maxChildSize: .9,
+        builder: (context, controller) => ListView(
+          controller: controller,
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+          children: [
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            Text(
+              _text('Map data & licences', '地图数据与许可'),
+              style: Theme.of(context).textTheme.headlineSmall
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _text(
+                'Waybi controls the map experience, style, navigation UI and product layers. Geographic data still comes from credited open and official sources.',
+                'Waybi 自己控制地图体验、样式、导航界面和产品图层；底层地理数据仍来自需要注明来源的开放数据和官方数据。',
+              ),
+              style: const TextStyle(height: 1.45),
+            ),
+            const SizedBox(height: 20),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.public_rounded),
+              title: Text('OpenStreetMap'),
+              subtitle: Text(
+                'Map data © OpenStreetMap contributors · Open Database License (ODbL)',
+              ),
+            ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.location_city_rounded),
+              title: Text('Toitū Te Whenua LINZ'),
+              subtitle: Text(
+                'New Zealand address data · Creative Commons Attribution 4.0',
+              ),
+            ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.layers_outlined),
+              title: Text('OpenMapTiles'),
+              subtitle: Text(
+                'Vector tile schema © OpenMapTiles · CC BY. Waybi-hosted regional tiles currently use this transitional schema.',
+              ),
+            ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.map_outlined),
+              title: Text('Waybi Map basemap'),
+              subtitle: Text(
+                'MapLibre rendering with Waybi-controlled style and regional tile hosting. Global coverage still uses a fallback while Waybi-hosted regions expand.',
+              ),
+            ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.route_rounded),
+              title: Text('Routing'),
+              subtitle: Text(
+                'OSRM routing over OpenStreetMap road data. Waybi-hosted regional routing is being introduced before public launch.',
+              ),
+            ),
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.directions_bus_rounded),
+              title: Text('Auckland special vehicle lanes'),
+              subtitle: Text(
+                '© Auckland Transport · Creative Commons Attribution 4.0. Published lane geometry and operating hours, adapted by Waybi. Source: AT Open GIS Transit Lanes. Operating times use Pacific/Auckland. Licence: creativecommons.org/licenses/by/4.0/',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void didUpdateWidget(covariant ProfilePage oldWidget) {
@@ -549,6 +645,43 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               const SizedBox(height: 16),
               FriendsEntry(chinese: _appLanguage == 'zh'),
+              if (widget.friendsBackup case final backup?)
+                AnimatedBuilder(
+                  animation: backup,
+                  builder: (context, _) => ListTile(
+                    dense: true,
+                    leading: Icon(
+                      backup.status == FriendsBackupStatus.backedUp
+                          ? Icons.cloud_done_outlined
+                          : Icons.cloud_outlined,
+                    ),
+                    title: Text(switch (backup.status) {
+                      FriendsBackupStatus.deviceOnly => _text(
+                        'Journal saved on this device',
+                        '旅行日记已保存在这台设备',
+                      ),
+                      FriendsBackupStatus.syncing => _text(
+                        'Backing up your journal…',
+                        '正在备份旅行日记…',
+                      ),
+                      FriendsBackupStatus.backedUp => _text(
+                        'Journal backed up to your account',
+                        '旅行日记已备份到你的账号',
+                      ),
+                      FriendsBackupStatus.offline => _text(
+                        'Saved on this device · backup will retry',
+                        '已保存在本机 · 稍后重试云备份',
+                      ),
+                    }),
+                    trailing: backup.status == FriendsBackupStatus.offline
+                        ? IconButton(
+                            onPressed: backup.sync,
+                            icon: const Icon(Icons.refresh),
+                            tooltip: _text('Retry backup', '重试备份'),
+                          )
+                        : null,
+                  ),
+                ),
               const SizedBox(height: 16),
               _PlusCard(
                 isPlus: profile?.isPlus ?? false,
@@ -840,13 +973,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 trailing: DropdownButton<MapProvider>(
                   value: _mapProvider,
                   items: [
-                    const DropdownMenuItem(
-                      value: MapProvider.google,
-                      child: Text('Google Maps'),
-                    ),
                     DropdownMenuItem(
                       value: MapProvider.independent,
                       child: Text(_text('Waybi Map', 'Waybi 地图')),
+                    ),
+                    const DropdownMenuItem(
+                      value: MapProvider.google,
+                      child: Text('Google Maps'),
                     ),
                   ],
                   onChanged: (value) async {
@@ -1161,6 +1294,16 @@ class _ProfilePageState extends State<ProfilePage> {
                   label: Text(_text('Sign out', '退出登录')),
                 ),
               ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _showMapDataLicences,
+                  child: Text(
+                    _text('Map data & licences', '地图数据与许可'),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

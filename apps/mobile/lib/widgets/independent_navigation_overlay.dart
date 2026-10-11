@@ -5,18 +5,16 @@ import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
 import '../providers/independent_navigation_engine.dart';
 import 'navigation_overlay.dart';
+import 'navigation_maneuver_icon.dart';
 
 IconData independentManeuverIcon(RouteStepInfo? step) {
   final type = step?.maneuverType ?? '';
-  final modifier = step?.maneuverModifier ?? '';
-  if (type == 'arrive') return Icons.flag_rounded;
-  if (modifier == 'uturn') return Icons.u_turn_left_rounded;
+  // Preserve the existing circulation symbol; OSRM's modifier describes the
+  // exit direction, not the direction of travel around the roundabout.
   if (type.contains('roundabout') || type == 'rotary') {
     return Icons.roundabout_left_rounded;
   }
-  if (modifier.contains('right')) return Icons.turn_right_rounded;
-  if (modifier.contains('left')) return Icons.turn_left_rounded;
-  return Icons.straight_rounded;
+  return navigationManeuverIcon(type, step?.maneuverModifier ?? '');
 }
 
 class IndependentNavigationOverlay extends StatelessWidget {
@@ -120,6 +118,11 @@ class IndependentNavigationOverlay extends StatelessWidget {
           ? _text('Updating route…', '正在重新规划路线…')
           : engine.offRoute
           ? _text('Off route · finding your way', '已偏离路线，正在更新')
+          : engine.transitRestrictionAhead
+          ? _text(
+              'Bus-only road ahead · choose another route',
+              '前方为公交专用路段，请选择其他路线',
+            )
           : engine.error != null
           ? _text('Route update unavailable · retrying', '路线更新暂不可用，正在重试')
           : null;
@@ -147,24 +150,7 @@ class IndependentNavigationOverlay extends StatelessWidget {
               engine.distanceToStepMeters <= 300 &&
                   !engine.offRoute &&
                   !engine.arrived
-              ? [
-                  for (final lane in next?.lanes ?? <RouteLane>[])
-                    NavigationLane(
-                      lane.indications
-                          .map(
-                            (name) => name.contains('left')
-                                ? '←'
-                                : name.contains('right')
-                                ? '→'
-                                : name == 'uturn'
-                                ? '↶'
-                                : '↑',
-                          )
-                          .toSet()
-                          .join(),
-                      lane.recommended,
-                    ),
-                ]
+              ? routeNavigationLanes(next)
               : const [],
         ),
         destinationTitle: destination,

@@ -14,6 +14,7 @@ import UserNotifications
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    stageFriendsRecovery()
     if let apiKey = Bundle.main.object(forInfoDictionaryKey: "MAPS_API_KEY") as? String,
        !apiKey.isEmpty,
        !apiKey.contains("$(") {
@@ -24,6 +25,26 @@ import UserNotifications
       ExternalNavigationBridge.shared.receive(url)
     }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  /// An optional archive copied by device tooling during a bundle-ID migration.
+  /// Only Friends data enters preferences; account and other settings stay intact.
+  private func stageFriendsRecovery() {
+    guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+    let file = documents.appendingPathComponent("waybi-friends-recovery-v1.json")
+    guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+          size <= 2_000_000,
+          let data = try? Data(contentsOf: file),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          json["memories"] is [[String: Any]],
+          let raw = String(data: data, encoding: .utf8) else { return }
+    let prefs = UserDefaults.standard
+    let pendingKey = "flutter.waybi_friends_v1.pending_restore"
+    guard prefs.string(forKey: pendingKey) == nil else { return }
+    prefs.set(raw, forKey: pendingKey)
+    // Keep the file if preferences cannot be flushed. Dart validates and merges
+    // the archive, then clears the staged value only after a successful save.
+    if prefs.synchronize() { try? FileManager.default.removeItem(at: file) }
   }
 
   override func application(

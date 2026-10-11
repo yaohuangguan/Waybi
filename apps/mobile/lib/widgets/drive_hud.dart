@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:google_navigation_flutter/google_navigation_flutter.dart';
+import 'package:google_navigation_flutter/google_navigation_flutter.dart'
+    show SpeedAlertSeverity;
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../drive/camera_alert_lifecycle.dart';
 import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
+import '../domain/navigation_lanes.dart';
 import '../theme/waybi_theme.dart';
 import 'road_event_timeline.dart';
+import 'lane_arrow.dart';
+import 'navigation_maneuver_icon.dart';
 
 class DriveHud extends StatelessWidget {
   const DriveHud({super.key, required this.engine, required this.onStop});
@@ -16,21 +20,6 @@ class DriveHud extends StatelessWidget {
 
   String _formatDistance(double? meters, [String language = 'en']) =>
       meters == null ? '—' : navigationMetres(meters, language);
-
-  String _laneSymbol(LaneShape shape) {
-    return switch (shape) {
-      LaneShape.normalLeft => '←',
-      LaneShape.normalRight => '→',
-      LaneShape.sharpLeft => '↙',
-      LaneShape.sharpRight => '↘',
-      LaneShape.slightLeft => '↖',
-      LaneShape.slightRight => '↗',
-      LaneShape.straight => '↑',
-      LaneShape.uTurnLeft => '↶',
-      LaneShape.uTurnRight => '↷',
-      _ => '·',
-    };
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,8 +109,8 @@ class DriveHud extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(
-                        Icons.navigation_rounded,
+                      Icon(
+                        navigationManeuverIcon(step.maneuver.name),
                         color: WaybiColors.sky,
                         size: 34,
                       ),
@@ -161,13 +150,11 @@ class DriveHud extends StatelessWidget {
                                   final recommended = lane.laneDirections.any(
                                     (direction) => direction.isRecommended,
                                   );
-                                  final text = lane.laneDirections
-                                      .map(
-                                        (direction) =>
-                                            _laneSymbol(direction.laneShape),
-                                      )
-                                      .toSet()
-                                      .join();
+                                  final directions = laneDirections(
+                                    lane.laneDirections.map(
+                                      (d) => d.laneShape.name,
+                                    ),
+                                  );
                                   return Container(
                                     constraints: const BoxConstraints(
                                       minWidth: 31,
@@ -182,15 +169,13 @@ class DriveHud extends StatelessWidget {
                                           : WaybiColors.darkSurface,
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: Text(
-                                      text,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        color: recommended
-                                            ? WaybiColors.midnightOcean
-                                            : Colors.white70,
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                                    child: LaneArrow(
+                                      directions: directions,
+                                      size: 28,
+                                      language: language,
+                                      color: recommended
+                                          ? WaybiColors.midnightOcean
+                                          : Colors.white70,
                                     ),
                                   );
                                 }).toList(),

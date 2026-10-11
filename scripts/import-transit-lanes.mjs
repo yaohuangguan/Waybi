@@ -1,0 +1,12 @@
+import fs from 'node:fs/promises';
+import { normalizeTransitFeatures, AT_TRANSIT_SOURCE } from '../apps/server/src/transit_lanes.ts';
+const meta=await fetch(`${AT_TRANSIT_SOURCE}?f=json`).then(r=>r.json());
+const query=new URL(`${AT_TRANSIT_SOURCE}/query`);
+query.search=new URLSearchParams({f:'geojson',where:'1=1',outFields:'*',outSR:'4326',orderByFields:'OBJECTID',resultRecordCount:'1000'});
+const response=await fetch(query);if(!response.ok)throw new Error(`AT HTTP ${response.status}`);
+const snapshot=normalizeTransitFeatures(await response.json(),new Date().toISOString(),meta.editingInfo?.lastEditDate ? new Date(meta.editingInfo.lastEditDate).toISOString():null);
+snapshot.syncStatus='seed';
+const text=JSON.stringify(snapshot)+'\n';
+await fs.mkdir(new URL('../apps/mobile/assets/data/',import.meta.url),{recursive:true});
+for(const path of ['../apps/server/data/transit-lanes.json','../apps/mobile/assets/data/transit-lanes.json'])await fs.writeFile(new URL(path,import.meta.url),text);
+console.log(JSON.stringify({lanes:snapshot.lanes.length,knownSchedules:snapshot.lanes.filter(l=>l.schedule.known).length,wholeRoad:snapshot.lanes.filter(l=>l.wholeRoad).length,bytes:Buffer.byteLength(text)}));

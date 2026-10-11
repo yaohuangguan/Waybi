@@ -16,6 +16,7 @@ SafetyCamera camera(String type) => SafetyCamera(
 void main() {
   test('live traffic is enabled by default', () {
     expect(const MapLayerSettings().traffic, isTrue);
+    expect(const MapLayerSettings().transitLanes, isTrue);
   });
 
   test('NZTA fixed camera categories stay distinct', () {
@@ -59,5 +60,7 @@ void main() {
     expect(noBus.shows(camera('Bus lane enforcement')), false);
     expect(noBus.alerts(camera('Bus lane enforcement')), true);
     expect(next.copyWith(cameras: false).shows(camera('Red light')), false);
+    expect(settings.copyWith(transitLanes: false).busLane, isTrue);
+    expect(settings.copyWith(busLane: false).transitLanes, isTrue);
   });
 }

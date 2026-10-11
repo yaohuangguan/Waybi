@@ -119,8 +119,10 @@ class AccountRepository extends ChangeNotifier {
     final request = http.Request(method, Uri.parse('$workerBaseUrl$path'))
       ..headers.addAll(headers);
     if (body != null) request.body = jsonEncode(body);
-    final streamed = await _client.send(request);
-    return http.Response.fromStream(streamed);
+    return (() async {
+      final streamed = await _client.send(request);
+      return http.Response.fromStream(streamed);
+    })().timeout(const Duration(seconds: 12));
   }
 
   Map<String, dynamic> _body(http.Response response) {
@@ -159,7 +161,39 @@ class AccountRepository extends ChangeNotifier {
       notifyListeners();
     } catch (_) {
       /* Guest navigation remains available while offline. */
+    } finally {
+      notifyListeners();
     }
+  }
+
+  Future<Map<String, dynamic>> readFriendsBackup({
+    required String userId,
+    String? cursor,
+  }) async {
+    if (profile?.id != userId || !signedIn) {
+      throw StateError('The account changed');
+    }
+    final suffix = cursor == null
+        ? ''
+        : '?cursor=${Uri.encodeQueryComponent(cursor)}';
+    return _body(await _request('/api/profile/friends$suffix'));
+  }
+
+  /// A revision conflict is handled by downloading and merging the journal.
+  Future<Map<String, dynamic>?> writeFriendsBackup({
+    required String userId,
+    required int revision,
+    required Map<String, dynamic> game,
+  }) async {
+    if (profile?.id != userId || !signedIn) {
+      throw StateError('The account changed');
+    }
+    final response = await _request(
+      '/api/profile/friends',
+      method: 'POST',
+      body: {'schemaVersion': 1, 'revision': revision, 'game': game},
+    );
+    return response.statusCode == 409 ? null : _body(response);
   }
 
   Future<void> authenticate(

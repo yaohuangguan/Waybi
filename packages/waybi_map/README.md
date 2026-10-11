@@ -38,8 +38,10 @@ subscription or UI state.
 Waybi app adapters currently own:
 
 - MapLibre rendering and visual style
-- Photon place search
-- OSRM routing
+- Waybi Search client contracts (shipping traffic goes through the Waybi Worker;
+  Photon remains a server/dev fallback)
+- Waybi Routing client contracts (shipping traffic goes through the Waybi Worker;
+  OSRM remains a server/dev fallback)
 - GPS filtering / navigation lifecycle
 - NZTA traffic ingestion
 - API keys, billing and B2B Road Intelligence transport

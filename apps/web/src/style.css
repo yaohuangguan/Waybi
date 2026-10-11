@@ -142,7 +142,7 @@ button { cursor: pointer; }
 .cancel-route-button:hover, .cancel-route-button:focus-visible { background: #eaf0eb; color: #304147; }
 .cancel-route-button:focus-visible { outline: 3px solid #477c8f; outline-offset: 3px; }
 .eyebrow { display: block; color: #597e8c; font-size: 11px; font-weight: 600; letter-spacing: .15em; }
-.panel-header h1 { max-width: 220px; margin: 4px 0 0; font-size: 20px; line-height: 1.22; font-weight: 600; }
+.panel-header h2 { max-width: 220px; margin: 4px 0 0; font-size: 20px; line-height: 1.22; font-weight: 600; }
 .drive-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 132px; height: 44px; padding: 0 14px; border: 0; border-radius: 13px; background: var(--brand-sky); color: #131f24; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .drive-button:disabled { opacity: .45; cursor: not-allowed; }
 #driveIcon { font-size: 21px; }
@@ -213,7 +213,7 @@ button { cursor: pointer; }
   .gps-badge { padding: 0 9px; font-size: 11px; }
   .topbar { padding-left: 15px; padding-right: 15px; }
   .search-panel, .turn-panel { left: 14px; width: calc(100vw - 28px); }
-  .panel-header h1 { font-size: 18px; }
+  .panel-header h2 { font-size: 18px; }
   .panel-actions { gap: 6px; }
   .cancel-route-button { min-width: 48px; padding: 0 8px; }
   .drive-button { min-width: 108px; padding: 0 9px; font-size: 12px; }
@@ -515,7 +515,7 @@ body[data-mode='explore'] .poi-card { display: flex; flex-direction: column; bot
 @media (max-width: 430px) {
   .bottom-panel { padding-left: 16px; padding-right: 16px; }
   .panel-header { gap: 8px; }
-  .panel-header h1 { max-width: none; font-size: 17px; }
+  .panel-header h2 { max-width: none; font-size: 17px; }
   .panel-actions { gap: 5px; }
   .drive-button { min-width: 106px; padding: 0 9px; font-size: 12px; }
   .cancel-route-button { min-width: 46px; padding: 0 8px; }

@@ -37,19 +37,16 @@ void main() {
     );
   });
 
-  test(
-    'legacy Google shortcut loads and corrupt coordinates do not break startup',
-    () async {
-      SharedPreferences.setMockInitialValues({
-        'waybi.quick_location.Home':
-            '{"name":"Home","latitude":-36.85,"longitude":174.76}',
-        'waybi.quick_location.Work': '{"latitude":999,"longitude":174.77}',
-      });
-      final restored = await QuickLocationStore().load();
-      expect(restored.keys, ['Home']);
-      expect(restored['Home']!.provider, MapProvider.google);
-    },
-  );
+  test('legacy Google shortcut migrates to Waybi and corrupt coordinates do not break startup', () async {
+    SharedPreferences.setMockInitialValues({
+      'waybi.quick_location.Home':
+          '{"name":"Home","latitude":-36.85,"longitude":174.76}',
+      'waybi.quick_location.Work': '{"latitude":999,"longitude":174.77}',
+    });
+    final restored = await QuickLocationStore().load();
+    expect(restored.keys, ['Home']);
+    expect(restored['Home']!.provider, MapProvider.independent);
+  });
 
   test(
     'account-owned shortcuts are hidden from guest or another account',

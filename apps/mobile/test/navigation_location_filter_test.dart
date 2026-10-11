@@ -183,4 +183,38 @@ void main() {
       expect(filter.accepted!.point, actual);
     },
   );
+  test('startup accepts consistent fixes with 30 metre accuracy', () {
+    var now = DateTime(2026, 10, 3, 9);
+    final filter = NavigationLocationFilter(clock: () => now);
+    expect(filter.accept(fix(home, accuracy: 30)), isNull);
+    now = now.add(const Duration(seconds: 1));
+    expect(filter.accept(fix(home, accuracy: 30, seconds: 1)), isNotNull);
+  });
+  test('outage recovers with ordinary accuracy and sparse OS samples', () {
+    var now = DateTime(2026, 10, 3, 9);
+    final filter = NavigationLocationFilter(clock: () => now);
+    filter.accept(fix(home, speed: 10));
+    const recovered = GeoPoint(-36.8476, 174.7633);
+    for (final second in [12, 18, 24]) {
+      now = DateTime(2026, 10, 3, 9).add(Duration(seconds: second));
+      expect(
+        filter.accept(fix(recovered, accuracy: 22, seconds: second)) != null,
+        second == 24,
+      );
+    }
+    expect(filter.accepted!.point, recovered);
+  });
+  test('a false high speed cannot legitimize an instantaneous GPS jump', () {
+    var now = DateTime(2026, 10, 3, 9);
+    final filter = NavigationLocationFilter(clock: () => now);
+    filter.reset(trustedFix: fix(home));
+    now = now.add(const Duration(seconds: 1));
+    expect(
+      filter.accept(
+        fix(const GeoPoint(-36.8476, 174.7633), seconds: 1, speed: 65),
+      ),
+      isNull,
+    );
+    expect(filter.accepted!.point, home);
+  });
 }

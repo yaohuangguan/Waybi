@@ -13,15 +13,16 @@ class RouteOriginLocation {
   void update(NavigationLocationFix fix, {required bool confirmed}) {
     if (confirmed) {
       _confirmed = fix;
-    } else if (_confirmed == null && _usable(fix, 25, 10)) {
+    } else if ((_confirmed == null || !_usable(_confirmed!, 35, 30)) &&
+        _usable(fix, 25, 10)) {
       _firstFix = fix;
     }
   }
 
   GeoPoint? get point {
     final confirmed = _confirmed;
-    if (confirmed != null) {
-      return _usable(confirmed, 35, 30) ? confirmed.point : null;
+    if (confirmed != null && _usable(confirmed, 35, 30)) {
+      return confirmed.point;
     }
     final first = _firstFix;
     return first != null && _usable(first, 25, 10) ? first.point : null;

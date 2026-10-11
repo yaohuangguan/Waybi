@@ -69,10 +69,7 @@ class QuickLocationStore {
             address: item['address']?.toString() ?? '',
             location: point,
           ),
-          provider: MapProvider.values.firstWhere(
-            (provider) => provider.name == item['provider'],
-            orElse: () => MapProvider.google,
-          ),
+          provider: MapProvider.independent,
         );
       } catch (_) {
         /* Ignore a damaged old shortcut without blocking startup. */

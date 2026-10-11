@@ -95,7 +95,7 @@ class _ProfilePageState extends State<ProfilePage> {
   late String _appLanguage = widget.appLanguage;
   late String _language = widget.voiceLanguage;
   late ThemeMode _themeMode = widget.themeMode;
-  late MapProvider _mapProvider = widget.mapProvider;
+  final MapProvider _mapProvider = MapProvider.independent;
   late LocationMarkerStyle _locationMarker = widget.locationMarker;
   late bool _notifySafetyCameras = widget.notifySafetyCameras;
   late bool _notifyRoadIncidents = widget.notifyRoadIncidents;
@@ -950,44 +950,11 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 8),
               _SectionTitle(_text('Map', '地图')),
-              if (widget.onNativeLanguageSettings != null)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.translate_rounded),
-                  title: Text(
-                    _text('Google map label language', 'Google 地图标签语言'),
-                  ),
-                  subtitle: Text(
-                    _text(
-                      'Native maps use the system app language. Reopen after changing it.',
-                      '原生地图使用系统应用语言，修改后重新打开应用。',
-                    ),
-                  ),
-                  trailing: const Icon(Icons.open_in_new_rounded),
-                  onTap: widget.onNativeLanguageSettings,
-                ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.map_outlined),
                 title: Text(_text('Map provider', '地图提供商')),
-                trailing: DropdownButton<MapProvider>(
-                  value: _mapProvider,
-                  items: [
-                    DropdownMenuItem(
-                      value: MapProvider.independent,
-                      child: Text(_text('Waybi Map', 'Waybi 地图')),
-                    ),
-                    const DropdownMenuItem(
-                      value: MapProvider.google,
-                      child: Text('Google Maps'),
-                    ),
-                  ],
-                  onChanged: (value) async {
-                    if (value == null) return;
-                    final actual = await widget.onMapProviderChanged(value);
-                    if (mounted) setState(() => _mapProvider = actual);
-                  },
-                ),
+                subtitle: Text(_text('Waybi Map', 'Waybi 地图')),
               ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -1084,17 +1051,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 8),
-              if (_mapProvider == MapProvider.google)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    _text(
-                      'Google navigation uses its navigation arrow. Custom markers appear while browsing and in Waybi Map.',
-                      'Google 导航使用导航箭头。浏览地图与 Waybi 地图可使用自定义位置标记。',
-                    ),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
               _SectionTitle(_text('Navigation & voice', '导航与语音')),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

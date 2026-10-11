@@ -31,6 +31,7 @@ import 'navigation_language.dart';
 import 'navigation_location_filter.dart';
 import 'reliable_location_feed.dart';
 import 'navigation_motion.dart';
+import 'drive_trail.dart';
 
 enum NavigationGpsIssue {
   acquiring,
@@ -263,6 +264,9 @@ class DriveEngine extends ChangeNotifier {
   final NavigationLocationFilter _localLocationFilter =
       NavigationLocationFilter();
   final _localMotion = NavigationMotionEstimator();
+  final _driveTrail = DriveTrail();
+  List<MapRoutePath> get trailPaths =>
+      active && _route == null ? _driveTrail.paths : const [];
 
   List<SafetyCamera> _cameras = const [];
   RouteOption? _route;
@@ -456,6 +460,7 @@ class DriveEngine extends ChangeNotifier {
     final session = ++_locationSession;
     _localNavigation = true;
     _localMotion.reset();
+    _driveTrail.clear();
     if (!await Geolocator.isLocationServiceEnabled()) {
       throw StateError('Turn on location services to start driving');
     }
@@ -643,6 +648,7 @@ class DriveEngine extends ChangeNotifier {
     }
     if (latestPosition?.timestamp == position.timestamp) return true;
     final fix = accepted ?? previous!;
+    if (_route == null) _driveTrail.add(fix);
     error = null;
     locationIssue = null;
     gpsIssue = null;
@@ -817,6 +823,7 @@ class DriveEngine extends ChangeNotifier {
     ++_turnRevision;
     unawaited(_voiceEngine.stop());
     _route = route;
+    _driveTrail.clear();
     transitLaneMatches = const [];
     upcomingTransitLane = null;
     _pendingTransitAlerts.clear();
@@ -1202,6 +1209,7 @@ class DriveEngine extends ChangeNotifier {
     final localFeed = _localLocationFeed;
     _localLocationFeed = null;
     await localFeed?.stop();
+    _driveTrail.clear();
     locationIssue = null;
     gpsIssue = null;
     ++_locationSession;

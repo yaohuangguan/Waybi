@@ -15,11 +15,6 @@ import UserNotifications
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     stageFriendsRecovery()
-    if let apiKey = Bundle.main.object(forInfoDictionaryKey: "MAPS_API_KEY") as? String,
-       !apiKey.isEmpty,
-       !apiKey.contains("$(") {
-      GMSServices.provideAPIKey(apiKey)
-    }
     UNUserNotificationCenter.current().delegate = self as UNUserNotificationCenterDelegate
     if let url = launchOptions?[.url] as? URL {
       ExternalNavigationBridge.shared.receive(url)

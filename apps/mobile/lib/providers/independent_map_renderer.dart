@@ -414,9 +414,17 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             lineJoin: 'round',
           ),
           filter: [
-            '==',
-            ['get', 'active'],
-            active,
+            'all',
+            [
+              '==',
+              ['get', 'active'],
+              active,
+            ],
+            [
+              '!=',
+              ['get', 'traversed'],
+              true,
+            ],
           ],
           belowLayerId: overlayAnchor,
           enableInteraction: false,
@@ -432,11 +440,39 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             lineJoin: 'round',
           ),
           filter: [
-            '==',
-            ['get', 'active'],
-            active,
+            'all',
+            [
+              '==',
+              ['get', 'active'],
+              active,
+            ],
+            [
+              '!=',
+              ['get', 'traversed'],
+              true,
+            ],
           ],
           belowLayerId: overlayAnchor,
+          enableInteraction: false,
+        );
+      }
+      for (final casing in [true, false]) {
+        await c.addLineLayer(
+          'waybi-route',
+          casing ? 'waybi-traversed-edge' : 'waybi-traversed-line',
+          ml.LineLayerProperties(
+            lineColor: casing ? '#707A83' : '#AAB2BA',
+            lineWidth: casing ? 8 : 5.5,
+            lineOpacity: .8,
+            lineCap: 'round',
+            lineJoin: 'round',
+          ),
+          filter: [
+            '==',
+            ['get', 'traversed'],
+            true,
+          ],
+          belowLayerId: 'waybi-route-edge',
           enableInteraction: false,
         );
       }
@@ -815,6 +851,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     for (var i = 0; i < a.length; i++) {
       if (a[i].id != b[i].id ||
           a[i].active != b[i].active ||
+          a[i].traversed != b[i].traversed ||
+          a[i].trail != b[i].trail ||
           !identical(a[i].points, b[i].points)) {
         return false;
       }
@@ -853,8 +891,11 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             ),
           );
           final activeRoute = widget.routePaths
-              .where((route) => route.active)
+              .where((route) => route.active && !route.trail)
               .firstOrNull;
+          final destinationRoute =
+              activeRoute ??
+              widget.routePaths.where((route) => route.traversed).lastOrNull;
           final allTraffic = widget.layers.traffic
               ? widget.trafficSegments
                     .where((segment) => segment.hasRoadGeometry)
@@ -915,6 +956,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           );
           final routeTrafficHash = Object.hash(
             widget.trafficFresh,
+            Object.hashAll(activeRoute?.points ?? const <GeoPoint>[]),
             Object.hashAll(
               routeTraffic.map(
                 (segment) => Object.hash(
@@ -957,6 +999,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
               (route) => Object.hash(
                 route.id,
                 route.active,
+                route.traversed,
+                route.trail,
                 Object.hashAll(route.points),
               ),
             ),
@@ -976,7 +1020,10 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                         for (final p in route.points) [p.longitude, p.latitude],
                       ],
                     },
-                    'properties': <String, dynamic>{'active': route.active},
+                    'properties': <String, dynamic>{
+                      'active': route.active,
+                      'traversed': route.traversed,
+                    },
                   },
             ]),
           );
@@ -1009,7 +1056,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             Object.hashAll(widget.roadEvents),
             Object.hashAll(widget.explorePlaces),
             widget.selectedPlace,
-            activeRoute?.points.lastOrNull,
+            destinationRoute?.points.lastOrNull,
           );
           await _setSource(
             'waybi-pins',
@@ -1039,8 +1086,14 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                 ),
               if (widget.selectedPlace case final p?)
                 _pin('selected', p.location, 'selected', p.name),
-              if (activeRoute != null && activeRoute.points.isNotEmpty)
-                _pin('destination', activeRoute.points.last, 'destination', ''),
+              if (destinationRoute != null &&
+                  destinationRoute.points.isNotEmpty)
+                _pin(
+                  'destination',
+                  destinationRoute.points.last,
+                  'destination',
+                  '',
+                ),
             ]),
           );
         }

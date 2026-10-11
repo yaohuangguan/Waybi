@@ -41,8 +41,9 @@ class DriveTrail {
     }
     final previous = _last;
     final lastObservation = _lastObservationAt;
-    if (lastObservation != null && !fix.timestamp.isAfter(lastObservation))
+    if (lastObservation != null && !fix.timestamp.isAfter(lastObservation)) {
       return;
+    }
     _lastObservationAt = fix.timestamp;
     final elapsed = previous == null
         ? 0.0

@@ -408,8 +408,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final position = active
         ? _driveEngine.latestPosition
         : _lastReliableBrowsePosition;
-    if (position == null || (active && !_driveEngine.hasReliableLocation))
+    if (position == null || (active && !_driveEngine.hasReliableLocation)) {
       return null;
+    }
     return routingOriginHeading(
       heading: active ? _driveEngine.rawHeadingDegrees : _travelHeading,
       speedMetresPerSecond: active

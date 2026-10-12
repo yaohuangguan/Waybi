@@ -1,5 +1,25 @@
 import 'route_option.dart';
 
+/// Prefer a comparable legal alternative to an unnecessary reversal. This
+/// changes ranking only: the routing engine still owns access/turn restrictions.
+double drivingManeuverPenalty(RouteOption route) {
+  if (route.mode != WaybiTravelMode.drive) return 0;
+  var reversals = 0;
+  for (final step in route.steps) {
+    final type = step.maneuverType.toLowerCase().replaceAll(
+      RegExp(r'[^a-z]'),
+      '',
+    );
+    final modifier = step.maneuverModifier.toLowerCase().replaceAll(
+      RegExp(r'[^a-z]'),
+      '',
+    );
+    if (type == 'depart' || type == 'arrive') continue;
+    if (type.contains('uturn') || modifier.contains('uturn')) reversals++;
+  }
+  return (reversals.clamp(0, 2) * 90).toDouble();
+}
+
 class RoutePreferenceSummary {
   const RoutePreferenceSummary({
     this.cameraCount = 0,
@@ -63,16 +83,19 @@ Map<String, RoutePreferenceAssessment> assessRoutePreferences(
   final fastestDuration = minOf(durations);
   final candidateIds = <String>{
     for (var i = 0; i < routes.length; i++)
-      if (durations[i] <= fastestDuration * 1.15) routes[i].id,
+      if (durations[i] <= fastestDuration * 1.15 &&
+          durations[i] <= fastestDuration + 120)
+        routes[i].id,
   };
   final scores = <String, double>{};
   for (var i = 0; i < routes.length; i++) {
     // Default routing is experience-first: ETA dominates. Traffic may break a
     // close tie, but cameras are informational and must never create detours.
     final score =
-        normalized(durations[i], durations) * .72 +
-        normalized(congestion[i], congestion) * .20 +
-        normalized(distances[i], distances) * .08;
+        durations[i] +
+        drivingManeuverPenalty(routes[i]) +
+        normalized(congestion[i], congestion) * 30 +
+        normalized(distances[i], distances) * 8;
     scores[routes[i].id] = score;
   }
 

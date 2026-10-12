@@ -4,6 +4,28 @@ import 'package:waybi_mobile/domain/route_option.dart';
 import 'package:waybi_mobile/drive/independent_navigation_camera.dart';
 
 void main() {
+  test('Just Drive resumes after browsing only while moving with reliable GPS and no held gesture', () {
+    final follow = DriveCameraFollow();
+    final now = DateTime(2026, 10, 12, 10);
+    bool resumes(int seconds, {double speed = 40, bool reliable = true}) =>
+        follow.shouldResume(
+          now: now.add(Duration(seconds: seconds)),
+          speedKph: speed,
+          reliableLocation: reliable,
+        );
+    follow.pause(now);
+    expect(resumes(7), false);
+    expect(resumes(8), true);
+    expect(resumes(10, speed: 0), false);
+    expect(resumes(10, reliable: false), false);
+    follow.touch(true, now.add(const Duration(seconds: 8)));
+    expect(resumes(30), false);
+    follow.touch(false, now.add(const Duration(seconds: 30)));
+    expect(resumes(37), false);
+    expect(resumes(38), true);
+    follow.reset();
+    expect(resumes(100), false);
+  });
   const point = GeoPoint(-36.8485, 174.7633);
   const turn = RouteStepInfo(
     instruction: 'Turn right',

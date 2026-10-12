@@ -23,7 +23,8 @@ test('overseas fallback respects walking and cycling modes and retains maneuvers
   } finally {globalThis.fetch=previous;}
 });
 
-test('Waybi independent routing bypasses Google and preserves reroute controls', async () => {
+for (const origin of [[174.76, -36.85], [151.1772, -33.9461]]) {
+test(`Waybi independent routing preserves direction in ${origin[0] > 170 ? 'NZ' : 'AU'}`, async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
   globalThis.fetch = async (url) => {
@@ -42,8 +43,8 @@ test('Waybi independent routing bypasses Google and preserves reroute controls',
   };
   try {
     const plan = await routeOptions(
-      [174.76, -36.85],
-      [174.78, -36.86],
+      origin,
+      [origin[0] + .02, origin[1] + .01],
       { GOOGLE_ROUTES_API_KEY: 'must-not-be-used' },
       [],
       ['DRIVE'],
@@ -52,13 +53,14 @@ test('Waybi independent routing bypasses Google and preserves reroute controls',
     );
     assert.equal(requests.length, 1);
     assert.equal(requests[0].searchParams.get('alternatives'), 'false');
-    assert.equal(requests[0].searchParams.get('bearings'), '45,90;');
+    assert.equal(requests[0].searchParams.get('bearings'), '45,60;');
     assert.equal(plan.provider, 'independent');
     assert.equal(plan.options[0].provider, 'independent');
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
+}
 
 test('Google driving alternatives request traffic on the polyline', async () => {
   const originalFetch = globalThis.fetch;

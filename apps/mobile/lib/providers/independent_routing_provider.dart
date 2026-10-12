@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../data/api_config.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
+import '../domain/route_preference.dart';
 import '../domain/navigation_lanes.dart';
 import 'provider_contracts.dart';
 
@@ -30,6 +31,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     List<GeoPoint> stops = const [],
     required String language,
     WaybiTravelMode? mode,
+    double? headingDegrees,
   }) async {
     final points = _validatedPoints(origin, destination, stops);
     final modes = mode == null
@@ -38,7 +40,12 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     final responses = await Future.wait([
       for (final selected in modes)
         selected == WaybiTravelMode.drive
-            ? _fetchMode(points, mode: selected, language: language)
+            ? _fetchMode(
+                points,
+                mode: selected,
+                language: language,
+                headingDegrees: headingDegrees,
+              )
             : _optionalMode(points, selected, language),
     ]);
     final options = responses.expand((item) => item).toList();
@@ -94,7 +101,12 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         })
         .take(3)
         .toList(growable: false);
-    return filtered.isEmpty ? [sorted.first] : filtered;
+    final candidates = filtered.isEmpty ? [sorted.first] : filtered;
+    final preferred = recommendedRoute(candidates, const {});
+    return [
+      ?preferred,
+      ...candidates.where((route) => route.id != preferred?.id),
+    ];
   }
 
   Future<RouteOption> reroute({
@@ -109,11 +121,13 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
       _validatedPoints(origin, destination, stops),
       mode: mode,
       language: language,
-      alternatives: false,
+      alternatives: mode == WaybiTravelMode.drive && stops.isEmpty,
       headingDegrees: headingDegrees,
     );
     if (options.isEmpty) throw StateError('No route from current location');
-    return options.first;
+    return mode == WaybiTravelMode.drive
+        ? recommendedRoute(_sensibleDrivingAlternatives(options), const {})!
+        : options.first;
   }
 
   List<GeoPoint> _validatedPoints(
@@ -173,7 +187,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         'alternatives': alternatives && points.length == 2 ? '3' : 'false',
         if (headingDegrees != null && headingDegrees.isFinite)
           'bearings': [
-            '${(headingDegrees % 360).round() % 360},90',
+            '${(headingDegrees % 360).round() % 360},60',
             for (var i = 1; i < points.length; i++) '',
           ].join(';'),
       },

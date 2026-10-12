@@ -55,6 +55,8 @@ class IndependentMapRenderer extends StatefulWidget {
     this.contentPadding = EdgeInsets.zero,
     this.following = false,
     this.navigating = false,
+    this.driving = false,
+    this.onGestureChanged,
     this.trafficTileOverlay,
     this.trafficFresh = true,
     this.styleLoader = IndependentMapStyle.load,
@@ -86,6 +88,8 @@ class IndependentMapRenderer extends StatefulWidget {
   final EdgeInsets contentPadding;
   final bool following;
   final bool navigating;
+  final bool driving;
+  final ValueChanged<bool>? onGestureChanged;
   final TrafficTileOverlay? trafficTileOverlay;
   final bool trafficFresh;
   final Future<String> Function({
@@ -169,7 +173,10 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   void didUpdateWidget(covariant IndependentMapRenderer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.language != widget.language) _loadStyle();
-    if (widget.navigating && !oldWidget.navigating) _placePadding = null;
+    if ((widget.navigating && !oldWidget.navigating) ||
+        (widget.driving && !oldWidget.driving)) {
+      _placePadding = null;
+    }
     // Position/compass updates are frequent. Do not reproject traffic or hash
     // every route point unless the scene inputs actually changed.
     _sceneDirty |=
@@ -1270,6 +1277,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             return Listener(
               onPointerDown: (event) {
                 _pointers[event.pointer] = event.position;
+                widget.onGestureChanged?.call(true);
                 if (_pointers.length > 1) _pan();
               },
               onPointerMove: (event) {
@@ -1280,11 +1288,17 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
               },
               onPointerUp: (event) {
                 _pointers.remove(event.pointer);
-                if (_pointers.isEmpty) _gestureReported = false;
+                if (_pointers.isEmpty) {
+                  _gestureReported = false;
+                  widget.onGestureChanged?.call(false);
+                }
               },
               onPointerCancel: (event) {
                 _pointers.remove(event.pointer);
-                if (_pointers.isEmpty) _gestureReported = false;
+                if (_pointers.isEmpty) {
+                  _gestureReported = false;
+                  widget.onGestureChanged?.call(false);
+                }
               },
               onPointerSignal: (_) {
                 widget.onUserPan();

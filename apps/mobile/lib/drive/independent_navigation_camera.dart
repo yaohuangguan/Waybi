@@ -108,3 +108,33 @@ class IndependentNavigationCamera {
     );
   }
 }
+
+/// Just Drive permits a short look around, then returns to the moving vehicle.
+class DriveCameraFollow {
+  DateTime? _lastInteraction;
+  bool _touching = false;
+
+  void reset() {
+    _lastInteraction = null;
+    _touching = false;
+  }
+
+  void pause(DateTime now) => _lastInteraction = now;
+
+  void touch(bool active, DateTime now) {
+    _touching = active;
+    _lastInteraction = now;
+  }
+
+  bool shouldResume({
+    required DateTime now,
+    required double speedKph,
+    required bool reliableLocation,
+  }) =>
+      !_touching &&
+      _lastInteraction != null &&
+      reliableLocation &&
+      speedKph.isFinite &&
+      speedKph > 5 &&
+      now.difference(_lastInteraction!) >= const Duration(seconds: 8);
+}

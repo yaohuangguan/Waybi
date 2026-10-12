@@ -1,4 +1,5 @@
 import Flutter
+import AVFAudio
 import CoreLocation
 import GoogleMaps
 import GoogleNavigation
@@ -63,6 +64,27 @@ import UserNotifications
         let bridge = self.systemNavigation as? SystemNavigationBridge ?? SystemNavigationBridge()
         self.systemNavigation = bridge
         bridge.handle(call, result: result)
+      }
+    }
+    FlutterMethodChannel(
+      name: "waybi/navigation_audio",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    ).setMethodCallHandler { call, result in
+      let session = AVAudioSession.sharedInstance()
+      do {
+        switch call.method {
+        case "prepare":
+          try session.setCategory(.playback, mode: .voicePrompt, options: [.mixWithOthers, .duckOthers])
+          try session.setActive(true)
+        case "release":
+          try session.setActive(false, options: .notifyOthersOnDeactivation)
+        default:
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        result(nil)
+      } catch {
+        result(FlutterError(code: "navigation_audio", message: error.localizedDescription, details: nil))
       }
     }
     FlutterMethodChannel(

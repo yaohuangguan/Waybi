@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:waybi_mobile/drive/voice_engine.dart';
 
@@ -9,6 +11,9 @@ class ControlledTts extends FlutterTts {
   final stops = <Completer<dynamic>>[];
   Completer<dynamic>? speaking;
   bool holdStop = false;
+  bool completeOnStop = true;
+  final focusRequests = <bool>[];
+  final events = <String>[];
 
   @override
   Future<dynamic> setLanguage(String language) async => 1;
@@ -21,9 +26,13 @@ class ControlledTts extends FlutterTts {
   @override
   Future<void> setAudioAttributesForNavigation() async {}
   @override
+  Future<dynamic> autoStopSharedSession(bool enabled) async => 1;
+  @override
   Future<dynamic> speak(String text, {bool focus = false}) {
     expect(speaking, isNull, reason: 'Speech must never overlap');
     spoken.add(text);
+    focusRequests.add(focus);
+    events.add('speak');
     speaking = Completer<dynamic>();
     return speaking!.future;
   }
@@ -36,7 +45,12 @@ class ControlledTts extends FlutterTts {
 
   @override
   Future<dynamic> stop() {
-    completeSpeech();
+    events.add('stop');
+    if (completeOnStop) {
+      completeSpeech();
+    } else {
+      speaking = null;
+    }
     if (!holdStop) return Future<dynamic>.value(1);
     final stop = Completer<dynamic>();
     stops.add(stop);
@@ -48,6 +62,65 @@ Future<void> flush() => Future<void>.delayed(Duration.zero);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('iOS configures mixing only for speech and releases after finish, failure and stop', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    const channel = MethodChannel('waybi/navigation_audio');
+    final tts = ControlledTts();
+    final voice = VoiceEngine(tts: tts);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          tts.events.add(call.method);
+          return null;
+        });
+    addTearDown(() {
+      debugDefaultTargetPlatformOverride = null;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+    await voice.initialize();
+    expect(
+      tts.events,
+      isEmpty,
+      reason: 'Opening Waybi must not take music audio focus',
+    );
+    final first = voice.guidance('Turn left');
+    await flush();
+    expect(tts.events, ['prepare', 'speak']);
+    tts.completeSpeech();
+    await first;
+    expect(tts.events.last, 'release');
+    tts.events.clear();
+    final failed = voice.guidance('Failure');
+    final failure = expectLater(failed, throwsStateError);
+    await flush();
+    final pending = tts.speaking!;
+    tts.speaking = null;
+    pending.complete(0);
+    await failure;
+    expect(tts.events, ['prepare', 'speak', 'release']);
+    tts.events.clear();
+    tts.completeOnStop = false;
+    final cancelled = voice.guidance('Cancelled');
+    await flush();
+    final late = tts.speaking!;
+    await voice.stop();
+    expect(tts.events, ['prepare', 'speak', 'stop', 'release']);
+    final next = voice.guidance('Next');
+    await flush();
+    tts.events.clear();
+    late.complete(1);
+    await cancelled;
+    expect(
+      tts.events,
+      isEmpty,
+      reason: 'A late cancelled utterance must not release new speech',
+    );
+    tts.completeSpeech();
+    await next;
+    expect(tts.events, ['release']);
+    expect(tts.focusRequests, everyElement(false));
+    await voice.dispose();
+  });
   for (final entry in {
     'red light': '红灯摄像头',
     'red light + speed': '红灯及测速摄像头',

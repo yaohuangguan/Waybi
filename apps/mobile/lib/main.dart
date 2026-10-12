@@ -33,6 +33,7 @@ import 'domain/navigation_camera_mode.dart';
 import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
 import 'domain/route_preference.dart';
+import 'domain/routing_origin.dart';
 import 'domain/road_event.dart';
 import 'domain/route_road_events.dart' as road_routes;
 import 'domain/safety_camera.dart';
@@ -384,6 +385,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   String? _browseLocationMessage;
   Position? _lastReliableBrowsePosition;
   final _independentCamera = IndependentNavigationCamera();
+  final _driveCameraFollow = DriveCameraFollow();
   final _browseMotion = NavigationMotionEstimator();
   StreamSubscription<double>? _headingSubscription;
   Timer? _mapRefreshTimer;
@@ -394,6 +396,26 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     return point == null
         ? null
         : LatLng(latitude: point.latitude, longitude: point.longitude);
+  }
+
+  // Use course only while actually moving on a recent, accurate GPS fix.
+  // A phone compass or an old course can snap a parked origin backwards.
+  double? get _routingHeading {
+    if (_manualOrigin != null) return null;
+    if (_driveEngine.active) {
+      return _driveEngine.hasReliableLocation && _driveEngine.speedKph > 10
+          ? _driveEngine.rawHeadingDegrees
+          : null;
+    }
+    final position = _lastReliableBrowsePosition;
+    if (position == null) return null;
+    return routingOriginHeading(
+      heading: _travelHeading,
+      speedMetresPerSecond: position.speed,
+      accuracyMeters: position.accuracy,
+      timestamp: position.timestamp,
+      now: DateTime.now(),
+    );
   }
 
   DestinationSuggestion? _manualOrigin;
@@ -560,7 +582,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         mode: previous.mode,
         stops: stops,
         language: _appLanguage,
-        headingDegrees: _driveEngine.speedKph > 10
+        headingDegrees:
+            _driveEngine.hasReliableLocation && _driveEngine.speedKph > 10
             ? _driveEngine.rawHeadingDegrees
             : null,
       ),
@@ -1094,6 +1117,20 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     _updateArrivalExperience();
     unawaited(_cacheNavigationCorridor());
+    if (!_following &&
+        _driveEngine.active &&
+        !_guidanceRunning &&
+        !_independentNavigation.active &&
+        _selectedPlace == null &&
+        _routePlan == null &&
+        _driveCameraFollow.shouldResume(
+          now: DateTime.now(),
+          speedKph: _driveEngine.speedKph,
+          reliableLocation: _driveEngine.hasReliableLocation,
+        )) {
+      _independentCamera.reset();
+      setState(() => _following = true);
+    }
     if (_following && _driveEngine.active) _queueMapRefresh();
   }
 
@@ -2270,8 +2307,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   void _queueMapRefresh() {
     if (!_appForeground || (_mapRefreshTimer?.isActive ?? false)) return;
     final smoothNavigation =
-        _mapProvider == MapProvider.independent &&
-        _independentNavigation.active;
+        _mapProvider == MapProvider.independent && _driveEngine.active;
     _mapRefreshTimer = Timer(
       Duration(milliseconds: smoothNavigation ? 180 : 350),
       () => unawaited(_refreshMap()),
@@ -2284,8 +2320,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           ? _driveEngine.snappedLocation ?? _gpsLocation
           : _gpsLocation;
       final routePreviewOwnsCamera =
-          _journeyPhase == JourneyPhase.routePreview && _routePlan != null;
-      final placeDeckOwnsCamera = _selectedPlace != null && _routePlan == null;
+          !_driveEngine.active &&
+          _journeyPhase == JourneyPhase.routePreview &&
+          _routePlan != null;
+      final placeDeckOwnsCamera =
+          !_driveEngine.active && _selectedPlace != null && _routePlan == null;
       if (_following &&
           !routePreviewOwnsCamera &&
           !placeDeckOwnsCamera &&
@@ -2299,18 +2338,22 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           routeBearing: _routeInitialBearing,
         );
         final point = GeoPoint(location.latitude, location.longitude);
-        final viewport = navigating
+        final viewport = _driveEngine.active
             ? _independentCamera.update(
                 location: point,
                 heading: heading,
                 speedKph: _driveEngine.speedKph,
-                mode: _activeNavigationRoute?.mode ?? _selectedMode,
+                mode: navigating
+                    ? _activeNavigationRoute?.mode ?? _selectedMode
+                    : WaybiTravelMode.drive,
                 visibleHeight:
                     MediaQuery.sizeOf(context).height -
                     _navigationTopInset -
                     _navigationBottomInset,
-                distanceToStep: _independentNavigation.distanceToStepMeters,
-                nextStep: _independentNavigation.nextStep,
+                distanceToStep: navigating
+                    ? _independentNavigation.distanceToStepMeters
+                    : double.infinity,
+                nextStep: navigating ? _independentNavigation.nextStep : null,
                 northUp: _cameraMode.northUp,
                 tilted: _cameraMode.tilted,
                 now: DateTime.now(),
@@ -2527,6 +2570,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   void _markMapManuallyMoved({bool searchArea = false}) {
+    _driveCameraFollow.pause(DateTime.now());
     if (_following &&
         _navigationController != null &&
         defaultTargetPlatform == TargetPlatform.iOS) {
@@ -3026,6 +3070,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   .toList(growable: false),
               language: _appLanguage,
               mode: preferredMode,
+              headingDegrees: preferredMode == WaybiTravelMode.drive
+                  ? _routingHeading
+                  : null,
             )
           : await _routeRepository.fetch(
               origin: origin,
@@ -4249,6 +4296,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         return;
       }
       if (_mapProvider == MapProvider.independent) {
+        // A preview or place focus must not retain camera ownership in Drive.
+        await _clearRoutePreview();
+        _driveCameraFollow.reset();
+        _independentCamera.reset();
         await _pauseBrowseLocation();
         await _driveEngine.startLocal(
           initialPosition: _lastReliableBrowsePosition,
@@ -6908,6 +6959,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     locationEnabled: _gpsLocation != null,
                     following: _following,
                     navigating: _independentNavigation.active,
+                    driving: _driveEngine.active,
                     location: _displayLocation == null
                         ? null
                         : GeoPoint(
@@ -6959,6 +7011,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                       }
                     },
                     onViewportChanged: (viewport) => _viewport = viewport,
+                    onGestureChanged: (touching) =>
+                        _driveCameraFollow.touch(touching, DateTime.now()),
                     onUserPan: () => _markMapManuallyMoved(searchArea: true),
                     onMapPlace: (place) {
                       _selectPlace(

@@ -46,7 +46,7 @@ void main() {
     expect(reached.length, pixels.length);
     expect(
       pixels,
-      containsAll([9 * 96 + 48, 36 * 96 + 9, 36 * 96 + 87, 81 * 96 + 48]),
+      containsAll([9 * 96 + 48, 34 * 96 + 9, 34 * 96 + 87, 81 * 96 + 48]),
     );
     expect(
       pixels.where((p) => p ~/ 96 == 81).every((p) => (p % 96 - 48).abs() <= 6),
@@ -55,6 +55,25 @@ void main() {
     image.dispose();
     picture.dispose();
   });
+
+  test(
+    'unknown lane reserves its slot without painting a dot or arrow',
+    () async {
+      final recorder = ui.PictureRecorder();
+      const LaneArrowPainter(
+        {},
+        Colors.black,
+      ).paint(Canvas(recorder), const Size(96, 96));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(96, 96);
+      final bytes = (await image.toByteData())!.buffer.asUint8List();
+      expect([
+        for (var i = 3; i < bytes.length; i += 4) bytes[i],
+      ], everyElement(0));
+      image.dispose();
+      picture.dispose();
+    },
+  );
 
   test('native and OSRM exits use the same vector family and correct side', () {
     expect(

@@ -124,6 +124,7 @@ void main() {
       ml.MapLibrePlatform.createInstance = () => platform;
       addTearDown(() => ml.MapLibrePlatform.createInstance = original);
       var following = true;
+      var driving = false;
       var bottom = 215.0;
       var location = const GeoPoint(-36.8485, 174.7633);
       var panCalls = 0;
@@ -153,6 +154,7 @@ void main() {
                   locationMarker: LocationMarkerStyle.kiwi,
                   locationEnabled: true,
                   following: following,
+                  driving: driving,
                   moving: true,
                   language: 'zh',
                   location: location,
@@ -402,6 +404,25 @@ void main() {
       await tester.pumpAndSettle();
       expect(platform.sources['waybi-route']!['features'], isEmpty);
       expect(tester.takeException(), isNull);
+      await (renderer as PlaceFocusMapRenderer).focusPlace(
+        const GeoPoint(-36.8518, 174.7634),
+        bottomInset: 400,
+      );
+      expect(platform.padding.bottom, 400);
+      update!(() {
+        driving = true;
+        following = true;
+        bottom = 96;
+      });
+      await tester.pumpAndSettle();
+      expect(
+        platform.padding.bottom,
+        96,
+        reason: 'Just Drive releases previous place focus padding',
+      );
+      const driven = GeoPoint(-36.86, 174.77);
+      await renderer!.moveTo(renderer!.viewport.copyWith(center: driven));
+      expect(renderer!.viewport.center, driven);
       await tester.pumpWidget(const SizedBox());
     },
   );

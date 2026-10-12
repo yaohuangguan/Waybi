@@ -193,7 +193,7 @@ async function fallbackDrivingRoutes(from, to, stops: LonLat[] = [], mode = 'DRI
     const normalized = Math.round(((options.headingDegrees % 360) + 360) % 360);
     routeUrl.searchParams.set(
       'bearings',
-      [`${normalized},90`, ...points.slice(1).map(() => '')].join(';')
+      [`${normalized},60`, ...points.slice(1).map(() => '')].join(';')
     );
   }
   const response = await fetch(routeUrl, {

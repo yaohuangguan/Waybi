@@ -74,11 +74,11 @@ void main() {
     });
     final provider = IndependentRoutingProvider(
       client: MockClient((request) async {
-        if (request.url.queryParameters['alternatives'] == '3') {
+        if (!request.url.queryParameters.containsKey('bearings')) {
           previewStarted.complete();
           return previewResponse.future;
         }
-        expect(request.url.queryParameters['bearings'], '45,90;');
+        expect(request.url.queryParameters['bearings'], '45,60;');
         return http.Response(body, 200);
       }),
     );
@@ -656,7 +656,7 @@ void main() {
 
     expect(urls, hasLength(1));
     expect(urls.single.host, 'waybi.test');
-    expect(urls.single.queryParameters['alternatives'], 'false');
+    expect(urls.single.queryParameters['alternatives'], 'true');
     expect(urls.single.queryParameters['heading'], '45.0');
     expect(route.provider, 'independent');
     expect(route.waypoints, const [

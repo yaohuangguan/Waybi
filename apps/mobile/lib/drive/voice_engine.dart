@@ -1,15 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../domain/map_layer_settings.dart';
 
-/// One completion-aware queue for turns and camera alerts. Google runs
-/// silently and its live turn feed supplies our guidance text.
+/// One completion-aware queue and temporary audio session for spoken guidance.
 class VoiceEngine {
   VoiceEngine({FlutterTts? tts}) : _tts = tts ?? FlutterTts();
   final FlutterTts _tts;
+  static const _audioSession = MethodChannel('waybi/navigation_audio');
   Future<void>? _initializing;
   String _language = 'en-NZ';
   int _generation = 0;
@@ -33,16 +34,17 @@ class VoiceEngine {
     if (defaultTargetPlatform == TargetPlatform.android) {
       await _tts.setAudioAttributesForNavigation();
     }
-    await _configureIosAudio();
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await _tts.autoStopSharedSession(true);
+    }
   }
 
-  Future<void> _configureIosAudio() async {
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      await _tts.setSharedInstance(true);
-      await _tts.setIosAudioCategory(IosTextToSpeechAudioCategory.playback, [
-        IosTextToSpeechAudioCategoryOptions.duckOthers,
-        IosTextToSpeechAudioCategoryOptions.allowBluetooth,
-      ], IosTextToSpeechAudioMode.voicePrompt);
+  Future<void> _releaseIosAudio() async {
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    try {
+      await _audioSession.invokeMethod<void>('release');
+    } catch (error) {
+      debugPrint('Navigation audio release failed: $error');
     }
   }
 
@@ -60,20 +62,28 @@ class VoiceEngine {
       if (generation != _generation || !(stillRelevant?.call() ?? true)) {
         return false;
       }
-      await _tts.setLanguage(language ?? _language);
-      // The native navigation SDK can change the shared session after our
-      // initial setup. Restore playback routing immediately before speech.
-      await _configureIosAudio();
-      if (generation != _generation || !(stillRelevant?.call() ?? true)) {
-        return false;
-      }
       final text = message().trim();
       if (text.isEmpty) return false;
-      final result = await _tts.speak(text);
-      if (result != 1 && result != true) {
-        throw StateError('Speech did not complete');
+      await _tts.setLanguage(language ?? _language);
+      try {
+        // Configure mixing before activating; activating an exclusive session
+        // even briefly can pause music without giving it a chance to resume.
+        if (defaultTargetPlatform == TargetPlatform.iOS) {
+          await _audioSession.invokeMethod<void>('prepare');
+        }
+        if (generation != _generation || !(stillRelevant?.call() ?? true)) {
+          return false;
+        }
+        final result = await _tts.speak(text);
+        if (result != 1 && result != true) {
+          throw StateError('Speech did not complete');
+        }
+        return true;
+      } finally {
+        // stop() releases a cancelled generation before allowing new speech.
+        // A late completion must not deactivate that new speech's session.
+        if (generation == _generation) await _releaseIosAudio();
       }
-      return true;
     });
     _speechQueue = speech.then<void>(
       (_) {},
@@ -96,7 +106,7 @@ class VoiceEngine {
     ++_generation;
     final stopped = _initializing == null
         ? Future<void>.value()
-        : _tts.stop().then<void>((_) {});
+        : _tts.stop().then<void>((_) {}).whenComplete(_releaseIosAudio);
     // Some engines do not resolve speak() when cancelled. New speech must
     // wait for stop(), without waiting on that abandoned completion future.
     _speechQueue = stopped;

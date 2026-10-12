@@ -400,18 +400,21 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   // Use course only while actually moving on a recent, accurate GPS fix.
   // A phone compass or an old course can snap a parked origin backwards.
-  double? get _routingHeading {
-    if (_manualOrigin != null) return null;
-    if (_driveEngine.active) {
-      return _driveEngine.hasReliableLocation && _driveEngine.speedKph > 10
-          ? _driveEngine.rawHeadingDegrees
-          : null;
-    }
-    final position = _lastReliableBrowsePosition;
-    if (position == null) return null;
+  double? get _routingHeading =>
+      _manualOrigin == null ? _currentRoutingHeading : null;
+
+  double? get _currentRoutingHeading {
+    final active = _driveEngine.active;
+    final position = active
+        ? _driveEngine.latestPosition
+        : _lastReliableBrowsePosition;
+    if (position == null || (active && !_driveEngine.hasReliableLocation))
+      return null;
     return routingOriginHeading(
-      heading: _travelHeading,
-      speedMetresPerSecond: position.speed,
+      heading: active ? _driveEngine.rawHeadingDegrees : _travelHeading,
+      speedMetresPerSecond: active
+          ? _driveEngine.speedKph / 3.6
+          : position.speed,
       accuracyMeters: position.accuracy,
       timestamp: position.timestamp,
       now: DateTime.now(),
@@ -582,10 +585,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         mode: previous.mode,
         stops: stops,
         language: _appLanguage,
-        headingDegrees:
-            _driveEngine.hasReliableLocation && _driveEngine.speedKph > 10
-            ? _driveEngine.rawHeadingDegrees
-            : null,
+        headingDegrees: _currentRoutingHeading,
       ),
     );
     _independentNavigation.addListener(_onIndependentNavigationChanged);
@@ -2004,11 +2004,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
       confirmed: accepted != null,
     );
-    _retryExternalPreview();
-
     // Keep the last reliable browse fix instead of letting a single indoor
     // GPS jump move route origins, arrival checks and the map by 50–100 m.
     if (accepted == null) {
+      _retryExternalPreview();
       setState(() {});
       final place = _selectedPlace?.place;
       if (place != null && !_driveEngine.active && _routePlan == null) {
@@ -2024,12 +2023,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       latitude: accepted.point.latitude,
       longitude: accepted.point.longitude,
     );
-    _retryExternalPreview();
     if (speedMetresPerSecond >= .8 && motion.heading != null) {
       _travelHeading = motion.heading;
     } else {
       _travelHeading = null;
     }
+    _retryExternalPreview();
     if (_guidanceRunning &&
         !_endingNavigation &&
         DateTime.now().difference(position.timestamp).abs() <=

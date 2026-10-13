@@ -8,6 +8,7 @@ export type UsageRecorder = (provider: string, sku: string, units: number) => vo
 export type ProviderPayload = Record<string, any>;
 export interface RouteRequestOptions {
   forceIndependent?: boolean;
+  exclusions?: import('./routing_closures.ts').ClosureLocation[];
   alternatives?: boolean;
   headingDegrees?: number;
   language?: string;

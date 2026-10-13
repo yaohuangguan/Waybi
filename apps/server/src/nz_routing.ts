@@ -26,14 +26,26 @@ export async function fetchNzRouting(
   const costing = ({ DRIVE: 'auto', WALK: 'pedestrian', BICYCLE: 'bicycle' })[mode];
   if (!url || !costing) throw new Error('NZ routing unavailable for this request');
   if (exclusions.length > 128) throw new Error('Too many closed road segments for a reliable detour');
-  const heading = options.headingDegrees;
   const response = await fetcher(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       ...(env.WAYBI_NZ_ROUTING_TOKEN ? { authorization: `Bearer ${env.WAYBI_NZ_ROUTING_TOKEN}` } : {}),
     },
-    body: JSON.stringify({
+    body: JSON.stringify(valhallaRequest(points, mode, options, exclusions)),
+    signal: AbortSignal.timeout(exclusions.length ? 4000 : 5000),
+  });
+  if (!response.ok) throw new Error(`NZ routing HTTP ${response.status}`);
+  const payload = await response.json<ProviderPayload>();
+  if (payload.code !== 'Ok' || !payload.routes?.length) throw new Error('NZ routing returned no route');
+  return payload;
+}
+
+export function valhallaRequest(points: LonLat[], mode: string, options: RouteRequestOptions,
+  exclusions: ClosureLocation[]) {
+  const costing = ({ DRIVE: 'auto', WALK: 'pedestrian', BICYCLE: 'bicycle' })[mode];
+  const heading = options.headingDegrees;
+  return {
       locations: points.map(([lon, lat], index) => ({ lon, lat, type: 'break',
         ...(index === 0 && Number.isFinite(heading) ? { heading: ((heading % 360) + 360) % 360 } : {}) })),
       costing, format: 'osrm', shape_format: 'geojson', units: 'kilometers',
@@ -42,11 +54,5 @@ export async function fetchNzRouting(
       directions_type: 'instructions', turn_lanes: true,
       date_time: { type: 0 },
       ...(exclusions.length ? { exclude_locations: exclusions } : {}),
-    }),
-    signal: AbortSignal.timeout(exclusions.length ? 4000 : 5000),
-  });
-  if (!response.ok) throw new Error(`NZ routing HTTP ${response.status}`);
-  const payload = await response.json<ProviderPayload>();
-  if (payload.code !== 'Ok' || !payload.routes?.length) throw new Error('NZ routing returned no route');
-  return payload;
+    };
 }

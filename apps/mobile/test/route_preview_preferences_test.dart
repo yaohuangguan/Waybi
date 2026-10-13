@@ -84,7 +84,7 @@ void main() {
     expect(find.text('Fastest'), findsOneWidget);
     expect(find.text('Shortest'), findsOneWidget);
     expect(find.text('Less traffic'), findsOneWidget);
-    expect(find.text('0 cameras'), findsWidgets);
+    expect(find.text('No matched cameras'), findsWidgets);
     expect(find.text('Load'), findsOneWidget);
     expect(find.text('No traffic data'), findsWidgets);
     expect(find.text('Light traffic'), findsNothing);

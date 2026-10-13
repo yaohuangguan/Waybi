@@ -1,3 +1,4 @@
+import { fetchPublicDetour } from './public_detour.ts';
 import type { ProviderPayload } from "./types.ts";
 import type { LonLat, RouteRequestOptions, UsageRecorder } from './types.ts';
 import { fetchNzRouting, nzRoutingEndpoint } from './nz_routing.ts';
@@ -138,7 +139,7 @@ async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
       ].join(',')
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15000)
+    signal: AbortSignal.timeout(8000)
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
@@ -202,7 +203,7 @@ async function fallbackDrivingRoutes(from, to, stops: LonLat[] = [], mode = 'DRI
       referer: 'https://routing.openstreetmap.de/',
       accept: 'application/json'
     },
-    signal: AbortSignal.timeout(15000)
+    signal: AbortSignal.timeout(8000)
   });
   if (!response.ok) throw new Error(`Fallback route HTTP ${response.status}`);
   const payload = await response.json<ProviderPayload>();
@@ -261,7 +262,7 @@ export async function routeOptions(
   trackUsage: UsageRecorder = () => {},
   options: RouteRequestOptions = {}
 ) {
-  const forceIndependent = options.forceIndependent === true;
+  const forceIndependent = options.forceIndependent === true || Boolean(options.exclusions?.length);
   if (!forceIndependent && env.GOOGLE_ROUTES_API_KEY) {
     const defaultModes = stops.length
       ? ['DRIVE', 'WALK', 'BICYCLE']
@@ -291,18 +292,20 @@ export async function routeOptions(
         return normalizeOsrmRoutes(await fetchNzRouting(env, points, mode, options, exclusions), mode);
       } catch (error) {
         // A failed exclusion request must not quietly drop its exclusions.
-        if (exclusions.length) throw error;
+        // The public free fallback also supports directed road exclusions.
       }
     }
-    if (exclusions.length) throw new Error('No engine supports these road exclusions');
+    if (exclusions.length) return normalizeOsrmRoutes(await fetchPublicDetour(points, options, exclusions), mode);
     return fallbackDrivingRoutes(from, to, stops, mode, options);
   };
   const settled = await Promise.allSettled(
-    modes.map(mode => fetchIndependent(mode))
+    modes.map(mode => fetchIndependent(mode, mode === 'DRIVE' ? options.exclusions || [] : []))
   );
   let driving = settled.flatMap((result) =>
     result.status === 'fulfilled' ? result.value : []
   );
+  if (options.exclusions?.length) driving = driving.filter(route => route.mode !== 'drive' ||
+    !crossesExcludedRoads(route, options.exclusions!));
   if (!driving.length) throw new Error('No routes available for the requested travel mode');
   let roadAwareness = null;
   if (forceIndependent && driving.some(route => route.mode === 'drive')) {
@@ -316,8 +319,8 @@ export async function routeOptions(
     let avoidance = 'unchecked';
     if (blocked.length && blocked.some(item => item.matches.length)) {
       avoidance = clear.length ? 'alternative' : 'blocked';
-      if (!clear.length && nzRoutingEndpoint(env, points)) {
-        const locations = blocked.flatMap(item => item.matches.flatMap(match => match.locations));
+      if (!clear.length) {
+        const locations = [...(options.exclusions || []), ...blocked.flatMap(item => item.matches.flatMap(match => match.locations))];
         const unique = [...new Map(locations.map(location =>
           [`${location.lon.toFixed(5)}:${location.lat.toFixed(5)}:${Math.round(location.heading / 10)}`, location])).values()];
         try {

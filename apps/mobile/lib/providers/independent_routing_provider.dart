@@ -32,6 +32,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     required String language,
     WaybiTravelMode? mode,
     double? headingDegrees,
+    List<RouteExclusion> avoid = const [],
   }) async {
     final points = _validatedPoints(origin, destination, stops);
     final modes = mode == null
@@ -45,6 +46,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
                 mode: selected,
                 language: language,
                 headingDegrees: headingDegrees,
+                avoid: avoid,
               )
             : _optionalMode(points, selected, language),
     ]);
@@ -86,22 +88,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
             ? byTime
             : a.distanceMeters.compareTo(b.distanceMeters);
       });
-    final fastest = sorted.first.durationSeconds;
-    final fastestDistance = sorted.first.distanceMeters;
-    final shortest = sorted
-        .map((route) => route.distanceMeters)
-        .reduce((a, b) => a < b ? a : b);
-    final filtered = sorted
-        .where((route) {
-          final timeOk = route.durationSeconds <= fastest * 1.18;
-          final distanceOk =
-              route.distanceMeters <= shortest * 1.28 &&
-              route.distanceMeters <= fastestDistance * 1.35;
-          return timeOk && distanceOk;
-        })
-        .take(3)
-        .toList(growable: false);
-    final candidates = filtered.isEmpty ? [sorted.first] : filtered;
+    final candidates = sorted.take(3).toList(growable: false);
     final preferred = recommendedRoute(candidates, const {});
     return [
       ?preferred,
@@ -116,6 +103,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     List<GeoPoint> stops = const [],
     required String language,
     double? headingDegrees,
+    List<RouteExclusion> avoid = const [],
   }) async {
     final options = await _fetchMode(
       _validatedPoints(origin, destination, stops),
@@ -123,6 +111,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
       language: language,
       alternatives: mode == WaybiTravelMode.drive && stops.isEmpty,
       headingDegrees: headingDegrees,
+      avoid: avoid,
     );
     if (options.isEmpty) throw StateError('No route from current location');
     return mode == WaybiTravelMode.drive
@@ -148,6 +137,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     required String language,
     bool alternatives = true,
     double? headingDegrees,
+    List<RouteExclusion> avoid = const [],
   }) async {
     if (useWaybiProxy) {
       return _fetchWaybiMode(
@@ -156,7 +146,11 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         language: language,
         alternatives: alternatives,
         headingDegrees: headingDegrees,
+        avoid: avoid,
       );
+    }
+    if (avoid.isNotEmpty) {
+      throw StateError('Road exclusions require Waybi routing');
     }
     final path = points
         .map((point) => '${point.longitude},${point.latitude}')
@@ -298,6 +292,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     required String language,
     required bool alternatives,
     double? headingDegrees,
+    List<RouteExclusion> avoid = const [],
   }) async {
     final uri = Uri.parse('$proxyBaseUrl/api/route-options').replace(
       queryParameters: {
@@ -313,13 +308,21 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         'provider': 'independent',
         'lang': language,
         'alternatives': alternatives ? 'true' : 'false',
+        if (avoid.isNotEmpty)
+          'avoid': avoid
+              .take(32)
+              .map(
+                (e) =>
+                    '${e.location.longitude},${e.location.latitude},${e.headingDegrees}',
+              )
+              .join(';'),
         if (headingDegrees != null && headingDegrees.isFinite)
           'heading': '${headingDegrees % 360}',
       },
     );
     final response = await _client
         .get(uri, headers: const {'Accept': 'application/json'})
-        .timeout(const Duration(seconds: 12));
+        .timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
       throw StateError('Waybi directions unavailable: ${response.statusCode}');
     }

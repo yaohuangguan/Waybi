@@ -140,3 +140,54 @@ int _nativeCongestion(RouteOption route) {
   final delay = route.trafficDelaySeconds ?? 0;
   return delay + route.traffic.trafficJam * 300 + route.traffic.slow * 90;
 }
+
+enum RouteFilter { recommended, fastest, shortest, avoidCameras, withCameras }
+
+/// Filters the legal alternatives already returned by the engine. No network
+/// requests and no claim that an unmatched camera count means total coverage.
+List<RouteOption> filterRoutes(
+  List<RouteOption> routes,
+  RouteFilter filter,
+  Map<String, RoutePreferenceSummary> summaries, {
+  Set<String> blockedIds = const {},
+}) {
+  final result = routes
+      .where(
+        (route) => switch (filter) {
+          RouteFilter.avoidCameras => summaries[route.id]?.cameraCount == 0,
+          RouteFilter.withCameras =>
+            (summaries[route.id]?.cameraCount ?? 0) > 0,
+          _ => true,
+        },
+      )
+      .toList();
+  bool blocked(RouteOption route) =>
+      route.blockedForDriving || blockedIds.contains(route.id);
+  final legal = result.where((route) => !blocked(route)).toList();
+  final preferred = recommendedRoute(legal, summaries)?.id;
+  result.sort((a, b) {
+    if (a.id == b.id) return 0;
+    if (blocked(a) != blocked(b)) return blocked(a) ? 1 : -1;
+    int order;
+    switch (filter) {
+      case RouteFilter.shortest:
+        order = a.distanceMeters.compareTo(b.distanceMeters);
+      case RouteFilter.recommended:
+        order = a.id == preferred
+            ? -1
+            : b.id == preferred
+            ? 1
+            : 0;
+      case RouteFilter.avoidCameras ||
+          RouteFilter.withCameras ||
+          RouteFilter.fastest:
+        order = a.durationSeconds.compareTo(b.durationSeconds);
+    }
+    if (order != 0) return order;
+    final duration = a.durationSeconds.compareTo(b.durationSeconds);
+    return duration != 0
+        ? duration
+        : a.distanceMeters.compareTo(b.distanceMeters);
+  });
+  return result;
+}

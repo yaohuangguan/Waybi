@@ -4,6 +4,7 @@ import { distanceMeters } from './geo.ts';
 export interface ClosureRoute {
   coordinates: LonLat[];
   durationSeconds: number;
+  steps?: { distance: number; name?: string; maneuver?: string }[];
 }
 export interface ClosureLocation {
   lat: number;
@@ -26,6 +27,32 @@ function bearing(a: LonLat, b: LonLat): number {
 }
 function angle(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
+}
+
+// A point-only ramp notice often sits beside the motorway. An explicit
+// through-motorway step is evidence that this route does not use that ramp.
+function isMainlineAt(route: ClosureRoute, along: number, length: number, rampName: string): boolean {
+  const steps = route.steps || [];
+  const total = steps.reduce((sum, step) => sum + step.distance, 0);
+  if (!total) return false;
+  let start = 0;
+  for (const [index, step] of steps.entries()) {
+    const end = start + step.distance * length / total;
+    if (along >= start && along < end) {
+      const type = (step.maneuver || '').replace(/[^a-z]/gi, '').toLowerCase();
+      const highway = (name: string) => /motorway|freeway|expressway|\b(?:SH|State Highway)\s*\d+/i.test(name);
+      // An interchange instruction can cover kilometres of the next motorway.
+      // A motorway-to-motorway transfer does not use a named local-street ramp.
+      const transfer = ['onramp', 'offramp'].includes(type) && index > 0 && along - start > 35 &&
+        highway(steps[index - 1].name || '') && /\b(?:Rd|Road|St|Street|Dr|Drive|Ave|Avenue|Way)\b/i.test(rampName);
+      return highway(step.name || '') &&
+        !/\b(?:on[ -]?ramp|off[ -]?ramp)\b/i.test(step.name || '') &&
+        (!['onramp', 'offramp', 'ramp'].includes(type) || transfer) &&
+        (type !== 'merge' || along - start > 35);
+    }
+    start = end;
+  }
+  return false;
 }
 
 /** Project an official point onto a directed route segment. The exclusion uses
@@ -87,7 +114,9 @@ export function matchRouteClosures(
         best = { offset, heading, along: cumulative[i - 1] + t * (cumulative[i] - cumulative[i - 1]),
           coordinate: [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])] };
       }
-      if (!best) continue;
+      const specificRamp = /\b(?:on[ -]?ramp|off[ -]?ramp)\b/i.test(event.roadName || '') &&
+        !/\b(?:between|from|to)\b/i.test(event.roadName || '');
+      if (!best || (specificRamp && isMainlineAt(route, best.along, length, event.roadName || ''))) continue;
       const arrival = now.getTime() + route.durationSeconds * best.along / length * 1000;
       const from = event.validFrom ? Date.parse(event.validFrom) : -Infinity;
       const until = event.validUntil ? Date.parse(event.validUntil) : Infinity;
@@ -110,10 +139,30 @@ export function matchRouteClosures(
 /** Verify against the originally excluded directed segments, so the opposite
  * carriageway is not mistaken for the blocked direction of a point-only event. */
 export function crossesExcludedRoads(route: ClosureRoute, locations: ClosureLocation[]): boolean {
-  return locations.some(location => matchRouteClosures(route, [{
-    id: 'excluded', type: 'roadClosure', location: { latitude: location.lat, longitude: location.lon },
+  return matchRouteClosures(route, locations.map((location, i) => ({
+    id: `excluded-${i}`, type: 'roadClosure' as const,
+    location: { latitude: location.lat, longitude: location.lon },
     geometry: [], headingDegrees: location.heading, roadName: null, confidence: 1,
-    severity: 'critical', observation: 'official', validFrom: null, validUntil: null,
+    severity: 'critical' as const, observation: 'official' as const,
+    validFrom: null, validUntil: null,
     source: { provider: '', country: '', region: null, sourceId: '', updatedAt: null }, metadata: {},
-  }], new Date(), 20).length > 0);
+  })), new Date(), 20).length > 0;
+}
+
+/** Bounded client exclusions from a locally refreshed closure feed. */
+export function parseRouteExclusions(value: string | null): ClosureLocation[] | null {
+  if (value == null || value === '') return [];
+  if (value.length > 5000) return null;
+  const entries = value.split(';');
+  if (entries.length > 32) return null;
+  const result: ClosureLocation[] = [];
+  for (const entry of entries) {
+    const values = entry.split(',');
+    if (values.length !== 3 || values.some(v => !v.trim())) return null;
+    const [lon, lat, heading] = values.map(Number);
+    if (![lon, lat, heading].every(Number.isFinite) || Math.abs(lon) > 180 || Math.abs(lat) > 90) return null;
+    result.push({ lon, lat, heading: ((heading % 360) + 360) % 360,
+      heading_tolerance: 35, radius: 20, node_snap_tolerance: 0 });
+  }
+  return result;
 }

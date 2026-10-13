@@ -239,8 +239,8 @@ void main() {
       );
       final routes = plan.forMode(WaybiTravelMode.drive).toList();
 
-      expect(routes, hasLength(2));
-      expect(routes.map((route) => route.id).toSet(), hasLength(2));
+      expect(routes, hasLength(3));
+      expect(routes.map((route) => route.id).toSet(), hasLength(3));
       expect(
         requests.where((uri) => uri.path.startsWith('/routed-car/')),
         hasLength(1),

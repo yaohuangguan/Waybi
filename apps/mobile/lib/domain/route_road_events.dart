@@ -74,7 +74,7 @@ List<RoadEvent> routeClosures(
         minAlongMeters: progressMeters - 15,
       );
       if (match == null ||
-          match.offsetMeters > 65 ||
+          match.offsetMeters > 35 ||
           match.alongMeters < progressMeters - 15) {
         continue;
       }
@@ -99,7 +99,22 @@ List<RoadEvent> routeClosures(
       if (!event.isCurrent(at) && !event.isCurrent(arrival)) continue;
       if (best == null || match.alongMeters < best.alongMeters) best = match;
     }
-    if (best != null) {
+    if (best != null &&
+        !(ramp &&
+            RegExp(
+              r'\b(?:on[ -]?ramp|off[ -]?ramp)\b',
+              caseSensitive: false,
+            ).hasMatch(event.roadName ?? '') &&
+            !RegExp(
+              r'\b(?:between|from|to)\b',
+              caseSensitive: false,
+            ).hasMatch(event.roadName ?? '') &&
+            _onMainline(
+              route,
+              best.alongMeters,
+              length,
+              event.roadName ?? '',
+            ))) {
       matches.add(
         event.withDistance(
           fromDriver: best.alongMeters - progressMeters,
@@ -112,4 +127,86 @@ List<RoadEvent> routeClosures(
     (a, b) => a.distanceAlongRoute!.compareTo(b.distanceAlongRoute!),
   );
   return matches;
+}
+
+bool _onMainline(
+  RouteOption route,
+  double along,
+  double length,
+  String rampName,
+) {
+  final total = route.steps.fold<double>(
+    0,
+    (sum, step) => sum + step.distanceMeters,
+  );
+  if (total <= 0) return false;
+  var start = 0.0;
+  for (final (index, step) in route.steps.indexed) {
+    final end = start + step.distanceMeters * length / total;
+    if (along >= start && along < end) {
+      final type = step.maneuverType
+          .replaceAll(RegExp(r'[^a-z]', caseSensitive: false), '')
+          .toLowerCase();
+      bool highway(String name) => RegExp(
+        r'motorway|freeway|expressway|\b(?:SH|State Highway)\s*\d+',
+        caseSensitive: false,
+      ).hasMatch(name);
+      final transfer =
+          const ['onramp', 'offramp'].contains(type) &&
+          index > 0 &&
+          along - start > 35 &&
+          highway(route.steps[index - 1].roadName) &&
+          RegExp(
+            r'\b(?:Rd|Road|St|Street|Dr|Drive|Ave|Avenue|Way)\b',
+            caseSensitive: false,
+          ).hasMatch(rampName);
+      return highway(step.roadName) &&
+          !RegExp(
+            r'\b(?:on[ -]?ramp|off[ -]?ramp)\b',
+            caseSensitive: false,
+          ).hasMatch(step.roadName) &&
+          (!const ['onramp', 'offramp', 'ramp'].contains(type) || transfer) &&
+          (type != 'merge' || along - start > 35);
+    }
+    start = end;
+  }
+  return false;
+}
+
+/// Use the projected segment direction, not the signed motorway direction of
+/// a curved ramp. The server validates this bounded set again after routing.
+List<RouteExclusion> closureExclusions(
+  RouteOption route,
+  List<RoadEvent> events,
+) {
+  final exclusions = <RouteExclusion>[];
+  for (final event in events.where(
+    (e) => e.observation == RoadEventObservation.official,
+  )) {
+    for (final point
+        in event.geometry.isEmpty ? [event.location] : event.geometry) {
+      final projection = const RouteCameraMatcher().project(
+        point,
+        route.points,
+      );
+      if (projection?.point == null || projection!.offsetMeters > 35) continue;
+      if (exclusions.any(
+        (e) =>
+            distanceMeters(
+              e.location.latitude,
+              e.location.longitude,
+              projection.point!.latitude,
+              projection.point!.longitude,
+            ) <
+            20,
+      )) {
+        continue;
+      }
+      exclusions.add(
+        RouteExclusion(projection.point!, projection.bearingDegrees),
+      );
+      if (exclusions.length == 32) return exclusions;
+    }
+  }
+  return exclusions;
 }

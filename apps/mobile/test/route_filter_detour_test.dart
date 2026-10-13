@@ -125,6 +125,39 @@ void main() {
     final exclusions = closureExclusions(clear, const [closure]);
     expect(exclusions.single.headingDegrees, closeTo(0, .1));
   });
+  test(
+    'signed closure direction on a curve preserves the opposite carriageway',
+    () {
+      const points = [GeoPoint(-36.91, 174.73), GeoPoint(-36.916, 174.75)];
+      RouteOption curved(List<GeoPoint> geometry) => RouteOption(
+        id: 'curve',
+        mode: WaybiTravelMode.drive,
+        durationSeconds: 200,
+        distanceMeters: 2000,
+        points: geometry,
+        provider: 'independent',
+        traffic: const TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
+        trafficIntervals: const [],
+      );
+      const event = RoadEvent(
+        id: 'curve',
+        type: RoadEventType.roadClosure,
+        location: GeoPoint(-36.913, 174.74),
+        roadName: 'SH20 Full Closure Southbound',
+        headingDegrees: 180,
+        source: RoadEventSource(
+          provider: 'NZTA',
+          country: 'NZ',
+          sourceId: 'curve',
+        ),
+      );
+      expect(routeClosures(curved(points), const [event]), hasLength(1));
+      expect(
+        routeClosures(curved(points.reversed.toList()), const [event]),
+        isEmpty,
+      );
+    },
+  );
   test('closure retry carries bounded exclusions and stop order through the free Waybi proxy', () async {
     final provider = IndependentRoutingProvider(
       useWaybiProxy: true,

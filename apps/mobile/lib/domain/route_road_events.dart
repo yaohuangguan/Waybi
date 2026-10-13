@@ -80,7 +80,13 @@ List<RoadEvent> routeClosures(
       }
       if (!ramp &&
           event.headingDegrees != null &&
-          angleDifference(event.headingDegrees!, match.bearingDegrees) > 55) {
+          angleDifference(event.headingDegrees!, match.bearingDegrees) >
+              (RegExp(
+                    r'\b(?:north|south|east|west)bound\b',
+                    caseSensitive: false,
+                  ).hasMatch(event.roadName ?? '')
+                  ? 90
+                  : 55)) {
         continue;
       }
       final arrival = at.add(

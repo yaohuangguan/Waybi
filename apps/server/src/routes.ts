@@ -286,16 +286,19 @@ export async function routeOptions(
 
   const modes = requestedModes?.length ? requestedModes : ['DRIVE'];
   const points: LonLat[] = [from, ...stops, to];
-  const fetchIndependent = async (mode: string, exclusions: ClosureLocation[] = []) => {
-    if (nzRoutingEndpoint(env, points)) {
+  let ownedUnavailable = false;
+  const fetchIndependent = async (mode: string, exclusions: ClosureLocation[] = [], detourLocalRoads = false) => {
+    const requestOptions = detourLocalRoads ? { ...options, detourLocalRoads: true } : options;
+    if (!ownedUnavailable && nzRoutingEndpoint(env, points)) {
       try {
-        return normalizeOsrmRoutes(await fetchNzRouting(env, points, mode, options, exclusions), mode);
+        return normalizeOsrmRoutes(await fetchNzRouting(env, points, mode, requestOptions, exclusions), mode);
       } catch (error) {
+        ownedUnavailable = true;
         // A failed exclusion request must not quietly drop its exclusions.
         // The public free fallback also supports directed road exclusions.
       }
     }
-    if (exclusions.length) return normalizeOsrmRoutes(await fetchPublicDetour(points, options, exclusions), mode);
+    if (exclusions.length) return normalizeOsrmRoutes(await fetchPublicDetour(points, requestOptions, exclusions), mode);
     return fallbackDrivingRoutes(from, to, stops, mode, options);
   };
   const settled = await Promise.allSettled(
@@ -323,12 +326,35 @@ export async function routeOptions(
         const locations = [...(options.exclusions || []), ...blocked.flatMap(item => item.matches.flatMap(match => match.locations))];
         const unique = [...new Map(locations.map(location =>
           [`${location.lon.toFixed(5)}:${location.lat.toFixed(5)}:${Math.round(location.heading / 10)}`, location])).values()];
-        try {
-          const detours = await fetchIndependent('DRIVE', unique);
-          selected = detours.filter(route => !crossesExcludedRoads(route, unique) &&
-            !matchRouteClosures(route, snapshot.events, now).length);
-          if (selected.length) avoidance = 'detour';
-        } catch { /* Keep the blocked routes visibly blocked, without pretending avoidance succeeded. */ }
+        // A new corridor may encounter closures absent from the original route.
+        // Discover new directed exclusions within a small request/time budget.
+        let exclusions = unique;
+        // At most two normal exclusions rounds, then at most two local-road
+        // biased rounds. The latter can escape parallel closures on motorways.
+        // All candidates are still checked against every closure/exclusion.
+        const detourDeadline = Date.now() + 28000;
+        for (let attempt = 0; attempt < 4 && !selected.length && Date.now() + 8000 <= detourDeadline; attempt++) {
+          const detourLocalRoads = attempt >= 2;
+          try {
+            const detours = await fetchIndependent('DRIVE', exclusions, detourLocalRoads);
+            const evaluated = detours.map(route => ({ route, matches: matchRouteClosures(route, snapshot.events, now) }));
+            selected = evaluated.filter(item => !crossesExcludedRoads(item.route, exclusions) &&
+              !item.matches.length).map(item => item.route);
+            if (selected.length) { avoidance = 'detour'; break; }
+            const discovered = evaluated.flatMap(item => item.matches.flatMap(match => match.locations));
+            const expanded = [...new Map([...exclusions, ...discovered].map(location =>
+              [`${location.lon.toFixed(5)}:${location.lat.toFixed(5)}:${Math.round(location.heading / 10)}`, location])).values()];
+            if (expanded.length > 128) break;
+            if (expanded.length === exclusions.length) {
+              if (detourLocalRoads) break;
+              // No new excluded road: switch strategy instead of repeating
+              // a request with the same inputs and cached result.
+              attempt = 1;
+            } else {
+              exclusions = expanded;
+            }
+          } catch { break; }
+        }
       }
       if (selected.length) {
         driving = [...selected, ...driving.filter(route => route.mode !== 'drive')];

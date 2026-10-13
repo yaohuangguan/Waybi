@@ -322,7 +322,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     );
     final response = await _client
         .get(uri, headers: const {'Accept': 'application/json'})
-        .timeout(const Duration(seconds: 30));
+        .timeout(const Duration(seconds: 40));
     if (response.statusCode != 200) {
       throw StateError('Waybi directions unavailable: ${response.statusCode}');
     }

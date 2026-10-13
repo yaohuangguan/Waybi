@@ -52,6 +52,10 @@ export function valhallaRequest(points: LonLat[], mode: string, options: RouteRe
       language: options.language === 'zh' ? 'zh-CN' : 'en-GB',
       alternates: options.alternatives === false || points.length > 2 ? 0 : 2,
       directions_type: 'instructions', turn_lanes: true,
+      // When successive exclusions still leave a closed motorway, attempt a
+      // local-road-biased path; this is a cost preference, not a safety claim.
+      ...(mode === 'DRIVE' && options.detourLocalRoads
+        ? { costing_options: { auto: { use_highways: 0 } } } : {}),
       date_time: { type: 0 },
       ...(exclusions.length ? { exclude_locations: exclusions } : {}),
     };

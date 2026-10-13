@@ -110,7 +110,8 @@ export function matchRouteClosures(
         const offset = Math.hypot(ax + t * dx, ay + t * dy);
         if (offset > maxOffset || (best && offset >= best.offset)) continue;
         const heading = bearing(a, b);
-        if (!ramp && event.headingDegrees != null && angle(event.headingDegrees, heading) > 55) continue;
+        const signedDirection = /\b(?:north|south|east|west)bound\b/i.test(event.roadName || '');
+        if (!ramp && event.headingDegrees != null && angle(event.headingDegrees, heading) > (signedDirection ? 90 : 55)) continue;
         best = { offset, heading, along: cumulative[i - 1] + t * (cumulative[i] - cumulative[i - 1]),
           coordinate: [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])] };
       }

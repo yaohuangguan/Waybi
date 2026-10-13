@@ -99,3 +99,76 @@ test('unavailable detour service retains the original explicitly blocked route',
     assert.deepEqual(plan.options[0].coordinates, points);
   } finally { globalThis.fetch = previous; }
 });
+
+test('signed motorway direction follows a curved carriageway while its opposite stays open', () => {
+  const points: LonLat[] = [[174.73,-36.91],[174.75,-36.916]];
+  const event: any = { id: 'curve', type: 'roadClosure', location: { longitude: 174.74, latitude: -36.913 },
+    geometry: [], headingDegrees: 180, roadName: 'SH20 Full Closure Southbound', confidence: 1,
+    observation: 'official', validFrom: null, validUntil: null, metadata: {} };
+  assert.equal(matchRouteClosures({ coordinates: points, durationSeconds: 200 }, [event]).length, 1);
+  assert.equal(matchRouteClosures({ coordinates: [...points].reverse(), durationSeconds: 200 }, [event]).length, 0);
+});
+test('a newly encountered closure is excluded in one bounded further detour round', async () => {
+  const previous = globalThis.fetch;
+  const from: LonLat = [176,-38], to: LonLat = [176,-37.98];
+  const original = [from,to];
+  const first: LonLat[] = [from,[176.01,-37.99],to];
+  const final: LonLat[] = [from,[175.99,-37.99],to];
+  const event = (id: string, longitude: number, latitude: number): any => ({ id, type: 'roadClosure',
+    location: { longitude, latitude }, geometry: [], headingDegrees: null, roadName: 'Closed street', confidence: 1,
+    observation: 'official', severity: 'critical', validFrom: null, validUntil: null, metadata: {},
+    source: { provider: 'NZTA', country: 'NZ', sourceId: id } });
+  const events=[event('initial',176,-37.99),event('new',176.01,-37.99)];
+  let rounds=0;
+  globalThis.fetch=async (url,init) => {
+    if (new URL(String(url)).host==='routing.openstreetmap.de') return Response.json(payload(original));
+    rounds++;
+    const body=JSON.parse(init.body as string);
+    assert.equal(body.exclude_locations.length,rounds);
+    return Response.json(payload(rounds===1?first:final));
+  };
+  try {
+    const plan=await routeOptions(from,to,{CAMERA_DATA:{async get(){return {events,syncStatus:'live',retrievedAt:new Date(Date.now()-1000).toISOString()};}}},[],['DRIVE'],()=>{},{forceIndependent:true});
+    assert.equal(rounds,2);
+    assert.equal(plan.roadAwareness.avoidance,'detour');
+    assert.deepEqual(plan.options[0].coordinates,final);
+  } finally {globalThis.fetch=previous;}
+});
+
+test('closed corridors switch to local roads after bounded attempts and verify final route', async () => {
+  const previous = globalThis.fetch;
+  const from: LonLat = [176,-38], to: LonLat = [176,-37.98];
+  const original: LonLat[] = [from,to];
+  const first: LonLat[] = [from,[176.01,-37.99],to];
+  const safe: LonLat[] = [from,[175.99,-37.99],to];
+  const event = (id: string, longitude: number, latitude: number): any => ({
+    id, type: 'roadClosure', location: { longitude, latitude },
+    geometry: [], headingDegrees: null, roadName: 'Closed street',
+    confidence: 1, observation: 'official', severity: 'critical',
+    validFrom: null, validUntil: null, metadata: {},
+    source: { provider: 'NZTA', country: 'NZ', sourceId: id }
+  });
+  const events = [event('original',176,-37.99), event('alternative',176.01,-37.99)];
+  const requests: any[] = [];
+  globalThis.fetch = async (url, init) => {
+    if (new URL(String(url)).host === 'routing.openstreetmap.de') return Response.json(payload(original));
+    const request = JSON.parse(init.body as string);
+    requests.push(request);
+    if (requests.length === 3) return Response.json(payload(safe));
+    return Response.json(payload(first));
+  };
+  try {
+    const plan = await routeOptions(from, to, {
+      CAMERA_DATA: { async get() {
+        return { events, syncStatus: 'live', retrievedAt: new Date(Date.now()-1000).toISOString() };
+      } }
+    }, [], ['DRIVE'], () => {}, { forceIndependent: true });
+    assert.equal(requests.length, 3);
+    assert.equal(requests[0].costing_options, undefined);
+    assert.equal(requests[1].costing_options, undefined);
+    assert.equal(requests[2].costing_options.auto.use_highways, 0);
+    assert.equal(requests[2].exclude_locations.length, 2);
+    assert.equal(plan.roadAwareness.avoidance, 'detour');
+    assert.deepEqual(plan.options[0].coordinates, safe);
+  } finally { globalThis.fetch = previous; }
+});

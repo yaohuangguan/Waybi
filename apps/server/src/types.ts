@@ -12,6 +12,8 @@ export interface RouteRequestOptions {
   alternatives?: boolean;
   headingDegrees?: number;
   language?: string;
+  /** Internal fallback strategy for incident-heavy detours, not a public route preference. */
+  detourLocalRoads?: boolean;
 }
 export interface PlacePhoto {
   url: string;

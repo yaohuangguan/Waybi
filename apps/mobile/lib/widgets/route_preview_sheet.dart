@@ -44,6 +44,8 @@ String routeExplanation(
           ? '比最快路线多 ${_duration(extra, isChinese: true)}'
           : '+${_duration(extra)} vs fastest',
     );
+  } else if (extra > 0) {
+    facts.add(isChinese ? '比最快路线多 $extra 秒' : '+${extra}s vs fastest');
   } else if (selected.mode == WaybiTravelMode.drive) {
     facts.add(isChinese ? '当前最快路线' : 'Fastest available route');
   }
@@ -98,6 +100,14 @@ String _cameraTypeLabel(String value, {required bool isChinese}) {
   };
 }
 
+String _filterLabel(RouteFilter value, bool zh) => switch (value) {
+  RouteFilter.recommended => zh ? '推荐' : 'Best',
+  RouteFilter.fastest => zh ? '时间最短' : 'Fastest first',
+  RouteFilter.shortest => zh ? '距离最短' : 'Shortest first',
+  RouteFilter.avoidCameras => zh ? '避开已知摄像头' : 'No matched cameras',
+  RouteFilter.withCameras => zh ? '有已知摄像头' : 'With cameras',
+};
+
 class RouteCameraSummary {
   const RouteCameraSummary({this.count = 0, this.types = const []});
 
@@ -119,6 +129,11 @@ class RoutePreviewSheet extends StatelessWidget {
     this.routeCameraSummaries = const {},
     this.routePreferenceSummaries = const {},
     this.routeClosures = const {},
+    this.filter = RouteFilter.recommended,
+    this.onFilterChanged,
+    this.cameraDataReady = true,
+    this.statusMessage,
+    this.onRetry,
     this.onRoadEvent,
     this.canRequestTransit = false,
     this.canRequestModes = false,
@@ -153,6 +168,11 @@ class RoutePreviewSheet extends StatelessWidget {
   final Map<String, RoutePreferenceSummary> routePreferenceSummaries;
   final Map<String, List<RoadEvent>> routeClosures;
   final ValueChanged<RoadEvent>? onRoadEvent;
+  final RouteFilter filter;
+  final ValueChanged<RouteFilter>? onFilterChanged;
+  final bool cameraDataReady;
+  final String? statusMessage;
+  final VoidCallback? onRetry;
   final bool canRequestTransit;
   final bool canRequestModes;
   final bool customOrigin;
@@ -175,9 +195,32 @@ class RoutePreviewSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final routes = plan.forMode(selectedMode).take(3).toList(growable: false);
+    final allRoutes = plan
+        .forMode(selectedMode)
+        .take(3)
+        .toList(growable: false);
+    final routes = selectedMode == WaybiTravelMode.drive
+        ? filterRoutes(
+            allRoutes,
+            filter,
+            cameraDataReady ? routePreferenceSummaries : const {},
+            blockedIds: {
+              for (final r in allRoutes)
+                if (routeClosures[r.id]?.any(
+                      (e) => e.observation == RoadEventObservation.official,
+                    ) ??
+                    false)
+                  r.id,
+            },
+          )
+        : allRoutes;
     final preferences = assessRoutePreferences(
-      routes,
+      allRoutes
+          .where(
+            (r) =>
+                !r.blockedForDriving && (routeClosures[r.id]?.isEmpty ?? true),
+          )
+          .toList(),
       routePreferenceSummaries,
     );
     RouteOption? selected;
@@ -194,7 +237,7 @@ class RoutePreviewSheet extends StatelessWidget {
               .map((route) => route.durationSeconds)
               .reduce((a, b) => a < b ? a : b);
     final screenHeight = MediaQuery.sizeOf(context).height;
-    final maxSheetHeight = (screenHeight * .44).clamp(330.0, 420.0);
+    final maxSheetHeight = (screenHeight * .54).clamp(380.0, 560.0);
 
     return PointerInterceptor(
       child: Material(
@@ -338,7 +381,7 @@ class RoutePreviewSheet extends StatelessWidget {
                                   (selectedParkingId != null &&
                                       mode != WaybiTravelMode.drive);
                               return InkWell(
-                                onTap: disabled
+                                onTap: disabled || busy
                                     ? null
                                     : () => onModeChanged(mode),
                                 borderRadius: BorderRadius.circular(14),
@@ -415,6 +458,71 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                     ],
                   ),
+                  if (statusMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          statusMessage!,
+                          key: const Key('routeRecoveryStatus'),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  if (selectedMode == WaybiTravelMode.drive &&
+                      onFilterChanged != null) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 42,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          for (final option in RouteFilter.values)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 7),
+                              child: ChoiceChip(
+                                key: ValueKey('routeFilter-${option.name}'),
+                                label: Text(_filterLabel(option, isChinese)),
+                                selected: filter == option,
+                                onSelected:
+                                    busy ||
+                                        (!cameraDataReady &&
+                                            const [
+                                              RouteFilter.avoidCameras,
+                                              RouteFilter.withCameras,
+                                            ].contains(option))
+                                    ? null
+                                    : (_) => onFilterChanged!(option),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (!cameraDataReady)
+                      Text(
+                        isChinese ? '摄像头数据暂不可用' : 'Camera data unavailable',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    if (routes.isEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        isChinese
+                            ? '当前备选中没有符合筛选条件的路线。'
+                            : 'No available alternative matches this filter.',
+                        key: const Key('routeFilterEmpty'),
+                      ),
+                      TextButton(
+                        onPressed: busy
+                            ? null
+                            : () => onFilterChanged!(RouteFilter.recommended),
+                        child: Text(isChinese ? '查看全部路线' : 'Show all routes'),
+                      ),
+                    ],
+                  ],
                   if (selected?.restrictedRoadIds.isNotEmpty ?? false) ...[
                     Container(
                       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -474,6 +582,30 @@ class RoutePreviewSheet extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (selected != null &&
+                      (selected.blockedForDriving ||
+                          (routeClosures[selected.id]?.any(
+                                (e) =>
+                                    e.observation ==
+                                    RoadEventObservation.official,
+                              ) ??
+                              false)) &&
+                      onRetry != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton.icon(
+                        key: const Key('routeDetourButton'),
+                        onPressed: busy ? null : onRetry,
+                        icon: const Icon(Icons.alt_route_rounded),
+                        label: Text(
+                          busy
+                              ? (isChinese ? '正在规划…' : 'Planning…')
+                              : (isChinese
+                                    ? '避开封路重新规划'
+                                    : 'Plan around closure'),
+                        ),
+                      ),
+                    ),
                   if (routes.isNotEmpty) ...[
                     const Divider(height: 12),
                     Align(
@@ -499,7 +631,9 @@ class RoutePreviewSheet extends StatelessWidget {
                             routeCameraSummaries[routes[index].id] ??
                             const RouteCameraSummary(),
                         preference: preferences[routes[index].id],
-                        onTap: () => onRouteSelected(routes[index]),
+                        onTap: busy
+                            ? null
+                            : () => onRouteSelected(routes[index]),
                       ),
                       if (index != routes.length - 1) const SizedBox(height: 6),
                     ],
@@ -632,7 +766,7 @@ class _RouteOptionTile extends StatelessWidget {
   final int fastestDuration;
   final RouteCameraSummary cameraSummary;
   final RoutePreferenceAssessment? preference;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   String get _trafficLabel {
     if (!route.hasTrafficData) return isChinese ? '暂无路况数据' : 'No traffic data';
@@ -654,7 +788,7 @@ class _RouteOptionTile extends StatelessWidget {
     final value = preference;
     if (value == null) return const [];
     final labels = <String>[];
-    if (value.recommended && closureCount == 0) {
+    if (value.recommended && closureCount == 0 && !route.blockedForDriving) {
       labels.add(isChinese ? '综合推荐' : 'Recommended');
     }
     if (value.fastest) labels.add(isChinese ? '时间最短' : 'Fastest');
@@ -663,7 +797,7 @@ class _RouteOptionTile extends StatelessWidget {
       labels.add(isChinese ? '堵车更少' : 'Less traffic');
     }
     if (route.mode == WaybiTravelMode.drive && value.zeroCameras) {
-      labels.add(isChinese ? '0 摄像头' : '0 cameras');
+      labels.add(isChinese ? '未匹配已知摄像头' : 'No matched cameras');
     }
     return labels.take(3).toList(growable: false);
   }

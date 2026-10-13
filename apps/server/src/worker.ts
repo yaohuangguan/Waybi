@@ -1,3 +1,4 @@
+import { parseRouteExclusions } from './routing_closures.ts';
 import type { ProviderPayload } from "./types.ts";
 import { loadSearchEnrichments, mergeAndRankSearchResults } from './search/search_orchestrator.ts';
 import { clientKind } from './brand_compat.ts';
@@ -372,6 +373,8 @@ async function handleApi(request: Request, env, ctx) {
     if (rawHeading != null && !Number.isFinite(headingDegrees)) {
       return json({ error: 'heading must be a finite number' }, 400);
     }
+    const exclusions = parseRouteExclusions(url.searchParams.get('avoid'));
+    if (exclusions == null) return json({ error: 'avoid requires up to 32 lon,lat,heading entries' }, 400);
     return json(await routeOptions(
       from,
       to,
@@ -383,6 +386,7 @@ async function handleApi(request: Request, env, ctx) {
       ),
       {
         forceIndependent: requestedProvider === 'independent',
+        exclusions,
         alternatives: alternatives == null ? undefined : alternatives === 'true',
         headingDegrees,
         language: url.searchParams.get('lang') === 'zh' ? 'zh' : 'en',

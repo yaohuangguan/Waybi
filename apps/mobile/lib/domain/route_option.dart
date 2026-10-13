@@ -319,3 +319,9 @@ List<GeoPoint> decodePolyline(String encoded) {
   }
   return points;
 }
+
+class RouteExclusion {
+  const RouteExclusion(this.location, this.headingDegrees);
+  final GeoPoint location;
+  final double headingDegrees;
+}

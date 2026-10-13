@@ -484,6 +484,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   WaybiTravelMode _selectedMode = WaybiTravelMode.drive;
   String? _selectedRouteId;
   bool _routePreviewLoading = false;
+  RouteFilter _routeFilter = RouteFilter.recommended;
+  String? _routeRecoveryMessage;
+  bool _recoveringRoute = false;
   final _closureCache =
       <
         String,
@@ -587,6 +590,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         stops: stops,
         language: _appLanguage,
         headingDegrees: _currentRoutingHeading,
+        avoid: road_routes.closureExclusions(
+          previous,
+          _closuresOnRoute(previous),
+        ),
       ),
     );
     _independentNavigation.addListener(_onIndependentNavigationChanged);
@@ -2784,6 +2791,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _selectedRouteId = null;
       _selectedMode = WaybiTravelMode.drive;
       _routePreviewLoading = false;
+      if (_recoveringRoute) {
+        _busy = false;
+        _recoveringRoute = false;
+      }
+      _routeRecoveryMessage = null;
+      _routeFilter = RouteFilter.recommended;
       _selectedPlace = null;
       _journeyPhase = JourneyPhase.idle;
       _placeDetails = null;
@@ -3037,7 +3050,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     final request = ++_routeRequest;
     setState(() {
+      if (_recoveringRoute) {
+        _busy = false;
+        _recoveringRoute = false;
+      }
       _routePreviewLoading = true;
+      _routeRecoveryMessage = null;
+      _routeFilter = RouteFilter.recommended;
       _routePlan = null;
       _routeCameraSummaries = const {};
       _routePreferenceSummaries = const {};
@@ -3192,13 +3211,152 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     return summaries;
   }
 
+  bool get _routeCameraDataReady =>
+      !_driveEngine.loadingCameras && _driveEngine.cameras.isNotEmpty;
+
+  List<RouteOption> get _filteredPreviewRoutes {
+    final routes =
+        _routePlan?.forMode(_selectedMode).toList() ?? <RouteOption>[];
+    if (_selectedMode != WaybiTravelMode.drive) return routes;
+    return filterRoutes(
+      routes,
+      _routeFilter,
+      _routeCameraDataReady ? _routePreferenceSummaries : const {},
+      blockedIds: {
+        for (final route in routes)
+          if (_closuresOnRoute(route)
+              .any((e) => e.observation == RoadEventObservation.official))
+            route.id,
+      },
+    );
+  }
+
   RouteOption? get _selectedRoute {
+    final routes = _filteredPreviewRoutes;
+    return routes.where((route) => route.id == _selectedRouteId).firstOrNull ??
+        routes.firstOrNull;
+  }
+
+  bool _needsRouteRecovery(RouteOption route) =>
+      route.blockedForDriving ||
+      _closuresOnRoute(route)
+          .any((e) => e.observation == RoadEventObservation.official);
+
+  void _selectRouteFilter(RouteFilter filter) {
+    setState(() {
+      _routeFilter = filter;
+      _selectedRouteId = _filteredPreviewRoutes.firstOrNull?.id;
+      _routeRecoveryMessage = null;
+    });
+    _driveEngine.setRoute(_selectedRoute);
+    unawaited(_renderRoutePreview());
+  }
+
+  Future<void> _recoverBlockedRoute() async {
+    final previous = _selectedRoute;
+    final poi = _selectedPoi;
     final plan = _routePlan;
-    if (plan == null) return null;
-    for (final route in plan.forMode(_selectedMode)) {
-      if (route.id == _selectedRouteId) return route;
+    if (_busy || previous == null || poi == null || plan == null) return;
+    final existing = _filteredPreviewRoutes
+        .where((route) => !_needsRouteRecovery(route))
+        .firstOrNull;
+    if (existing != null) {
+      _selectRoute(existing);
+      setState(
+        () => _routeRecoveryMessage = _text(
+          'A clear alternative is selected. Start when ready.',
+          '已切换到可通行的备选路线，可开始导航。',
+        ),
+      );
+      return;
     }
-    return plan.forMode(_selectedMode).firstOrNull;
+    final origin = _manualOrigin?.location ?? _locationForRoute;
+    if (origin == null) {
+      setState(
+        () => _routeRecoveryMessage = _text(
+          'Waiting for your location. Try again when GPS is ready.',
+          '正在获取位置，请定位成功后重试绕行。',
+        ),
+      );
+      unawaited(_recoverRouteLocation());
+      return;
+    }
+    final request = ++_routeRequest;
+    setState(() {
+      _busy = true;
+      _recoveringRoute = true;
+      _routeRecoveryMessage = _text(
+        'Finding a route around closed roads…',
+        '正在避开封闭路段规划路线…',
+      );
+    });
+    try {
+      final result = await _independentRoutes.route(
+        origin: GeoPoint(origin.latitude, origin.longitude),
+        destination: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
+        stops: _routeStops
+            .map((s) => GeoPoint(s.location.latitude, s.location.longitude))
+            .toList(),
+        language: _appLanguage,
+        mode: WaybiTravelMode.drive,
+        headingDegrees: _routingHeading,
+        avoid: road_routes.closureExclusions(
+          previous,
+          _closuresOnRoute(previous),
+        ),
+      );
+      if (!mounted || request != _routeRequest) return;
+      final clear = result.options
+          .where((route) => !_needsRouteRecovery(route))
+          .toList();
+      if (clear.isEmpty) throw StateError('No verified detour');
+      final updated = RoutePlan(
+        options: [
+          ...clear,
+          ...plan.options.where((route) => route.mode != WaybiTravelMode.drive),
+        ],
+        trafficAvailable: result.trafficAvailable,
+        provider: result.provider,
+        stopsApplied: result.stopsApplied,
+      );
+      final cameras = _summarizeRouteCameras(updated);
+      setState(() {
+        _routePlan = updated;
+        _routeCameraSummaries = cameras;
+        _routePreferenceSummaries = _summarizeRoutePreferences(
+          updated,
+          cameras,
+        );
+        _selectedRouteId = _filteredPreviewRoutes.firstOrNull?.id;
+        _routeRecoveryMessage = _selectedRouteId == null
+            ? _text(
+                'A detour is available. Change your filter to view it.',
+                '已找到绕行路线，请切换筛选条件查看。',
+              )
+            : _text(
+                'Detour ready. Review the route and start navigation.',
+                '已规划绕行路线，确认后可开始导航。',
+              );
+      });
+      _driveEngine.setRoute(_selectedRoute);
+      await _renderRoutePreview();
+    } catch (_) {
+      if (mounted && request == _routeRequest) {
+        setState(
+          () => _routeRecoveryMessage = _text(
+            'No verified detour is available right now. Retry or add a stop to try a different road.',
+            '暂未找到可通行的绕行路线，请重试或添加途经点换一条路。',
+          ),
+        );
+      }
+    } finally {
+      if (mounted && request == _routeRequest) {
+        setState(() {
+          _busy = false;
+          _recoveringRoute = false;
+        });
+      }
+    }
   }
 
   List<MapRoutePath> get _visibleIndependentRoutePaths {
@@ -3209,9 +3367,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (_driveEngine.active) return _driveEngine.trailPaths;
     final plan = _routePlan;
     if (plan == null) return const [];
-    return plan
-        .forMode(_selectedMode)
-        .take(3)
+    return _filteredPreviewRoutes
         .map(
           (route) => MapRoutePath(
             id: route.id,
@@ -3863,22 +4019,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       return;
     }
 
-    if (selectedRoute.restrictedRoadIds.isNotEmpty) {
-      setState(
-        () => _message = _text(
-          'This route uses a bus-only road during restricted hours. Choose another route.',
-          '这条路线经过当前禁止普通汽车通行的公交专用路段，请选择其他路线。',
-        ),
-      );
-      return;
-    }
-    if (selectedRoute.blockedByClosure) {
-      setState(
-        () => _message = _text(
-          'This route crosses a reported closure. Choose another route or try again.',
-          '这条路线经过已报告的封路，请选择其他路线或重新规划。',
-        ),
-      );
+    if (_needsRouteRecovery(selectedRoute)) {
+      await _recoverBlockedRoute();
       return;
     }
 
@@ -4453,6 +4595,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       return;
     }
     setState(() {
+      ++_routeRequest;
+      if (_recoveringRoute) {
+        _busy = false;
+        _recoveringRoute = false;
+      }
+      _routeRecoveryMessage = null;
       _selectedPlace = SelectedPlace(place, source, originMap: _mapProvider);
       _journeyPhase = JourneyPhase.placeSelected;
       ++_parkingRequest;
@@ -7399,6 +7547,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 cameraCount: _driveEngine.routeCameraCount,
                 routeCameraSummaries: _routeCameraSummaries,
                 routePreferenceSummaries: _routePreferenceSummaries,
+                filter: _routeFilter,
+                onFilterChanged: _selectRouteFilter,
+                cameraDataReady: _routeCameraDataReady,
+                statusMessage: _routeRecoveryMessage,
+                onRetry: () => unawaited(_recoverBlockedRoute()),
                 routeClosures: {
                   for (final route in _routePlan!.forMode(_selectedMode))
                     route.id: _closuresOnRoute(route),
@@ -7441,9 +7594,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   key: const Key('routeStartFloatingButton'),
                   heroTag: 'route-start-floating',
                   elevation: 9,
-                  onPressed:
-                      _busy || (_selectedRoute?.blockedForDriving ?? false)
+                  onPressed: _busy
                       ? null
+                      : _selectedRoute == null
+                      ? () => _selectRouteFilter(RouteFilter.recommended)
                       : () => unawaited(_navigateToSelectedPoi()),
                   backgroundColor: WaybiColors.ocean,
                   foregroundColor: Colors.white,
@@ -7459,9 +7613,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                       : const Icon(Icons.navigation_rounded),
                   label: Text(
                     _busy
-                        ? _text('Starting…', '正在开始…')
+                        ? (_recoveringRoute
+                              ? _text('Planning…', '正在规划…')
+                              : _text('Starting…', '正在开始…'))
+                        : _selectedRoute == null
+                        ? _text('Show all routes', '查看全部路线')
                         : _selectedMode == WaybiTravelMode.transit
                         ? _text('Start trip', '开始行程')
+                        : _selectedRoute != null &&
+                              _needsRouteRecovery(_selectedRoute!)
+                        ? _text('Find detour', '规划绕行')
                         : _text('Start', '开始导航'),
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),

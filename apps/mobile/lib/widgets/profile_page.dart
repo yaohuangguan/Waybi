@@ -1,6 +1,8 @@
 import '../theme/waybi_theme.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:waybi_friends/waybi_friends.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -275,6 +277,32 @@ class _ProfilePageState extends State<ProfilePage> {
         setState(
           () => _error =
               'Google sign-in: ${error.description ?? error.code.name}',
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = '$error'.replaceFirst('Bad state: ', ''));
+      }
+    }
+  }
+
+  bool get _offersApple =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  Future<void> _apple({bool link = false}) async {
+    setState(() => _error = null);
+    try {
+      await widget.account.authenticateWithApple(
+        link: link,
+        language: widget.appLanguage,
+      );
+    } on SignInWithAppleAuthorizationException catch (error) {
+      if (error.code != AuthorizationErrorCode.canceled && mounted) {
+        setState(
+          () => _error = _text(
+            'Apple sign-in failed. Please try again.',
+            'Apple 登录失败，请重试',
+          ),
         );
       }
     } catch (error) {
@@ -848,6 +876,20 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   label: Text(_text('Continue with Google', '使用 Google 继续')),
                 ),
+                if (_offersApple) ...[
+                  const SizedBox(height: 8),
+                  IgnorePointer(
+                    ignoring: widget.account.loading,
+                    child: Opacity(
+                      opacity: widget.account.loading ? .5 : 1,
+                      child: SignInWithAppleButton(
+                        key: const Key('appleSignInButton'),
+                        onPressed: _apple,
+                        text: _text('Continue with Apple', '使用 Apple 继续'),
+                      ),
+                    ),
+                  ),
+                ],
               ] else ...[
                 const SizedBox(height: 14),
                 Row(
@@ -953,6 +995,21 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ],
+                if (_offersApple && !profile.providers.contains('apple'))
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.apple),
+                    title: Text(_text('Link Apple account', '关联 Apple 账号')),
+                    subtitle: Text(
+                      _text(
+                        'Use Apple to sign in to this Waybi account',
+                        '以后可使用 Apple 登录此 Waybi 账号',
+                      ),
+                    ),
+                    onTap: widget.account.loading
+                        ? null
+                        : () => _apple(link: true),
+                  ),
                 if (!profile.providers.contains('google'))
                   ListTile(
                     contentPadding: EdgeInsets.zero,

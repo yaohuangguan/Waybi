@@ -6,6 +6,7 @@ import { verifyGoogleIdToken } from './google_token.ts';
 import { validCoordinate } from './geo.ts';
 import { handleFriendsBackup } from './friends_backup.ts';
 import { purgeDeletedReporterReports } from './road_reports.ts';
+import { appleAuthConfig, exchangeAppleAuthorization, sealAppleToken, revokeAppleAuthorization } from './apple_auth.ts';
 
 const encoder = new TextEncoder();
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
@@ -151,6 +152,7 @@ async function userProfile(db, user, env) {
   try { await syncAppleForUser(db, env || {}, user.id); } catch { /* retain last verified expiry */ }
   const profile = await db.prepare('SELECT language, voice_enabled, display_name FROM profiles WHERE user_id = ?').bind(user.id).first();
   const googleIdentity = await db.prepare('SELECT google_sub FROM google_identities WHERE user_id = ?').bind(user.id).first();
+  const appleIdentity = await db.prepare('SELECT apple_sub FROM apple_identities WHERE user_id = ?').bind(user.id).first();
   const passwordUser = await db.prepare('SELECT password_hash FROM users WHERE id = ?').bind(user.id).first();
   const recent = await db.prepare(`SELECT label, latitude, longitude FROM recent_destinations
     WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20`).bind(user.id).all();
@@ -178,7 +180,7 @@ async function userProfile(db, user, env) {
   const subscription = await subscriptionForUser(db, user.id);
   return {
     user: { id: user.id, email: user.email, displayName: profile?.display_name || '', providers: [
-      ...(passwordUser?.password_hash ? ['password'] : []), ...(googleIdentity ? ['google'] : [])
+      ...(passwordUser?.password_hash ? ['password'] : []), ...(googleIdentity ? ['google'] : []), ...(appleIdentity ? ['apple'] : [])
     ] },
     language: profile?.language === 'zh' ? 'zh' : 'en',
     voiceEnabled: profile?.voice_enabled !== 0,
@@ -241,6 +243,52 @@ export async function handleAccount(request: Request, env) {
     }
   }
   const db = env.USER_DB;
+
+  if (path === '/api/auth/apple/config' && request.method === 'GET') return response(appleAuthConfig(env));
+  if ((path === '/api/auth/apple' || path === '/api/auth/apple/link') && request.method === 'POST') {
+    if (!appleAuthConfig(env).ready) return response({ error: 'Apple sign-in is not configured' }, 503);
+    const linking = path.endsWith('/link');
+    const current = linking ? await userFromRequest(db, request) : null;
+    if (linking && !current) return response({ error: 'Not signed in' }, 401);
+    const body = await readBody(request);
+    let identity;
+    try { identity = await exchangeAppleAuthorization(env, body); }
+    catch { return response({ error: 'Apple sign-in could not be verified. Please try again.' }, 401); }
+    const linked = await db.prepare(`SELECT users.id, users.email, apple_identities.refresh_token FROM apple_identities
+      JOIN users ON users.id = apple_identities.user_id WHERE apple_sub = ?`).bind(identity.sub).first();
+    if (linking && linked && linked.id !== current.id) return response({ error: 'Apple account is linked elsewhere' }, 409);
+    let user = linking ? current : linked;
+    if (linking) {
+      const already = await db.prepare('SELECT apple_sub FROM apple_identities WHERE user_id = ?').bind(current.id).first();
+      if (already && already.apple_sub !== identity.sub) return response({ error: 'A different Apple account is already linked' }, 409);
+    }
+    if (!user) {
+      if (!validEmail(identity.email)) return response({ error: 'A verified Apple email is required to create an account' }, 401);
+      const existing = await db.prepare('SELECT id FROM users WHERE email = ?').bind(identity.email).first();
+      if (existing) return response({ error: 'This email already has an account. Sign in with your existing method, then link Apple in My Account.' }, 409);
+      user = { id: crypto.randomUUID(), email: identity.email };
+    }
+    const storedToken = identity.refreshToken ? await sealAppleToken(env, identity.refreshToken) : linked?.refresh_token;
+    if (!storedToken) return response({ error: 'Apple authorization is incomplete. Please try again.' }, 401);
+    const statements = [];
+    if (!linking && !linked) statements.push(
+      db.prepare('INSERT INTO users (id, email, password_salt, password_hash, created_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(user.id, user.email, '', '', Date.now()),
+      db.prepare('INSERT INTO profiles (user_id, language, voice_enabled, display_name) VALUES (?, ?, ?, ?)')
+        .bind(user.id, body.language === 'zh' ? 'zh' : 'en', 1, typeof body.fullName === 'string' ? body.fullName.trim().slice(0, 100) : '')
+    );
+    statements.push(linked
+      ? db.prepare('UPDATE apple_identities SET refresh_token = ?, checked_at = ?, revoked_at = NULL WHERE apple_sub = ? AND user_id = ?')
+        .bind(storedToken, Date.now(), identity.sub, user.id)
+      : db.prepare('INSERT INTO apple_identities (apple_sub, user_id, refresh_token, created_at, checked_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(identity.sub, user.id, storedToken, Date.now(), Date.now()));
+    try { await db.batch(statements); }
+    catch (error) {
+      if (/UNIQUE/i.test(String(error))) return response({ error: 'Apple account is already linked. Please try again.' }, 409);
+      throw error;
+    }
+    return linking ? response(await userProfile(db, user, env)) : issueSession(db, user, request, env);
+  }
 
   if (path === '/api/auth/register' && request.method === 'POST') {
     const body = await readBody(request);
@@ -335,6 +383,11 @@ export async function handleAccount(request: Request, env) {
     // Reports are stored in Workers KV, outside D1 cascades. Purge them
     // before removing the account so a KV failure never returns a false
     // deletion confirmation.
+    const apple = await db.prepare('SELECT refresh_token FROM apple_identities WHERE user_id = ?').bind(user.id).first();
+    if (apple) {
+      try { await revokeAppleAuthorization(env, apple.refresh_token); }
+      catch { return response({ error: 'Apple authorization could not be revoked. Please retry account deletion.' }, 503); }
+    }
     await purgeDeletedReporterReports(env, user.id);
     await db.batch([
       db.prepare('DELETE FROM login_attempts WHERE email = ?').bind(user.email),

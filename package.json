@@ -22,7 +22,7 @@
     "db:migrate:local": "pnpm exec wrangler d1 migrations apply waybi-users --local --config wrangler.jsonc",
     "db:migrate:remote": "pnpm exec wrangler d1 migrations apply waybi-users --remote --config wrangler.jsonc",
     "start": "pnpm dev:server",
-    "deploy": "pnpm build && pnpm exec wrangler deploy --config wrangler.jsonc",
+    "deploy": "pnpm db:migrate:remote && pnpm build && pnpm exec wrangler deploy --config wrangler.jsonc",
     "mobile:doctor": "flutter doctor -v",
     "mobile:get": "cd apps/mobile && flutter pub get",
     "mobile:devices": "flutter devices",

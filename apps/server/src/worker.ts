@@ -1,7 +1,6 @@
 import { refreshAppleAuthorizations } from './apple_auth.ts';
 import { parseRouteExclusions } from './routing_closures.ts';
 import type { ProviderPayload } from "./types.ts";
-import { loadSearchEnrichments, mergeAndRankSearchResults } from './search/search_orchestrator.ts';
 import { clientKind } from './brand_compat.ts';
 import { saveNavigationFeedback } from './navigation_feedback.ts';
 import { handleTrafficTile } from './traffic_tiles.ts';
@@ -15,6 +14,7 @@ import { handleBilling } from './billing.ts';
 import { handlePlaces } from './places.ts';
 import { independentPlaceDetails } from './independent_place_details.ts';
 import { routeOptions, maneuverLanes } from './routes.ts';
+import { fetchOsrmFallback } from './osrm_fallback.ts';
 import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.ts';
 import { loadRoadEventState, refreshRoadEventState } from './road_events.ts';
 import { refreshNswRoadEventState } from './au_road_events.ts';
@@ -36,7 +36,6 @@ const CAMERA_KEY = 'cameras/current';
 // Camera locations are slow-changing metadata, not live traffic frames.
 // A shared daily refresh is sufficient; manual checks must respect the same window.
 const CAMERA_SYNC_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-let lastSearchAt = 0;
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -398,69 +397,14 @@ async function handleApi(request: Request, env, ctx) {
     return independentPlaceDetails(url, env);
   }
   if (url.pathname === '/api/search') {
-    if (url.searchParams.get('provider') === 'independent') {
-      // Keep Waybi's fallback inside the same bounded, cached search stack.
-      // Public Nominatim is a legacy compatibility path, not typeahead.
-      const suggestUrl = new URL(url);
-      suggestUrl.pathname = '/api/suggest';
-      return handlePlaces(new Request(suggestUrl, request), env,
-        (provider, sku, units) => ctx.waitUntil(recordApiUsage(env, { provider, sku, calls: units, units })), ctx);
-    }
-    const query = (url.searchParams.get('q') || '').trim();
-    if ([...query].length < 2 || query.length > 120) return json({ error: 'Search query must be 2–120 characters' }, 400);
-    const wait = Math.max(0, 1050 - (Date.now() - lastSearchAt));
-    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-    lastSearchAt = Date.now();
-    const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
-    const near = validateCoordinatePair(url.searchParams.get('near'));
-    const enrichmentPromise = loadSearchEnrichments(query, near).catch(() => []);
-    const search = new URL('https://nominatim.openstreetmap.org/search');
-    search.searchParams.set('format', 'jsonv2');
-    search.searchParams.set('addressdetails', '1');
-    search.searchParams.set('namedetails', '1');
-    search.searchParams.set('accept-language', prefersChinese ? 'zh,en' : 'en');
-    search.searchParams.set('limit', '12');
-    search.searchParams.set('q', query);
-    if (near) {
-      const lonDelta = 0.75;
-      const latDelta = 0.55;
-      search.searchParams.set('viewbox', [near[0] - lonDelta, near[1] + latDelta, near[0] + lonDelta, near[1] - latDelta].join(','));
-      search.searchParams.set('bounded', '0');
-    }
-    const results = await upstreamJson(search.toString(), { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)', 'referer': 'https://github.com/yaohuangguan/Waybi', accept: 'application/json' });
-    const globalResults = results.map((place) => {
-      const address = place.address || {};
-      const poiClasses = new Set([
-        'amenity', 'tourism', 'shop', 'office', 'leisure', 'healthcare',
-        'craft', 'historic', 'railway', 'aeroway', 'club', 'sport'
-      ]);
-      const isPoi = poiClasses.has(place.class);
-      const streetAddress = [
-        [address.house_number, address.road || address.pedestrian].filter(Boolean).join(' '),
-        address.suburb || address.neighbourhood,
-        address.city || address.town || address.village,
-        address.postcode,
-        address.country
-      ].filter(Boolean).filter((item, index, values) => values.indexOf(item) === index).join(', ');
-      const fullAddress = place.display_name || streetAddress;
-      const name = isPoi
-        ? (place.name || place.namedetails?.name || fullAddress)
-        : fullAddress;
-      return {
-        id: place.place_id,
-        provider: 'osm',
-        name,
-        address: isPoi ? (streetAddress || fullAddress) : fullAddress,
-        label: fullAddress,
-        isPoi,
-        latitude: Number(place.lat),
-        longitude: Number(place.lon)
-      };
-    });
-    const enrichments = await enrichmentPromise;
-    return json(
-      mergeAndRankSearchResults([enrichments, globalResults], query, near, 12)
-    );
+    // Legacy search must not call public Nominatim for typeahead.
+    // Route through the existing place-search stack, preserving the
+    // requested provider and the existing response array format.
+    if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+    const suggest = new URL(url);
+    suggest.pathname = '/api/suggest';
+    return handlePlaces(new Request(suggest, request), env,
+      (provider, sku, units) => ctx.waitUntil(recordApiUsage(env, { provider, sku, calls: units, units })), ctx);
   }
   if (url.pathname === '/api/route') {
     const from = validateCoordinatePair(url.searchParams.get('from'));
@@ -473,9 +417,12 @@ async function handleApi(request: Request, env, ctx) {
       .filter(Boolean);
     if (stops.length > 23) return json({ error: 'At most 23 intermediate stops are supported' }, 400);
     const points = [from, ...stops, to];
-    const routeUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${points.map((point) => point.join(',')).join(';')}?overview=full&geometries=geojson&steps=true`;
-    const result = await upstreamJson(routeUrl, { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)', referer: 'https://routing.openstreetmap.de/', accept: 'application/json' });
-    if (result.code !== 'Ok' || !result.routes?.length) return json({ error: 'No driving route found' }, 422);
+    let result;
+    try {
+      ({ payload: result } = await fetchOsrmFallback(env, points, 'DRIVE', { alternatives: false }));
+    } catch {
+      return json({ error: 'Driving route service unavailable; retry shortly' }, 503);
+    }
     const selected = result.routes[0];
     const steps = selected.legs.flatMap((leg) => leg.steps.map((step) => {
       const lanes = maneuverLanes(step).map((lane) => ({

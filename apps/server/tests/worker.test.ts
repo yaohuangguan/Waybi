@@ -141,6 +141,27 @@ test('cross-origin address requests get a readable configuration response', asyn
   assert.equal(response.headers.get('access-control-allow-origin'), '*');
 });
 
+test('legacy search uses the configured search stack, never public Nominatim typeahead', async () => {
+  const originalFetch = globalThis.fetch;
+  const hosts: string[] = [];
+  globalThis.fetch = async (url) => {
+    hosts.push(new URL(String(url)).hostname);
+    return Response.json({results:[{
+      place_id:'waybi-legacy-1', name:'Legacy Gallery',
+      address_line1:'Wellesley Street', address_line2:'Auckland', formatted:'Legacy Gallery, Auckland',
+      lat:-36.85, lon:174.77,
+    }]});
+  };
+  try {
+    const result = await worker.fetch(new Request('https://example.test/api/search?q=gallery-legacy'),
+      {...fakeEnv(), GEOAPIFY_API_KEY:'test-only'}, {waitUntil(){}});
+    assert.equal(result.status,200);
+    assert.ok((await result.json()).length > 0);
+    assert.ok(hosts.includes('api.geoapify.com'));
+    assert.ok(!hosts.includes('nominatim.openstreetmap.org'));
+  } finally { globalThis.fetch=originalFetch; }
+});
+
 test('address suggestions expose a place name and street address', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({
@@ -334,6 +355,35 @@ test('route API preserves OSRM lane guidance for turn steps', async () => {
   }
 });
 
+
+test('legacy route endpoint honors managed routing and public emergency cutoff', async () => {
+  const original = globalThis.fetch;
+  let upstream = '';
+  globalThis.fetch = async (url) => {
+    upstream = String(url);
+    return Response.json({ code:'Ok', routes:[{
+      distance:2500, duration:300,
+      geometry:{coordinates:[[174.76,-36.85],[174.77,-36.86]]},
+      legs:[{steps:[]}],
+    }]});
+  };
+  const request = new Request('https://example.test/api/route?from=174.76,-36.85&to=174.77,-36.86');
+  try {
+    const managed = await worker.fetch(request, {
+      ...fakeEnv(), WAYBI_OSRM_URL:'https://owned-router.example.test',
+      WAYBI_DISABLE_PUBLIC_ROUTING:'true',
+    }, {waitUntil(){}});
+    assert.equal(managed.status,200);
+    assert.equal((await managed.json()).distance,2500);
+    assert.equal(new URL(upstream).hostname,'owned-router.example.test');
+    upstream = '';
+    const blocked = await worker.fetch(request, {
+      ...fakeEnv(), WAYBI_DISABLE_PUBLIC_ROUTING:'true',
+    }, {waitUntil(){}});
+    assert.equal(blocked.status,503);
+    assert.equal(upstream,'');
+  } finally { globalThis.fetch = original; }
+});
 
 test('Google place search falls back globally when proximity-biased search has no result', async () => {
   const originalFetch = globalThis.fetch;

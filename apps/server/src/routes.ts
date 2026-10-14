@@ -1,4 +1,5 @@
 import { fetchPublicDetour } from './public_detour.ts';
+import { fetchOsrmFallback } from './osrm_fallback.ts';
 import type { ProviderPayload } from "./types.ts";
 import type { LonLat, RouteRequestOptions, UsageRecorder } from './types.ts';
 import { fetchNzRouting, nzRoutingEndpoint } from './nz_routing.ts';
@@ -176,38 +177,10 @@ async function googleModeRoutes(from, to, mode, apiKey, stops = []) {
   });
 }
 
-async function fallbackDrivingRoutes(from, to, stops: LonLat[] = [], mode = 'DRIVE', options: RouteRequestOptions = {}) {
-  const profile = ({ DRIVE: 'car', WALK: 'foot', BICYCLE: 'bike' })[mode];
-  if (!profile) throw new Error('Transit routes require a transit provider');
+async function fallbackDrivingRoutes(from, to, stops: LonLat[] = [], mode = 'DRIVE',
+  options: RouteRequestOptions = {}, env = {}) {
   const points = [from, ...stops.slice(0, 23), to];
-  const routeUrl = new URL(
-    `https://routing.openstreetmap.de/routed-${profile}/route/v1/driving/${points.map((point) => point.join(',')).join(';')}`
-  );
-  routeUrl.searchParams.set('overview', 'full');
-  routeUrl.searchParams.set('geometries', 'geojson');
-  routeUrl.searchParams.set('steps', 'true');
-  routeUrl.searchParams.set(
-    'alternatives',
-    stops.length || options.alternatives === false ? 'false' : '3'
-  );
-  if (Number.isFinite(options.headingDegrees)) {
-    const normalized = Math.round(((options.headingDegrees % 360) + 360) % 360);
-    routeUrl.searchParams.set(
-      'bearings',
-      [`${normalized},60`, ...points.slice(1).map(() => '')].join(';')
-    );
-  }
-  const response = await fetch(routeUrl, {
-    headers: {
-      'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)',
-      referer: 'https://routing.openstreetmap.de/',
-      accept: 'application/json'
-    },
-    signal: AbortSignal.timeout(8000)
-  });
-  if (!response.ok) throw new Error(`Fallback route HTTP ${response.status}`);
-  const payload = await response.json<ProviderPayload>();
-  if (payload.code !== 'Ok') throw new Error('Fallback route unavailable');
+  const { payload } = await fetchOsrmFallback(env, points, mode, options);
   return normalizeOsrmRoutes(payload, mode);
 }
 
@@ -298,8 +271,13 @@ export async function routeOptions(
         // The public free fallback also supports directed road exclusions.
       }
     }
-    if (exclusions.length) return normalizeOsrmRoutes(await fetchPublicDetour(points, requestOptions, exclusions), mode);
-    return fallbackDrivingRoutes(from, to, stops, mode, options);
+    if (exclusions.length) {
+      if (env.WAYBI_DISABLE_PUBLIC_ROUTING === 'true') {
+        throw new Error('Public detour routing disabled; owned NZ routing required for closure avoidance');
+      }
+      return normalizeOsrmRoutes(await fetchPublicDetour(points, requestOptions, exclusions), mode);
+    }
+    return fallbackDrivingRoutes(from, to, stops, mode, options, env);
   };
   const settled = await Promise.allSettled(
     modes.map(mode => fetchIndependent(mode, mode === 'DRIVE' ? options.exclusions || [] : []))

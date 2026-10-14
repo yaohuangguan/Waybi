@@ -251,7 +251,9 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                 lane.laneDirections.any(
                   (direction) =>
                       direction.isRecommended &&
-                      (laneDirection(direction.laneShape.name) == null ||
+                      (laneDirections(
+                            lane.laneDirections.map((d) => d.laneShape.name),
+                          ).isEmpty ||
                           laneSupportsManeuver([
                             direction.laneShape.name,
                           ], step!.maneuver.name)),

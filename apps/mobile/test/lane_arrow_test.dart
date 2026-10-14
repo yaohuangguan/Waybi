@@ -164,7 +164,10 @@ void main() {
       canvas.restore();
     }
     final picture = recorder.endRecording();
-    final image = await picture.toImage(720, 264);
+    final image = await picture.toImage(
+      720,
+      24 + ((samples.length + 5) ~/ 6) * 120,
+    );
     await File(output).writeAsBytes(
       (await image.toByteData(format: ui.ImageByteFormat.png))!.buffer
           .asUint8List(),

@@ -34,6 +34,12 @@ This document records **verified observations** separately from release gates. P
 - [x] Replaced 1x1 placeholder LaunchImage with existing Waybi icon at 1x/2x/3x and updated center-pinned LaunchScreen storyboard. XML parse and `ibtool` compilation passed; rebuilt release artifact still requires confirmation.
 - [x] Inspected archive: 25 third-party privacy manifests bundled; **no conclusion** yet on app-owned privacy manifest/required-reason API compliance.
 - [ ] Obtain official Apple Distribution signing and matching App Store profiles for app + extension (and Apple Developer/App Store Connect permissions), export validated IPA and upload/accept TestFlight build.
+- [x] After fixing launch artwork, `flutter build ios --release --build-name=1.0.0 --build-number=37` completed and produced `build/ios/iphoneos/Runner.app` (~82.3 MB); `codesign --verify --deep --strict` passed for this **development-signed** build.
+- [x] Paired-device direct install of the development-signed Release build succeeded on both Sam iPhone 16 Pro Max and Atlas iPhone 17. This is **NOT** TestFlight.
+- [x] Atlas app process launched successfully via `xcrun devicectl`; process list showed both `Runner` and `WaybiNavigation.appex` immediately after launch.
+- [ ] Sam app launch was denied while the device was locked (`FBSOpenApplicationErrorDomain: Locked`); retry manually after unlocking. Not evidence of an app crash.
+- [ ] App UI/map/search/navigation smoke tests on unlocked physical devices; process launch alone proves no screen functionality.
+- [ ] App Store export remains blocked by missing Apple Distribution certificate + app and widget provisioning profiles.
 - [ ] Upload via an authorized App Store Connect account; TestFlight processing and tester invitation / installation.
 - [ ] True physical driving test: active routing -> lock screen -> 5+ minutes -> unlock; background notification / voice direction and UI state continuity.
 - [ ] Bluetooth, audio during spoken directions, AirPlay / music ducking and restoration; interruption from a phone call and app background/foreground.

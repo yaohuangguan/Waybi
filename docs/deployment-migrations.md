@@ -1,18 +1,31 @@
 # Production D1 migration gate
 
-Every deployment through the root deploy command must run `pnpm db:migrate:remote` successfully before `pnpm deploy`. Wrangler reconciles pending migrations. Do not decide this only from files changed in the newest push: a failed earlier migration can otherwise be skipped on a later code-only or documentation-only push.
+Every root `pnpm deploy` reconciles pending D1 migrations before building or publishing. Wrangler applies only pending migrations. Do not decide this from files changed in the newest push: a failed earlier migration could otherwise be skipped by a later code-only or documentation-only push.
 
-The Apple identity release (PR124, main 52c0730) exposed this failure mode on 14 October 2026. Its migration0017 was not applied because the GitHub Actions credential could not access the configured D1 service (Cloudflare7403). The Worker deploy correctly stopped. The root deploy command reconciles pending migrations for both CLI and CI releases. The existing production release remained active; the new Apple endpoint was not live.
+## Separate credentials
 
-## Credential recovery
+GitHub Actions supplies both repository secrets to the deployment job:
 
-- The deployment credential in repository secret `CLOUDFLARE_API_TOKEN` must retain its existing Worker/KV/routes permissions and have **Account → D1 → Edit** for the actual deployment account specified in wrangler.jsonc.
-- Check the account before changing permissions. An unrelated Mac OAuth login cannot administer the project's original account.
-- Prefer editing the correctly identified deployment token to add the needed scoped permission. If replacing a token, update the GitHub repository secret through secure input, never chat/logs/source/mobile defines.
-- Do not skip the migration gate, point production at a new empty database, or deploy code requiring an absent table.
-- After authorization is fixed, rerun the failed deployment (or deploy latest main). Confirm pending migrations including0017 completed, then confirm Worker deployment and read-only health/auth config requests.
-- Validate new Apple flows only after separate Sign in with Apple capability/key/profile configuration. A ready:false response is expected until that setup.
+- `CLOUDFLARE_API_TOKEN`: the existing Worker publishing credential, with the required Worker/KV/routes access.
+- `CLOUDFLARE_D1_API_TOKEN`: D1 migration credential with **Account → D1 → Edit** for account cdc04de9bc4c6a41b5003758e505a0d1, the deployment account in wrangler.jsonc.
 
-A disposable production API check on the still-active release passed registration, profile write/read, second login, deletion, both sessions invalidation and old-password rejection. The test account was deleted and its temporary credential file removed. That verifies existing backend account deletion, not the unpublished Apple integration or physical in-app deletion UI.
+The migration launcher overrides `CLOUDFLARE_API_TOKEN` only inside its migration child process and removes the extra D1 variable from that child. It does not change the parent environment; subsequent Worker publishing continues using the original credential. Migration failure stops the deployment chain.
 
-Reference: [Cloudflare D1 API token setup](https://developers.cloudflare.com/d1/tutorials/import-to-d1-with-rest-api/).
+When the separate D1 token is absent, the launcher retains the existing API token or local Wrangler OAuth. This preserves single-token installations and authorized local CLI deployments. No token value belongs in source, logs, chat or mobile configuration.
+
+## Recovery evidence
+
+The Apple identity release (PR124, main52c0730) exposed the need for this gate on 14 October 2026. GitHub's publishing token could not access D1 (Cloudflare7403), so migration0017 and Worker publishing stopped. PR125 made the root deployment command reconcile migrations on every release.
+
+The project's existing Windows7199 Wrangler OAuth subsequently applied0017 to the existing waybi-users database and deployed main879325a successfully. Health and Apple-config requests returned HTTP200. A disposable production account passed registration, profile read/write, login, deletion, both-session revocation and old-password rejection; the test account and temporary credential file were removed. This verifies the backend API, not physical in-app deletion or Apple authentication.
+
+The user then added the separate D1 repository secret. This integration makes the workflow use it while retaining the Worker publishing credential. Verify the first main deployment completes both migration reconciliation and publishing; a successful PR test alone does not verify production credentials.
+
+## Operational checks
+
+- Check the configured account before editing permissions. An unrelated Mac OAuth cannot administer the project's original account.
+- Do not skip the migration gate, point production at an empty replacement database, or publish code requiring an absent table.
+- After a credential repair, deploy latest main and confirm migration reconciliation, Worker version and read-only health/auth configuration.
+- Apple config remains `ready:false` until the separate Developer membership, capability/key and provisioning setup. Test real Apple flows only after that setup.
+
+Reference: [Cloudflare D1 API token permissions](https://developers.cloudflare.com/d1/tutorials/import-to-d1-with-rest-api/).

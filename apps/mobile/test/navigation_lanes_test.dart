@@ -47,6 +47,54 @@ void main() {
     },
   );
   test(
+    'explicit lane recommendations survive unspecified direction markings',
+    () {
+      final step = RouteStepInfo.fromJson({
+        'location': [174.8, -36.9],
+        'modifier': 'slight left',
+        'lanes': [
+          {
+            'indications': ['slight left'],
+            'valid': true,
+          },
+          {
+            'indications': ['none'],
+            'valid': false,
+          },
+          {'indications': [], 'valid': false},
+          {
+            'indications': ['future indication'],
+            'valid': false,
+          },
+        ],
+      });
+      final lanes = routeNavigationLanes(step);
+      expect(lanes, hasLength(4));
+      expect(lanes.map((lane) => lane.recommended), [
+        true,
+        false,
+        false,
+        false,
+      ]);
+      expect(lanes.first.directions, {LaneArrowDirection.slightLeft});
+      expect(lanes.skip(1).every((lane) => lane.directions.isEmpty), true);
+      final unspecified = routeNavigationLanes(
+        RouteStepInfo.fromJson({
+          'modifier': 'right',
+          'lanes': [
+            {
+              'indications': ['none'],
+              'valid': true,
+            },
+            {'indications': [], 'valid': true, 'active': false},
+          ],
+        }),
+      );
+      expect(unspecified.map((lane) => lane.recommended), [true, false]);
+      expect(unspecified.every((lane) => lane.directions.isEmpty), true);
+    },
+  );
+  test(
     'direct OSRM parser selects only maneuver lanes and honors active false',
     () {
       final lanes = maneuverRouteLanes({

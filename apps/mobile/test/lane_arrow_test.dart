@@ -57,7 +57,7 @@ void main() {
   });
 
   test(
-    'unknown lane reserves its slot without painting a dot or arrow',
+    'unspecified lane paints visible neutral boundaries without an arrow',
     () async {
       final recorder = ui.PictureRecorder();
       const LaneArrowPainter(
@@ -67,9 +67,13 @@ void main() {
       final picture = recorder.endRecording();
       final image = await picture.toImage(96, 96);
       final bytes = (await image.toByteData())!.buffer.asUint8List();
-      expect([
-        for (var i = 3; i < bytes.length; i += 4) bytes[i],
-      ], everyElement(0));
+      bool painted(int x, int y) => bytes[(y * 96 + x) * 4 + 3] > 128;
+      expect(painted(24, 20), true); // left boundary
+      expect(painted(72, 20), true); // right boundary
+      expect(painted(48, 48), true); // neutral dash
+      expect(painted(48, 8), false); // no invented straight arrowhead
+      expect(painted(48, 80), false); // no arrow stem
+      expect(painted(24, 34), false); // visible breaks in lane boundaries
       image.dispose();
       picture.dispose();
     },
@@ -129,6 +133,7 @@ void main() {
     final output = Platform.environment['WAYBI_NAV_PREVIEW'];
     if (output == null) return;
     final samples = [
+      <LaneArrowDirection>{},
       for (final direction in LaneArrowDirection.values) {direction},
       {LaneArrowDirection.straight, LaneArrowDirection.left},
       {LaneArrowDirection.straight, LaneArrowDirection.right},

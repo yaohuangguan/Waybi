@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
+import 'package:waybi_mobile/domain/navigation_lanes.dart';
+import 'package:waybi_mobile/widgets/lane_arrow.dart';
 import 'package:waybi_mobile/widgets/navigation_overlay.dart';
 
 void main() {
@@ -113,6 +115,84 @@ void main() {
     expect(find.text('Add a report'), findsNothing);
   });
 
+  for (final allUnspecified in [false, true]) {
+    testWidgets(
+      'partial lane data stays visible at phone width ($allUnspecified)',
+      (tester) async {
+        tester.view.physicalSize = const Size(375, 667);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+        final engine = DriveEngine();
+        addTearDown(engine.dispose);
+        final lanes = [
+          NavigationLane(
+            allUnspecified ? {} : {LaneArrowDirection.slightLeft},
+            true,
+          ),
+          const NavigationLane({}, false),
+          const NavigationLane({}, false),
+          const NavigationLane({}, false),
+        ];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: NavigationOverlay(
+                engine: engine,
+                guidance: NavigationGuidance(
+                  instruction: 'Take the left exit',
+                  maneuverIcon: Icons.ramp_left_rounded,
+                  stepMeters: 105,
+                  remainingMeters: 4100,
+                  remainingSeconds: 360,
+                  lanes: lanes,
+                ),
+                destinationTitle: 'Tai Ping Asian Supermarket Mt Wellington',
+                gpsAccuracy: 2,
+                voiceEnabled: true,
+                lanesEnabled: true,
+                onEnd: () {},
+                onRecenter: () {},
+                onOverview: () {},
+                northUp: false,
+                onCompassToggle: () {},
+                onReport: () {},
+                onSearchAlongRoute: () {},
+                onDirections: () {},
+                onShare: () {},
+                onSettings: () {},
+                onLayers: () {},
+                onVoiceToggle: () {},
+                onLanesToggle: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byType(LaneArrow), findsNWidgets(4));
+        expect(find.text('Some lane directions unavailable'), findsOneWidget);
+        for (var i = 0; i < 4; i++) {
+          final tile = tester.getRect(
+            find.byKey(ValueKey('navigation-lane-$i')),
+          );
+          expect(tile.left, greaterThanOrEqualTo(0));
+          expect(tile.right, lessThanOrEqualTo(375));
+          final semantics = tester.widget<Semantics>(
+            find
+                .ancestor(
+                  of: find.byKey(ValueKey('navigation-lane-$i')),
+                  matching: find.byType(Semantics),
+                )
+                .first,
+          );
+          expect(semantics.properties.selected, i == 0);
+        }
+      },
+    );
+  }
   testWidgets('route overview control switches to follow action', (
     tester,
   ) async {

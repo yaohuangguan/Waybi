@@ -36,8 +36,8 @@ List<NavigationLane> routeNavigationLanes(RouteStepInfo? step) => [
     NavigationLane(
       laneDirections(lane.indications),
       lane.recommended &&
-          lane.indications.any((s) => laneDirection(s) != null) &&
-          laneSupportsManeuver(lane.indications, step!.maneuverModifier),
+          (laneDirections(lane.indications).isEmpty ||
+              laneSupportsManeuver(lane.indications, step!.maneuverModifier)),
     ),
 ];
 
@@ -251,10 +251,10 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                 lane.laneDirections.any(
                   (direction) =>
                       direction.isRecommended &&
-                      laneDirection(direction.laneShape.name) != null &&
-                      laneSupportsManeuver([
-                        direction.laneShape.name,
-                      ], step!.maneuver.name),
+                      (laneDirection(direction.laneShape.name) == null ||
+                          laneSupportsManeuver([
+                            direction.laneShape.name,
+                          ], step!.maneuver.name)),
                 ),
               ),
           ],
@@ -511,6 +511,25 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                     ),
                                   ],
                                 ),
+                                if (guidance.lanes.any(
+                                  (lane) => lane.directions.isEmpty,
+                                ))
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      _text(
+                                        'Some lane directions unavailable',
+                                        '部分车道方向暂缺',
+                                      ),
+                                      key: const Key(
+                                        'navigationLaneDataNotice',
+                                      ),
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ],
                           ),

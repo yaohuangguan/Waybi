@@ -40,8 +40,6 @@ class LaneArrowPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Keep an unknown lane in its physical position without inventing a symbol.
-    if (directions.isEmpty) return;
     canvas.save();
     canvas.scale(size.width / 40, size.height / 40);
     final stroke = Paint()
@@ -50,6 +48,19 @@ class LaneArrowPainter extends CustomPainter {
       ..strokeWidth = 4
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
+    // Unspecified markings still occupy a real lane. Show its boundaries and
+    // a neutral dash, rather than a transparent tile or an invented turn arrow.
+    if (directions.isEmpty) {
+      stroke.strokeWidth = 2.5;
+      for (final x in [10.0, 30.0]) {
+        for (final y in [5.0, 17.0, 29.0]) {
+          canvas.drawLine(Offset(x, y), Offset(x, y + 6), stroke);
+        }
+      }
+      canvas.drawLine(const Offset(17, 20), const Offset(23, 20), stroke);
+      canvas.restore();
+      return;
+    }
     final fill = Paint()..color = color;
     // The incoming part is drawn once, even for straight + left + right.
     canvas.drawLine(const Offset(20, 36), const Offset(20, 22), stroke);

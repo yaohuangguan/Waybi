@@ -15,7 +15,18 @@
                     </layoutGuides>
                     <view key="view" contentMode="scaleToFill" id="Ze5-6b-2t3">
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="LaunchImage" translatesAutoresizingMaskIntoConstraints="NO" id="Way-bi-Lgo">
+                                <rect key="frame" x="135" y="260" width="105" height="105"/>
+                            </imageView>
+                        </subviews>
                         <color key="backgroundColor" red="0.043" green="0.090" blue="0.090" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="Way-bi-Lgo" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="Way-bi-Cx"/>
+                            <constraint firstItem="Way-bi-Lgo" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="Way-bi-Cy"/>
+                            <constraint firstItem="Way-bi-Lgo" firstAttribute="width" constant="105" id="Way-bi-W"/>
+                            <constraint firstItem="Way-bi-Lgo" firstAttribute="height" constant="105" id="Way-bi-H"/>
+                        </constraints>
                     </view>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>
@@ -23,4 +34,7 @@
             <point key="canvasLocation" x="53" y="375"/>
         </scene>
     </scenes>
+    <resources>
+        <image name="LaunchImage" width="105" height="105"/>
+    </resources>
 </document>

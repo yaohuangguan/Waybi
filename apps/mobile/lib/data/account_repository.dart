@@ -363,6 +363,22 @@ class AccountRepository extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Deletes the signed-in cloud account. A failed request keeps the session
+  /// intact, so a dropped connection cannot be mistaken for success.
+  Future<void> deleteAccount({required String email}) async {
+    if (!signedIn || profile == null || email != profile!.email) {
+      throw StateError('Sign in again before deleting the account');
+    }
+    _body(
+      await _request(
+        '/api/auth/delete',
+        method: 'POST',
+        body: {'email': email, 'confirmation': 'DELETE'},
+      ),
+    );
+    await signOut();
+  }
+
   Future<Map<String, dynamic>> appleBillingConfig() async =>
       _body(await _request('/api/billing/apple/config'));
 

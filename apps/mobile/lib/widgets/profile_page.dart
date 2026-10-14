@@ -319,6 +319,86 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _deleteAccount() async {
+    final profile = widget.account.profile;
+    if (profile == null) return;
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, rebuild) => AlertDialog(
+          title: Text(_text('Delete Waybi account', '删除 Waybi 账号')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _text(
+                  'Permanently deletes your Waybi account, saved routes, places, reviews and synced companion memories. This cannot be undone.',
+                  '将永久删除 Waybi 账号、路线记录、收藏、评价和已同步的旅行伙伴回忆，无法撤销。',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _text(
+                  'Deleting Waybi does NOT cancel an Apple subscription. Cancel separately in iOS Settings > Subscriptions to avoid further charges.',
+                  '删除 Waybi 账号不会取消 Apple 自动续费。请在 iOS 设置 > 订阅中单独取消，避免继续扣费。',
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(_text('Type your account email to confirm:', '输入当前账号邮箱确认：')),
+              const SizedBox(height: 7),
+              Text(
+                profile.email,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.emailAddress,
+                onChanged: (_) => rebuild(() {}),
+                decoration: InputDecoration(
+                  labelText: _text('Account email', '账号邮箱'),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(_text('Keep account', '保留账号')),
+            ),
+            FilledButton(
+              onPressed: controller.text.trim() == profile.email
+                  ? () => Navigator.pop(dialogContext, true)
+                  : null,
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: Text(_text('Delete permanently', '永久删除')),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (confirmed != true) return;
+    try {
+      await widget.account.deleteAccount(email: profile.email);
+      await widget.friendsBackup?.forgetDeletedAccount(profile.id);
+      if (!mounted) return;
+      setState(() => _error = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_text('Waybi account deleted.', 'Waybi 账号已删除。')),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
+    }
+  }
+
   void _voiceChanged(bool value) {
     setState(() => _voice = value);
     widget.onVoiceChanged(value);
@@ -1248,6 +1328,15 @@ class _ProfilePageState extends State<ProfilePage> {
                   },
                   icon: const Icon(Icons.logout_rounded),
                   label: Text(_text('Sign out', '退出登录')),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: _deleteAccount,
+                  icon: const Icon(Icons.delete_forever_outlined),
+                  label: Text(_text('Delete account', '删除账号')),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Theme.of(context).colorScheme.error,
+                  ),
                 ),
               ],
               Align(

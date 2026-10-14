@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import 'apple_sign_in.dart';
 
 class CompanionTotals {
   const CompanionTotals({
@@ -104,9 +105,13 @@ class AccountProfile {
 }
 
 class AccountRepository extends ChangeNotifier {
-  AccountRepository({http.Client? client, FlutterSecureStorage? storage})
-    : _client = client ?? http.Client(),
-      _storage = storage ?? const FlutterSecureStorage();
+  AccountRepository({
+    http.Client? client,
+    FlutterSecureStorage? storage,
+    AppleSignInGateway? appleSignIn,
+  }) : _appleSignIn = appleSignIn ?? NativeAppleSignInGateway(),
+       _client = client ?? http.Client(),
+       _storage = storage ?? const FlutterSecureStorage();
 
   static const _storageKey = 'waybi_session';
   static const _legacyStorageKey = 'kiwi_lens_session';
@@ -121,6 +126,7 @@ class AccountRepository extends ChangeNotifier {
         // client does not require a second Dart compile-time identifier.
         serverClientId: _googleServerClientId,
       );
+  final AppleSignInGateway _appleSignIn;
   final http.Client _client;
   final FlutterSecureStorage _storage;
   String? _session;
@@ -278,6 +284,42 @@ class AccountRepository extends ChangeNotifier {
         final cookie = response.headers['set-cookie'] ?? '';
         final match = RegExp(r'(?:^|;\s*)waybi_session=([0-9a-f]{64})')
             .firstMatch(cookie);
+        if (match == null) throw StateError('Sign-in session was not returned');
+        _session = match.group(1);
+        await _storage.write(key: _storageKey, value: _session);
+      }
+      profile = next;
+      notifyListeners();
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> authenticateWithApple({
+    bool link = false,
+    String language = 'en',
+  }) async {
+    if (loading) return;
+    loading = true;
+    notifyListeners();
+    try {
+      final config = _body(await _request('/api/auth/apple/config'));
+      if (config['ready'] != true) {
+        throw StateError(
+          language == 'zh' ? 'Apple 登录暂未配置，请先使用邮箱或 Google 登录' : 'Apple sign-in is not configured yet. Use email or Google for now.',
+        );
+      }
+      final authorization = await _appleSignIn.authorize();
+      final response = await _request(
+        link ? '/api/auth/apple/link' : '/api/auth/apple',
+        method: 'POST',
+        body: {...authorization, 'language': language},
+      );
+      final next = AccountProfile.fromJson(_body(response));
+      if (!link) {
+        final match = RegExp(r'(?:^|;\s*)waybi_session=([0-9a-f]{64})')
+            .firstMatch(response.headers['set-cookie'] ?? '');
         if (match == null) throw StateError('Sign-in session was not returned');
         _session = match.group(1);
         await _storage.write(key: _storageKey, value: _session);

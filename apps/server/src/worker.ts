@@ -1,3 +1,4 @@
+import { refreshAppleAuthorizations } from './apple_auth.ts';
 import { parseRouteExclusions } from './routing_closures.ts';
 import type { ProviderPayload } from "./types.ts";
 import { loadSearchEnrichments, mergeAndRankSearchResults } from './search/search_orchestrator.ts';
@@ -572,6 +573,7 @@ export default {
       return;
     }
     if (event.cron === '*/15 * * * *') {
+      ctx.waitUntil(refreshAppleAuthorizations(env));
       ctx.waitUntil(syncAllAppleSubscriptions(env));
       ctx.waitUntil(evaluateAllRouteWatches(env));
       return;

@@ -20,7 +20,7 @@
     "data:traffic-geometry": "node scripts/refresh-traffic-geometry.mjs",
     "data:import": "node scripts/import-cameras.mjs",
     "db:migrate:local": "pnpm exec wrangler d1 migrations apply waybi-users --local --config wrangler.jsonc",
-    "db:migrate:remote": "pnpm exec wrangler d1 migrations apply waybi-users --remote --config wrangler.jsonc",
+    "db:migrate:remote": "node scripts/d1-migrate-remote.mjs",
     "start": "pnpm dev:server",
     "deploy": "pnpm db:migrate:remote && pnpm build && pnpm exec wrangler deploy --config wrangler.jsonc",
     "mobile:doctor": "flutter doctor -v",

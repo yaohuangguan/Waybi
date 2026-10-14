@@ -71,6 +71,29 @@ class GameController extends ChangeNotifier {
     return change;
   }
 
+  /// Erase account-specific journals after the server has confirmed account
+  /// deletion. Switching to guest first drains writes and avoids recreating
+  /// the old save during an outstanding game update.
+  Future<void> eraseDeletedAccount(String userId) async {
+    if (userId.isEmpty) return;
+    await bindAccount(null);
+    await _writes;
+    final prefs = await SharedPreferences.getInstance();
+    final key = '$_baseSaveKey.account.$userId';
+    for (final suffix in [
+      '',
+      '.backup',
+      '.pending_restore',
+      '.cloud_snapshot',
+    ]) {
+      await prefs.remove('$key$suffix');
+    }
+    if (prefs.getString('$_baseSaveKey.cloud_owner') == userId) {
+      await prefs.remove('$_baseSaveKey.cloud_owner');
+      await prefs.remove('$_baseSaveKey.pre_account');
+    }
+  }
+
   Future<void> mergeCloudArchive(
     SavedGame archive, {
     bool preferCloudState = false,

@@ -24,8 +24,8 @@ test('creates and reads a short-lived road report', async () => {
   assert.equal(report.type, 'roadworks');
   assert.equal(report.observation, 'observed');
   assert.equal(report.headingDegrees, 15);
-  assert.equal(report.metadata.reporterName, 'Sam');
-  assert.equal(report.metadata.reporterId, 'user-1');
+  assert.equal(report.metadata.reporterName, 'Waybi driver');
+  assert.equal(report.metadata.reporterId, null);
   assert.equal((await readRoadReports(env, now)).length, 1);
   assert.equal((await readRoadReports(env, new Date('2026-09-26T05:00:00Z'))).length, 0);
 });

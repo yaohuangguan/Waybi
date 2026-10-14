@@ -5,6 +5,7 @@ import { syncAppleForUser } from './apple_billing.ts';
 import { verifyGoogleIdToken } from './google_token.ts';
 import { validCoordinate } from './geo.ts';
 import { handleFriendsBackup } from './friends_backup.ts';
+import { purgeDeletedReporterReports } from './road_reports.ts';
 
 const encoder = new TextEncoder();
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
@@ -321,6 +322,28 @@ export async function handleAccount(request: Request, env) {
 
   const user = await userFromRequest(db, request);
   if (!user) return response({ error: 'Not signed in' }, 401);
+  if (path === '/api/auth/delete' && request.method === 'POST') {
+    const body = await readBody(request);
+    // Require a live session plus an explicit, case-sensitive confirmation.
+    // Browser CSRF and mobile caller validation are enforced above.
+    if (body?.confirmation !== 'DELETE' || body?.email !== user.email) {
+      return response({ error: 'Confirm account email and DELETE to proceed' }, 400);
+    }
+    // D1 enforces foreign keys; deleting the parent atomically cascades to
+    // saved places, routes, sessions, subscriptions, API keys and Friends data.
+    // Login throttling entries are keyed by email, not a user foreign key.
+    // Reports are stored in Workers KV, outside D1 cascades. Purge them
+    // before removing the account so a KV failure never returns a false
+    // deletion confirmation.
+    await purgeDeletedReporterReports(env, user.id);
+    await db.batch([
+      db.prepare('DELETE FROM login_attempts WHERE email = ?').bind(user.email),
+      db.prepare("DELETE FROM api_usage_daily WHERE provider = '__waybi_quotas' AND sku = ?")
+        .bind(`user:${user.id}`),
+      db.prepare('DELETE FROM users WHERE id = ?').bind(user.id),
+    ]);
+    return response({ ok: true }, 200, { 'set-cookie': clearCookieHeader(request) });
+  }
   if (path === '/api/profile/friends') return handleFriendsBackup(request, db, user.id);
   if ((path === '/api/auth/me' || path === '/api/profile') && request.method === 'GET') {
     return response(await userProfile(db, user, env));

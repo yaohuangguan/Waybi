@@ -82,6 +82,17 @@ class FriendsBackupService extends ChangeNotifier {
     }
   }
 
+  /// Drop local data belonging to an account already deleted on the server.
+  Future<void> forgetDeletedAccount(String userId) async {
+    await _bindings.catchError((Object _) {});
+    await controller.eraseDeletedAccount(userId);
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getString('waybi_friends.last_account') == userId) {
+      await prefs.remove('waybi_friends.last_account');
+    }
+    _debounce?.cancel();
+  }
+
   void _gameChanged() {
     if (_applying || !controller.ready || controller.accountId == null) return;
     _debounce?.cancel();

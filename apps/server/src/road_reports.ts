@@ -17,6 +17,18 @@ export async function readRoadReports(env, now = new Date()) {
   });
 }
 
+/// Remove any remaining report authored by a deleted account from the
+/// shared short-lived snapshot. Failure must prevent reporting deletion success.
+export async function purgeDeletedReporterReports(env, userId: string) {
+  if (!env.CAMERA_DATA) return;
+  const state = await env.CAMERA_DATA.get(KEY, 'json');
+  if (!Array.isArray(state?.reports)) return;
+  const filtered = state.reports.filter(report => report?.metadata?.reporterId !== userId);
+  if (filtered.length !== state.reports.length) {
+    await env.CAMERA_DATA.put(KEY, JSON.stringify({ ...state, reports: filtered }));
+  }
+}
+
 export async function createRoadReport(env, payload, reporter = null, now = new Date()) {
   const latitude = Number(payload?.latitude);
   const longitude = Number(payload?.longitude);
@@ -47,8 +59,10 @@ export async function createRoadReport(env, payload, reporter = null, now = new 
     metadata: {
       description: String(payload?.description || '').trim().slice(0, 120),
       userReported: true,
-      reporterName: reporter?.displayName || 'Waybi driver',
-      reporterId: reporter?.id || null,
+      // Reports are shared anonymously, not as public location-linked
+      // profiles. Keep legacy field shape for older Waybi clients.
+      reporterName: 'Waybi driver',
+      reporterId: null,
       reportedAt: now.toISOString()
     }
   };

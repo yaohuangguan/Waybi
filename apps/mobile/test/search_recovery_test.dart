@@ -110,8 +110,8 @@ void main() {
 
     provider.handler = (_, _) async => [candidate('Updated airport')];
     await tester.tap(find.text('Retry'));
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpAndSettle();
     expect(find.text('Updated airport'), findsOneWidget);
     expect(find.text('Saved airport'), findsNothing);
     expect(provider.calls, ['near:airport', 'near:airport']);
@@ -186,14 +186,14 @@ void main() {
     await openSearch(tester, provider);
     await typeQuery(tester, 'airport');
     await tester.tap(find.text('Search further'));
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpAndSettle();
     provider.handler = (_, all) async => [
       candidate(all ? 'Further airport' : 'Wrong scope'),
     ];
     await tester.tap(find.text('Retry'));
-    await tester.pump();
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pumpAndSettle();
     expect(provider.calls, ['near:airport', 'all:airport', 'all:airport']);
     expect(find.text('Further airport'), findsOneWidget);
   });

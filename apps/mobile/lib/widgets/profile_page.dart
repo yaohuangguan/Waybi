@@ -48,6 +48,7 @@ class ProfilePage extends StatefulWidget {
     required this.onNotifySavedRouteDisruptionsChanged,
     this.cameraSnapshot,
     required this.onSyncCameraData,
+    this.onReloadCameraData,
   });
 
   final AccountRepository account;
@@ -81,6 +82,7 @@ class ProfilePage extends StatefulWidget {
   final ValueChanged<bool> onNotifySavedRouteDisruptionsChanged;
   final CameraSnapshot? cameraSnapshot;
   final Future<CameraSnapshot?> Function() onSyncCameraData;
+  final Future<CameraSnapshot?> Function()? onReloadCameraData;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -210,11 +212,16 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Future<void> _syncCameraData() async {
-    if (_cameraSyncing || widget.account.profile?.isPlus != true) return;
+  Future<void> _syncCameraData({bool requestUpstream = true}) async {
+    if (_cameraSyncing ||
+        (requestUpstream && widget.account.profile?.isPlus != true)) {
+      return;
+    }
     setState(() => _cameraSyncing = true);
     try {
-      final snapshot = await widget.onSyncCameraData();
+      final snapshot = requestUpstream
+          ? await widget.onSyncCameraData()
+          : await widget.onReloadCameraData?.call();
       if (!mounted) return;
       setState(() => _cameraSnapshot = snapshot ?? _cameraSnapshot);
     } catch (error) {
@@ -460,8 +467,11 @@ class _ProfilePageState extends State<ProfilePage> {
       _ => scheme.onSurfaceVariant,
     };
     final statusLabel = switch (status) {
-      'live' => _text('Live', '已同步'),
-      'stale' => _text('Stale', '数据较旧'),
+      'live' => _text('Verified', '已核验'),
+      'stale' =>
+        snapshot?.fromCache == true
+            ? _text('On-device copy', '本机缓存')
+            : _text('Saved data', '已保存数据'),
       'seed' => _text('Bundled', '内置数据'),
       _ => _text('Not loaded', '未加载'),
     };
@@ -558,8 +568,8 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 12),
             Text(
               _text(
-                'NZTA source updated ${_cameraDate(snapshot.sourceUpdatedAt)} · checked ${_cameraDate(snapshot.checkedAt)}',
-                'NZTA 源更新于 ${_cameraDate(snapshot.sourceUpdatedAt)} · 检查于 ${_cameraDate(snapshot.checkedAt)}',
+                'Source published ${_cameraDate(snapshot.sourceUpdatedAt)} · last verified ${_cameraDate(snapshot.lastVerifiedAt)}',
+                '来源发布于 ${_cameraDate(snapshot.sourceUpdatedAt)} · 上次成功核验 ${_cameraDate(snapshot.lastVerifiedAt)}',
               ),
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
@@ -567,6 +577,24 @@ class _ProfilePageState extends State<ProfilePage> {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            if (status == 'stale') ...[
+              const SizedBox(height: 6),
+              Text(
+                snapshot.fromCache
+                    ? _text(
+                        'Using the saved camera list on this device. Refresh when connected.',
+                        '正在使用本机已保存的摄像头目录，连接网络后可刷新。',
+                      )
+                    : _text(
+                        'The source check is unavailable. Keeping the last validated camera list.',
+                        '暂时无法核验来源，继续使用上次已验证的摄像头目录。',
+                      ),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 11.5,
+                ),
+              ),
+            ],
             const SizedBox(height: 3),
             Text(
               _cameraFetchMode(snapshot.fetchMode),
@@ -600,6 +628,19 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           const SizedBox(height: 12),
+          if (widget.onReloadCameraData != null) ...[
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _cameraSyncing
+                    ? null
+                    : () => _syncCameraData(requestUpstream: false),
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(_text('Refresh saved camera list', '刷新已保存的摄像头目录')),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
           if (!isPlus) ...[
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -609,8 +650,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 Expanded(
                   child: Text(
                     _text(
-                      'Instant NZTA refresh is a Waybi Plus feature. Automatic camera updates still stay available to everyone.',
-                      '立即刷新 NZTA 摄像头是 Waybi Plus 功能。后台自动更新仍然对所有用户开放。',
+                      'Plus can request a source check when available. Automatic camera updates stay available to everyone.',
+                      'Plus 可在来源可用时请求核验；后台自动更新仍然对所有用户开放。',
                     ),
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,

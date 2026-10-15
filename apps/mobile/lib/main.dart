@@ -46,6 +46,8 @@ import 'drive/navigation_language.dart';
 import 'drive/navigation_location_filter.dart';
 import 'drive/route_origin_location.dart';
 import 'drive/reliable_location_feed.dart';
+import 'drive/location_permission_gate.dart';
+import 'widgets/status_banner.dart';
 import 'drive/independent_navigation_camera.dart';
 import 'drive/navigation_motion.dart';
 import 'drive/route_progress_tracker.dart';
@@ -224,85 +226,7 @@ class _OnboardingFeature extends StatelessWidget {
   );
 }
 
-class _TransientWaybiBanner extends StatefulWidget {
-  const _TransientWaybiBanner({
-    super.key,
-    required this.message,
-    required this.onDismiss,
-  });
-
-  final String message;
-  final VoidCallback onDismiss;
-
-  @override
-  State<_TransientWaybiBanner> createState() => _TransientWaybiBannerState();
-}
-
-class _TransientWaybiBannerState extends State<_TransientWaybiBanner> {
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer(const Duration(seconds: 4), widget.onDismiss);
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => SafeArea(
-    child: Align(
-      alignment: Alignment.topCenter,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 76, 20, 0),
-        child: PointerInterceptor(
-          child: Material(
-            color: WaybiColors.darkOcean.withValues(alpha: .96),
-            elevation: 8,
-            borderRadius: BorderRadius.circular(15),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 9, 5, 9),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.info_outline_rounded,
-                    color: WaybiColors.sky,
-                    size: 19,
-                  ),
-                  const SizedBox(width: 9),
-                  Flexible(
-                    child: Text(
-                      widget.message,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'Dismiss',
-                    onPressed: widget.onDismiss,
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      color: Colors.white70,
-                      size: 18,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
+enum _LocationNoticeAction { retry, appSettings, locationSettings }
 
 class MapHomePage extends StatefulWidget {
   const MapHomePage({
@@ -382,6 +306,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   double _navigationTopInset = 125;
   double _navigationBottomInset = 215;
   ReliableLocationFeed? _browseLocationFeed;
+  final _locationPermission = LocationPermissionGate();
+  _LocationNoticeAction? _locationNoticeAction;
   String? _browseLocationMessage;
   Position? _lastReliableBrowsePosition;
   final _independentCamera = IndependentNavigationCamera();
@@ -616,7 +542,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_startTracking());
+      if (mounted) unawaited(_startTracking(requestPermission: true));
     });
   }
 
@@ -1058,8 +984,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       if (_driveEngine.active) {
         unawaited(_driveEngine.recoverLocalLocation());
       } else {
-        unawaited(_startTracking());
-        unawaited(_browseLocationFeed?.recover(force: true));
+        unawaited(_resumeBrowseTracking());
       }
       _scheduleExternalNavigation();
       _queueMapRefresh();
@@ -1893,29 +1818,97 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  Future<bool> _ensureLocationPermission() async {
-    final whenInUse = await Permission.locationWhenInUse.request();
-    if (whenInUse.isGranted || whenInUse.isLimited) return true;
-
-    if (!mounted) return false;
-    setState(() {
-      _message = whenInUse.isPermanentlyDenied
-          ? _text(
-              'Location is disabled for Waybi. Enable it in system settings.',
-              'Waybi 的定位权限已关闭，请在系统设置中开启。',
-            )
-          : _text(
-              'Location permission is required for navigation.',
-              '导航需要定位权限，请允许 Waybi 使用当前位置。',
-            );
-    });
+  Future<bool> _ensureLocationPermission({
+    bool requestPermission = true,
+  }) async {
+    try {
+      final access = await _locationPermission.ensure(
+        requestPermission: requestPermission,
+      );
+      if (access.isGranted || access.isLimited) return true;
+      if (!mounted) return false;
+      final settings = access.isPermanentlyDenied || access.isRestricted;
+      _showLocationIssue(
+        settings
+            ? _text(
+                'Location is disabled for Waybi. Enable it in system settings.',
+                'Waybi 的定位权限已关闭，请在系统设置中开启。',
+              )
+            : _text(
+                'Allow location access to find your position and navigate.',
+                '允许定位权限后，即可获取当前位置并开始导航。',
+              ),
+        settings
+            ? _LocationNoticeAction.appSettings
+            : _LocationNoticeAction.retry,
+      );
+    } catch (_) {
+      if (mounted) {
+        _showLocationIssue(
+          _text(
+            'Location is temporarily unavailable. Try again.',
+            '定位暂不可用，请重试。',
+          ),
+          _LocationNoticeAction.retry,
+        );
+      }
+    }
     return false;
   }
 
-  Future<void> _startTracking() async {
+  void _showLocationIssue(String message, _LocationNoticeAction action) {
+    if (!mounted) return;
+    setState(() {
+      _browseLocationMessage = message;
+      _locationNoticeAction = action;
+      _message = message;
+    });
+  }
+
+  Future<void> _resolveLocationIssue() async {
+    try {
+      switch (_locationNoticeAction) {
+        case _LocationNoticeAction.appSettings:
+          await openAppSettings();
+        case _LocationNoticeAction.locationSettings:
+          await Geolocator.openLocationSettings();
+        case _LocationNoticeAction.retry:
+        case null:
+          if (_driveEngine.active) {
+            await _driveEngine.recoverLocalLocation();
+          } else {
+            await _recoverRouteLocation();
+          }
+      }
+    } catch (_) {
+      if (mounted) {
+        _showLocationIssue(
+          _text(
+            'Could not recover location. Check system location settings.',
+            '暂时无法恢复定位，请检查系统定位设置。',
+          ),
+          _LocationNoticeAction.appSettings,
+        );
+      }
+    }
+  }
+
+  Future<void> _resumeBrowseTracking() async {
+    await _startTracking();
+    await _browseLocationFeed?.recover(force: true);
+  }
+
+  Future<void> _startTracking({bool requestPermission = false}) async {
     if (_driveEngine.active ||
         _browseLocationFeed?.running == true ||
-        !await _ensureLocationPermission()) {
+        !await _ensureLocationPermission(
+          requestPermission: requestPermission,
+        )) {
+      return;
+    }
+    if (!mounted ||
+        _driveEngine.active ||
+        _browseLocationFeed?.running == true) {
       return;
     }
     _headingSubscription ??= DeviceHeading.readings.listen(
@@ -1927,11 +1920,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         /* iOS simulator and non-iOS use GPS course. */
       },
     );
-    if (!mounted ||
-        _driveEngine.active ||
-        _browseLocationFeed?.running == true) {
-      return;
-    }
     _browseLocationFeed = ReliableLocationFeed(
       settings: defaultTargetPlatform == TargetPlatform.iOS
           ? AppleSettings(
@@ -1954,9 +1942,15 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (error == null) {
       if (_message == _browseLocationMessage) setState(() => _message = null);
       _browseLocationMessage = null;
+      _locationNoticeAction = null;
       return;
     }
-    if (_externalPreview == null && _locationForRoute != null) return;
+    if (_externalPreview == null &&
+        _locationForRoute != null &&
+        error is! PermissionDeniedException &&
+        error is! LocationServiceDisabledException) {
+      return;
+    }
     final message = error is LocationServiceDisabledException
         ? _text(
             'Location services are off. Enable them in Settings.',
@@ -1971,10 +1965,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             'Waiting for a reliable location. Retrying automatically…',
             '暂时未获取到可靠定位，正在自动重试…',
           );
-    setState(() {
-      _browseLocationMessage = message;
-      _message = message;
-    });
+    _showLocationIssue(
+      message,
+      error is LocationServiceDisabledException
+          ? _LocationNoticeAction.locationSettings
+          : error is PermissionDeniedException
+          ? _LocationNoticeAction.appSettings
+          : _LocationNoticeAction.retry,
+    );
   }
 
   bool _onPosition(Position position) {
@@ -2955,8 +2953,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _recoverRouteLocation() async {
     try {
-      if (!await _ensureLocationPermission()) return;
-      await _startTracking();
+      await _startTracking(requestPermission: true);
       await _browseLocationFeed?.recover(force: true);
       _retryExternalPreview();
     } catch (_) {
@@ -3455,6 +3452,23 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             ),
           ),
           cameraSnapshot: _driveEngine.cameraSnapshot,
+          onReloadCameraData: () async {
+            await _driveEngine.loadCameras(force: true);
+            final snapshot = _driveEngine.cameraSnapshot;
+            if (snapshot == null) {
+              throw StateError(
+                _text(
+                  'Camera data is unavailable. Try again when connected.',
+                  '摄像头数据暂不可用，请联网后重试。',
+                ),
+              );
+            }
+            if (mounted) {
+              setState(() {});
+              unawaited(_syncCameraMarkers());
+            }
+            return snapshot;
+          },
           onSyncCameraData: () async {
             final token = _account.sessionToken;
             if (token == null) {
@@ -7452,9 +7466,23 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               ),
             ),
           if (_message != null)
-            _TransientWaybiBanner(
+            WaybiStatusBanner(
               key: ValueKey(_message),
               message: _message!,
+              dismissLabel: _text('Dismiss', '关闭'),
+              actionLabel: switch (_locationNoticeAction) {
+                _LocationNoticeAction.appSettings ||
+                _LocationNoticeAction.locationSettings => _text(
+                  'Open settings',
+                  '打开设置',
+                ),
+                _ => _text('Retry location', '重试定位'),
+              },
+              onAction:
+                  _message == _browseLocationMessage &&
+                      _locationNoticeAction != null
+                  ? () => unawaited(_resolveLocationIssue())
+                  : null,
               onDismiss: () {
                 if (mounted) setState(() => _message = null);
               },

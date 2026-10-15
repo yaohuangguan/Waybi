@@ -70,6 +70,15 @@ jobs:
       - run: flutter config --enable-swift-package-manager
       - run: flutter pub get
       - run: flutter build ios --release --no-codesign
+      - name: Package unsigned iOS app for device signing
+        run: tar -czf "$RUNNER_TEMP/waybi-ios-unsigned.tar.gz" -C build/ios/iphoneos Runner.app
+      - uses: actions/upload-artifact@v7
+        with:
+          name: waybi-ios-unsigned
+          path: \${{ runner.temp }}/waybi-ios-unsigned.tar.gz
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
 
   android-compile:
     if: github.event_name == 'pull_request'

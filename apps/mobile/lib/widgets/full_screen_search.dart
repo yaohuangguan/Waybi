@@ -47,6 +47,9 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
   int _request = 0;
   bool _loading = false;
   bool _resolving = false;
+  int _selectionGeneration = 0;
+  String? _resultScope;
+  PlaceCandidate? _failedPlace;
   bool _expandedArea = false;
   String? _error;
   List<PlaceCandidate> _results = const [];
@@ -119,16 +122,23 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
     _debounce?.cancel();
     final request = ++_request;
     final query = input.trim();
+    final scope = '${expandedArea ? 'all' : 'near'}|${query.toLowerCase()}';
+    ++_selectionGeneration;
     if (query.runes.length < 2) {
       setState(() {
         _results = const [];
+        _resultScope = null;
         _loading = false;
+        _resolving = false;
+        _failedPlace = null;
         _error = null;
       });
       return;
     }
     setState(() {
       _loading = true;
+      _resolving = false;
+      _failedPlace = null;
       _error = null;
       _expandedArea = expandedArea;
       final provider = widget.provider;
@@ -138,7 +148,10 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
           proximity: widget.currentLocation,
           language: widget.language,
         );
-        if (cached.isNotEmpty) _results = cached;
+        if (cached.isNotEmpty) {
+          _results = cached;
+          _resultScope = scope;
+        }
       }
       // Keep the previous suggestions visible while the next prefix is
       // loading so typeahead never flashes to an empty state.
@@ -162,14 +175,21 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
           if (!mounted || request != _request) return;
           setState(() {
             _results = results;
+            _resultScope = scope;
             _loading = false;
           });
         } catch (_) {
           if (!mounted || request != _request) return;
           setState(() {
-            _results = const [];
+            // Never present the previous query's suggestions as this query.
+            if (_resultScope != scope) _results = const [];
             _loading = false;
-            _error = _text('Search is temporarily unavailable', '搜索暂不可用');
+            _error = _results.isNotEmpty
+                ? _text(
+                    'Could not refresh. Showing previous results.',
+                    '暂时无法更新，正在显示上次结果。',
+                  )
+                : _text('Search is temporarily unavailable', '搜索暂不可用');
           });
         }
       },
@@ -178,16 +198,25 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
 
   Future<void> _choose(PlaceCandidate candidate) async {
     if (_resolving) return;
+    _debounce?.cancel();
+    ++_request;
+    final selection = ++_selectionGeneration;
     unawaited(_rememberQuery(_controller.text));
-    setState(() => _resolving = true);
+    setState(() {
+      _resolving = true;
+      _loading = false;
+      _failedPlace = null;
+      _error = null;
+    });
     try {
       final place = await widget.resolve(candidate);
-      if (!mounted) return;
+      if (!mounted || selection != _selectionGeneration) return;
       Navigator.of(context).pop(place);
     } catch (_) {
-      if (mounted) {
+      if (mounted && selection == _selectionGeneration) {
         setState(() {
           _resolving = false;
+          _failedPlace = candidate;
           _error = _text('Could not open this place', '无法打开此地点');
         });
       }
@@ -206,6 +235,45 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
     return metres < 1000
         ? '${metres.round()} m'
         : '${(metres / 1000).toStringAsFixed(1)} km';
+  }
+
+  Widget _resultTile(PlaceCandidate item, ColorScheme scheme) {
+    final distance = _distance(item.location);
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+      leading: Icon(
+        item.kind == PlaceKind.address
+            ? Icons.signpost_outlined
+            : Icons.place_outlined,
+        color: scheme.primary,
+      ),
+      title: Text(
+        item.name,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle:
+          item.secondaryAddress.isEmpty &&
+              item.category != 'approximate_address'
+          ? null
+          : Text(
+              [
+                if (item.category == 'approximate_address')
+                  _text('Approximate location', '约略位置'),
+                if (item.secondaryAddress.isNotEmpty) item.secondaryAddress,
+              ].join(' · '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+      trailing: distance.isEmpty
+          ? null
+          : Text(
+              distance,
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+            ),
+      onTap: () => _choose(item),
+    );
   }
 
   @override
@@ -292,6 +360,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
         actions: [
           if (_controller.text.isNotEmpty)
             IconButton(
+              tooltip: _text('Clear search', '清空搜索'),
               onPressed: () {
                 _controller.clear();
                 _search('');
@@ -305,204 +374,176 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
         children: [
           if (_loading || _resolving)
             const LinearProgressIndicator(minHeight: 2),
-          if (!recent &&
-              widget.provider is ExpandedSearchProvider &&
-              widget.currentLocation != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 10, 0),
-              child: Row(
-                children: [
-                  Expanded(
+          Expanded(
+            child: ListView(
+              key: const Key('fullScreenSearchScroll'),
+              padding: EdgeInsets.zero,
+              children: [
+                if (!recent &&
+                    widget.provider is ExpandedSearchProvider &&
+                    widget.currentLocation != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 8, 10, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _expandedArea
+                                ? _text('All regions', '所有地区')
+                                : _text('Nearby first', '附近优先'),
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: _loading
+                              ? null
+                              : () => _search(
+                                  _controller.text,
+                                  immediate: true,
+                                  expandedArea: !_expandedArea,
+                                ),
+                          icon: Icon(
+                            _expandedArea
+                                ? Icons.near_me_outlined
+                                : Icons.public_rounded,
+                            size: 17,
+                          ),
+                          label: Text(
+                            _expandedArea
+                                ? _text('Search nearby', '搜索附近')
+                                : _text('Search further', '搜索更远的地点'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (recent && _recentQueries.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 6),
                     child: Text(
-                      _expandedArea
-                          ? _text('All regions', '所有地区')
-                          : _text('Nearby first', '附近优先'),
+                      _text('Recent searches', '最近搜索'),
                       style: TextStyle(
                         color: scheme.onSurfaceVariant,
-                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                  TextButton.icon(
-                    onPressed: _loading
-                        ? null
-                        : () => _search(
-                            _controller.text,
-                            immediate: true,
-                            expandedArea: !_expandedArea,
-                          ),
-                    icon: Icon(
-                      _expandedArea
-                          ? Icons.near_me_outlined
-                          : Icons.public_rounded,
-                      size: 17,
+                  for (final query in _recentQueries)
+                    ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                      ),
+                      leading: const Icon(Icons.history_rounded),
+                      title: Text(
+                        query,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: IconButton(
+                        tooltip: _text('Remove', '删除'),
+                        onPressed: () => unawaited(_removeRecentQuery(query)),
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                      ),
+                      onTap: () => _useRecentQuery(query),
                     ),
-                    label: Text(
-                      _expandedArea
-                          ? _text('Search nearby', '搜索附近')
-                          : _text('Search further', '搜索更远的地点'),
-                    ),
-                  ),
                 ],
-              ),
-            ),
-          if (recent && _recentQueries.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 6),
-              child: Text(
-                _text('Recent searches', '最近搜索'),
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            for (final query in _recentQueries)
-              ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 18),
-                leading: const Icon(Icons.history_rounded),
-                title: Text(
-                  query,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: IconButton(
-                  tooltip: _text('Remove', '删除'),
-                  onPressed: () => unawaited(_removeRecentQuery(query)),
-                  icon: const Icon(Icons.close_rounded, size: 18),
-                ),
-                onTap: () => _useRecentQuery(query),
-              ),
-          ],
-          if (recent && items.isNotEmpty)
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                18,
-                _recentQueries.isEmpty ? 22 : 12,
-                18,
-                8,
-              ),
-              child: Text(
-                _text('Recent places', '最近地点'),
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          if (!recent && items.isNotEmpty && !_loading)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
-              child: Text(
-                _text('Suggestions', '搜索联想'),
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(_error!, style: TextStyle(color: scheme.error)),
-                  ),
-                  TextButton(
-                    onPressed: () => _search(
-                      _controller.text,
-                      immediate: true,
-                      expandedArea: _expandedArea,
+                if (recent && items.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      18,
+                      _recentQueries.isEmpty ? 22 : 12,
+                      18,
+                      8,
                     ),
-                    child: Text(_text('Retry', '重试')),
+                    child: Text(
+                      _text('Recent places', '最近地点'),
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                ],
-              ),
-            ),
-          if (recent && widget.onDriveMode != null)
-            ListTile(
-              leading: const Icon(Icons.directions_car_filled_rounded),
-              title: Text(_text('Just Drive', '自由驾驶')),
-              subtitle: Text(
-                _text(
-                  'Safety camera alerts without a destination',
-                  '无需目的地也可接收摄像头提醒',
-                ),
-              ),
-              onTap: () {
-                Navigator.of(context).pop();
-                widget.onDriveMode?.call();
-              },
-            ),
-          if (!recent &&
-              !_loading &&
-              !_resolving &&
-              _error == null &&
-              items.isEmpty &&
-              _controller.text.trim().runes.length >= 2)
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Text(
-                _text(
-                  'No places found. Try a street, address or local place name.',
-                  '没有找到地点，试试街道、地址或当地地点名称。',
-                ),
-                style: TextStyle(color: scheme.onSurfaceVariant),
-              ),
-            ),
-          Expanded(
-            child: ListView.separated(
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                final distance = _distance(item.location);
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 6,
+                if (!recent && items.isNotEmpty && !_loading)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
+                    child: Text(
+                      _text('Suggestions', '搜索联想'),
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                  leading: Icon(
-                    item.kind == PlaceKind.address
-                        ? Icons.signpost_outlined
-                        : Icons.place_outlined,
-                    color: scheme.primary,
-                  ),
-                  title: Text(
-                    item.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle:
-                      item.secondaryAddress.isEmpty &&
-                          item.category != 'approximate_address'
-                      ? null
-                      : Text(
-                          [
-                            if (item.category == 'approximate_address')
-                              _text('Approximate location', '约略位置'),
-                            if (item.secondaryAddress.isNotEmpty)
-                              item.secondaryAddress,
-                          ].join(' · '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                  trailing: distance.isEmpty
-                      ? null
-                      : Text(
-                          distance,
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            fontSize: 12,
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: TextStyle(color: scheme.error),
                           ),
                         ),
-                  onTap: () => _choose(item),
-                );
-              },
+                        TextButton(
+                          onPressed: () {
+                            final failedPlace = _failedPlace;
+                            if (failedPlace != null) {
+                              unawaited(_choose(failedPlace));
+                            } else {
+                              _search(
+                                _controller.text,
+                                immediate: true,
+                                expandedArea: _expandedArea,
+                              );
+                            }
+                          },
+                          child: Text(_text('Retry', '重试')),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (recent && widget.onDriveMode != null)
+                  ListTile(
+                    leading: const Icon(Icons.directions_car_filled_rounded),
+                    title: Text(_text('Just Drive', '自由驾驶')),
+                    subtitle: Text(
+                      _text(
+                        'Safety camera alerts without a destination',
+                        '无需目的地也可接收摄像头提醒',
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      widget.onDriveMode?.call();
+                    },
+                  ),
+                if (!recent &&
+                    !_loading &&
+                    !_resolving &&
+                    _error == null &&
+                    items.isEmpty &&
+                    _controller.text.trim().runes.length >= 2)
+                  Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Text(
+                      _text(
+                        'No places found. Try a street, address or local place name.',
+                        '没有找到地点，试试街道、地址或当地地点名称。',
+                      ),
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                for (var index = 0; index < items.length; index++) ...[
+                  if (index > 0) const Divider(height: 1),
+                  _resultTile(items[index], scheme),
+                ],
+              ],
             ),
           ),
           if (items.any((item) {

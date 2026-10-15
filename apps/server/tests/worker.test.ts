@@ -532,3 +532,24 @@ test('a thousand public camera reads share one KV get through edge cache', async
     assert.equal(edge.entries.size, 1);
   } finally { edge.restore(); }
 });
+
+
+test('Plus source checks refresh the public copy instead of serving an older cached catalog', async () => {
+  const cache = mockEdgeCache();
+  try {
+    const current = { ...seed, syncStatus: 'live', checkedAt: new Date().toISOString() };
+    const env = { ...fakeEnv(current), USER_DB: fakeUserDb('plus') };
+    const old = { ...seed, syncStatus: 'stale', checkedAt: '2026-10-01T03:00:00Z' };
+    await caches.default.put(new Request('https://example.test/__edge-cache/cameras/v1'),
+      new Response(JSON.stringify(old)));
+    const response = await worker.fetch(new Request('https://example.test/api/cameras/sync', {
+      method: 'POST',
+      headers: { 'x-waybi-client': 'mobile', cookie: `waybi_session=${'b'.repeat(64)}` },
+    }), env, { waitUntil() {} });
+    assert.equal(response.status, 200);
+    const read = await worker.fetch(new Request('https://example.test/api/cameras'), env, { waitUntil() {} });
+    const result = await read.json();
+    assert.equal(result.syncStatus, 'live');
+    assert.equal(result.checkedAt, current.checkedAt);
+  } finally { cache.restore(); }
+});

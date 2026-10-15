@@ -51,6 +51,8 @@ AccountProfile _profile(String plan) => AccountProfile(
 Widget _page({
   required AccountRepository account,
   required Future<CameraSnapshot?> Function() onSync,
+  Future<CameraSnapshot?> Function()? onReload,
+  CameraSnapshot? initialSnapshot,
 }) => MaterialApp(
   home: ProfilePage(
     account: account,
@@ -76,8 +78,9 @@ Widget _page({
     onNotifyRoadIncidentsChanged: (_) {},
     onNotifyCommunityReportsChanged: (_) {},
     onNotifySavedRouteDisruptionsChanged: (_) {},
-    cameraSnapshot: _snapshot(3),
+    cameraSnapshot: initialSnapshot ?? _snapshot(3),
     onSyncCameraData: onSync,
+    onReloadCameraData: onReload,
   ),
 );
 
@@ -91,21 +94,29 @@ void _compactPhone(WidgetTester tester) {
 }
 
 void main() {
-  testWidgets('Plus benefits are collapsed until the user opens the card', (tester) async {
+  testWidgets('Plus benefits are collapsed until the user opens the card', (
+    tester,
+  ) async {
     _compactPhone(tester);
     final account = AccountRepository()..profile = _profile('free');
     addTearDown(account.dispose);
-    await tester.pumpWidget(_page(account: account, onSync: () async => _snapshot(3)));
+    await tester.pumpWidget(
+      _page(account: account, onSync: () async => _snapshot(3)),
+    );
     await tester.pumpAndSettle();
     final card = find.byKey(const PageStorageKey('waybi-plus-card'));
     await tester.ensureVisible(card);
     expect(find.text('了解 Waybi Plus').hitTestable(), findsNothing);
-    await tester.tap(find.descendant(of: card, matching: find.text('Waybi Plus')));
+    await tester.tap(
+      find.descendant(of: card, matching: find.text('Waybi Plus')),
+    );
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('了解 Waybi Plus'));
     expect(find.text('了解 Waybi Plus').hitTestable(), findsOneWidget);
     await tester.ensureVisible(card);
-    await tester.tap(find.descendant(of: card, matching: find.text('Waybi Plus')));
+    await tester.tap(
+      find.descendant(of: card, matching: find.text('Waybi Plus')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('了解 Waybi Plus').hitTestable(), findsNothing);
     expect(tester.takeException(), isNull);
@@ -182,4 +193,70 @@ void main() {
     expect(button.onPressed, isNull);
     expect(syncCalls, 0);
   });
+
+  testWidgets(
+    'free users reload the saved catalog without calling paid source sync',
+    (tester) async {
+      _compactPhone(tester);
+      final account = AccountRepository()..profile = _profile('free');
+      addTearDown(account.dispose);
+      var reloads = 0, syncs = 0;
+      await tester.pumpWidget(
+        _page(
+          account: account,
+          onSync: () async {
+            syncs++;
+            return _snapshot(3);
+          },
+          onReload: () async {
+            reloads++;
+            return _snapshot(4);
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      final reload = find.text('刷新已保存的摄像头目录');
+      await tester.scrollUntilVisible(
+        reload,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(reload);
+      await tester.pumpAndSettle();
+      expect(reloads, 1);
+      expect(syncs, 0);
+      expect(find.text('4 个公开固定摄像头'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'failed legacy snapshots explain saved data without a fabricated verification date',
+    (tester) async {
+      _compactPhone(tester);
+      final account = AccountRepository()..profile = _profile('free');
+      addTearDown(account.dispose);
+      await tester.pumpWidget(
+        _page(
+          account: account,
+          onSync: () async => null,
+          initialSnapshot: CameraSnapshot(
+            cameras: _snapshot(3).cameras,
+            syncStatus: 'stale',
+            sourceUpdatedAt: DateTime.utc(2026, 10, 1),
+            checkedAt: DateTime.utc(2026, 10, 15),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('已保存数据'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.textContaining('上次成功核验 未知'), findsOneWidget);
+      expect(find.textContaining('继续使用上次已验证的摄像头目录'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

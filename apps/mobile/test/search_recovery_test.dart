@@ -199,6 +199,36 @@ void main() {
   });
 
   testWidgets(
+    'results from an earlier query cannot be selected while the new query loads',
+    (tester) async {
+      final pending = Completer<List<PlaceCandidate>>();
+      final provider = SearchStub();
+      var resolves = 0;
+      await openSearch(
+        tester,
+        provider,
+        resolve: (item) async {
+          resolves++;
+          return item.toPlace(item.location!);
+        },
+      );
+      await typeQuery(tester, 'Airport');
+      provider.handler = (_, _) => pending.future;
+      await typeQuery(tester, 'Home');
+      final old = find.widgetWithText(ListTile, 'Airport');
+      expect(tester.widget<ListTile>(old).onTap, isNull);
+      await tester.tap(old);
+      expect(resolves, 0);
+      pending.complete([candidate('Home')]);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ListTile, 'Home'));
+      await tester.pumpAndSettle();
+      expect(resolves, 1);
+      expect(find.text('Open search'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'history and places remain reachable above a keyboard with large text',
     (tester) async {
       tester.view.physicalSize = const Size(320, 568);

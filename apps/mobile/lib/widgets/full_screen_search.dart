@@ -237,9 +237,10 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
         : '${(metres / 1000).toStringAsFixed(1)} km';
   }
 
-  Widget _resultTile(PlaceCandidate item, ColorScheme scheme) {
+  Widget _resultTile(PlaceCandidate item, ColorScheme scheme, {required bool enabled}) {
     final distance = _distance(item.location);
     return ListTile(
+      enabled: enabled,
       contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
       leading: Icon(
         item.kind == PlaceKind.address
@@ -272,7 +273,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
               distance,
               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
             ),
-      onTap: () => _choose(item),
+      onTap: enabled ? () => _choose(item) : null,
     );
   }
 
@@ -281,6 +282,8 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final recent = _controller.text.trim().isEmpty;
+    final scope = '\${_expandedArea ? 'all' : 'near'}|\${_controller.text.trim().toLowerCase()}';
+    final currentResults = recent || _resultScope == scope;
     final items = recent
         ? widget.recent
               .map(
@@ -541,7 +544,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                   ),
                 for (var index = 0; index < items.length; index++) ...[
                   if (index > 0) const Divider(height: 1),
-                  _resultTile(items[index], scheme),
+                  _resultTile(items[index], scheme, enabled: currentResults && !_resolving),
                 ],
               ],
             ),

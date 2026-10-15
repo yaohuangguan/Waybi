@@ -1,28 +1,54 @@
+import Foundation
+
+enum NavigationURLReceipt {
+  case unhandled, duplicate, queued
+}
+
+/// Holds a navigation request until Dart is ready. OAuth URLs stay with plugins.
+struct NavigationURLQueue {
+  private(set) var pending: String?
+  private var lastURL: String?
+  private var lastReceived = Date.distantPast
+
+  mutating func receive(_ url: URL, now: Date = Date()) -> NavigationURLReceipt {
+    guard let scheme = url.scheme?.lowercased(),
+          scheme == "waybi" || scheme == "geo-navigation" else { return .unhandled }
+    let value = url.absoluteString
+    if value == lastURL && now.timeIntervalSince(lastReceived) < 0.5 {
+      return .duplicate
+    }
+    lastURL = value
+    lastReceived = now
+    pending = value
+    return .queued
+  }
+
+  mutating func takePending() -> String? {
+    defer { pending = nil }
+    return pending
+  }
+}
+
+#if canImport(Flutter)
 import AppIntents
 import Flutter
-import Foundation
 
 /// Receives URLs before the Flutter engine is ready and wakes Dart to consume
 /// the latest request. Only navigation schemes are claimed; OAuth goes to plugins.
 final class ExternalNavigationBridge {
   static let shared = ExternalNavigationBridge()
   private var channel: FlutterMethodChannel?
-  private var pending: String?
-  private var lastURL: String?
-  private var lastReceived = Date.distantPast
+  private var queue = NavigationURLQueue()
 
   @discardableResult
   func receive(_ url: URL) -> Bool {
-    guard let scheme = url.scheme?.lowercased(),
-          scheme == "waybi" || scheme == "geo-navigation" else { return false }
-    let value = url.absoluteString
-    // UIApplication and UIScene can report the same launch URL.
-    if value == lastURL && Date().timeIntervalSince(lastReceived) < 0.5 { return true }
-    lastURL = value
-    lastReceived = Date()
-    pending = value
-    channel?.invokeMethod("pending", arguments: nil)
-    return true
+    switch queue.receive(url) {
+    case .unhandled: return false
+    case .duplicate: return true
+    case .queued:
+      channel?.invokeMethod("pending", arguments: nil)
+      return true
+    }
   }
 
   func attach(to messenger: FlutterBinaryMessenger) {
@@ -33,11 +59,9 @@ final class ExternalNavigationBridge {
         result(FlutterMethodNotImplemented)
         return
       }
-      let value = self?.pending
-      self?.pending = nil
-      result(value)
+      result(self?.queue.takePending())
     }
-    if pending != nil { channel.invokeMethod("pending", arguments: nil) }
+    if queue.pending != nil { channel.invokeMethod("pending", arguments: nil) }
   }
 }
 
@@ -88,3 +112,5 @@ struct WaybiAppShortcuts: AppShortcutsProvider {
     )
   }
 }
+
+#endif

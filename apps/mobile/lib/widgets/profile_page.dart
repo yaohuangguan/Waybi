@@ -320,15 +320,14 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _editName() async {
-    final controller = TextEditingController(
-      text: widget.account.profile?.displayName ?? '',
-    );
+    var enteredName = widget.account.profile?.displayName ?? '';
     final name = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(_text('Edit display name', '编辑显示名称')),
-        content: TextField(
-          controller: controller,
+        content: TextFormField(
+          initialValue: enteredName,
+          onChanged: (value) => enteredName = value,
           autofocus: true,
           maxLength: 100,
           decoration: InputDecoration(labelText: _text('Name', '名称')),
@@ -339,13 +338,12 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Text(_text('Cancel', '取消')),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            onPressed: () => Navigator.pop(dialogContext, enteredName),
             child: Text(_text('Save', '保存')),
           ),
         ],
       ),
     );
-    controller.dispose();
     if (name == null) return;
     try {
       await widget.account.updateDisplayName(name);
@@ -357,46 +355,49 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _deleteAccount() async {
     final profile = widget.account.profile;
     if (profile == null) return;
-    final controller = TextEditingController();
+    var confirmation = '';
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, rebuild) => AlertDialog(
           title: Text(_text('Delete Waybi account', '删除 Waybi 账号')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _text(
-                  'Permanently deletes your Waybi account, saved routes, places, reviews and synced companion memories. This cannot be undone.',
-                  '将永久删除 Waybi 账号、路线记录、收藏、评价和已同步的旅行伙伴回忆，无法撤销。',
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _text(
+                    'Permanently deletes your Waybi account, saved routes, places, reviews and synced companion memories. This cannot be undone.',
+                    '将永久删除 Waybi 账号、路线记录、收藏、评价和已同步的旅行伙伴回忆，无法撤销。',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                _text(
-                  'Deleting Waybi does NOT cancel an Apple subscription. Cancel separately in iOS Settings > Subscriptions to avoid further charges.',
-                  '删除 Waybi 账号不会取消 Apple 自动续费。请在 iOS 设置 > 订阅中单独取消，避免继续扣费。',
+                const SizedBox(height: 12),
+                Text(
+                  _text(
+                    'Deleting Waybi does NOT cancel an Apple subscription. Cancel separately in iOS Settings > Subscriptions to avoid further charges.',
+                    '删除 Waybi 账号不会取消 Apple 自动续费。请在 iOS 设置 > 订阅中单独取消，避免继续扣费。',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              Text(_text('Type your account email to confirm:', '输入当前账号邮箱确认：')),
-              const SizedBox(height: 7),
-              Text(
-                profile.email,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                keyboardType: TextInputType.emailAddress,
-                onChanged: (_) => rebuild(() {}),
-                decoration: InputDecoration(
-                  labelText: _text('Account email', '账号邮箱'),
+                const SizedBox(height: 14),
+                Text(
+                  _text('Type your account email to confirm:', '输入当前账号邮箱确认：'),
                 ),
-              ),
-            ],
+                const SizedBox(height: 7),
+                Text(
+                  profile.email,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                TextField(
+                  autofocus: true,
+                  keyboardType: TextInputType.emailAddress,
+                  onChanged: (value) => rebuild(() => confirmation = value),
+                  decoration: InputDecoration(
+                    labelText: _text('Account email', '账号邮箱'),
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -404,7 +405,7 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Text(_text('Keep account', '保留账号')),
             ),
             FilledButton(
-              onPressed: controller.text.trim() == profile.email
+              onPressed: confirmation.trim() == profile.email
                   ? () => Navigator.pop(dialogContext, true)
                   : null,
               style: FilledButton.styleFrom(
@@ -416,7 +417,6 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
     );
-    controller.dispose();
     if (confirmed != true) return;
     try {
       await widget.account.deleteAccount(email: profile.email);

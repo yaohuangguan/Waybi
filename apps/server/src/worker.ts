@@ -53,6 +53,7 @@ function seedState() {
   return {
     ...seed,
     checkedAt: null,
+    lastSuccessfulAt: null,
     syncStatus: 'seed',
     syncError: null,
     fetchMode: 'bundled-seed',
@@ -72,9 +73,11 @@ export async function syncCameras(env, fetcher: typeof fetch = fetch) {
     if (fresh.sourceUpdatedAt < previous.sourceUpdatedAt) throw new Error('NZTA page is older than the stored camera snapshot');
     const oldIds = new Set(previous.cameras.map((camera) => camera.id) as string[]);
     const newIds = new Set(fresh.cameras.map((camera) => camera.id) as string[]);
+    const checkedAt = new Date().toISOString();
     const next = {
       ...fresh,
-      checkedAt: new Date().toISOString(),
+      checkedAt,
+      lastSuccessfulAt: checkedAt,
       syncStatus: 'live',
       syncError: null,
       change: {
@@ -88,6 +91,7 @@ export async function syncCameras(env, fetcher: typeof fetch = fetch) {
   } catch (error) {
     const retained = {
       ...previous,
+      lastSuccessfulAt: previous.lastSuccessfulAt ?? (previous.syncStatus === 'live' ? previous.checkedAt : null) ?? null,
       checkedAt: new Date().toISOString(),
       syncStatus: 'stale',
       syncError: String(error.message || error)
@@ -189,6 +193,8 @@ async function handleApi(request: Request, env, ctx) {
       Date.now() >= checkedAt &&
       Date.now() - checkedAt < CAMERA_SYNC_COOLDOWN_MS;
     const state = recentlyChecked ? current : await syncCameras(env);
+    // A successful manual check must also replace this PoP's older public copy.
+    await writePublicEdgeJson(`${url.origin}/__edge-cache/cameras/v1`, state, 3600);
     return json({
       ...state,
       source: SOURCE_URL,
@@ -226,6 +232,7 @@ async function handleApi(request: Request, env, ctx) {
       syncStatus: state.syncStatus,
       sourceUpdatedAt: state.sourceUpdatedAt,
       checkedAt: state.checkedAt,
+      lastSuccessfulAt: state.lastSuccessfulAt ?? null,
       fetchMode: state.fetchMode ?? null
     });
   }

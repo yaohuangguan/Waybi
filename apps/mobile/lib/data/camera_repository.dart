@@ -12,6 +12,8 @@ class CameraSnapshot {
     required this.syncStatus,
     this.sourceUpdatedAt,
     this.checkedAt,
+    this.lastSuccessfulAt,
+    this.fromCache = false,
     this.fetchMode,
     this.syncError,
     this.changeAdded = 0,
@@ -22,6 +24,10 @@ class CameraSnapshot {
   final String syncStatus;
   final DateTime? sourceUpdatedAt;
   final DateTime? checkedAt;
+  final DateTime? lastSuccessfulAt;
+  final bool fromCache;
+  DateTime? get lastVerifiedAt =>
+      lastSuccessfulAt ?? (syncStatus == 'live' ? checkedAt : null);
   final String? fetchMode;
   final String? syncError;
   final int changeAdded;
@@ -36,6 +42,7 @@ class CameraRepository {
   final String baseUrl;
 
   static const _cacheKey = 'waybi.cache.cameras.v1';
+  CameraSnapshot? _lastValidSnapshot;
 
   Future<CameraSnapshot> fetchSnapshot() async {
     Object? networkError;
@@ -47,6 +54,7 @@ class CameraRepository {
         throw StateError('Camera API failed: ${response.statusCode}');
       }
       final snapshot = _decodeSnapshot(response.body);
+      _lastValidSnapshot = snapshot;
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_cacheKey, response.body);
@@ -59,21 +67,15 @@ class CameraRepository {
       networkError = error;
     }
 
+    final memory = _lastValidSnapshot;
+    if (memory != null) return _cachedCopy(memory, networkError);
     try {
       final prefs = await SharedPreferences.getInstance();
       final cached = prefs.getString(_cacheKey);
       if (cached != null) {
         final snapshot = _decodeSnapshot(cached);
-        return CameraSnapshot(
-          cameras: snapshot.cameras,
-          syncStatus: 'stale',
-          sourceUpdatedAt: snapshot.sourceUpdatedAt,
-          checkedAt: snapshot.checkedAt,
-          fetchMode: snapshot.fetchMode,
-          syncError: networkError.toString(),
-          changeAdded: snapshot.changeAdded,
-          changeRemoved: snapshot.changeRemoved,
-        );
+        _lastValidSnapshot = snapshot;
+        return _cachedCopy(snapshot, networkError);
       }
     } catch (_) {
       // Unit tests and unsupported platforms may not provide a preferences
@@ -104,6 +106,7 @@ class CameraRepository {
       }
     }
     final snapshot = _decodeSnapshot(response.body);
+    _lastValidSnapshot = snapshot;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_cacheKey, response.body);
@@ -113,10 +116,31 @@ class CameraRepository {
 
   CameraSnapshot _decodeSnapshot(String raw) {
     final body = jsonDecode(raw) as Map<String, dynamic>;
-    final cameras = (body['cameras'] as List<dynamic>? ?? const [])
-        .whereType<Map<String, dynamic>>()
+    final rows = body['cameras'];
+    if (rows is! List ||
+        rows.isEmpty ||
+        rows.any((row) => row is! Map<String, dynamic>)) {
+      throw const FormatException('Invalid camera catalog');
+    }
+    final cameras = rows
+        .cast<Map<String, dynamic>>()
         .map(SafetyCamera.fromJson)
         .toList(growable: false);
+    if (cameras.any(
+          (camera) =>
+              camera.id.isEmpty ||
+              camera.name.isEmpty ||
+              camera.type.isEmpty ||
+              !camera.latitude.isFinite ||
+              !camera.longitude.isFinite ||
+              camera.latitude <= -48 ||
+              camera.latitude >= -34 ||
+              camera.longitude <= 166 ||
+              camera.longitude >= 179,
+        ) ||
+        cameras.map((camera) => camera.id).toSet().length != cameras.length) {
+      throw const FormatException('Invalid NZTA camera locations');
+    }
     return CameraSnapshot(
       cameras: cameras,
       syncStatus: body['syncStatus']?.toString() ?? 'unknown',
@@ -124,6 +148,9 @@ class CameraRepository {
         body['sourceUpdatedAt']?.toString() ?? '',
       ),
       checkedAt: DateTime.tryParse(body['checkedAt']?.toString() ?? ''),
+      lastSuccessfulAt: DateTime.tryParse(
+        body['lastSuccessfulAt']?.toString() ?? '',
+      ),
       fetchMode: body['fetchMode']?.toString(),
       syncError: body['syncError']?.toString(),
       changeAdded:
@@ -132,6 +159,20 @@ class CameraRepository {
           (body['change'] as Map<String, dynamic>?)?['removed'] as int? ?? 0,
     );
   }
+
+  CameraSnapshot _cachedCopy(CameraSnapshot snapshot, Object error) =>
+      CameraSnapshot(
+        cameras: snapshot.cameras,
+        syncStatus: 'stale',
+        sourceUpdatedAt: snapshot.sourceUpdatedAt,
+        checkedAt: snapshot.checkedAt,
+        lastSuccessfulAt: snapshot.lastVerifiedAt,
+        fromCache: true,
+        fetchMode: snapshot.fetchMode,
+        syncError: error.toString(),
+        changeAdded: snapshot.changeAdded,
+        changeRemoved: snapshot.changeRemoved,
+      );
 
   Future<List<SafetyCamera>> fetchCameras() async =>
       (await fetchSnapshot()).cameras;

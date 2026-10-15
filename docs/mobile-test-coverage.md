@@ -31,7 +31,7 @@ Test names in this table are under apps/mobile/test unless a package or native t
 | Location access, permanent denial and concurrent requests | `location_permission_gate_test.dart`, `app_shell_test.dart` |
 | Silent GPS, stream errors, stopped-trip races and stale fixes | `reliable_location_feed_test.dart`, `drive_engine_platform_test.dart`, `navigation_location_filter_test.dart` |
 | Heading validation, motion and trustworthy route origin | `native_contracts_test.dart`, `navigation_forward_bearing_test.dart`, `navigation_motion_test.dart`, `route_origin_location_test.dart` |
-| MapLibre interaction, follow, viewport and independent style | `independent_map_interaction_test.dart`, `independent_map_style_test.dart`, `independent_navigation_camera_test.dart` |
+| MapLibre interaction, follow, viewport and independent style | `independent_map_interaction_test.dart`, `independent_map_style_test.dart`, `independent_navigation_camera_test.dart`, `map_provider_test.dart` |
 | Map and alert layers, persisted preferences and region capabilities | `map_layer_sheet_test.dart`, `map_layer_settings_test.dart`, `map_region_capabilities_test.dart` |
 | Location, camera and destination marker visibility | `marker_catalog_test.dart`, `companion_journey_stats_test.dart` |
 | Multilingual search, cache, debounce, latency and selection races | `local_multilingual_search_test.dart`, `search_recovery_test.dart`, `search_latency_test.dart`, `live_search_experience_test.dart` |

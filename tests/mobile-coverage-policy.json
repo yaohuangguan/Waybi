@@ -97,7 +97,7 @@
       "minimumLinePercent": 75
     },
     "apps/mobile/lib/domain/map_provider.dart": {
-      "minimumLinePercent": 50
+      "minimumLinePercent": 100
     },
     "apps/mobile/lib/domain/map_region_capabilities.dart": {
       "minimumLinePercent": 100

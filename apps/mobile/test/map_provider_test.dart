@@ -27,6 +27,46 @@ class _DelayedSearch implements SearchProvider {
 }
 
 void main() {
+  for (final provider in MapProvider.values) {
+    test(
+      '$provider declares capabilities and consistent provider identities',
+      () {
+        final policy = ProviderPolicy(provider);
+        final google = provider == MapProvider.google;
+        final capabilities = policy.capabilities;
+        expect(capabilities.trafficAwareRouting, google);
+        expect(capabilities.nativeTurnGuidance, google);
+        expect(capabilities.transitRouting, isTrue);
+        expect(capabilities.persistProviderPlaces, isTrue);
+        expect(policy.searchProvider, google ? 'geoapify' : 'osm');
+        expect(policy.placeProvider, google ? 'google' : 'osm');
+        expect(policy.routingProvider, google ? 'google' : 'independent');
+        expect(policy.navigationEngine, policy.routingProvider);
+        expect(policy.canDisplay(null), isTrue);
+        expect(
+          policy.canDisplay(const ProviderReference('at', 'parking')),
+          isTrue,
+        );
+      },
+    );
+  }
+  test('place selections retain their source and origin renderer through every entry point', () {
+    final place = PlaceSummary(
+      name: 'Home',
+      location: const GeoPoint(-37, 174),
+    );
+    for (final source in SelectionSource.values) {
+      final selected = SelectedPlace(
+        place,
+        source,
+        originMap: MapProvider.independent,
+      );
+      expect(selected.place, same(place));
+      expect(selected.source, source);
+      expect(selected.originMap, MapProvider.independent);
+    }
+  });
+
   test('provider references do not silently cross map policies', () {
     const google = ProviderPolicy(MapProvider.google);
     const independent = ProviderPolicy(MapProvider.independent);

@@ -43,7 +43,8 @@
       "tests": [
         "apps/mobile/test/independent_map_interaction_test.dart",
         "apps/mobile/test/independent_map_style_test.dart",
-        "apps/mobile/test/independent_navigation_camera_test.dart"
+        "apps/mobile/test/independent_navigation_camera_test.dart",
+        "apps/mobile/test/map_provider_test.dart"
       ]
     },
     {

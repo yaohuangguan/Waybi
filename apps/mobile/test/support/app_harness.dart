@@ -13,6 +13,8 @@ import 'package:http/testing.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:waybi_mobile/main.dart';
+import 'package:waybi_mobile/drive/drive_engine.dart';
+import 'package:waybi_mobile/data/transit_lane_repository.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/providers/independent_map_renderer.dart';
 
@@ -79,6 +81,7 @@ class AppHarness {
   AppHarness(this.tester);
   final WidgetTester tester;
   final gps = AppGps();
+  late final DriveEngine drive;
   final requests = <http.Request>[];
   final calls = <MethodCall>[];
   final mapPlatform = RecordingMapPlatform();
@@ -233,6 +236,17 @@ class AppHarness {
       ...preferences,
     });
     FlutterSecureStorage.setMockInitialValues({});
+    drive = DriveEngine(
+      transitLaneRepository: TransitLaneRepository(
+        client: client,
+        seedLoader: () async => jsonEncode({
+          'lanes': [],
+          'checkedAt': DateTime.now().toUtc().toIso8601String(),
+          'source': 'Controlled app-flow fixture',
+          'syncStatus': 'live',
+        }),
+      ),
+    );
     final originalGps = GeolocatorPlatform.instance;
     GeolocatorPlatform.instance = gps;
     final originalMap = ml.MapLibrePlatform.createInstance;
@@ -319,7 +333,7 @@ class AppHarness {
         messenger.setMockMessageHandler(name, null);
       }
     });
-    await tester.pumpWidget(const MaterialApp(home: MapHomePage()));
+    await tester.pumpWidget(MaterialApp(home: MapHomePage(driveEngine: drive)));
     await frames();
     gps.emit(longitude: 174.9, speed: 0);
     await frames(2);
@@ -356,7 +370,12 @@ class AppHarness {
       );
       await tester.pump(const Duration(milliseconds: 20));
     }
-    expect(ready(), isTrue, reason: reason);
+    expect(
+      ready(),
+      isTrue,
+      reason:
+          '$reason; driveActive=${drive.active}; gpsIssue=${drive.gpsIssue}; transitLanes=${drive.transitSnapshot?.lanes.length}; lastNativeCalls=${calls.reversed.take(12).map((c) => c.method).toList()}',
+    );
   }
 
   Future<void> act(VoidCallback action) async {

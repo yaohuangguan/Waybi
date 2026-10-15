@@ -232,11 +232,15 @@ class MapHomePage extends StatefulWidget {
   const MapHomePage({
     super.key,
     this.themeMode = ThemeMode.system,
+    this.driveEngine,
     this.onThemeModeChanged,
     this.onAppLanguageChanged,
   });
 
   final ThemeMode themeMode;
+
+  /// Optional data adapters for embedding and tests; this page owns the engine's lifetime.
+  final DriveEngine? driveEngine;
   final ValueChanged<ThemeMode>? onThemeModeChanged;
   final ValueChanged<String>? onAppLanguageChanged;
 
@@ -254,7 +258,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   static const _mapId = String.fromEnvironment('MAP_ID');
   static const _auckland = LatLng(latitude: -36.8485, longitude: 174.7633);
 
-  final DriveEngine _driveEngine = DriveEngine();
+  late final DriveEngine _driveEngine = widget.driveEngine ?? DriveEngine();
   late final IndependentNavigationEngine _independentNavigation;
   final AccountRepository _account = AccountRepository();
   late final _friendsBackup = FriendsBackupService(_account);

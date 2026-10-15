@@ -274,7 +274,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       IndependentRoutingProvider(useWaybiProxy: true);
   final IndependentTransitRoutingProvider _independentTransitRoutes =
       IndependentTransitRoutingProvider();
-  MapProvider _mapProvider = MapProvider.independent;
+  // The mobile product uses Waybi exclusively, including migrated settings.
+  static const _mapProvider = MapProvider.independent;
   MapProvider? _requestedMapProvider;
   Future<void> _providerSwitchQueue = Future<void>.value();
   LocationMarkerStyle _locationMarker = LocationMarkerStyle.kiwi;
@@ -1660,7 +1661,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _restoreMapSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _useCarMarker = prefs.getBool('waybi.map.car_marker') ?? false;
-    _mapProvider = MapProvider.independent;
     await prefs.setString('waybi.map.provider', MapProvider.independent.name);
     _locationMarker = LocationMarkerStyle.values.firstWhere(
       (value) => value.name == prefs.getString('waybi.map.location_marker'),
@@ -5105,7 +5105,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _placeDetailsError = null;
     }
     setState(() {
-      _mapProvider = provider;
       _journeyPhase = selected == null
           ? JourneyPhase.idle
           : JourneyPhase.placeSelected;
@@ -7461,6 +7460,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               !_guidanceRunning)
             Positioned.fill(
               child: DriveHud(
+                following: _following,
+                onRecenter: _recenter,
                 engine: _driveEngine,
                 onStop: () => unawaited(_stopDriveMode()),
               ),

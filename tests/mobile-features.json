@@ -334,7 +334,8 @@
         "packages/waybi_friends/test/packing_test.dart",
         "packages/waybi_friends/test/room_life_test.dart",
         "packages/waybi_friends/test/account_erasure_test.dart",
-        "packages/waybi_friends/test/souvenir_painter_test.dart"
+        "packages/waybi_friends/test/souvenir_painter_test.dart",
+        "packages/waybi_friends/test/keepsake_interactions_test.dart"
       ]
     },
     {
@@ -342,7 +343,8 @@
       "label": "Reusable map models, renderer capabilities, overlays and source contracts",
       "tests": [
         "packages/waybi_map/test/waybi_map_test.dart",
-        "packages/waybi_map/test/place_renderer_contracts_test.dart"
+        "packages/waybi_map/test/place_renderer_contracts_test.dart",
+        "packages/waybi_map/test/layer_edge_cases_test.dart"
       ]
     },
     {
@@ -350,6 +352,13 @@
       "label": "Production Swift URL queue, duplicates, encoding and OAuth isolation",
       "tests": [
         "apps/mobile/ios/NativeTests/NavigationURLQueueTests.swift"
+      ]
+    },
+    {
+      "id": "app-navigation-flows",
+      "description": "Real application map selection, route modes and alternatives, independent navigation lifecycle, closure recovery, failed route retries, Just Drive recenter/trail and permission recovery",
+      "tests": [
+        "apps/mobile/test/app_navigation_flows_test.dart"
       ]
     }
   ]

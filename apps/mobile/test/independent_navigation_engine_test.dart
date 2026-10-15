@@ -137,8 +137,24 @@ RouteOption makeRoute({
   ],
 );
 
+class DelayedStopDrive extends FakeDrive {
+  final stopped = Completer<void>();
+  @override
+  Future<void> stop() => stopped.future;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('leaving the map while location stops cannot notify a disposed navigation engine', () async {
+    final drive = DelayedStopDrive();
+    final navigation = IndependentNavigationEngine(drive);
+    final stopping = navigation.stop();
+    navigation.dispose();
+    drive.stopped.complete();
+    await expectLater(stopping, completes);
+    drive.dispose();
+  });
 
   RoadEvent closure({
     RoadEventObservation observation = RoadEventObservation.official,

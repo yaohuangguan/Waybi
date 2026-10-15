@@ -4,15 +4,18 @@
   "suites": [
     {
       "root": "apps/mobile",
-      "report": "apps/mobile/coverage/lcov.info"
+      "report": "apps/mobile/coverage/lcov.info",
+      "minimumLinePercent": 90
     },
     {
       "root": "packages/waybi_friends",
-      "report": "packages/waybi_friends/coverage/lcov.info"
+      "report": "packages/waybi_friends/coverage/lcov.info",
+      "minimumLinePercent": 90
     },
     {
       "root": "packages/waybi_map",
-      "report": "packages/waybi_map/coverage/lcov.info"
+      "report": "packages/waybi_map/coverage/lcov.info",
+      "minimumLinePercent": 90
     }
   ],
   "files": {

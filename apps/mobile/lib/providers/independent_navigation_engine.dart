@@ -530,7 +530,7 @@ class IndependentNavigationEngine extends ChangeNotifier
 
   @override
   Future<void> stop() async {
-    ++_session;
+    final session = ++_session;
     drive.removeListener(_onLocation);
     _route = null;
     _nextStep = null;
@@ -546,7 +546,7 @@ class IndependentNavigationEngine extends ChangeNotifier
     _remainingMeters = 0;
     _remainingSeconds = 0;
     await drive.stop();
-    notifyListeners();
+    if (session == _session) notifyListeners();
   }
 
   @override

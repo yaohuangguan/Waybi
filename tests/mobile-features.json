@@ -1,0 +1,355 @@
+{
+  "schemaVersion": 1,
+  "scope": "First-party Flutter mobile application for iOS and Android; execution coverage and capability tests are separate from physical-device validation.",
+  "features": [
+    {
+      "id": "app-shell",
+      "label": "Startup, onboarding, appearance and page navigation",
+      "tests": [
+        "apps/mobile/test/app_shell_test.dart",
+        "apps/mobile/test/status_banner_test.dart"
+      ]
+    },
+    {
+      "id": "location-permissions",
+      "label": "Location access, permanent denial and concurrent requests",
+      "tests": [
+        "apps/mobile/test/location_permission_gate_test.dart",
+        "apps/mobile/test/app_shell_test.dart"
+      ]
+    },
+    {
+      "id": "gps-recovery",
+      "label": "Silent GPS, stream errors, stopped-trip races and stale fixes",
+      "tests": [
+        "apps/mobile/test/reliable_location_feed_test.dart",
+        "apps/mobile/test/drive_engine_platform_test.dart",
+        "apps/mobile/test/navigation_location_filter_test.dart"
+      ]
+    },
+    {
+      "id": "heading-origin",
+      "label": "Heading validation, motion and trustworthy route origin",
+      "tests": [
+        "apps/mobile/test/native_contracts_test.dart",
+        "apps/mobile/test/navigation_forward_bearing_test.dart",
+        "apps/mobile/test/navigation_motion_test.dart",
+        "apps/mobile/test/route_origin_location_test.dart"
+      ]
+    },
+    {
+      "id": "map-renderer",
+      "label": "MapLibre interaction, follow, viewport and independent style",
+      "tests": [
+        "apps/mobile/test/independent_map_interaction_test.dart",
+        "apps/mobile/test/independent_map_style_test.dart",
+        "apps/mobile/test/independent_navigation_camera_test.dart"
+      ]
+    },
+    {
+      "id": "map-layers",
+      "label": "Map and alert layers, persisted preferences and region capabilities",
+      "tests": [
+        "apps/mobile/test/map_layer_sheet_test.dart",
+        "apps/mobile/test/map_layer_settings_test.dart",
+        "apps/mobile/test/map_region_capabilities_test.dart"
+      ]
+    },
+    {
+      "id": "marker-art",
+      "label": "Location, camera and destination marker visibility",
+      "tests": [
+        "apps/mobile/test/marker_catalog_test.dart",
+        "apps/mobile/test/companion_journey_stats_test.dart"
+      ]
+    },
+    {
+      "id": "search",
+      "label": "Multilingual search, cache, debounce, latency and selection races",
+      "tests": [
+        "apps/mobile/test/local_multilingual_search_test.dart",
+        "apps/mobile/test/search_recovery_test.dart",
+        "apps/mobile/test/search_latency_test.dart",
+        "apps/mobile/test/live_search_experience_test.dart"
+      ]
+    },
+    {
+      "id": "search-navigation",
+      "label": "Search result resolution and correct destination handoff",
+      "tests": [
+        "apps/mobile/test/independent_search_to_navigation_contract_test.dart",
+        "apps/mobile/test/regional_search_adapter_test.dart"
+      ]
+    },
+    {
+      "id": "places",
+      "label": "Place decks, photos, data credits and independent details",
+      "tests": [
+        "apps/mobile/test/place_details_content_test.dart",
+        "apps/mobile/test/place_photo_test.dart",
+        "apps/mobile/test/waybi_explore_test.dart"
+      ]
+    },
+    {
+      "id": "explore",
+      "label": "Explore categories, saved places and failed/stale responses",
+      "tests": [
+        "apps/mobile/test/component_catalog_test.dart",
+        "apps/mobile/test/explore_search_test.dart",
+        "apps/mobile/test/waybi_explore_test.dart"
+      ]
+    },
+    {
+      "id": "routes",
+      "label": "Route request contract, geometry, alternatives and travel modes",
+      "tests": [
+        "apps/mobile/test/repository_contracts_test.dart",
+        "apps/mobile/test/independent_provider_test.dart",
+        "apps/mobile/test/driving_route_quality_test.dart",
+        "apps/mobile/test/independent_transit_routing_provider_test.dart"
+      ]
+    },
+    {
+      "id": "route-filters",
+      "label": "Fastest/shortest/camera preferences and closure detours",
+      "tests": [
+        "apps/mobile/test/route_filter_detour_test.dart",
+        "apps/mobile/test/route_preview_preferences_test.dart",
+        "apps/mobile/test/route_preference_test.dart"
+      ]
+    },
+    {
+      "id": "navigation-progress",
+      "label": "Progress, reroute recovery, wrong-way guards and arrival",
+      "tests": [
+        "apps/mobile/test/route_progress_tracker_test.dart",
+        "apps/mobile/test/independent_navigation_engine_test.dart",
+        "apps/mobile/test/navigation_polish_test.dart"
+      ]
+    },
+    {
+      "id": "lanes",
+      "label": "Partial lane data, arrow rendering and guidance layouts",
+      "tests": [
+        "apps/mobile/test/lane_arrow_test.dart",
+        "apps/mobile/test/navigation_lanes_test.dart",
+        "apps/mobile/test/independent_navigation_overlay_test.dart",
+        "apps/mobile/test/navigation_experience_test.dart"
+      ]
+    },
+    {
+      "id": "camera-alerts",
+      "label": "Camera matching, alert lifecycle and route relevance",
+      "tests": [
+        "apps/mobile/test/camera_matcher_test.dart",
+        "apps/mobile/test/camera_alert_lifecycle_test.dart",
+        "apps/mobile/test/route_camera_matcher_test.dart",
+        "apps/mobile/test/navigation_camera_alert_test.dart"
+      ]
+    },
+    {
+      "id": "road-intelligence",
+      "label": "Road closures, reports, direction and event timelines",
+      "tests": [
+        "apps/mobile/test/road_intelligence_test.dart",
+        "apps/mobile/test/route_road_events_test.dart",
+        "apps/mobile/test/component_catalog_test.dart"
+      ]
+    },
+    {
+      "id": "traffic",
+      "label": "Traffic flow, source fallback and route matching",
+      "tests": [
+        "apps/mobile/test/traffic_flow_repository_test.dart",
+        "apps/mobile/test/route_traffic_match_test.dart",
+        "apps/mobile/test/nzta_traffic_road_event_provider_test.dart"
+      ]
+    },
+    {
+      "id": "transit-lanes",
+      "label": "Bus/transit lane restrictions and review corridors",
+      "tests": [
+        "apps/mobile/test/transit_lanes_test.dart",
+        "apps/mobile/test/transit_lane_map_test.dart",
+        "apps/mobile/test/transit_review_corridor_test.dart"
+      ]
+    },
+    {
+      "id": "just-drive",
+      "label": "Native GPS configuration, follow, trail and complete stop",
+      "tests": [
+        "apps/mobile/test/drive_engine_platform_test.dart",
+        "apps/mobile/test/route_display_trail_test.dart",
+        "apps/mobile/test/drive_hud_test.dart",
+        "apps/mobile/test/independent_navigation_camera_test.dart"
+      ]
+    },
+    {
+      "id": "voice-music",
+      "label": "Serialized speech, audio focus, iOS mixing and release",
+      "tests": [
+        "apps/mobile/test/voice_engine_test.dart",
+        "apps/mobile/test/navigation_polish_test.dart"
+      ]
+    },
+    {
+      "id": "system-navigation",
+      "label": "Lockscreen status, retry, native serialization and stop",
+      "tests": [
+        "apps/mobile/test/system_navigation_test.dart",
+        "apps/mobile/test/component_catalog_test.dart"
+      ]
+    },
+    {
+      "id": "external-navigation",
+      "label": "Navigation links, cold-start requests and intent validation",
+      "tests": [
+        "apps/mobile/test/external_navigation_inbox_test.dart",
+        "apps/mobile/test/navigation_link_test.dart"
+      ]
+    },
+    {
+      "id": "notifications",
+      "label": "iOS and Android permission denial/grant and payloads",
+      "tests": [
+        "apps/mobile/test/notification_service_test.dart"
+      ]
+    },
+    {
+      "id": "parking-arrival",
+      "label": "Arrival presentation, parking selection and walk handoff",
+      "tests": [
+        "apps/mobile/test/parking_flow_test.dart",
+        "apps/mobile/test/navigation_experience_test.dart"
+      ]
+    },
+    {
+      "id": "history-trips",
+      "label": "Journeys, saved routes, search/filter and commute controls",
+      "tests": [
+        "apps/mobile/test/journey_tracker_test.dart",
+        "apps/mobile/test/trips_page_test.dart",
+        "apps/mobile/test/trips_experience_test.dart"
+      ]
+    },
+    {
+      "id": "discover",
+      "label": "Discover cards, freshness and empty/error states",
+      "tests": [
+        "apps/mobile/test/discover_page_test.dart",
+        "apps/mobile/test/discover_memory_test.dart"
+      ]
+    },
+    {
+      "id": "account",
+      "label": "Sessions, profile sync, favorite places, reviews and logout",
+      "tests": [
+        "apps/mobile/test/account_features_test.dart",
+        "apps/mobile/test/profile_actions_test.dart",
+        "apps/mobile/test/component_catalog_test.dart"
+      ]
+    },
+    {
+      "id": "apple-google",
+      "label": "Apple nonce/state/token validation and platform-specific login UI",
+      "tests": [
+        "apps/mobile/test/native_contracts_test.dart",
+        "apps/mobile/test/apple_account_test.dart",
+        "apps/mobile/test/apple_profile_test.dart"
+      ]
+    },
+    {
+      "id": "account-delete",
+      "label": "Confirmation, keyboard, failed deletion and credential erasure",
+      "tests": [
+        "apps/mobile/test/profile_actions_test.dart",
+        "apps/mobile/test/account_features_test.dart",
+        "apps/mobile/test/account_brand_migration_test.dart"
+      ]
+    },
+    {
+      "id": "plus-billing",
+      "label": "Store gateway, purchase/restore states and unavailable billing",
+      "tests": [
+        "apps/mobile/test/app_store_billing_test.dart",
+        "apps/mobile/test/plus_page_test.dart"
+      ]
+    },
+    {
+      "id": "route-watch",
+      "label": "Saved corridors, bounded acknowledgements and encoded IDs",
+      "tests": [
+        "apps/mobile/test/account_features_test.dart",
+        "apps/mobile/test/trips_page_test.dart"
+      ]
+    },
+    {
+      "id": "offline-cameras",
+      "label": "Validated catalogs, saved copy, freshness and free reload",
+      "tests": [
+        "apps/mobile/test/camera_catalog_recovery_test.dart",
+        "apps/mobile/test/camera_data_settings_test.dart",
+        "apps/mobile/test/offline_navigation_cache_test.dart"
+      ]
+    },
+    {
+      "id": "companion-backup",
+      "label": "Companion backup, conflicts, durable totals and journal recovery",
+      "tests": [
+        "apps/mobile/test/friends_backup_service_test.dart",
+        "apps/mobile/test/friends_large_journal_test.dart",
+        "apps/mobile/test/companion_profile_test.dart"
+      ]
+    },
+    {
+      "id": "rewards-feedback",
+      "label": "Navigation rewards, idempotence and feedback",
+      "tests": [
+        "apps/mobile/test/navigation_rewards_feedback_test.dart"
+      ]
+    },
+    {
+      "id": "migration",
+      "label": "Legacy preference/account names and isolation",
+      "tests": [
+        "apps/mobile/test/brand_migration_test.dart",
+        "apps/mobile/test/account_brand_migration_test.dart",
+        "apps/mobile/test/quick_location_store_test.dart"
+      ]
+    },
+    {
+      "id": "telemetry-speed",
+      "label": "Non-blocking bounded usage and unknown speed limits",
+      "tests": [
+        "apps/mobile/test/repository_contracts_test.dart"
+      ]
+    },
+    {
+      "id": "friends-room",
+      "label": "Companion room, bag, journal, journeys, souvenirs and erasure",
+      "tests": [
+        "packages/waybi_friends/test/room_widget_test.dart",
+        "packages/waybi_friends/test/journal_recovery_test.dart",
+        "packages/waybi_friends/test/packing_test.dart",
+        "packages/waybi_friends/test/room_life_test.dart",
+        "packages/waybi_friends/test/account_erasure_test.dart",
+        "packages/waybi_friends/test/souvenir_painter_test.dart"
+      ]
+    },
+    {
+      "id": "map-sdk",
+      "label": "Reusable map models, renderer capabilities, overlays and source contracts",
+      "tests": [
+        "packages/waybi_map/test/waybi_map_test.dart",
+        "packages/waybi_map/test/place_renderer_contracts_test.dart"
+      ]
+    },
+    {
+      "id": "native-ios-inbox",
+      "label": "Production Swift URL queue, duplicates, encoding and OAuth isolation",
+      "tests": [
+        "apps/mobile/ios/NativeTests/NavigationURLQueueTests.swift"
+      ]
+    }
+  ]
+}

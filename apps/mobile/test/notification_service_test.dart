@@ -61,4 +61,54 @@ void main() {
     expect(details['presentSound'], true);
     expect(shown.single['payload'], 'camera:test');
   });
+  test('Android permissions control road alerts and commute notifications keep their destination payload', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    FlutterLocalNotificationsPlatform.instance =
+        AndroidFlutterLocalNotificationsPlugin();
+    var allowed = false;
+    final shown = <Map>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'initialize') return true;
+      if (call.method == 'areNotificationsEnabled' ||
+          call.method == 'requestNotificationsPermission') {
+        return allowed;
+      }
+      if (call.method == 'show') shown.add(call.arguments as Map);
+      return null;
+    });
+    final service = WaybiNotificationService();
+    expect(await service.requestPermission(), isFalse);
+    expect(
+      await service.showRoadAlert(
+        id: 'closure',
+        title: 'Closure',
+        body: 'Ramp closed',
+      ),
+      isFalse,
+    );
+    expect(shown, isEmpty);
+    allowed = true;
+    expect(await service.requestPermission(), isTrue);
+    expect(
+      await service.showRoadAlert(
+        id: 'closure',
+        title: 'Closure',
+        body: 'Ramp closed',
+      ),
+      isTrue,
+    );
+    await service.showPlusCommuteAlert(
+      id: 'work',
+      title: 'Work route',
+      body: 'Road works',
+    );
+    expect(shown.map((value) => value['payload']), [
+      'closure',
+      'route-watch:work',
+    ]);
+    expect(
+      (shown.first['platformSpecifics'] as Map)['channelId'],
+      'waybi_road_alerts',
+    );
+  });
 }

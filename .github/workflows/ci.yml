@@ -18,7 +18,7 @@ jobs:
       - run: node --check scripts/flutter-dev.mjs
       - run: node --check scripts/ios-device.mjs
       - run: node --check scripts/d1-migrate-remote.mjs
-      - run: node --test scripts/d1-migrate-remote.test.mjs
+      - run: node --test scripts/d1-migrate-remote.test.mjs scripts/check-mobile-coverage.test.mjs
       - run: pnpm typecheck:server
       - run: pnpm typecheck:nz-routing
       - run: pnpm test
@@ -40,19 +40,36 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter test
+      - run: flutter test --coverage --concurrency=2
       - name: Analyze and test Waybi companions
         working-directory: packages/waybi_friends
         run: |
           flutter pub get
           flutter analyze
-          flutter test
+          flutter test --coverage --concurrency=2
       - name: Analyze and test reusable waybi_map package
         working-directory: packages/waybi_map
         run: |
           dart pub get
           dart analyze
-          dart test
+          dart test --coverage=coverage
+          dart run coverage:format_coverage --lcov --in=coverage --out=coverage/lcov.info --report-on=lib
+
+      - name: Require reviewed coverage for every mobile source file
+        working-directory: .
+        run: node scripts/check-mobile-coverage.mjs
+      - name: Save mobile coverage reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobile-test-coverage
+          path: |
+            apps/mobile/coverage/lcov.info
+            packages/waybi_friends/coverage/lcov.info
+            packages/waybi_map/coverage/lcov.info
+            coverage/mobile-inventory.json
+          retention-days: 7
+          if-no-files-found: error
 
   ios-compile:
     if: github.event_name == 'pull_request'
@@ -67,6 +84,8 @@ jobs:
           flutter-version: '3.47.5'
           channel: stable
           cache: true
+      - name: Test native navigation URL handling
+        run: swift test --package-path ios --enable-code-coverage
       - run: flutter config --enable-swift-package-manager
       - run: flutter pub get
       - run: flutter build ios --release --no-codesign

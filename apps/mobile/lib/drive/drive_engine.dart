@@ -175,16 +175,11 @@ class DriveEngine extends ChangeNotifier {
       upcomingTransitLane = null;
       return;
     }
-    var along = 0.0, turningLeft = false;
-    for (final step in route.steps) {
-      if (along >= progress.alongMeters - 5 &&
-          along - progress.alongMeters <= 300 &&
-          step.maneuverModifier.contains('left')) {
-        turningLeft = true;
-        break;
-      }
-      along += step.distanceMeters;
-    }
+    final turningLeft = hasImmediateTransitLaneLeftTurn(
+      route,
+      match,
+      progress.alongMeters,
+    );
     upcomingTransitLane = TransitLaneNotice(
       match: match,
       distanceMeters: (match.startMeters - progress.alongMeters).clamp(

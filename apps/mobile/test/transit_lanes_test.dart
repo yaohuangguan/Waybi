@@ -56,6 +56,150 @@ void main() {
     snapshot = TransitLaneSnapshot(raw);
   });
 
+  test(
+    'bus-lane guidance follows only the immediate junction, not a later left',
+    () {
+      final lane = TransitLane(
+        id: 'symonds-northbound',
+        roadName: 'Symonds Street',
+        kind: 'Bus',
+        schedule: const TransitSchedule(
+          days: [1, 2, 3, 4, 5, 6, 7],
+          windows: [
+            [0, 1440],
+          ],
+          known: true,
+        ),
+        points: const [],
+      );
+      final match = TransitLaneMatch(lane: lane, startMeters: 0, endMeters: 65);
+      RouteStepInfo step(String type, String modifier, double at) =>
+          RouteStepInfo(
+            instruction: '',
+            distanceMeters: 0,
+            alongRouteMeters: at,
+            maneuverType: type,
+            maneuverModifier: modifier,
+            location: const GeoPoint(-36.851, 174.766),
+          );
+      RouteOption withTurns(List<RouteStepInfo> steps) => RouteOption(
+        id: 'whitaker-turns',
+        mode: WaybiTravelMode.drive,
+        durationSeconds: 65,
+        distanceMeters: 310,
+        points: const [
+          GeoPoint(-36.851, 174.766),
+          GeoPoint(-36.84822, 174.766),
+        ],
+        provider: 'independent',
+        traffic: const TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
+        trafficIntervals: const [],
+        steps: steps,
+      );
+
+      // Regression: 15m RIGHT onto Whitaker Place, then LEFT ahead.
+      final rightThenLeft = withTurns([
+        step('depart', 'straight', 0),
+        step('turn', 'right', 15),
+        step('turn', 'left', 85),
+      ]);
+      expect(hasImmediateTransitLaneLeftTurn(rightThenLeft, match, 0), false);
+      final notice = TransitLaneNotice(
+        match: match,
+        distanceMeters: 0,
+        turningLeft: hasImmediateTransitLaneLeftTurn(rightThenLeft, match, 0),
+      );
+      expect(notice.instruction('zh'), '请保持普通车道');
+      expect(notice.instruction('en'), 'Stay in a general traffic lane');
+      expect(notice.speech('zh'), isNot(contains('准备左转')));
+
+      // A genuine immediate left at the end of the *same* matched lane.
+      final immediateLeft = withTurns([
+        step('depart', 'straight', 0),
+        step('turn', 'left', 25),
+      ]);
+      expect(hasImmediateTransitLaneLeftTurn(immediateLeft, match, 0), true);
+      expect(hasImmediateTransitLaneLeftTurn(immediateLeft, match, 18), true);
+      expect(hasImmediateTransitLaneLeftTurn(immediateLeft, match, 34), false);
+      expect(
+        hasImmediateTransitLaneLeftTurn(
+          withTurns([step('turn', 'left', 170)]),
+          match,
+          0,
+        ),
+        false,
+      );
+      expect(
+        hasImmediateTransitLaneLeftTurn(
+          withTurns([step('turn', 'left', 110)]),
+          match,
+          0,
+        ),
+        false,
+        reason: 'Left turn after the transit-lane corridor is not related',
+      );
+      expect(
+        hasImmediateTransitLaneLeftTurn(
+          withTurns([step('fork', 'left', 25)]),
+          match,
+          0,
+        ),
+        false,
+      );
+      expect(
+        hasImmediateTransitLaneLeftTurn(
+          withTurns([step('turn', 'right', 20), step('turn', 'left', 24)]),
+          match,
+          0,
+        ),
+        false,
+      );
+      expect(
+        hasImmediateTransitLaneLeftTurn(
+          withTurns([
+            RouteStepInfo(
+              instruction: '',
+              distanceMeters: 30,
+              maneuverType: 'depart',
+              location: const GeoPoint(-36.851, 174.766),
+            ),
+            RouteStepInfo(
+              instruction: '',
+              distanceMeters: 30,
+              maneuverType: 'turn',
+              maneuverModifier: 'left',
+              location: const GeoPoint(-36.851, 174.766),
+            ),
+          ]),
+          match,
+          0,
+        ),
+        true,
+        reason: 'Legacy cumulative step lengths still support immediate turns',
+      );
+      final directionUnknown = TransitLane(
+        id: 'unknown-direction',
+        roadName: 'Symonds Street',
+        kind: 'Bus',
+        schedule: lane.schedule,
+        points: const [],
+        directionKnown: false,
+      );
+      expect(
+        hasImmediateTransitLaneLeftTurn(
+          immediateLeft,
+          TransitLaneMatch(
+            lane: directionUnknown,
+            startMeters: 0,
+            endMeters: 65,
+          ),
+          0,
+        ),
+        false,
+      );
+    },
+  );
+
   test('published Symonds lane is 24/7 and matches northbound, preserving ordinary traffic', () {
     final lane = snapshot.lanes.firstWhere((l) => l.id == 'at:svl:69:0');
     final matches = matchTransitLanes(route(lane), [lane]);

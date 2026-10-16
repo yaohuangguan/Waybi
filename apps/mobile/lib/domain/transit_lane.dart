@@ -301,6 +301,74 @@ List<TransitLaneMatch> transitRoadBlocks(
       .toList();
 }
 
+/// Do not turn a later left maneuver into advice for the *current* road.
+/// Only the next actionable junction may justify an optional left-turn
+/// reminder, and that junction must be at the matched lane's end.
+/// Without reliable step positions or direction data, use neutral advice.
+bool hasImmediateTransitLaneLeftTurn(
+  RouteOption route,
+  TransitLaneMatch match,
+  double progressMeters,
+) {
+  if (route.mode != WaybiTravelMode.drive ||
+      route.points.length < 2 ||
+      route.distanceMeters <= 0 ||
+      route.steps.isEmpty ||
+      !progressMeters.isFinite ||
+      !match.lane.directionKnown ||
+      !match.lane.schedule.known ||
+      match.lane.wholeRoad ||
+      match.startMeters - progressMeters > 120 ||
+      match.endMeters < progressMeters - 10) {
+    return false;
+  }
+
+  var routeGeometryMeters = 0.0;
+  for (var i = 1; i < route.points.length; i++) {
+    final a = route.points[i - 1], b = route.points[i];
+    routeGeometryMeters += distanceMeters(
+      a.latitude,
+      a.longitude,
+      b.latitude,
+      b.longitude,
+    );
+  }
+  if (routeGeometryMeters <= 0) return false;
+  final scale = routeGeometryMeters / route.distanceMeters;
+  var cumulativeStepMeters = 0.0;
+  for (final step in route.steps) {
+    final atMeters = (step.alongRouteMeters ?? cumulativeStepMeters) * scale;
+    cumulativeStepMeters += step.distanceMeters;
+    if (atMeters < progressMeters - 8) continue;
+    if (atMeters > progressMeters + 120) break;
+
+    final type = step.maneuverType.trim().toLowerCase();
+    final modifier = step.maneuverModifier.trim().toLowerCase();
+    final changesDirection =
+        modifier.contains('left') ||
+        modifier.contains('right') ||
+        modifier == 'uturn';
+    final intersection =
+        type == 'turn' ||
+        type == 'fork' ||
+        type == 'merge' ||
+        type == 'end of road' ||
+        type == 'arrive' ||
+        type == 'rotary' ||
+        type.contains('roundabout') ||
+        type.contains('ramp');
+    if (!changesDirection && !intersection) continue;
+
+    // A right turn before a later left is *never* "prepare to turn left".
+    // Nor can a left on the next street justify a bus-lane warning here.
+    return type == 'turn' &&
+        (modifier == 'left' || modifier == 'sharp left') &&
+        atMeters >= match.startMeters - 20 &&
+        atMeters <= match.endMeters + 35;
+  }
+  return false;
+}
+
 class TransitLaneNotice {
   const TransitLaneNotice({
     required this.match,

@@ -976,11 +976,20 @@ class _ReviewTile extends StatelessWidget {
           CircleAvatar(
             radius: 16,
             backgroundColor: scheme.surfaceContainerHighest,
-            backgroundImage: review.authorPhoto?.isNotEmpty == true
-                ? NetworkImage(review.authorPhoto!)
-                : null,
             child: review.authorPhoto?.isNotEmpty == true
-                ? null
+                ? ClipOval(
+                    child: Image.network(
+                      review.authorPhoto!,
+                      width: 32,
+                      height: 32,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Icon(
+                        Icons.person_rounded,
+                        size: 17,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  )
                 : Icon(
                     Icons.person_rounded,
                     size: 17,

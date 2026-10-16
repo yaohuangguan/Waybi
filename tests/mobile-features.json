@@ -381,6 +381,90 @@
       "tests": [
         "apps/mobile/test/app_journey_flows_test.dart"
       ]
+    },
+    {
+      "id": "app-search-shortcuts-flows",
+      "label": "Owned search, shortcut editing, persistence, reverse lookup and Smart Commute",
+      "tests": [
+        "apps/mobile/test/app_search_shortcuts_flows_test.dart"
+      ]
+    },
+    {
+      "id": "app-profile-controls",
+      "label": "Navigation preferences, notifications, camera sync recovery, licences and account errors",
+      "tests": [
+        "apps/mobile/test/app_profile_controls_test.dart"
+      ]
+    },
+    {
+      "id": "app-transit-recovery",
+      "label": "Bilingual transit trips, stop planning, ETA sharing and location recovery",
+      "tests": [
+        "apps/mobile/test/app_transit_recovery_flows_test.dart"
+      ]
+    },
+    {
+      "id": "app-map-camera-flows",
+      "label": "Browse, Just Drive and navigation camera commands on the real MapLibre renderer",
+      "tests": [
+        "apps/mobile/test/app_map_camera_flows_test.dart"
+      ]
+    },
+    {
+      "id": "place-details-interactions",
+      "label": "Bilingual details, licensed photos, failed avatars and route actions",
+      "tests": [
+        "apps/mobile/test/place_details_interactions_test.dart"
+      ]
+    },
+    {
+      "id": "route-preview-states",
+      "label": "Traffic, closures, restrictions, transit, parking and filters",
+      "tests": [
+        "apps/mobile/test/route_preview_states_test.dart"
+      ]
+    },
+    {
+      "id": "trips-watch-interactions",
+      "label": "Watch details, failures, concurrent refresh and trip insights",
+      "tests": [
+        "apps/mobile/test/trips_watch_interactions_test.dart"
+      ]
+    },
+    {
+      "id": "map-overlay-interactions",
+      "label": "Overlay selection, bounds, raster traffic and style recovery",
+      "tests": [
+        "apps/mobile/test/independent_map_layers_interactions_test.dart"
+      ]
+    },
+    {
+      "id": "search-network-interactions",
+      "label": "Suggestion fallback, deduplication, stale responses and current-location labels",
+      "tests": [
+        "apps/mobile/test/explore_search_interactions_test.dart"
+      ]
+    },
+    {
+      "id": "drive-safety-recovery",
+      "label": "iOS and Android local GPS failure recovery, lane advice, camera voice and offline traffic",
+      "tests": [
+        "apps/mobile/test/drive_engine_safety_recovery_test.dart"
+      ]
+    },
+    {
+      "id": "map-layer-controls",
+      "label": "Every camera visibility and driving reminder control, appearance and traffic status",
+      "tests": [
+        "apps/mobile/test/map_layer_controls_test.dart"
+      ]
+    },
+    {
+      "id": "place-source-interactions",
+      "label": "Small-screen bilingual attribution, source links and unsafe-photo-link guards",
+      "tests": [
+        "apps/mobile/test/place_sources_interactions_test.dart"
+      ]
     }
   ]
 }

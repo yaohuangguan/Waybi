@@ -17,6 +17,37 @@ void main() {
   const from = LatLng(latitude: -36.8, longitude: 174.7);
   const to = LatLng(latitude: -36.9, longitude: 174.8);
   test(
+    'route repository default client respects the injected HTTP boundary',
+    () async {
+      final client = MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'provider': 'independent',
+            'options': [
+              {
+                'id': 'default',
+                'mode': 'drive',
+                'coordinates': [
+                  [174.7, -36.8],
+                  [174.8, -36.9],
+                ],
+              },
+            ],
+          }),
+          200,
+        ),
+      );
+      await http.runWithClient(() async {
+        final plan = await RouteRepository().fetch(
+          origin: from,
+          destination: to,
+        );
+        expect(plan.provider, 'independent');
+        expect(plan.options.single.id, 'default');
+      }, () => client);
+    },
+  );
+  test(
     'route request preserves coordinate order, stops, mode and Unicode',
     () async {
       final repo = RouteRepository(

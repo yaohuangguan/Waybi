@@ -250,7 +250,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Timer? _externalRetry;
   ({int request, SelectedPlace selected, WaybiTravelMode mode})?
   _externalPreview;
-  static const _mapId = String.fromEnvironment('MAP_ID');
 
   late final DriveEngine _driveEngine = widget.driveEngine ?? DriveEngine();
   late final IndependentNavigationEngine _independentNavigation;
@@ -298,7 +297,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final Map<String, MapProvider> _quickLocationProviders = {};
   bool _syncingQuickLocations = false;
 
-  Brightness? _lastMapBrightness;
   double _navigationTopInset = 125;
   double _navigationBottomInset = 215;
   ReliableLocationFeed? _browseLocationFeed;
@@ -362,10 +360,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final Map<String, DateTime> _placeQuickRouteCachedAt = {};
   final Map<String, LatLng> _placeQuickRouteOrigins = {};
 
-  Marker? _carMarker;
-
   String _markerSignature = '';
-  final bool _markerSyncing = false;
 
   MapLayerSettings _layers = const MapLayerSettings();
   NavigationCameraMode _cameraMode = NavigationCameraMode.northUpFlat;
@@ -482,7 +477,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _placeDetailsLoading = false;
   String? _placeDetailsError;
   int _placeDetailsRequest = 0;
-  bool _navigationSessionInitialized = false;
   bool _guidanceRunning = false;
   bool _busy = false;
   bool _checkingRouteWatchAlerts = false;
@@ -733,22 +727,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (_locationForRoute == null || _selectedPoi == null || _busy) return;
     _externalPreview = null;
     unawaited(_loadRoutePreview(_selectedPoi!, preferredMode: pending.mode));
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final brightness = Theme.of(context).brightness;
-    if (_lastMapBrightness == brightness) return;
-    _lastMapBrightness = brightness;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final controller = null;
-      if (controller != null) {
-        unawaited(_applyMapLayers(controller));
-      }
-    });
   }
 
   Future<void> _maybeShowCoreOnboarding() async {
@@ -1028,7 +1006,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           _routeCameraSummaries,
         );
       }
-      unawaited(_syncCameraMarkers());
+
       {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) setState(() {});
@@ -1109,14 +1087,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         );
       } catch (_) {}
     }
-    final reference = destination.reference;
-    if (reference?.provider == 'google' && reference!.id.isNotEmpty) {
-      try {
-        details = await _placeDetailsRepository.fetch(
-          reference.id,
-          language: _appLanguage,
-        );
-      } catch (_) {}
+    try {
+      details = await _placeDetailsRepository.fetchIndependent(destination);
+    } catch (_) {
+      // Arrival guidance and parking remain usable without extra place details.
     }
     if (!mounted || request != _arrivalRequest) return;
     setState(() {
@@ -1724,9 +1698,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _placeDetailsRepository.dispose();
     _parkingRepository.dispose();
     _driveEngine.dispose();
-    if (_navigationSessionInitialized) {
-      GoogleMapsNavigator.cleanup();
-    }
     super.dispose();
   }
 
@@ -2474,7 +2445,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       );
       await _driveEngine.loadCameras(force: true);
       _markerSignature = '';
-      unawaited(_syncCameraMarkers());
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(_text('Road report submitted', '道路情况已上报'))),
@@ -3217,7 +3188,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             }
             if (mounted) {
               setState(() {});
-              unawaited(_syncCameraMarkers());
             }
             return snapshot;
           },
@@ -3233,7 +3203,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             );
             if (mounted) {
               setState(() {});
-              unawaited(_syncCameraMarkers());
             }
             return snapshot;
           },
@@ -3459,6 +3428,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 18,
         ),
         child: ExploreSearch(
+          language: _appLanguage,
           currentLocation: _gpsLocation,
           onSelected: (selection) => Navigator.of(sheetContext).pop(selection),
         ),
@@ -3940,48 +3910,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       unawaited(_driveEngine.startTrafficFlowRefresh(force: true));
     }
     if (mounted) unawaited(_startTracking());
-    if (_navigationSessionInitialized) {
-      await GoogleMapsNavigator.cleanup();
-      _navigationSessionInitialized = false;
-    }
     if (mounted) {
       setState(() {});
-    }
-  }
-
-  Future<void> _loadPlaceDetails(PointOfInterest poi) async {
-    final request = ++_placeDetailsRequest;
-    if (poi.placeID.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _placeDetails = null;
-          _placeDetailsLoading = false;
-          _placeDetailsError = null;
-        });
-      }
-      return;
-    }
-    setState(() {
-      _placeDetails = null;
-      _placeDetailsLoading = true;
-      _placeDetailsError = null;
-    });
-    try {
-      final details = await _placeDetailsRepository.fetch(
-        poi.placeID,
-        language: _appLanguage,
-      );
-      if (!mounted || request != _placeDetailsRequest) return;
-      setState(() {
-        _placeDetails = details;
-        _placeDetailsLoading = false;
-      });
-    } catch (_) {
-      if (!mounted || request != _placeDetailsRequest) return;
-      setState(() {
-        _placeDetailsLoading = false;
-        _placeDetailsError = 'More place details are temporarily unavailable.';
-      });
     }
   }
 
@@ -4046,9 +3976,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _focusSelectedPlace();
       unawaited(_loadPlaceQuickRoute(place));
     });
-    if (place.reference?.provider == 'google') {
-      unawaited(_loadPlaceDetails(_selectedPoi!));
-    } else if ((seedDetails == null)) {
+    if (seedDetails == null) {
       unawaited(_loadIndependentPlaceDetails(place));
     } else {
       _placeDetailsRequest++;
@@ -4168,12 +4096,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     await prefs.setStringList('waybi.recent.google', records);
   }
 
-  Future<void> _syncCameraMarkers() async {
-    if (_markerSyncing) return;
-
-    return;
-  }
-
   Future<void> _setCarMarker(bool value) async {
     {}
     final prefs = await SharedPreferences.getInstance();
@@ -4186,45 +4108,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     await _setCarMarker(style != LocationMarkerStyle.classic);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('waybi.map.location_marker', style.name);
-    if (_carMarker != null) {
-      {}
-    }
     _queueMapRefresh();
-  }
-
-  Future<void> _applyMapLayers(GoogleMapViewController controller) async {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    await controller.settings.setTrafficEnabled(_layers.traffic);
-    final style = _driveEngine.active && _layers.style == BaseMapStyle.terrain
-        ? BaseMapStyle.standard
-        : _layers.style;
-
-    // Use the Google Maps SDK's native light/dark schemes instead of a
-    // hand-authored legacy JSON style. This keeps roads, POIs, labels and
-    // traffic contrast consistent with the Google Maps app and allows the
-    // platform view to switch appearance without being recreated.
-    if (_mapId.isEmpty) {
-      await controller.setMapStyle(null);
-    }
-    await controller.setMapColorScheme(
-      dark ? MapColorScheme.dark : MapColorScheme.light,
-    );
-    if (controller is GoogleNavigationViewController) {
-      await controller.setForceNightMode(
-        dark
-            ? NavigationForceNightMode.forceNight
-            : NavigationForceNightMode.forceDay,
-      );
-    }
-
-    await controller.setMapType(
-      mapType: switch (style) {
-        BaseMapStyle.standard => MapType.normal,
-        BaseMapStyle.satellite => MapType.satellite,
-        BaseMapStyle.terrain => MapType.terrain,
-        BaseMapStyle.hybrid => MapType.hybrid,
-      },
-    );
   }
 
   Future<void> _setMapLayers(MapLayerSettings value) async {

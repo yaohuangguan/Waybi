@@ -17,6 +17,10 @@ import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/data/transit_lane_repository.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/providers/independent_map_renderer.dart';
+import 'package:waybi_mobile/providers/location_marker_art.dart';
+import 'package:waybi_mobile/providers/road_event_marker_art.dart';
+import 'package:waybi_mobile/domain/map_layer_settings.dart';
+import 'package:waybi_mobile/domain/road_event.dart';
 
 import 'recording_map_platform.dart';
 
@@ -94,9 +98,12 @@ class AppHarness {
   String? pendingNavigation;
   int? routeDistanceMeters;
   bool parkingAvailable = false;
+  Map<String, dynamic>? transitResponse;
   final routeWatchRows = <Map<String, dynamic>>[];
   final routeWatchAlerts = <Map<String, dynamic>>[];
   final explorePlaces = <Map<String, dynamic>>[];
+  final searchPlaces = <Map<String, dynamic>>[];
+  final reversePlaces = <Map<String, dynamic>>[];
   bool signedIn = false;
   bool plus = false;
   final endpointFailures = <String, int>{};
@@ -210,6 +217,15 @@ class AppHarness {
         (row) => row['id'] == Uri.decodeComponent(path.split('/').last),
       );
       body = {'ok': true};
+    } else if (path == '/api/suggest' || path == '/api/search') {
+      body = searchPlaces;
+    } else if (path == '/reverse') {
+      body = {'features': reversePlaces};
+    } else if (path == '/api/v6/plan') {
+      if (transitResponse == null) {
+        return http.Response('{"error":"offline"}', 503);
+      }
+      body = transitResponse!;
     } else if (path == '/api/explore') {
       body = explorePlaces;
     } else if (path == '/api/route-options') {
@@ -508,6 +524,37 @@ class AppHarness {
         location: point,
         kind: kind,
       ),
+    );
+    await frames();
+  }
+
+  Future<void> readyMap() async {
+    await tester.runAsync(() async {
+      for (final style in LocationMarkerStyle.values) {
+        await LocationMarkerArt.practicePng(style);
+      }
+      await LocationMarkerArt.glowPng();
+      await LocationMarkerArt.finishFlagPng();
+      for (final kind in CameraKind.values) {
+        await LocationMarkerArt.cameraPng(kind);
+      }
+      for (final type in RoadEventType.values) {
+        await RoadEventMarkerArt.png(type);
+      }
+    });
+    await until(
+      () => find.byType(ml.MapLibreMap).evaluate().isNotEmpty,
+      reason: 'The bundled map style should be ready',
+    );
+    await tester.runAsync(() async {
+      tester
+          .widget<ml.MapLibreMap>(find.byType(ml.MapLibreMap))
+          .onStyleLoadedCallback!();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await until(
+      () => mapPlatform.sources.containsKey('waybi-driver'),
+      reason: 'The real Waybi map should finish installing its overlays',
     );
     await frames();
   }

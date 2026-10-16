@@ -27,7 +27,7 @@ Test names in this table are under apps/mobile/test unless a package or native t
 
 | Capability | Automated regression evidence |
 | --- | --- |
-| Startup, onboarding, appearance and page navigation | `app_shell_test.dart`, `status_banner_test.dart` |
+| Startup, onboarding, appearance and page navigation | `app_shell_test.dart`, `status_banner_test.dart`, `startup_handoff_test.dart` |
 | Location access, permanent denial and concurrent requests | `location_permission_gate_test.dart`, `app_shell_test.dart` |
 | Silent GPS, stream errors, stopped-trip races and stale fixes | `reliable_location_feed_test.dart`, `drive_engine_platform_test.dart`, `navigation_location_filter_test.dart` |
 | Heading validation, motion and trustworthy route origin | `native_contracts_test.dart`, `navigation_forward_bearing_test.dart`, `navigation_motion_test.dart`, `route_origin_location_test.dart` |

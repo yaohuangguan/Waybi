@@ -288,7 +288,13 @@ void main() {
             () => f.speech.any((s) => s.toLowerCase().contains('camera')),
             'Camera warning should reach the TTS boundary',
           );
-          expect(f.drive.upcomingTransitLane!.turningLeft, isTrue);
+          // The fixture's left turn precedes the matched bus lane.
+          // It must not be recycled as a maneuver instruction for that lane.
+          expect(f.drive.upcomingTransitLane!.turningLeft, isFalse);
+          expect(
+            f.speech.any((s) => s.toLowerCase().contains('turning left')),
+            isFalse,
+          );
           final laneCount = f.speech
               .where((s) => s.toLowerCase().contains('bus lane'))
               .length;

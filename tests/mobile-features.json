@@ -5,7 +5,9 @@
     {
       "id": "app-account-flows",
       "label": "Real app favorites, private reviews, saved routes, road reports and migrated shortcuts",
-      "tests": ["apps/mobile/test/app_account_flows_test.dart"]
+      "tests": [
+        "apps/mobile/test/app_account_flows_test.dart"
+      ]
     },
     {
       "id": "app-shell",
@@ -364,6 +366,20 @@
       "description": "Real application map selection, route modes and alternatives, independent navigation lifecycle, closure recovery, failed route retries, Just Drive recenter/trail and permission recovery",
       "tests": [
         "apps/mobile/test/app_navigation_flows_test.dart"
+      ]
+    },
+    {
+      "id": "app-experience-flows",
+      "label": "External navigation, bilingual onboarding, persisted map settings, arrival parking, route watch and discovery handoffs",
+      "tests": [
+        "apps/mobile/test/app_experience_flows_test.dart"
+      ]
+    },
+    {
+      "id": "app-journey-flows",
+      "label": "Measured journeys, offline outbox, account isolation, guest import, waypoint recovery, parking and walking continuation",
+      "tests": [
+        "apps/mobile/test/app_journey_flows_test.dart"
       ]
     }
   ]

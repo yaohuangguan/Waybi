@@ -20,6 +20,8 @@ import 'package:waybi_mobile/providers/independent_map_renderer.dart';
 
 import 'recording_map_platform.dart';
 
+import 'package:waybi_mobile/services/external_navigation_inbox.dart';
+
 class AppGps extends GeolocatorPlatform {
   final positions = StreamController<Position>.broadcast();
   bool enabled = true;
@@ -89,6 +91,12 @@ class AppHarness {
   bool routeFailure = false;
   bool blocked = false;
   int reportStatus = 201;
+  String? pendingNavigation;
+  int? routeDistanceMeters;
+  bool parkingAvailable = false;
+  final routeWatchRows = <Map<String, dynamic>>[];
+  final routeWatchAlerts = <Map<String, dynamic>>[];
+  final explorePlaces = <Map<String, dynamic>>[];
   bool signedIn = false;
   bool plus = false;
   final endpointFailures = <String, int>{};
@@ -96,6 +104,11 @@ class AppHarness {
   final reviews = <Map<String, dynamic>>[];
   final recentDestinations = <Map<String, dynamic>>[];
   final quickLocations = <Map<String, dynamic>>[];
+  final routeHistory = <Map<String, dynamic>>[];
+  final recordedJourneys = <String>{};
+  final importedJourneys = <String>{};
+  bool serverHasLifetimeTotals = true;
+  int lifetimeDistance = 0, lifetimeTrips = 0, lifetimeDuration = 0;
   Map<String, Object> get accountProfile => {
     'user': {
       'id': 'driver',
@@ -108,12 +121,13 @@ class AppHarness {
     'reviews': reviews,
     'recentDestinations': recentDestinations,
     'quickLocations': quickLocations,
-    'routeHistory': <Object>[],
-    'companionTotals': {
-      'distanceMeters': 0,
-      'tripCount': 0,
-      'durationSeconds': 0,
-    },
+    'routeHistory': routeHistory,
+    if (serverHasLifetimeTotals)
+      'companionTotals': {
+        'distanceMeters': lifetimeDistance,
+        'tripCount': lifetimeTrips,
+        'durationSeconds': lifetimeDuration,
+      },
   };
   Completer<http.Response>? delayedRoute;
   late final client = MockClient((request) async {
@@ -150,15 +164,54 @@ class AppHarness {
         if (path.endsWith('places')) 'isFavorite': item['isFavorite'],
       });
       body = accountProfile;
-    } else if (path == '/api/profile/routes' ||
-        path == '/api/profile/companion/import') {
+    } else if (path == '/api/profile/routes') {
+      final item = jsonDecode(request.body) as Map<String, dynamic>;
+      if (recordedJourneys.add(item['journeyId'] as String)) {
+        lifetimeDistance += (item['distanceMeters'] as num).toInt();
+        lifetimeTrips++;
+        lifetimeDuration += (item['durationSeconds'] as num).toInt();
+        routeHistory.insert(0, {
+          ...item,
+          'createdAt': DateTime.now().toUtc().toIso8601String(),
+        });
+      }
       body = accountProfile;
+    } else if (path == '/api/profile/companion/import') {
+      final item = jsonDecode(request.body) as Map<String, dynamic>;
+      if (importedJourneys.add(item['importId'] as String)) {
+        lifetimeDistance += (item['distanceMeters'] as num).toInt();
+        lifetimeTrips += (item['tripCount'] as num).toInt();
+        lifetimeDuration += (item['durationSeconds'] as num).toInt();
+      }
+      body = accountProfile;
+    } else if (path == '/api/auth/logout') {
+      body = {'ok': true};
     } else if (path == '/api/billing/apple/config') {
       body = {'ready': false, 'productId': 'co.waybi.plus.monthly'};
     } else if (path == '/api/route-watches') {
-      body = {'watches': []};
+      if (request.method == 'POST') {
+        final item = jsonDecode(request.body) as Map<String, dynamic>;
+        routeWatchRows.removeWhere((row) => row['label'] == item['label']);
+        routeWatchRows.add({
+          ...item,
+          'id': 'watch-${item['label']}',
+          'status': 'clear',
+          'events': [],
+        });
+      }
+      body = {'watches': routeWatchRows};
     } else if (path == '/api/route-watch-alerts') {
-      body = {'alerts': []};
+      body = {'alerts': routeWatchAlerts};
+    } else if (path == '/api/route-watch-alerts/read') {
+      body = {'ok': true};
+    } else if (path.startsWith('/api/route-watches/') &&
+        request.method == 'DELETE') {
+      routeWatchRows.removeWhere(
+        (row) => row['id'] == Uri.decodeComponent(path.split('/').last),
+      );
+      body = {'ok': true};
+    } else if (path == '/api/explore') {
+      body = explorePlaces;
     } else if (path == '/api/route-options') {
       if (delayedRoute != null) return delayedRoute!.future;
       if (routeFailure) return http.Response('{"error":"offline"}', 503);
@@ -176,7 +229,7 @@ class AppHarness {
               'id': '$mode-${short ? 'short' : 'fast'}',
               'mode': mode,
               'durationSeconds': short ? 800 : 600,
-              'distanceMeters': short ? 900 : 1100,
+              'distanceMeters': routeDistanceMeters ?? (short ? 900 : 1100),
               'description': short ? 'Shorter road' : 'Faster road',
               'provider': 'independent',
               'coordinates': [
@@ -247,7 +300,31 @@ class AppHarness {
           ? {'id': 'new-report'}
           : {'error': 'Temporarily unavailable'};
     } else if (path.endsWith('/query')) {
-      body = {'features': []};
+      final parking = parkingAvailable && path.contains('ParkingService');
+      final coords = (request.url.queryParameters['geometry'] ?? '174.91,-37.2')
+          .split(',')
+          .map(double.parse)
+          .toList();
+      body = {
+        'features': [
+          if (parking)
+            {
+              'geometry': {
+                'type': 'Point',
+                'coordinates': [coords[0] + .0001, coords[1]],
+              },
+              'properties': {
+                'OBJECTID': 1,
+                'STATUS': 'Open',
+                'SHORTDESCRIPTION': 'Nearby car park',
+                'TOTALSPACES': 50,
+                'MOBILITYSPACES': 2,
+                'CLEARANCEMETERS': 2.1,
+                'STREET': 'Destination road',
+              },
+            },
+        ],
+      };
     } else if (path.contains('road-intelligence') ||
         path.contains('road-events')) {
       body = {
@@ -352,7 +429,11 @@ class AppHarness {
         if (call.method == 'requestPermissions') {
           return <int, int>{3: permission, 5: permission};
         }
-        if (call.method == 'takePending') return null;
+        if (call.method == 'takePending') {
+          final value = pendingNavigation;
+          pendingNavigation = null;
+          return value;
+        }
         if (call.method == 'areNotificationsEnabled' ||
             call.method == 'requestNotificationsPermission') {
           return true;
@@ -459,6 +540,12 @@ class AppHarness {
       action();
       await Future<void>.delayed(const Duration(milliseconds: 60));
     });
+    await frames();
+  }
+
+  Future<void> handoff(String value) async {
+    pendingNavigation = value;
+    await tester.runAsync(ExternalNavigationInbox.instance.start);
     await frames();
   }
 

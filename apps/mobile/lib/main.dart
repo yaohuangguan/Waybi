@@ -20,7 +20,6 @@ import 'data/app_store_billing.dart';
 import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
 import 'data/parking_repository.dart';
-import 'data/route_repository.dart';
 import 'data/quick_location_store.dart';
 import 'data/usage_telemetry_repository.dart';
 import 'data/navigation_reward_repository.dart';
@@ -260,7 +259,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   late final _plusBilling = AppStoreBillingGateway(_account);
   final PlaceDetailsRepository _placeDetailsRepository =
       PlaceDetailsRepository();
-  final RouteRepository _routeRepository = RouteRepository();
+
   final UsageTelemetryRepository _usageTelemetry = UsageTelemetryRepository();
   final _navigationRewards = NavigationRewardRepository();
   final _navigationFeedback = NavigationFeedbackRepository();
@@ -2179,7 +2178,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       PlaceSummary destination,
     ) async {
       try {
-        final plan = await _routeRepository.fetch(
+        final plan = await _driveRoutePlan(
           origin: LatLng(
             latitude: origin.location.latitude,
             longitude: origin.location.longitude,
@@ -3559,13 +3558,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _lastDrivePositionAt = null;
   }
 
-  NavigationTravelMode? get _nativeTravelMode => switch (_selectedMode) {
-    WaybiTravelMode.drive => NavigationTravelMode.driving,
-    WaybiTravelMode.walk => NavigationTravelMode.walking,
-    WaybiTravelMode.bicycle => NavigationTravelMode.cycling,
-    WaybiTravelMode.transit => null,
-  };
-
   Future<void> _startTransitTrip(PointOfInterest poi, RouteOption route) async {
     setState(() {
       _transitTripRunning = true;
@@ -3672,6 +3664,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           _offlineCorridorReady = false;
         });
         _beginJourney(poi);
+        _updateArrivalExperience();
         await _startSystemNavigation();
         unawaited(_cacheNavigationCorridor(force: true));
         _queueMapRefresh();
@@ -3760,6 +3753,20 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }) async {
     if (!_guidanceRunning || _endingNavigation) return;
     _endingNavigation = true;
+    final parkingTarget = _selectedParking;
+    final parkingFix = _gpsLocation;
+    final reachedParking =
+        parkingTarget != null &&
+        (arrived ||
+            (_driveEngine.hasReliableLocation &&
+                parkingFix != null &&
+                distanceMeters(
+                      parkingFix.latitude,
+                      parkingFix.longitude,
+                      parkingTarget.location.latitude,
+                      parkingTarget.location.longitude,
+                    ) <=
+                    75));
     await _systemNavigation.stop();
     final route = _activeNavigationRoute;
     final summary = _journey?.finish(arrived: arrived);
@@ -3836,7 +3843,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _arrivalPlaceDetails = null;
         _offlineCorridorReady = false;
         _parkingLegFinished =
-            _selectedParking != null &&
+            reachedParking &&
             _parkingOriginalPlace != null &&
             _selectedMode == WaybiTravelMode.drive;
       });
@@ -4650,33 +4657,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  void _showAlongRouteSearch() {
-    if (_independentNavigation.active) {
-      unawaited(_searchIndependentStop());
-      return;
-    }
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          18,
-          16,
-          MediaQuery.viewInsetsOf(sheetContext).bottom + 18,
-        ),
-        child: ExploreSearch(
-          currentLocation: _gpsLocation,
-          recent: _recentDestinations,
-          onSelected: (selection) {
-            Navigator.of(sheetContext).pop();
-            unawaited(_addAlongRouteStop(selection));
-          },
-        ),
-      ),
-    );
-  }
+  void _showAlongRouteSearch() => unawaited(_searchIndependentStop());
 
   Future<void> _searchIndependentStop() async {
     final current = _driveEngine.snappedLocation ?? _gpsLocation;
@@ -4692,7 +4673,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           },
           language: _appLanguage,
           marker: _locationMarker,
-          recent: const [],
+          recent: _recentDestinations
+              .map(
+                (item) => PlaceSummary(
+                  name: item.name ?? item.label,
+                  address: item.address ?? '',
+                  location: GeoPoint(
+                    item.location.latitude,
+                    item.location.longitude,
+                  ),
+                ),
+              )
+              .toList(growable: false),
           currentLocation: current == null
               ? null
               : GeoPoint(current.latitude, current.longitude),
@@ -4729,59 +4721,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           ),
         );
       }
-    }
-  }
-
-  Future<void> _addAlongRouteStop(DestinationSuggestion stop) async {
-    final route = _activeNavigationRoute;
-    final origin = _driveEngine.snappedLocation ?? _gpsLocation;
-    if (route == null || route.points.isEmpty || origin == null) return;
-    final destination = route.points.last;
-    try {
-      final plan = await _routeRepository.fetch(
-        origin: origin,
-        destination: LatLng(
-          latitude: destination.latitude,
-          longitude: destination.longitude,
-        ),
-        stops: [stop.location],
-      );
-      final next = plan.forMode(_selectedMode).firstOrNull;
-      if (next == null) throw StateError('No route via this stop');
-      final status = await GoogleMapsNavigator.setDestinations(
-        Destinations(
-          waypoints: [
-            NavigationWaypoint.withLatLngTarget(
-              title: stop.label,
-              target: stop.location,
-            ),
-            NavigationWaypoint.withLatLngTarget(
-              title: _destinationTitle,
-              target: LatLng(
-                latitude: destination.latitude,
-                longitude: destination.longitude,
-              ),
-            ),
-          ],
-          displayOptions: NavigationDisplayOptions(
-            showDestinationMarkers: false,
-          ),
-          routingOptions: RoutingOptions(
-            travelMode: _nativeTravelMode!,
-            alternateRoutesStrategy: NavigationAlternateRoutesStrategy.one,
-          ),
-        ),
-      );
-      if (status != NavigationRouteStatus.statusOk) {
-        throw StateError(status.name);
-      }
-      unawaited(
-        _usageTelemetry.record('google_navigation_destination', units: 2),
-      );
-      _driveEngine.setRoute(next);
-      setState(() => _activeNavigationRoute = next);
-    } catch (error) {
-      if (mounted) setState(() => _message = 'Could not add stop: $error');
     }
   }
 
@@ -4838,7 +4777,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       );
     }
 
-    final plan = await _routeRepository.fetch(
+    final plan = await _driveRoutePlan(
       origin: LatLng(
         latitude: origin.location.latitude,
         longitude: origin.location.longitude,

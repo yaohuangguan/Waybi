@@ -88,14 +88,78 @@ class AppHarness {
   int permission = 1;
   bool routeFailure = false;
   bool blocked = false;
-  int reportStatus = 200;
+  int reportStatus = 201;
+  bool signedIn = false;
+  bool plus = false;
+  final endpointFailures = <String, int>{};
+  final savedPlaces = <Map<String, dynamic>>[];
+  final reviews = <Map<String, dynamic>>[];
+  final recentDestinations = <Map<String, dynamic>>[];
+  final quickLocations = <Map<String, dynamic>>[];
+  Map<String, Object> get accountProfile => {
+    'user': {
+      'id': 'driver',
+      'email': 'driver@example.test',
+      'displayName': 'Driver',
+      'providers': ['password'],
+    },
+    'subscription': {'plan': plus ? 'plus' : 'free'},
+    'savedPlaces': savedPlaces,
+    'reviews': reviews,
+    'recentDestinations': recentDestinations,
+    'quickLocations': quickLocations,
+    'routeHistory': <Object>[],
+    'companionTotals': {
+      'distanceMeters': 0,
+      'tripCount': 0,
+      'durationSeconds': 0,
+    },
+  };
   Completer<http.Response>? delayedRoute;
   late final client = MockClient((request) async {
     requests.add(request);
     final path = request.url.path;
     Object body = {};
     int status = 200;
-    if (path == '/api/route-options') {
+    if (endpointFailures.containsKey(path)) {
+      return http.Response(
+        jsonEncode({'error': 'Temporarily unavailable'}),
+        endpointFailures[path]!,
+      );
+    }
+    if (path == '/api/auth/me') {
+      body = accountProfile;
+    } else if (path == '/api/profile/places' ||
+        path == '/api/profile/reviews' ||
+        path == '/api/profile/destinations' ||
+        path == '/api/profile/quick-locations') {
+      final item = jsonDecode(request.body) as Map<String, dynamic>;
+      final rows = switch (path) {
+        '/api/profile/places' => savedPlaces,
+        '/api/profile/reviews' => reviews,
+        '/api/profile/destinations' => recentDestinations,
+        _ => quickLocations,
+      };
+      final key =
+          path.endsWith('destinations') || path.endsWith('quick-locations')
+          ? 'label'
+          : 'placeId';
+      rows.removeWhere((row) => row[key] == item[key]);
+      rows.insert(0, {
+        ...item,
+        if (path.endsWith('places')) 'isFavorite': item['isFavorite'],
+      });
+      body = accountProfile;
+    } else if (path == '/api/profile/routes' ||
+        path == '/api/profile/companion/import') {
+      body = accountProfile;
+    } else if (path == '/api/billing/apple/config') {
+      body = {'ready': false, 'productId': 'co.waybi.plus.monthly'};
+    } else if (path == '/api/route-watches') {
+      body = {'watches': []};
+    } else if (path == '/api/route-watch-alerts') {
+      body = {'alerts': []};
+    } else if (path == '/api/route-options') {
       if (delayedRoute != null) return delayedRoute!.future;
       if (routeFailure) return http.Response('{"error":"offline"}', 503);
       final q = request.url.queryParameters;
@@ -179,7 +243,7 @@ class AppHarness {
       body = {'speedLimitKph': 80};
     } else if (path == '/api/road-reports' && request.method == 'POST') {
       status = reportStatus;
-      body = status == 200
+      body = status == 201
           ? {'id': 'new-report'}
           : {'error': 'Temporarily unavailable'};
     } else if (path.endsWith('/query')) {
@@ -226,7 +290,13 @@ class AppHarness {
     );
   }
 
-  Future<void> boot({Map<String, Object> preferences = const {}}) async {
+  Future<void> boot({
+    Map<String, Object> preferences = const {},
+    bool signedIn = false,
+    bool plus = false,
+  }) async {
+    this.signedIn = signedIn;
+    this.plus = plus;
     SharedPreferences.setMockInitialValues({
       'waybi.onboarding.core.v1': true,
       'waybi.app.language': 'en',
@@ -235,7 +305,9 @@ class AppHarness {
       'waybi.layers.transit_lanes': false,
       ...preferences,
     });
-    FlutterSecureStorage.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({
+      if (signedIn) 'waybi_session': 'f' * 64,
+    });
     drive = DriveEngine(
       transitLaneRepository: TransitLaneRepository(
         client: client,
@@ -281,6 +353,10 @@ class AppHarness {
           return <int, int>{3: permission, 5: permission};
         }
         if (call.method == 'takePending') return null;
+        if (call.method == 'areNotificationsEnabled' ||
+            call.method == 'requestNotificationsPermission') {
+          return true;
+        }
         if (channel.name == 'waybi/system_navigation') {
           return {
             'supported': true,

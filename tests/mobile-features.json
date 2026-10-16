@@ -3,6 +3,11 @@
   "scope": "First-party Flutter mobile application for iOS and Android; execution coverage and capability tests are separate from physical-device validation.",
   "features": [
     {
+      "id": "app-account-flows",
+      "label": "Real app favorites, private reviews, saved routes, road reports and migrated shortcuts",
+      "tests": ["apps/mobile/test/app_account_flows_test.dart"]
+    },
+    {
       "id": "app-shell",
       "label": "Startup, onboarding, appearance and page navigation",
       "tests": [

@@ -193,6 +193,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
         final params = {
           'q': query,
           'lang': widget.language,
+          'provider': 'independent',
           if (near != null) 'near': '${near.longitude},${near.latitude}',
         };
         final suggestUri = Uri.parse('$workerBaseUrl/api/suggest')

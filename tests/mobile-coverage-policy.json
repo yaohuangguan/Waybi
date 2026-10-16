@@ -4,15 +4,18 @@
   "suites": [
     {
       "root": "apps/mobile",
-      "report": "apps/mobile/coverage/lcov.info"
+      "report": "apps/mobile/coverage/lcov.info",
+      "minimumLinePercent": 90
     },
     {
       "root": "packages/waybi_friends",
-      "report": "packages/waybi_friends/coverage/lcov.info"
+      "report": "packages/waybi_friends/coverage/lcov.info",
+      "minimumLinePercent": 90
     },
     {
       "root": "packages/waybi_map",
-      "report": "packages/waybi_map/coverage/lcov.info"
+      "report": "packages/waybi_map/coverage/lcov.info",
+      "minimumLinePercent": 90
     }
   ],
   "files": {
@@ -220,9 +223,6 @@
     "apps/mobile/lib/providers/destination_marker_art.dart": {
       "minimumLinePercent": 100
     },
-    "apps/mobile/lib/providers/google_map_renderer.dart": {
-      "minimumLinePercent": 10
-    },
     "apps/mobile/lib/providers/independent_map_renderer.dart": {
       "minimumLinePercent": 80
     },
@@ -311,9 +311,6 @@
     },
     "apps/mobile/lib/widgets/map_layer_sheet.dart": {
       "minimumLinePercent": 75
-    },
-    "apps/mobile/lib/widgets/map_symbols.dart": {
-      "minimumLinePercent": 15
     },
     "apps/mobile/lib/widgets/navigation_camera_alert.dart": {
       "minimumLinePercent": 100

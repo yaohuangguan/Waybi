@@ -18,109 +18,113 @@ void showPlaceSources(
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
+    isScrollControlled: true,
+    useSafeArea: true,
     builder: (context) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              zh ? '数据与图片来源' : 'Data & photo credits',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              mapCompatible
-                  ? (zh
-                        ? '地点与地图使用开放数据。照片只在能够确认地点和授权时显示。'
-                        : 'Places use open data. Photos are shown when their location and licence can be verified.')
-                  : (zh
-                        ? '地点信息与照片由 Google Maps 和摄影者提供。'
-                        : 'Places and photos are provided by Google Maps and photographers.'),
-            ),
-            TextButton(
-              onPressed: () => launchUrl(
-                Uri.parse(
-                  mapCompatible
-                      ? 'https://www.openstreetmap.org/copyright'
-                      : 'https://maps.google.com',
-                ),
-                mode: LaunchMode.externalApplication,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                zh ? '数据与图片来源' : 'Data & photo credits',
+                style: Theme.of(context).textTheme.titleLarge,
               ),
-              child: Text(
-                mapCompatible ? '© OpenStreetMap · ODbL' : '© Google Maps',
+              const SizedBox(height: 16),
+              Text(
+                mapCompatible
+                    ? (zh
+                          ? '地点与地图使用开放数据。照片只在能够确认地点和授权时显示。'
+                          : 'Places use open data. Photos are shown when their location and licence can be verified.')
+                    : (zh
+                          ? '地点信息与照片由 Google Maps 和摄影者提供。'
+                          : 'Places and photos are provided by Google Maps and photographers.'),
               ),
-            ),
-            if (mapCompatible)
               TextButton(
                 onPressed: () => launchUrl(
-                  Uri.parse('https://openmaptiles.org'),
+                  Uri.parse(
+                    mapCompatible
+                        ? 'https://www.openstreetmap.org/copyright'
+                        : 'https://maps.google.com',
+                  ),
                   mode: LaunchMode.externalApplication,
                 ),
-                child: const Text('© OpenMapTiles · CC BY'),
-              ),
-            if (hasGeoapify)
-              TextButton(
-                onPressed: () => launchUrl(
-                  Uri.parse('https://www.geoapify.com/'),
-                  mode: LaunchMode.externalApplication,
+                child: Text(
+                  mapCompatible ? '© OpenStreetMap · ODbL' : '© Google Maps',
                 ),
-                child: const Text('Powered by Geoapify'),
               ),
-            if (hasTomTom)
-              TextButton(
-                onPressed: () => launchUrl(
-                  Uri.parse('https://www.tomtom.com/'),
-                  mode: LaunchMode.externalApplication,
+              if (mapCompatible)
+                TextButton(
+                  onPressed: () => launchUrl(
+                    Uri.parse('https://openmaptiles.org'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: const Text('© OpenMapTiles · CC BY'),
                 ),
-                child: const Text('© TomTom'),
-              ),
-            if (providerSet.contains('here'))
-              TextButton(
-                onPressed: () => launchUrl(
-                  Uri.parse('https://www.here.com'),
-                  mode: LaunchMode.externalApplication,
+              if (hasGeoapify)
+                TextButton(
+                  onPressed: () => launchUrl(
+                    Uri.parse('https://www.geoapify.com/'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: const Text('Powered by Geoapify'),
                 ),
-                child: const Text('© HERE'),
-              ),
-            for (final credit in regionalCredits)
-              TextButton(
-                onPressed: () => launchUrl(
-                  Uri.parse(credit.url),
-                  mode: LaunchMode.externalApplication,
+              if (hasTomTom)
+                TextButton(
+                  onPressed: () => launchUrl(
+                    Uri.parse('https://www.tomtom.com/'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: const Text('© TomTom'),
                 ),
-                child: Text('© ${credit.label}'),
-              ),
-            if (photoCredit != null) ...[
-              const Divider(),
-              Text(photoCredit['author']?.toString() ?? 'Wikimedia Commons'),
-              TextButton(
-                onPressed: () {
-                  final link = photoCredit['licenseUrl']?.toString() ?? '';
-                  if (link.startsWith('https://')) {
-                    launchUrl(
-                      Uri.parse(link),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  }
-                },
-                child: Text(photoCredit['license']?.toString() ?? ''),
-              ),
-              TextButton(
-                onPressed: () {
-                  final link = photoCredit['sourceUrl']?.toString() ?? '';
-                  if (link.startsWith('https://')) {
-                    launchUrl(
-                      Uri.parse(link),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  }
-                },
-                child: Text(zh ? '查看原图与作者' : 'View original photo & author'),
-              ),
+              if (providerSet.contains('here'))
+                TextButton(
+                  onPressed: () => launchUrl(
+                    Uri.parse('https://www.here.com'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: const Text('© HERE'),
+                ),
+              for (final credit in regionalCredits)
+                TextButton(
+                  onPressed: () => launchUrl(
+                    Uri.parse(credit.url),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: Text('© ${credit.label}'),
+                ),
+              if (photoCredit != null) ...[
+                const Divider(),
+                Text(photoCredit['author']?.toString() ?? 'Wikimedia Commons'),
+                TextButton(
+                  onPressed: () {
+                    final link = photoCredit['licenseUrl']?.toString() ?? '';
+                    if (link.startsWith('https://')) {
+                      launchUrl(
+                        Uri.parse(link),
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  },
+                  child: Text(photoCredit['license']?.toString() ?? ''),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final link = photoCredit['sourceUrl']?.toString() ?? '';
+                    if (link.startsWith('https://')) {
+                      launchUrl(
+                        Uri.parse(link),
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  },
+                  child: Text(zh ? '查看原图与作者' : 'View original photo & author'),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     ),

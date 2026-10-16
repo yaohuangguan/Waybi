@@ -158,7 +158,9 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
     final delayMinutes = (delaySeconds / 60).round();
     final trafficHeavy = delaySeconds >= 300 || route.traffic.trafficJam > 0;
     final trafficModerate = delaySeconds >= 120 || route.traffic.slow > 0;
-    final trafficColor = trafficHeavy
+    final trafficColor = !route.hasTrafficData
+        ? scheme.onSurfaceVariant
+        : trafficHeavy
         ? WaybiColors.danger
         : trafficModerate
         ? WaybiColors.warning
@@ -183,41 +185,71 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
               color: scheme.primary,
             ),
             const SizedBox(width: 8),
-            Text(
-              _durationLabel(route.durationSeconds),
-              style: TextStyle(
-                color: scheme.onSurface,
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
+            Expanded(
+              flex: 3,
+              child: Wrap(
+                spacing: 7,
+                runSpacing: 2,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    _durationLabel(route.durationSeconds),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: scheme.onSurface,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    '· ${_distanceLabel(route.distanceMeters)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 7),
-            Text(
-              '· ${_distanceLabel(route.distanceMeters)}',
-              style: TextStyle(
-                color: scheme.onSurfaceVariant,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const Spacer(),
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: trafficColor,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              delayMinutes >= 2
-                  ? _text('+$delayMinutes min traffic', '拥堵 +$delayMinutes 分钟')
-                  : _text('Traffic good', '路况良好'),
-              style: TextStyle(
-                color: trafficColor,
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
+            const SizedBox(width: 8),
+            Expanded(
+              flex: 2,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: trafficColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      !route.hasTrafficData
+                          ? _text('No traffic data', '暂无路况数据')
+                          : delayMinutes >= 2
+                          ? _text(
+                              '+$delayMinutes min traffic',
+                              '拥堵 +$delayMinutes 分钟',
+                            )
+                          : _text('Traffic good', '路况良好'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: trafficColor,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -944,11 +976,20 @@ class _ReviewTile extends StatelessWidget {
           CircleAvatar(
             radius: 16,
             backgroundColor: scheme.surfaceContainerHighest,
-            backgroundImage: review.authorPhoto?.isNotEmpty == true
-                ? NetworkImage(review.authorPhoto!)
-                : null,
             child: review.authorPhoto?.isNotEmpty == true
-                ? null
+                ? ClipOval(
+                    child: Image.network(
+                      review.authorPhoto!,
+                      width: 32,
+                      height: 32,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => Icon(
+                        Icons.person_rounded,
+                        size: 17,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  )
                 : Icon(
                     Icons.person_rounded,
                     size: 17,

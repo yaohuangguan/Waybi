@@ -71,6 +71,20 @@ export function checkCoverage(repoRoot, policy) {
   return results;
 }
 
+export function checkSuiteCoverage(files, policy) {
+  return policy.suites.map(suite => {
+    const entries = files.filter(file => file.path.startsWith(suite.root + '/lib/'));
+    const total = entries.reduce((sum, file) => sum + (file.total ?? 0), 0);
+    const hit = entries.reduce((sum, file) => sum + (file.hit ?? 0), 0);
+    const minimum = suite.minimumLinePercent;
+    const percent = total ? hit / total * 100 : 0;
+    return {path: suite.root + ' (suite)', total, hit, minimum, percent: Number(percent.toFixed(2)),
+      ...(!(minimum > 0 && minimum <= 100) ? {error: 'A positive suite coverage threshold is required'}
+        : !total ? {error: 'Suite has no executable coverage'}
+        : percent + 0.000001 < minimum ? {error: 'Suite coverage is below the required threshold'} : {})};
+  });
+}
+
 export function checkFeatureManifest(repoRoot, manifest) {
   const failures=[];
   const ids=new Set();
@@ -100,16 +114,18 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const repoRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..');
   const policy=JSON.parse(readFileSync(resolve(repoRoot,'tests/mobile-coverage-policy.json'),'utf8'));
   const manifest=JSON.parse(readFileSync(resolve(repoRoot,'tests/mobile-features.json'),'utf8'));
-  const results=[...checkCoverage(repoRoot,policy),...checkFeatureManifest(repoRoot,manifest)];
+  const files=checkCoverage(repoRoot,policy);
+  const suites=checkSuiteCoverage(files,policy);
+  const results=[...files,...checkFeatureManifest(repoRoot,manifest),...suites];
   const output=resolve(repoRoot,'coverage/mobile-inventory.json');
   mkdirSync(dirname(output),{recursive:true});
-  writeFileSync(output,JSON.stringify({generatedAt:new Date().toISOString(),files:results},null,2)+'\n');
+  writeFileSync(output,JSON.stringify({generatedAt:new Date().toISOString(),files,suites},null,2)+'\n');
   const failures=results.filter(result=>result.error);
   for (const result of results) console.log(
     result.error ? 'FAIL '+result.path+': '+result.error
     : result.kind==='declarations' ? 'DECL '+result.path+': '+result.reason
     : 'PASS '+result.path+' '+result.percent+'% (minimum '+result.minimum+'%)'
   );
-  console.log(results.length+' inventoried source files; '+failures.length+' coverage failures.');
+  console.log(files.length+' inventoried source files; '+failures.length+' coverage failures.');
   if (failures.length) process.exitCode=1;
 }

@@ -8,6 +8,7 @@ class RecordingMapPlatform extends ml.MapLibrePlatform {
   bool initialized = false;
   EdgeInsets padding = EdgeInsets.zero;
   final updates = <String>[];
+  final operations = <String>[];
   final sources = <String, Map<String, dynamic>>{};
   final moves = <ml.CameraUpdate>[];
   List<Map<String, dynamic>> features = [];
@@ -80,5 +81,8 @@ class RecordingMapPlatform extends ml.MapLibrePlatform {
     String? filter,
   ) async => features;
   @override
-  dynamic noSuchMethod(Invocation invocation) => Future<void>.value();
+  dynamic noSuchMethod(Invocation invocation) {
+    operations.add(invocation.memberName.toString());
+    return Future<void>.value();
+  }
 }

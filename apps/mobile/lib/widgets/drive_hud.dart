@@ -13,10 +13,18 @@ import 'lane_arrow.dart';
 import 'navigation_maneuver_icon.dart';
 
 class DriveHud extends StatelessWidget {
-  const DriveHud({super.key, required this.engine, required this.onStop});
+  const DriveHud({
+    super.key,
+    required this.engine,
+    required this.onStop,
+    this.onRecenter,
+    this.following = true,
+  });
 
   final DriveEngine engine;
   final VoidCallback onStop;
+  final VoidCallback? onRecenter;
+  final bool following;
 
   String _formatDistance(double? meters, [String language = 'en']) =>
       meters == null ? '—' : navigationMetres(meters, language);
@@ -88,6 +96,15 @@ class DriveHud extends StatelessWidget {
                           ],
                         ),
                       ),
+                      if (!following && onRecenter != null)
+                        IconButton(
+                          tooltip: language == 'zh'
+                              ? '回到当前位置'
+                              : 'Return to my location',
+                          onPressed: onRecenter,
+                          icon: const Icon(Icons.my_location_rounded),
+                          color: Colors.white,
+                        ),
                       IconButton(
                         onPressed: onStop,
                         icon: const Icon(Icons.close_rounded),

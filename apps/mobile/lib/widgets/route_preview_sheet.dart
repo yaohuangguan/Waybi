@@ -530,16 +530,19 @@ class RoutePreviewSheet extends StatelessWidget {
                         color: Theme.of(context).colorScheme.errorContainer,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: ListTile(
-                        leading: const Icon(Icons.bus_alert_rounded),
-                        title: Text(
-                          isChinese
-                              ? '当前时段禁止普通汽车通行'
-                              : 'Bus-only road during restricted hours',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        subtitle: Text(
-                          isChinese ? '请选择其他路线，Waybi 不会启动这条路线的导航。' : 'Choose another route. Navigation cannot start on this route.',
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: ListTile(
+                          leading: const Icon(Icons.bus_alert_rounded),
+                          title: Text(
+                            isChinese
+                                ? '当前时段禁止普通汽车通行'
+                                : 'Bus-only road during restricted hours',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(
+                            isChinese ? '请选择其他路线，Waybi 不会启动这条路线的导航。' : 'Choose another route. Navigation cannot start on this route.',
+                          ),
                         ),
                       ),
                     ),
@@ -554,31 +557,36 @@ class RoutePreviewSheet extends StatelessWidget {
                         color: Theme.of(context).colorScheme.errorContainer,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: ListTile(
-                        leading: Icon(
-                          Icons.block_rounded,
-                          color: Theme.of(context).colorScheme.onErrorContainer,
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: ListTile(
+                          leading: Icon(
+                            Icons.block_rounded,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onErrorContainer,
+                          ),
+                          title: Text(
+                            isChinese
+                                ? '这条路线有封路报告'
+                                : 'Closure reported on this route',
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(
+                            routeClosures[selected.id]?.firstOrNull?.roadName ??
+                                (isChinese
+                                    ? '查看详情，或选择其他路线。'
+                                    : 'Check the details or choose another route.'),
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap:
+                              onRoadEvent == null ||
+                                  (routeClosures[selected.id]?.isEmpty ?? true)
+                              ? null
+                              : () => onRoadEvent!(
+                                  routeClosures[selected!.id]!.first,
+                                ),
                         ),
-                        title: Text(
-                          isChinese
-                              ? '这条路线有封路报告'
-                              : 'Closure reported on this route',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        subtitle: Text(
-                          routeClosures[selected.id]?.firstOrNull?.roadName ??
-                              (isChinese
-                                  ? '查看详情，或选择其他路线。'
-                                  : 'Check the details or choose another route.'),
-                        ),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap:
-                            onRoadEvent == null ||
-                                (routeClosures[selected.id]?.isEmpty ?? true)
-                            ? null
-                            : () => onRoadEvent!(
-                                routeClosures[selected!.id]!.first,
-                              ),
                       ),
                     ),
                   ],

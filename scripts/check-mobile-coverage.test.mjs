@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseLcov,evaluateFile,checkCoverage,checkFeatureManifest} from './check-mobile-coverage.mjs';
+import {parseLcov,evaluateFile,checkCoverage,checkFeatureManifest,checkSuiteCoverage} from './check-mobile-coverage.mjs';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -45,4 +45,25 @@ test('capability evidence cannot be a deleted file or an empty test template',()
     writeFileSync(join(root,'valid.dart'),"void main() { test('gps', () { expect(true, isTrue); }); }");
     assert.deepEqual(checkFeatureManifest(root,{features:[{id:'gps',tests:['valid.dart']}]}),[]);
   } finally {rmSync(root,{recursive:true,force:true});}
+});
+
+test('suite gate weights all executable lines rather than averaging file percentages',()=>{
+  const policy={suites:[{root:'app',minimumLinePercent:90}]};
+  const files=[{path:'app/lib/big.dart',total:1000,hit:890},{path:'app/lib/small.dart',total:1,hit:1}];
+  assert.match(checkSuiteCoverage(files,policy)[0].error,/below/);
+  files[0].hit=900;
+  assert.equal(checkSuiteCoverage(files,policy)[0].error,undefined);
+});
+test('each package has its own floor and missing or invalid suite targets fail',()=>{
+  const files=[{path:'a/lib/app.dart',total:100,hit:100},{path:'b/lib/map.dart',total:100,hit:89}];
+  const result=checkSuiteCoverage(files,{suites:[{root:'a',minimumLinePercent:90},{root:'b',minimumLinePercent:90}]});
+  assert.equal(result[0].error,undefined);
+  assert.match(result[1].error,/below/);
+  assert.match(checkSuiteCoverage(files,{suites:[{root:'a'}]})[0].error,/threshold/);
+  assert.match(checkSuiteCoverage(files,{suites:[{root:'missing',minimumLinePercent:90}]})[0].error,/no executable/);
+});
+test('rounded presentation cannot turn sub-threshold coverage into a pass',()=>{
+  const result=checkSuiteCoverage([{path:'app/lib/app.dart',total:100000,hit:89999}],{suites:[{root:'app',minimumLinePercent:90}]})[0];
+  assert.equal(result.percent,90);
+  assert.match(result.error,/below/);
 });

@@ -14,7 +14,7 @@ import { syncAllAppleSubscriptions } from './apple_billing.ts';
 import { handleBilling } from './billing.ts';
 import { handlePlaces } from './places.ts';
 import { independentPlaceDetails } from './independent_place_details.ts';
-import { routeOptions, maneuverLanes } from './routes.ts';
+import { routeOptions, maneuverLanes, crossesTasmanSea } from './routes.ts';
 import { nearbyAtParking, AT_PARKING_SOURCE } from './parking.ts';
 import { loadRoadEventState, refreshRoadEventState } from './road_events.ts';
 import { refreshNswRoadEventState } from './au_road_events.ts';
@@ -361,6 +361,12 @@ async function handleApi(request: Request, env, ctx) {
     })[requestedMode];
     if (requestedMode != null && !googleMode) {
       return json({ error: 'mode must be drive, transit, walk or bicycle' }, 400);
+    }
+    if (crossesTasmanSea([from, ...stops, to])) {
+      return json({
+        code: 'NO_LAND_ROUTE',
+        error: 'No land route is available between New Zealand and Australia',
+      }, 422);
     }
     if (stops.length && googleMode === 'TRANSIT') {
       return json({ error: 'Transit route options do not support intermediate stops' }, 400);

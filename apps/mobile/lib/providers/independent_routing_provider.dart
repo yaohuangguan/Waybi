@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/api_config.dart';
 import '../domain/map_provider.dart';
+import '../domain/route_reachability.dart';
 import '../domain/route_option.dart';
 import '../domain/route_preference.dart';
 import '../domain/navigation_lanes.dart';
@@ -128,6 +129,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     if (points.length > 25 || points.any((point) => !point.isValid)) {
       throw ArgumentError('Routes require 2–25 valid coordinates');
     }
+    validateSurfaceRoute(points);
     return points;
   }
 

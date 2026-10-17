@@ -6,6 +6,84 @@ import 'package:waybi_mobile/domain/route_option.dart';
 import 'package:waybi_mobile/widgets/place_details_content.dart';
 
 void main() {
+  testWidgets(
+    'cross-sea destination remains browseable but never spins or starts driving',
+    (tester) async {
+      var navigationAttempts = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PlaceDetailsContent(
+              selectedPlace: const PlaceSummary(
+                name: 'Sydney Opera House',
+                location: GeoPoint(-33.8568, 151.2153),
+                address: 'Sydney NSW',
+                category: 'attraction',
+              ),
+              details: null,
+              detailsLoading: false,
+              detailsError: null,
+              routeBusy: false,
+              navigationAvailable: false,
+              navigationUnavailableReason: '新西兰和澳大利亚之间无法直接驾车抵达。',
+              quickRouteLoading: false,
+              isFavorite: false,
+              onClose: () {},
+              onNavigate: () => navigationAttempts++,
+              onFavorite: () {},
+              onReview: () {},
+              language: 'zh',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('无法直接驾车抵达'), findsOneWidget);
+      expect(find.text('无法驾车抵达'), findsOneWidget);
+      expect(find.text('仅新西兰'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('Sydney Opera House'), findsWidgets);
+      expect(navigationAttempts, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'failed quick route ends spinner with actionable failure message',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PlaceDetailsContent(
+              selectedPlace: const PlaceSummary(
+                name: 'Melbourne',
+                location: GeoPoint(-37.8136, 144.9631),
+                address: 'Melbourne VIC',
+                category: 'city',
+              ),
+              details: null,
+              detailsLoading: false,
+              detailsError: null,
+              routeBusy: false,
+              quickRouteIssue: '路线服务暂时不可用，请稍后重试。',
+              quickRouteLoading: false,
+              isFavorite: false,
+              onClose: () {},
+              onNavigate: () {},
+              onFavorite: () {},
+              onReview: () {},
+              language: 'zh',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('路线服务暂时不可用'), findsOneWidget);
+      expect(find.text('正在获取驾车时间…'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('place deck starts compact and expands for details in Chinese', (
     tester,
   ) async {

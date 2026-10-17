@@ -4,6 +4,25 @@ import worker, { readCameraState, syncCameras } from '../src/worker.ts';
 import seed from '../data/cameras.json' with { type: 'json' };
 import { mockEdgeCache } from './mock_edge_cache.ts';
 
+test('cross-Tasman surface routes fail quickly without invoking a paid or public router', async () => {
+  for (const [from, to] of [
+    ['174.763,-36.85', '151.2093,-33.8688'],
+    ['151.2093,-33.8688', '174.763,-36.85'],
+  ]) {
+    const response = await worker.fetch(
+      new Request(`https://waybi.test/api/route-options?from=${from}&to=${to}&mode=drive`),
+      { GOOGLE_ROUTES_API_KEY: 'must-not-be-called' },
+      { waitUntil() { assert.fail('Cross-sea preflight must not bill external APIs'); } }
+    );
+    assert.equal(response.status, 422);
+    assert.equal((await response.json()).code, 'NO_LAND_ROUTE');
+  }
+  const via = await worker.fetch(new Request(
+    'https://waybi.test/api/route-options?from=151.2093,-33.8688&stops=144.9631,-37.8136&to=174.763,-36.85&mode=drive',
+  ), {}, { waitUntil() {} });
+  assert.equal(via.status, 422);
+});
+
 test('valid overseas coordinates have unknown limits rather than rejecting navigation', async () => {
   for (const coordinate of ['-74,40.71','139.7,35.69','121.47,31.23','18.4,-33.9']) {
     const response = await worker.fetch(new Request('https://waybi.test/api/speed-limit?at='+coordinate),

@@ -4,6 +4,8 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:http/http.dart' as http;
 
 import '../domain/route_option.dart';
+import '../domain/map_provider.dart';
+import '../domain/route_reachability.dart';
 import 'api_config.dart';
 
 class RouteRepository {
@@ -19,6 +21,11 @@ class RouteRepository {
     List<LatLng> stops = const [],
     WaybiTravelMode? mode,
   }) async {
+    validateSurfaceRoute([
+      GeoPoint(origin.latitude, origin.longitude),
+      for (final stop in stops) GeoPoint(stop.latitude, stop.longitude),
+      GeoPoint(destination.latitude, destination.longitude),
+    ], mode: mode);
     final uri = Uri.parse('$baseUrl/api/route-options').replace(
       queryParameters: {
         'from': '${origin.longitude},${origin.latitude}',

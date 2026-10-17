@@ -165,7 +165,10 @@ void main() {
         await h.select();
         await h.act(details(t).onNavigate);
         await h.frames();
-        expect(find.textContaining('Could not preview routes'), findsOneWidget);
+        expect(
+          find.textContaining('Route service is temporarily unavailable'),
+          findsWidgets,
+        );
         expect(details(t).selectedPlace.name, 'Test destination');
         expect(h.map.navigating, isFalse);
         h.routeFailure = false;

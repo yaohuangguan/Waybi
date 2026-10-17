@@ -129,6 +129,9 @@
     "apps/mobile/lib/domain/route_preference.dart": {
       "minimumLinePercent": 95
     },
+    "apps/mobile/lib/domain/route_reachability.dart": {
+      "minimumLinePercent": 100
+    },
     "apps/mobile/lib/domain/route_road_events.dart": {
       "minimumLinePercent": 90
     },

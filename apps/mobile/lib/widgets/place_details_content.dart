@@ -18,6 +18,8 @@ class PlaceDetailsContent extends StatefulWidget {
     required this.routeBusy,
     this.quickRoute,
     this.quickRouteLoading = false,
+    this.quickRouteIssue,
+    this.navigationUnavailableReason,
     this.navigationAvailable = true,
     required this.isFavorite,
     required this.onClose,
@@ -35,6 +37,8 @@ class PlaceDetailsContent extends StatefulWidget {
   final bool routeBusy;
   final RouteOption? quickRoute;
   final bool quickRouteLoading;
+  final String? quickRouteIssue;
+  final String? navigationUnavailableReason;
   final bool navigationAvailable;
   final bool isFavorite;
   final VoidCallback onClose;
@@ -108,13 +112,14 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
             const SizedBox(width: 7),
             Expanded(
               child: Text(
-                _text(
-                  'Worldwide place found · turn-by-turn navigation is currently NZ-only',
-                  '已找到全球地点 · 逐向导航目前仅支持新西兰',
-                ),
+                widget.navigationUnavailableReason ??
+                    _text(
+                      'Navigation is unavailable for this location.',
+                      '当前地点暂时无法规划导航路线。',
+                    ),
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
-                  fontSize: 10.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -125,7 +130,29 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
     }
     final route = widget.quickRoute;
     if (route == null && !widget.quickRouteLoading) {
-      return const SizedBox.shrink();
+      if (widget.quickRouteIssue == null) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 9, 16, 0),
+        child: Row(
+          children: [
+            Icon(
+              Icons.info_outline_rounded,
+              size: 18,
+              color: scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                widget.quickRouteIssue!,
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: 12.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
     }
     if (route == null) {
       return Padding(
@@ -567,7 +594,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                         child: _PlaceAction(
                           icon: Icons.directions_car_filled_rounded,
                           label: !widget.navigationAvailable
-                              ? _text('NZ only', '仅新西兰')
+                              ? _text('No road route', '无法驾车抵达')
                               : widget.routeBusy
                               ? _text('Routing', '规划中')
                               : _text('Drive', '导航'),

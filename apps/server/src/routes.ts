@@ -6,6 +6,22 @@ import { readRouteRoadSnapshots } from './regional_road_events.ts';
 import { matchRouteClosures, crossesExcludedRoads } from './routing_closures.ts';
 import type { ClosureLocation } from './routing_closures.ts';
 import { readTransitSnapshot, transitRoadBlocks } from './transit_lanes.ts';
+/// Waybi offers surface navigation, not international flights. Only reject
+/// the NZ <-> AU sea gap; land borders and Australian states remain routable.
+export function crossesTasmanSea(points: LonLat[]): boolean {
+  const region = ([lon, lat]: LonLat) => {
+    if (lon >= 166 && lon <= 179 && lat >= -48 && lat <= -34) return 'NZ';
+    if (lon >= 112 && lon <= 154 && lat >= -44 && lat <= -10) return 'AU';
+    return '';
+  };
+  for (let i = 1; i < points.length; i++) {
+    const a = region(points[i - 1]);
+    const b = region(points[i]);
+    if ((a === 'NZ' && b === 'AU') || (a === 'AU' && b === 'NZ')) return true;
+  }
+  return false;
+}
+
 const GOOGLE_ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 
 function seconds(value) {

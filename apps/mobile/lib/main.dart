@@ -30,6 +30,7 @@ import 'domain/navigation_link.dart';
 import 'domain/navigation_camera_mode.dart';
 import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
+import 'domain/route_reachability.dart';
 import 'domain/route_preference.dart';
 import 'domain/routing_origin.dart';
 import 'domain/road_event.dart';
@@ -354,6 +355,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   int _quickCommuteRequest = 0;
   RouteOption? _placeQuickRoute;
   bool _placeQuickRouteLoading = false;
+  String? _placeQuickRouteIssue;
   String? _placeQuickRouteLoadingKey;
   int _placeQuickRouteRequest = 0;
   final Map<String, RouteOption> _placeQuickRouteCache = {};
@@ -1947,12 +1949,38 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     return '${place.location.latitude.toStringAsFixed(5)},${place.location.longitude.toStringAsFixed(5)}';
   }
 
+  bool get _selectedPlaceHasCrossTasmanDrive {
+    final destination = _selectedPlace?.place.location;
+    final origin = _manualOrigin?.location ?? _locationForRoute;
+    if (origin == null || destination == null) return false;
+    return isCrossTasmanSurfaceRoute([
+      GeoPoint(origin.latitude, origin.longitude),
+      destination,
+    ]);
+  }
+
   Future<void> _loadPlaceQuickRoute(PlaceSummary place) async {
     if (!mounted || _driveEngine.active || _routePlan != null) return;
     if (!place.location.isValid) return;
-    final origin = _locationForRoute;
+    final origin = _manualOrigin?.location ?? _locationForRoute;
     if (origin == null) return;
     final key = _placeRouteKey(place);
+    final crossTasman = isCrossTasmanSurfaceRoute([
+      GeoPoint(origin.latitude, origin.longitude),
+      place.location,
+    ]);
+    if (crossTasman) {
+      ++_placeQuickRouteRequest;
+      setState(() {
+        _placeQuickRoute = null;
+        _placeQuickRouteLoading = false;
+        _placeQuickRouteLoadingKey = null;
+        _placeQuickRouteIssue = const NoSurfaceRouteException().localized(
+          _appLanguage,
+        );
+      });
+      return;
+    }
     final cached = _placeQuickRouteCache[key];
     final cachedAt = _placeQuickRouteCachedAt[key];
     final cachedOrigin = _placeQuickRouteOrigins[key];
@@ -1973,6 +2001,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       if (_placeRouteKey(_selectedPlace?.place ?? place) == key && mounted) {
         setState(() {
           _placeQuickRoute = cached;
+          _placeQuickRouteIssue = null;
           _placeQuickRouteLoading = false;
           _placeQuickRouteLoadingKey = null;
         });
@@ -1985,6 +2014,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {
         _placeQuickRoute = null;
+        _placeQuickRouteIssue = null;
         _placeQuickRouteLoading = true;
         _placeQuickRouteLoadingKey = key;
       });
@@ -2000,7 +2030,17 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       );
       final driving = plan.forMode(WaybiTravelMode.drive).toList()
         ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
-      if (driving.isEmpty || !mounted || request != _placeQuickRouteRequest) {
+      if (!mounted || request != _placeQuickRouteRequest) return;
+      if (driving.isEmpty) {
+        setState(() {
+          _placeQuickRoute = null;
+          _placeQuickRouteIssue = routeFailureMessage(
+            StateError('No routes available'),
+            _appLanguage,
+          );
+          _placeQuickRouteLoading = false;
+          _placeQuickRouteLoadingKey = null;
+        });
         return;
       }
       if (_selectedPlace == null ||
@@ -2023,13 +2063,15 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _placeQuickRouteOrigins[key] = origin;
       setState(() {
         _placeQuickRoute = route;
+        _placeQuickRouteIssue = null;
         _placeQuickRouteLoading = false;
         _placeQuickRouteLoadingKey = null;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || request != _placeQuickRouteRequest) return;
       setState(() {
         _placeQuickRoute = null;
+        _placeQuickRouteIssue = routeFailureMessage(error, _appLanguage);
         _placeQuickRouteLoading = false;
         _placeQuickRouteLoadingKey = null;
       });
@@ -2546,6 +2588,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _placeDetailsError = null;
       _placeDetailsRequest++;
       _placeQuickRoute = null;
+      _placeQuickRouteIssue = null;
       _placeQuickRouteLoading = false;
       _placeQuickRouteLoadingKey = null;
       _routeStops.clear();
@@ -2789,6 +2832,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       unawaited(_recoverRouteLocation());
       return;
     }
+    if (isCrossTasmanSurfaceRoute([
+      GeoPoint(origin.latitude, origin.longitude),
+      for (final stop in _routeStops)
+        GeoPoint(stop.location.latitude, stop.location.longitude),
+      GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
+    ])) {
+      setState(() {
+        _routePreviewLoading = false;
+        _message = const NoSurfaceRouteException().localized(_appLanguage);
+      });
+      return;
+    }
     final request = ++_routeRequest;
     setState(() {
       if (_recoveringRoute) {
@@ -2866,7 +2921,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       await _renderRoutePreview();
     } catch (error) {
       if (mounted && request == _routeRequest) {
-        setState(() => _message = 'Could not preview routes: $error');
+        setState(() => _message = routeFailureMessage(error, _appLanguage));
       }
     } finally {
       if (mounted && request == _routeRequest) {
@@ -3967,6 +4022,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _routePlan = null;
       _selectedRouteId = null;
       _placeQuickRoute = null;
+      _placeQuickRouteIssue = null;
       _placeQuickRouteLoading = false;
       _placeQuickRouteLoadingKey = null;
       _message = null;
@@ -6088,7 +6144,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     busy: _routePreviewLoading,
                     quickRoute: _placeQuickRoute,
                     quickRouteLoading: _placeQuickRouteLoading,
-                    navigationAvailable: _selectedPlace!.place.location.isValid,
+                    quickRouteIssue: _placeQuickRouteIssue,
+                    navigationAvailable:
+                        _selectedPlace!.place.location.isValid &&
+                        !_selectedPlaceHasCrossTasmanDrive,
+                    navigationUnavailableReason:
+                        _selectedPlaceHasCrossTasmanDrive
+                        ? const NoSurfaceRouteException().localized(
+                            _appLanguage,
+                          )
+                        : null,
                     onClose: () => unawaited(_clearRoutePreview()),
                     onNavigate: () =>
                         unawaited(_loadRoutePreview(_selectedPoi!)),
@@ -6228,6 +6293,8 @@ class _PlaceCard extends StatelessWidget {
     required this.busy,
     required this.quickRoute,
     required this.quickRouteLoading,
+    required this.quickRouteIssue,
+    required this.navigationUnavailableReason,
     required this.navigationAvailable,
     required this.onClose,
     required this.onNavigate,
@@ -6245,6 +6312,8 @@ class _PlaceCard extends StatelessWidget {
   final bool busy;
   final RouteOption? quickRoute;
   final bool quickRouteLoading;
+  final String? quickRouteIssue;
+  final String? navigationUnavailableReason;
   final bool navigationAvailable;
   final VoidCallback onClose;
   final VoidCallback onNavigate;
@@ -6264,6 +6333,8 @@ class _PlaceCard extends StatelessWidget {
       routeBusy: busy,
       quickRoute: quickRoute,
       quickRouteLoading: quickRouteLoading,
+      quickRouteIssue: quickRouteIssue,
+      navigationUnavailableReason: navigationUnavailableReason,
       navigationAvailable: navigationAvailable,
       isFavorite: isFavorite,
       onClose: onClose,

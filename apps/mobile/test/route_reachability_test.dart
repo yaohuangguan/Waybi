@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -88,6 +90,29 @@ void main() {
       expect(requests, 0);
     },
   );
+
+  test('cross-sea exception, timeout and localized generic errors all render safely', () {
+    expect(
+      const NoSurfaceRouteException().toString(),
+      contains('no drivable route'),
+    );
+    expect(
+      routeFailureMessage(TimeoutException('upstream timeout'), 'en'),
+      contains('timed out'),
+    );
+    expect(
+      routeFailureMessage(TimeoutException('upstream timeout'), 'zh'),
+      contains('超时'),
+    );
+    expect(
+      routeFailureMessage(StateError('No routes available'), 'en'),
+      contains('No route is available'),
+    );
+    expect(
+      routeFailureMessage(StateError('502 upstream'), 'zh'),
+      contains('暂时不可用'),
+    );
+  });
 
   test('no route, network timeout and provider failure have user-friendly messages', () {
     expect(

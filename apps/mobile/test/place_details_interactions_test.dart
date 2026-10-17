@@ -379,11 +379,11 @@ void main() {
         review: () => review++,
       );
       expect(
-        find.textContaining('turn-by-turn navigation is currently NZ-only'),
+        find.textContaining('Navigation is unavailable for this location.'),
         findsOneWidget,
       );
-      await t.ensureVisible(find.text('NZ only'));
-      await t.tap(find.text('NZ only'));
+      await t.ensureVisible(find.text('No road route'));
+      await t.tap(find.text('No road route'));
       await t.tap(find.text('Save'));
       await t.tap(find.text('More'));
       expect([navigate, favorite, review], [0, 1, 1]);

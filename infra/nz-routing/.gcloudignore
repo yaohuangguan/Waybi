@@ -1,0 +1,6 @@
+*
+!Dockerfile
+!artifact/
+!artifact/**
+!gcp/
+!gcp/cloudbuild.yaml

@@ -1,5 +1,23 @@
 # Waybi Mobile
 
+2026-10-26 路由更新：正式 Flutter 主入口使用
+`IndependentRoutingProvider(useWaybiProxy: true)`，首次寻路、偏航重算和封路避让
+统一调用 `https://waybi.co/api/route-options`。新西兰驾驶/步行/骑行现已接入私有
+GCP Valhalla；Dart 仍接收原有坐标、步骤和车道数据格式，App 不持有 GCP 凭据。
+已有这一调用方式的已安装 App，在下次在线重新规划时即使用新后端，无需重新安装。
+正在导航或离线缓存的既有路线不会被自动替换。自建引擎每天最多 3,000 次调用，
+超限或故障时保留现有回退及封路校验。部署记录见
+[GCP 路由](../../infra/nz-routing/gcp/README.md)。
+
+通过真实 Flutter 适配器验证线上服务：
+
+```sh
+flutter test tool/valhalla_backend_smoke_test.dart
+```
+
+该工具验证实际响应解析、车道、三种出行方式和模拟道路排除后的重算；不属于
+默认离线测试，也不能代替 iPhone GPS、语音和实车验证。
+
 Waybi 的原生移动端使用 Flutter，支持在设置中切换 Google Maps 与 Waybi 地图 地图。Google 原生导航流程保留，Waybi 地图 浏览、路线、偏航重算与驾驶模式使用独立适配器；详细边界和剩余验证见 [MAP_PROVIDERS.md](MAP_PROVIDERS.md)。
 
 - `google_navigation_flutter`：地图浏览、POI 点击、路线与 turn-by-turn 导航

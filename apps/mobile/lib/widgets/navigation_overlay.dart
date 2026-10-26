@@ -139,6 +139,8 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
   bool expanded = false;
   final _headerKey = GlobalKey();
   final _deckKey = GlobalKey();
+  final _compactDeckKey = GlobalKey();
+  double _compactDeckHeight = 124;
   double? _reportedBottom;
   DateTime? _lastBottomReport;
   double? _reportedInset;
@@ -175,6 +177,27 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
       _lastBottomReport = now;
       _reportedBottom = inset;
       widget.onBottomInsetChanged?.call(inset);
+    }
+  }
+
+  void _measureCompactDeck() {
+    if (!mounted || expanded) return;
+    final box = _compactDeckKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    if ((box.size.height - _compactDeckHeight).abs() >= 1) {
+      final atMinimum =
+          _sheetController.isAttached &&
+          (_sheetController.size - _minExtent).abs() < .002;
+      setState(() => _compactDeckHeight = box.size.height);
+      // A sheet that has been dragged keeps its previous extent when its
+      // content shrinks. Keep a resting compact sheet fitted to that content.
+      if (atMinimum) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !expanded && _sheetController.isAttached) {
+            _sheetController.jumpTo(_minExtent);
+          }
+        });
+      }
     }
   }
 
@@ -224,6 +247,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _reportTopInset();
+      _measureCompactDeck();
       _reportBottomInset();
     });
     final theme = Theme.of(context);
@@ -298,8 +322,8 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
           );
           _maxExtent = maxHeight / constraints.maxHeight;
           _minExtent =
-              ((widget.arrivalPanel == null ? 225 : 258) + bottomInset).clamp(
-                140.0,
+              (_compactDeckHeight + bottomInset + 15).clamp(
+                96.0,
                 maxHeight - 1,
               ) /
               constraints.maxHeight;
@@ -667,7 +691,10 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOutCubic,
                   left: 14,
-                  bottom: (_reportedBottom ?? (225 + bottomInset)) + 12,
+                  bottom:
+                      (_reportedBottom ??
+                          (_compactDeckHeight + bottomInset + 29)) +
+                      12,
                   child: PointerInterceptor(
                     child: Material(
                       key: const Key('navigationRecenterButton'),
@@ -755,61 +782,90 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                 bottomInset + 12,
                               ),
                               child: Column(
+                                key: _compactDeckKey,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  InkWell(
-                                    key: const Key('navigationSheetHandle'),
-                                    onTap: _toggleSheet,
-                                    child: SizedBox(
-                                      width: double.infinity,
-                                      height: 44,
-                                      child: Center(
-                                        child: Container(
-                                          width: 44,
-                                          height: 4,
-                                          decoration: BoxDecoration(
-                                            color: theme.dividerColor,
-                                            borderRadius: BorderRadius.circular(
-                                              5,
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Semantics(
+                                            button: true,
+                                            expanded: expanded,
+                                            label: expanded
+                                                ? _text(
+                                                    'Collapse trip details',
+                                                    '收起行程详情',
+                                                  )
+                                                : _text(
+                                                    'Expand trip details',
+                                                    '展开行程详情',
+                                                  ),
+                                            child: InkWell(
+                                              key: const Key(
+                                                'navigationSheetHandle',
+                                              ),
+                                              onTap: _toggleSheet,
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              child: ConstrainedBox(
+                                                constraints:
+                                                    const BoxConstraints(
+                                                      minHeight: 48,
+                                                    ),
+                                                child: Row(
+                                                  children: [
+                                                    const WaybiBird(size: 28),
+                                                    const SizedBox(width: 8),
+                                                    Expanded(
+                                                      child: Text(
+                                                        widget.destinationTitle,
+                                                        maxLines: 2,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              FontWeight.w700,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    Icon(
+                                                      expanded
+                                                          ? Icons
+                                                                .expand_more_rounded
+                                                          : Icons
+                                                                .expand_less_rounded,
+                                                      size: 20,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
+                                        const SizedBox(width: 10),
+                                        FilledButton.icon(
+                                          key: const Key('navigationEndButton'),
+                                          onPressed: widget.onEnd,
+                                          style: FilledButton.styleFrom(
+                                            minimumSize: const Size(0, 48),
+                                            backgroundColor: WaybiColors.danger,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 9,
+                                            ),
+                                          ),
+                                          icon: const Icon(
+                                            Icons.stop_rounded,
+                                            size: 18,
+                                          ),
+                                          label: Text(_text('End', '结束')),
+                                        ),
+                                      ],
                                     ),
-                                  ),
-                                  Row(
-                                    children: [
-                                      const WaybiBird(size: 32),
-                                      const SizedBox(width: 9),
-                                      Expanded(
-                                        child: Text(
-                                          widget.destinationTitle,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      FilledButton.icon(
-                                        onPressed: widget.onEnd,
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: WaybiColors.danger,
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 9,
-                                          ),
-                                        ),
-                                        icon: const Icon(
-                                          Icons.stop_rounded,
-                                          size: 18,
-                                        ),
-                                        label: Text(_text('End', '结束')),
-                                      ),
-                                    ],
                                   ),
                                   if (widget.arrivalPanel != null) ...[
                                     const SizedBox(height: 10),
@@ -854,7 +910,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                   ],
                                   const SizedBox(height: 8),
                                   const Divider(height: 1),
-                                  if (transitNotice != null) ...[
+                                  if (expanded && transitNotice != null) ...[
                                     const SizedBox(height: 8),
                                     NavigationTransitAlert(
                                       notice: transitNotice,
@@ -958,35 +1014,37 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                       ),
                                     ),
                                   ],
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      _Chip(
-                                        icon: widget.voiceEnabled
-                                            ? Icons.volume_up_rounded
-                                            : Icons.volume_off_rounded,
-                                        label: widget.voiceEnabled
-                                            ? _text('Voice ✓', '语音 ✓')
-                                            : _text('Voice off', '语音关闭'),
-                                        onTap: widget.onVoiceToggle,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      _Chip(
-                                        icon: Icons.alt_route_rounded,
-                                        label: widget.lanesEnabled
-                                            ? _text('Lanes ✓', '车道 ✓')
-                                            : _text('Lanes off', '车道关闭'),
-                                        onTap: widget.onLanesToggle,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      _Chip(
-                                        icon: Icons.gps_fixed_rounded,
-                                        label: widget.gpsAccuracy == null
-                                            ? 'GPS —'
-                                            : 'GPS ±${widget.gpsAccuracy!.round()} ${_text('m', '米')}',
-                                      ),
-                                    ],
-                                  ),
+                                  if (expanded) ...[
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        _Chip(
+                                          icon: widget.voiceEnabled
+                                              ? Icons.volume_up_rounded
+                                              : Icons.volume_off_rounded,
+                                          label: widget.voiceEnabled
+                                              ? _text('Voice ✓', '语音 ✓')
+                                              : _text('Voice off', '语音关闭'),
+                                          onTap: widget.onVoiceToggle,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        _Chip(
+                                          icon: Icons.alt_route_rounded,
+                                          label: widget.lanesEnabled
+                                              ? _text('Lanes ✓', '车道 ✓')
+                                              : _text('Lanes off', '车道关闭'),
+                                          onTap: widget.onLanesToggle,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        _Chip(
+                                          icon: Icons.gps_fixed_rounded,
+                                          label: widget.gpsAccuracy == null
+                                              ? 'GPS —'
+                                              : 'GPS ±${widget.gpsAccuracy!.round()} ${_text('m', '米')}',
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                   if (expanded) ...[
                                     const SizedBox(height: 15),
                                     Align(

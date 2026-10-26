@@ -400,7 +400,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text(lane.schedule.label(language)), findsNWidgets(2));
+        expect(find.text(lane.schedule.label(language)), findsOneWidget);
         expect(tester.takeException(), isNull);
         if (dir.isNotEmpty) {
           final boundary =

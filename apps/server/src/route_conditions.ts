@@ -3,8 +3,9 @@ import { readTrafficFlowState } from './traffic_flow.ts';
 import { matchRouteClosures } from './routing_closures.ts';
 import type { LonLat, OfficialRoadEvent } from './types.ts';
 
-interface FlowEdge { a: LonLat; b: LonLat; level: string; road: string; dx: number; dy: number }
-const cell = (p: LonLat) => `${Math.floor(p[0] * 200)},${Math.floor(p[1] * 200)}`;
+interface FlowEdge { a: LonLat; b: LonLat; level: string; road: string; dx: number; dy: number; magnitude: number }
+const GRID = 1000;
+const cell = (p: LonLat) => `${Math.floor(p[0] * GRID)},${Math.floor(p[1] * GRID)}`;
 function roadKey(value: string) {
   const key = value.toLowerCase().replace(/auckland|northbound|southbound|eastbound|westbound/g, '').replace(/[^a-z0-9]/g, '');
   return ({ southernmotorway: 'sh1', northernmotorway: 'sh1', northwesternmotorway: 'sh16',
@@ -20,14 +21,16 @@ function trafficIndex(state: any) {
   for (const segment of state.segments || []) {
     if (segment.geometryQuality !== 'road-matched' || !['free', 'moderate', 'heavy'].includes(segment.level)) continue;
     const points = segment.geometry?.coordinates || [];
+    const road = roadKey(segment.motorway || '');
     for (let i = 1; i < points.length; i++) {
       const a = points[i - 1], b = points[i];
       const dx = (b[0] - a[0]) * Math.cos(a[1] * Math.PI / 180), dy = b[1] - a[1];
-      if (!Math.hypot(dx, dy)) continue;
-      const edge = { a, b, level: segment.level, road: roadKey(segment.motorway || ''), dx, dy };
-      const west = Math.floor((Math.min(a[0], b[0]) - .0004) * 200), east = Math.floor((Math.max(a[0], b[0]) + .0004) * 200);
-      const south = Math.floor((Math.min(a[1], b[1]) - .0003) * 200), north = Math.floor((Math.max(a[1], b[1]) + .0003) * 200);
-      if ((east - west + 1) * (north - south + 1) > 100) continue;
+      const magnitude = Math.hypot(dx, dy);
+      if (!magnitude) continue;
+      const edge = { a, b, level: segment.level, road, dx, dy, magnitude };
+      const west = Math.floor((Math.min(a[0], b[0]) - .0004) * GRID), east = Math.floor((Math.max(a[0], b[0]) + .0004) * GRID);
+      const south = Math.floor((Math.min(a[1], b[1]) - .0003) * GRID), north = Math.floor((Math.max(a[1], b[1]) + .0003) * GRID);
+      if ((east - west + 1) * (north - south + 1) > 2500) continue;
       for (let x = west; x <= east; x++) for (let y = south; y <= north; y++) {
         const key = `${x},${y}`, list = cells.get(key) || [];
         list.push(edge); cells.set(key, list);
@@ -42,6 +45,7 @@ function trafficOverlap(route: any, index: Map<string, FlowEdge[]>) {
   if (!index.size) return totals;
   const points: LonLat[] = route.coordinates || [];
   const steps = route.steps || [];
+  const roads = steps.map(step => roadKey(step.name || ''));
   let alongRoute = 0, stepIndex = 0, stepEnd = steps[0]?.distance || 0;
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1], b = points[i], metres = distanceMeters(a, b);
@@ -54,12 +58,12 @@ function trafficOverlap(route: any, index: Map<string, FlowEdge[]>) {
       while (stepIndex < steps.length - 1 && stepEnd < alongRoute + metres * t) {
         stepIndex++; stepEnd += steps[stepIndex].distance;
       }
-      const road = roadKey(steps[stepIndex]?.name || '');
+      const road = roads[stepIndex] || '';
       let nearest = 25, level: string | null = null;
       for (const edge of index.get(cell(p)) || []) {
         if (road && edge.road && road !== edge.road) continue;
         // 45 degrees and 25 metres avoid borrowing a parallel/reverse road.
-        if ((dx * edge.dx + dy * edge.dy) / (magnitude * Math.hypot(edge.dx, edge.dy)) < Math.SQRT1_2) continue;
+        if ((dx * edge.dx + dy * edge.dy) / (magnitude * edge.magnitude) < Math.SQRT1_2) continue;
         const ex = (edge.b[0] - edge.a[0]) * cos * 111320, ey = (edge.b[1] - edge.a[1]) * 111320;
         const px = (p[0] - edge.a[0]) * cos * 111320, py = (p[1] - edge.a[1]) * 111320;
         const along = Math.max(0, Math.min(1, (px * ex + py * ey) / (ex * ex + ey * ey)));

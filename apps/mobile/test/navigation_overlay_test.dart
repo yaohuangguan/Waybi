@@ -22,6 +22,7 @@ void main() {
     final engine = DriveEngine();
     var recenterCount = 0;
     var overviewCount = 0;
+    var endCount = 0;
     final insets = <double>[];
     final bottomInsets = <double>[];
     addTearDown(engine.dispose);
@@ -41,7 +42,7 @@ void main() {
                   gpsAccuracy: 18,
                   voiceEnabled: true,
                   lanesEnabled: true,
-                  onEnd: () {},
+                  onEnd: () => endCount += 1,
                   onRecenter: () => recenterCount += 1,
                   onOverview: () => overviewCount += 1,
                   northUp: false,
@@ -61,6 +62,7 @@ void main() {
         ),
       ),
     );
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('End'), findsOneWidget);
     expect(insets, hasLength(1));
@@ -72,14 +74,22 @@ void main() {
             .bottom,
       ),
     );
-    expect(bottomInsets.single, greaterThan(100));
-    expect(bottomInsets.single, lessThan(667 * .45 + 15));
-    expect(find.text('GPS ±18 m'), findsOneWidget);
+    expect(bottomInsets.last, greaterThan(100));
+    expect(bottomInsets.last, lessThan(170));
+    final deck = tester.getRect(
+      find.byKey(const Key('navigationSheetSurface')),
+    );
+    final end = tester.getRect(find.byKey(const Key('navigationEndButton')));
+    expect(end.top - deck.top, lessThan(16));
+    expect(end.height, greaterThanOrEqualTo(48));
+    expect(find.text('GPS ±18 m'), findsNothing);
     expect(find.byTooltip('Route overview'), findsOneWidget);
     expect(find.text('Add a report'), findsNothing);
 
-    await tester.tap(find.text('GPS ±18 m'));
+    await tester.tap(find.text('End'));
     await tester.pump();
+    expect(endCount, 1);
+    expect(find.text('Add a report'), findsNothing);
     expect(recenterCount, 0);
 
     await tester.tap(find.byTooltip('Route overview'));
@@ -87,22 +97,30 @@ void main() {
     expect(recenterCount, 0);
     expect(overviewCount, 1);
 
-    // Drag from destination content, well outside the small handle.
+    // The destination row is also the sheet's drag and expand target.
+    final collapsedTop = tester
+        .getRect(find.byKey(const Key('navigationSheetHandle')))
+        .top;
     final start = tester.getCenter(
       find.text('Te Whatu Stardome Observatory & Planetarium'),
     );
     final gesture = await tester.startGesture(start);
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump();
     await gesture.moveBy(const Offset(0, -45));
     await tester.pump();
     expect(
       tester.getRect(find.byKey(const Key('navigationSheetHandle'))).top,
-      lessThan(start.dy - 40),
+      lessThan(collapsedTop - 20),
     );
     await gesture.moveBy(const Offset(0, -110));
     await gesture.up();
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('Add a report'), findsOneWidget);
+    expect(find.text('GPS ±18 m'), findsOneWidget);
+    await tester.tap(find.text('GPS ±18 m'));
+    expect(recenterCount, 0);
     expect(insets.last, lessThan(insets.first));
     expect(bottomInsets.last, greaterThan(bottomInsets.first));
     expect(bottomInsets.last, lessThan(667 * .45 + 15));
@@ -113,6 +131,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Add a report'), findsNothing);
+    expect(bottomInsets.last, lessThan(170));
   });
 
   for (final allUnspecified in [false, true]) {

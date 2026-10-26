@@ -310,6 +310,8 @@ export async function routeOptions(
         return normalizeOsrmRoutes(await fetchNzRouting(env, points, mode, requestOptions, exclusions), mode);
       } catch (error) {
         ownedUnavailable = true;
+        // Operational diagnostics contain no coordinates or credentials.
+        console.warn('NZ routing fallback:', error instanceof Error ? error.message : 'engine unavailable');
         // A failed exclusion request must not quietly drop its exclusions.
         // The public free fallback also supports directed road exclusions.
       }

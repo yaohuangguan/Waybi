@@ -7,6 +7,12 @@ Paid hosting was deferred on 2026-10-08 at the user's request. This remains a
 local prototype and deployment preparation; do not activate it as part of a
 normal main deployment.
 
+Update, 2026-10-26: the user authorized a private Google Cloud Run production
+service, now connected to the shipping Flutter app through the existing Worker
+API. See [GCP routing](gcp/README.md) for deployed resources, the active 3,000
+calls/day budget, validation and rollback. Main CI updates the Worker but does
+not recreate the GCP service. The Cloudflare container option below is separate.
+
 ## Local graph
 
 ```sh

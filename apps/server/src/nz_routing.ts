@@ -1,10 +1,17 @@
 import { validNzCoordinate } from './geo.ts';
 import type { LonLat, ProviderPayload, RouteRequestOptions } from './types.ts';
 import type { ClosureLocation } from './routing_closures.ts';
+import { cloudRunIdentityToken } from './cloud_run_auth.ts';
+import { restoreValhallaGeometry } from './valhalla_geometry.ts';
+import { reserveNzRoutingQuota } from './nz_routing_quota.ts';
 
 export interface NzRoutingConfig {
   WAYBI_NZ_ROUTING_URL?: string;
   WAYBI_NZ_ROUTING_TOKEN?: string;
+  /** Worker secret, never a client credential. Only run.invoker on this service. */
+  WAYBI_NZ_ROUTING_GCP_SERVICE_ACCOUNT?: string;
+  WAYBI_NZ_ROUTING_DAILY_LIMIT?: string;
+  USER_DB?: any;
 }
 
 export function nzRoutingEndpoint(env: NzRoutingConfig, points: LonLat[]): URL | null {
@@ -26,19 +33,35 @@ export async function fetchNzRouting(
   const costing = ({ DRIVE: 'auto', WALK: 'pedestrian', BICYCLE: 'bicycle' })[mode];
   if (!url || !costing) throw new Error('NZ routing unavailable for this request');
   if (exclusions.length > 128) throw new Error('Too many closed road segments for a reliable detour');
+  // Identity exchange and routing share the existing fallback deadline.
+  const signal = AbortSignal.timeout(exclusions.length ? 4000 : 5000);
+  if (env.WAYBI_NZ_ROUTING_GCP_SERVICE_ACCOUNT && url.pathname !== '/route') {
+    throw new Error('Cloud Run requires its canonical service endpoint');
+  }
+  const token = env.WAYBI_NZ_ROUTING_GCP_SERVICE_ACCOUNT
+    ? await cloudRunIdentityToken(env.WAYBI_NZ_ROUTING_GCP_SERVICE_ACCOUNT, url.origin, signal, fetcher)
+    : env.WAYBI_NZ_ROUTING_TOKEN;
+  const body = valhallaRequest(points, mode, options, exclusions);
+  // Native Cloud Run accepts polyline6. The separate Cloudflare container
+  // gateway keeps its established GeoJSON validation and request contract.
+  if (url.hostname.endsWith('.run.app')) body.shape_format = 'polyline6';
+  if (env.WAYBI_NZ_ROUTING_DAILY_LIMIT != null) {
+    await reserveNzRoutingQuota(env.USER_DB, env.WAYBI_NZ_ROUTING_DAILY_LIMIT);
+  }
   const response = await fetcher(url, {
     method: 'POST',
+    redirect: 'manual',
     headers: {
       'content-type': 'application/json',
-      ...(env.WAYBI_NZ_ROUTING_TOKEN ? { authorization: `Bearer ${env.WAYBI_NZ_ROUTING_TOKEN}` } : {}),
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify(valhallaRequest(points, mode, options, exclusions)),
-    signal: AbortSignal.timeout(exclusions.length ? 4000 : 5000),
+    body: JSON.stringify(body),
+    signal,
   });
   if (!response.ok) throw new Error(`NZ routing HTTP ${response.status}`);
   const payload = await response.json<ProviderPayload>();
   if (payload.code !== 'Ok' || !payload.routes?.length) throw new Error('NZ routing returned no route');
-  return payload;
+  return restoreValhallaGeometry(payload);
 }
 
 export function valhallaRequest(points: LonLat[], mode: string, options: RouteRequestOptions,

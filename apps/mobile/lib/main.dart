@@ -36,7 +36,6 @@ import 'domain/routing_origin.dart';
 import 'domain/road_event.dart';
 import 'domain/route_road_events.dart' as road_routes;
 import 'domain/safety_camera.dart';
-import 'domain/traffic_flow.dart';
 import 'domain/transit_lane.dart';
 import 'domain/transit_review_corridor.dart';
 import 'drive/device_heading.dart';
@@ -2028,8 +2027,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ),
         mode: WaybiTravelMode.drive,
       );
-      final driving = plan.forMode(WaybiTravelMode.drive).toList()
-        ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
+      final driving = filterRoutes(
+        plan.forMode(WaybiTravelMode.drive).toList(),
+        RouteFilter.recommended,
+        const {},
+      );
       if (!mounted || request != _placeQuickRouteRequest) return;
       if (driving.isEmpty) {
         setState(() {
@@ -2137,8 +2139,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               ),
               mode: WaybiTravelMode.drive,
             );
-            final driving = plan.forMode(WaybiTravelMode.drive).toList()
-              ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
+            final driving = filterRoutes(
+              plan.forMode(WaybiTravelMode.drive).toList(),
+              RouteFilter.recommended,
+              const {},
+            );
             if (driving.isNotEmpty) results[entry.key] = driving.first;
           } catch (_) {
             // Commute ETA is a progressive enhancement. Keep shortcuts usable
@@ -2202,8 +2207,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           ),
           mode: WaybiTravelMode.drive,
         );
-        final driving = plan.forMode(WaybiTravelMode.drive).toList()
-          ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
+        final driving = filterRoutes(
+          plan.forMode(WaybiTravelMode.drive).toList(),
+          RouteFilter.recommended,
+          const {},
+        );
         if (driving.isNotEmpty) results[label] = driving.first;
       } catch (_) {
         // Smart Commute remains useful with the saved baseline if live routing
@@ -2956,38 +2964,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     Map<String, RouteCameraSummary> cameraSummaries,
   ) {
     final summaries = <String, RoutePreferenceSummary>{};
-    final matcher = const RouteCameraMatcher();
     for (final route in plan.options) {
       if (route.mode != WaybiTravelMode.drive) continue;
-      var congestionScore =
+      final congestionScore =
           (route.trafficDelaySeconds ?? 0) +
           route.traffic.trafficJam * 300 +
           route.traffic.slow * 90;
-      if (route.provider == 'independent' && route.points.length >= 2) {
-        for (final segment in _driveEngine.trafficFlowSegments) {
-          final midpoint = GeoPoint(
-            (segment.start.latitude + segment.end.latitude) / 2,
-            (segment.start.longitude + segment.end.longitude) / 2,
-          );
-          final projection = matcher.project(midpoint, route.points);
-          if (projection == null || projection.offsetMeters > 130) continue;
-          final flowBearing = bearingDegrees(
-            segment.start.latitude,
-            segment.start.longitude,
-            segment.end.latitude,
-            segment.end.longitude,
-          );
-          if (angleDifference(flowBearing, projection.bearingDegrees) > 75) {
-            continue;
-          }
-          congestionScore += switch (segment.level) {
-            TrafficFlowLevel.heavy => 600,
-            TrafficFlowLevel.moderate => 180,
-            TrafficFlowLevel.unknown => 30,
-            TrafficFlowLevel.free => 0,
-          };
-        }
-      }
       summaries[route.id] = RoutePreferenceSummary(
         cameraCount: cameraSummaries[route.id]?.count ?? 0,
         congestionScore: congestionScore,
@@ -4728,8 +4710,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
       mode: WaybiTravelMode.drive,
     );
-    final driving = plan.forMode(WaybiTravelMode.drive).toList()
-      ..sort((a, b) => a.durationSeconds.compareTo(b.durationSeconds));
+    final driving = filterRoutes(
+      plan.forMode(WaybiTravelMode.drive).toList(),
+      RouteFilter.recommended,
+      const {},
+    );
     if (driving.isEmpty || driving.first.points.length < 2) {
       throw StateError(
         _text(

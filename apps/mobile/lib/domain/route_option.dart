@@ -1,4 +1,5 @@
 import 'map_provider.dart';
+import 'route_conditions.dart';
 
 enum WaybiTravelMode { drive, transit, walk, bicycle }
 
@@ -180,6 +181,8 @@ class RouteOption {
     this.waypoints = const [],
     this.closureIds = const [],
     this.restrictedRoadIds = const [],
+    this.conditions,
+    this.routingEngine,
   });
 
   final String id;
@@ -201,11 +204,20 @@ class RouteOption {
   final String provider;
   final List<String> closureIds;
   final List<String> restrictedRoadIds;
+  final RouteConditions? conditions;
+  final String? routingEngine;
+  bool get hasHeavyTraffic => conditions != null
+      ? conditions!.hasTraffic && conditions!.heavyMeters > 0
+      : traffic.trafficJam > 0;
+  bool get hasSlowTraffic => conditions != null
+      ? conditions!.hasTraffic && conditions!.moderateMeters > 0
+      : traffic.slow > 0;
   bool get blockedByClosure => closureIds.isNotEmpty;
   bool get blockedForDriving =>
       blockedByClosure || restrictedRoadIds.isNotEmpty;
 
   bool get hasTrafficData =>
+      (conditions?.hasTraffic ?? false) ||
       trafficIntervals.isNotEmpty ||
       trafficDelaySeconds != null ||
       traffic.normal > 0 ||
@@ -269,6 +281,10 @@ class RouteOption {
           .map(TrafficInterval.fromJson)
           .toList(growable: false),
       provider: json['provider'] as String? ?? 'unknown',
+      conditions: json['conditions'] is Map<String, dynamic>
+          ? RouteConditions.fromJson(json['conditions'] as Map<String, dynamic>)
+          : null,
+      routingEngine: json['routingEngine'] as String?,
     );
   }
 }

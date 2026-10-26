@@ -80,22 +80,39 @@ Map<String, RoutePreferenceAssessment> assessRoutePreferences(
     return (value - min) / (max - min);
   }
 
-  final fastestDuration = minOf(durations);
+  final assessedDurations = [
+    for (var i = 0; i < routes.length; i++)
+      durations[i] + (routes[i].conditions?.currentPenalty ?? 0),
+  ];
+  final legalDurations = [
+    for (var i = 0; i < routes.length; i++)
+      if (!routes[i].blockedForDriving) assessedDurations[i],
+  ];
+  final fastestDuration = minOf(
+    legalDurations.isEmpty ? assessedDurations : legalDurations,
+  );
+  final shortestDistance = minOf(distances);
   final candidateIds = <String>{
     for (var i = 0; i < routes.length; i++)
-      if (durations[i] <= fastestDuration * 1.15 &&
-          durations[i] <= fastestDuration + 120)
+      if ((legalDurations.isEmpty || !routes[i].blockedForDriving) &&
+          assessedDurations[i] <= fastestDuration * 1.15 &&
+          assessedDurations[i] <= fastestDuration + 120)
         routes[i].id,
   };
   final scores = <String, double>{};
   for (var i = 0; i < routes.length; i++) {
-    // Default routing is experience-first: ETA dominates. Traffic may break a
-    // close tie, but cameras are informational and must never create detours.
+    // Within the ETA guardrail, do not travel kilometres farther to save only
+    // seconds. Eight seconds per extra kilometre makes that tradeoff explicit;
+    // fastest/shortest remain independent filters. Cameras never affect it.
     final score =
-        durations[i] +
+        assessedDurations[i] +
         drivingManeuverPenalty(routes[i]) +
-        normalized(congestion[i], congestion) * 30 +
-        normalized(distances[i], distances) * 8;
+        (routes[i].conditions != null
+            ? 0
+            : normalized(congestion[i], congestion) * 30) +
+        (routes[i].mode == WaybiTravelMode.drive
+            ? (distances[i] - shortestDistance) / 1000 * 8
+            : normalized(distances[i], distances) * 8);
     scores[routes[i].id] = score;
   }
 
@@ -119,7 +136,10 @@ Map<String, RoutePreferenceAssessment> assessRoutePreferences(
         recommended: routes[i].id == recommendedId,
         fastest: durations[i] == fastest,
         shortest: distanceVaries && distances[i] == shortest,
-        leastTraffic: trafficVaries && congestion[i] == leastTraffic,
+        leastTraffic:
+            routes[i].conditions == null &&
+            trafficVaries &&
+            congestion[i] == leastTraffic,
         zeroCameras: cameras[i] == 0,
       ),
   };

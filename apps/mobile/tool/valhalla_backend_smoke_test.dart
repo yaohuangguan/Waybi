@@ -39,9 +39,9 @@ void main() {
         expect(base.steps.any((step) => step.lanes.isNotEmpty), isTrue);
         expect(base.steps.any((step) => step.instruction.isNotEmpty), isTrue);
         expect(base.blockedForDriving, isFalse);
-        // Fingerprint of the graph independently verified at the owned origin.
-        // A public OSRM fallback for this pair is about 123,752 m instead.
-        expect(base.distanceMeters, closeTo(123996, 10));
+        // Alternatives and current closures can change the chosen corridor.
+        // Check explicit engine provenance instead of an old distance hash.
+        expect(base.routingEngine, 'valhalla');
 
         final ramp = base.steps.firstWhere(
           (step) => step.maneuverType == 'on ramp',

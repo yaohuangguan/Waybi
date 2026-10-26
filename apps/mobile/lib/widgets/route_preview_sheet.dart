@@ -68,6 +68,36 @@ String routeExplanation(
           : '${_duration(selected.trafficDelaySeconds!)} traffic delay',
     );
   }
+  final conditions = selected.conditions;
+  if (conditions != null) {
+    facts.add(conditions.trafficLabel(isChinese));
+    if (conditions.hasTraffic) {
+      facts.add(
+        isChinese
+            ? '路况覆盖 ${_distance(conditions.coveredMeters, isChinese: true)}'
+            : '${_distance(conditions.coveredMeters)} traffic coverage',
+      );
+    }
+    if (conditions.current && conditions.incidentIds.isNotEmpty) {
+      facts.add(
+        isChinese
+            ? '${conditions.incidentIds.length} 处事故或风险'
+            : '${conditions.incidentIds.length} incidents or hazards',
+      );
+    }
+    if (conditions.current && conditions.roadworkIds.isNotEmpty) {
+      facts.add(
+        isChinese
+            ? '${conditions.roadworkIds.length} 处施工'
+            : '${conditions.roadworkIds.length} roadworks',
+      );
+    }
+    facts.add(
+      isChinese
+          ? '拥堵等级参与推荐，用时为估算'
+          : 'Congestion informs recommendation; travel time is estimated',
+    );
+  }
   if (selected.description.isNotEmpty) facts.add(selected.description);
   return facts.join(' · ');
 }
@@ -777,18 +807,21 @@ class _RouteOptionTile extends StatelessWidget {
   final VoidCallback? onTap;
 
   String get _trafficLabel {
+    if (route.conditions != null) {
+      return route.conditions!.trafficLabel(isChinese);
+    }
     if (!route.hasTrafficData) return isChinese ? '暂无路况数据' : 'No traffic data';
-    if (route.traffic.trafficJam > 0) {
+    if (route.hasHeavyTraffic) {
       return isChinese ? '拥堵较重' : 'Heavier traffic';
     }
-    if (route.traffic.slow > 0) return isChinese ? '部分拥堵' : 'Some traffic';
+    if (route.hasSlowTraffic) return isChinese ? '部分拥堵' : 'Some traffic';
     return isChinese ? '路况顺畅' : 'Light traffic';
   }
 
   Color _trafficColor() {
     if (!route.hasTrafficData) return Colors.grey;
-    if (route.traffic.trafficJam > 0) return WaybiColors.danger;
-    if (route.traffic.slow > 0) return WaybiColors.warning;
+    if (route.hasHeavyTraffic) return WaybiColors.danger;
+    if (route.hasSlowTraffic) return WaybiColors.warning;
     return WaybiColors.ocean;
   }
 
@@ -812,6 +845,21 @@ class _RouteOptionTile extends StatelessWidget {
 
   List<Color> _trafficBars() {
     if (!route.hasTrafficData) return List.filled(5, Colors.grey);
+    final conditions = route.conditions;
+    if (conditions != null) {
+      final covered =
+          (conditions.coveredMeters /
+                  route.distanceMeters.clamp(1, 10000000) *
+                  5)
+              .ceil()
+              .clamp(1, 5);
+      final color = route.hasHeavyTraffic
+          ? WaybiColors.danger
+          : route.hasSlowTraffic
+          ? WaybiColors.warning
+          : WaybiColors.ocean;
+      return [for (var i = 0; i < 5; i++) i < covered ? color : Colors.grey];
+    }
     if (route.traffic.trafficJam > 0) {
       return const [
         WaybiColors.ocean,
@@ -1079,6 +1127,9 @@ class _JourneyBrief extends StatelessWidget {
   }
 
   String _trafficLabel() {
+    if (route.conditions != null) {
+      return route.conditions!.trafficLabel(isChinese);
+    }
     if (!route.hasTrafficData) return isChinese ? '暂无数据' : 'Unavailable';
     final delay = route.trafficDelaySeconds ?? 0;
     if (delay > 60) {

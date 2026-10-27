@@ -16,6 +16,51 @@ RouteOption route(String id, {required int seconds, required int metres}) =>
     );
 
 void main() {
+  test(
+    'a blocked fast route cannot suppress a slower legal recommendation',
+    () {
+      final blocked = RouteOption(
+        id: 'closed',
+        mode: WaybiTravelMode.drive,
+        durationSeconds: 300,
+        distanceMeters: 5000,
+        points: const [GeoPoint(-36.85, 174.76), GeoPoint(-36.86, 174.77)],
+        provider: 'independent',
+        closureIds: const ['closed-road'],
+        traffic: const TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
+        trafficIntervals: const [],
+      );
+      final legal = route('open', seconds: 600, metres: 9000);
+      expect(recommendedRoute([blocked, legal], const {})?.id, 'open');
+      expect(recommendedRoute([blocked], const {})?.blockedForDriving, true);
+    },
+  );
+  test(
+    'a near-equal ETA does not justify kilometres of unnecessary detour',
+    () {
+      final routes = [
+        route('motorway-loop', seconds: 1692, metres: 28981),
+        route('balanced', seconds: 1716, metres: 20745),
+        route('shorter', seconds: 1758, metres: 20016),
+      ];
+      final result = assessRoutePreferences(routes, const {});
+      expect(recommendedRoute(routes, const {})?.id, 'balanced');
+      expect(result['motorway-loop']!.fastest, isTrue);
+      expect(result['shorter']!.shortest, isTrue);
+      expect(
+        filterRoutes(routes, RouteFilter.fastest, const {}).first.id,
+        'motorway-loop',
+      );
+      expect(
+        filterRoutes(routes, RouteFilter.shortest, const {}).first.id,
+        'shorter',
+      );
+      expect(
+        filterRoutes(routes, RouteFilter.recommended, const {}).first.id,
+        'balanced',
+      );
+    },
+  );
   test('route preferences prioritize ETA while preserving route badges', () {
     final routes = [
       route('fast', seconds: 600, metres: 10000),

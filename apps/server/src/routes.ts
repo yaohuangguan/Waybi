@@ -6,6 +6,7 @@ import { readRouteRoadSnapshots } from './regional_road_events.ts';
 import { matchRouteClosures, crossesExcludedRoads } from './routing_closures.ts';
 import type { ClosureLocation } from './routing_closures.ts';
 import { readTransitSnapshot, transitRoadBlocks } from './transit_lanes.ts';
+import { applyRouteConditions } from './route_conditions.ts';
 /// Waybi offers surface navigation, not international flights. Only reject
 /// the NZ <-> AU sea gap; land borders and Australian states remain routable.
 export function crossesTasmanSea(points: LonLat[]): boolean {
@@ -252,7 +253,7 @@ export function normalizeOsrmRoutes(payload: ProviderPayload, mode: string) {
     coordinates: route.geometry?.coordinates || [],
     encodedPolyline: null,
     routeToken: null,
-    description: index === 0 ? 'Recommended route' : `Alternative ${index + 1}`,
+    description: osrmRoadDescription(route) || (index === 0 ? 'Recommended route' : `Alternative ${index + 1}`),
     labels: [],
     warnings: [],
     traffic: { normal: 0, slow: 0, trafficJam: 0 },
@@ -267,6 +268,16 @@ export function normalizeOsrmRoutes(payload: ProviderPayload, mode: string) {
     transit: [],
     provider: 'osm-fallback'
   }));
+}
+
+function osrmRoadDescription(route: ProviderPayload): string {
+  const names = new Map<string, number>();
+  for (const step of (route.legs || []).flatMap(leg => leg.steps || [])) {
+    if (typeof step.name !== 'string' || !step.name.trim()) continue;
+    names.set(step.name, (names.get(step.name) || 0) + Number(step.distance || 0));
+  }
+  const major = new Set([...names].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([name]) => name));
+  return [...names.keys()].filter(name => major.has(name)).join(' · ').slice(0, 180);
 }
 
 export async function routeOptions(
@@ -307,7 +318,8 @@ export async function routeOptions(
     const requestOptions = detourLocalRoads ? { ...options, detourLocalRoads: true } : options;
     if (!ownedUnavailable && nzRoutingEndpoint(env, points)) {
       try {
-        return normalizeOsrmRoutes(await fetchNzRouting(env, points, mode, requestOptions, exclusions), mode);
+        return normalizeOsrmRoutes(await fetchNzRouting(env, points, mode, requestOptions, exclusions), mode)
+          .map(route => ({ ...route, routingEngine: 'valhalla' }));
       } catch (error) {
         ownedUnavailable = true;
         // Operational diagnostics contain no coordinates or credentials.
@@ -316,8 +328,10 @@ export async function routeOptions(
         // The public free fallback also supports directed road exclusions.
       }
     }
-    if (exclusions.length) return normalizeOsrmRoutes(await fetchPublicDetour(points, requestOptions, exclusions), mode);
-    return fallbackDrivingRoutes(from, to, stops, mode, options);
+    if (exclusions.length) return normalizeOsrmRoutes(await fetchPublicDetour(points, requestOptions, exclusions), mode)
+      .map(route => ({ ...route, routingEngine: 'public-valhalla' }));
+    return (await fallbackDrivingRoutes(from, to, stops, mode, options))
+      .map(route => ({ ...route, routingEngine: 'osrm' }));
   };
   const settled = await Promise.allSettled(
     modes.map(mode => fetchIndependent(mode, mode === 'DRIVE' ? options.exclusions || [] : []))
@@ -329,9 +343,13 @@ export async function routeOptions(
     !crossesExcludedRoads(route, options.exclusions!));
   if (!driving.length) throw new Error('No routes available for the requested travel mode');
   let roadAwareness = null;
+  let roadEvents = [];
+  let roadEventsAt: string | null = null;
   if (forceIndependent && driving.some(route => route.mode === 'drive')) {
     const now = new Date();
     const snapshot = await readRouteRoadSnapshots(env, driving, now);
+    roadEvents = snapshot.events;
+    roadEventsAt = snapshot.retrievedAt;
     const blocked = driving.filter(route => route.mode === 'drive').map(route => ({
       route, matches: matchRouteClosures(route, snapshot.events, now),
     }));
@@ -389,11 +407,13 @@ export async function routeOptions(
   if (forceIndependent) {
     driving = driving.map((route) => ({ ...route, provider: 'independent' }));
   }
+  const assessed = await applyRouteConditions(driving, env, roadEvents, roadEventsAt);
   return {
     provider: forceIndependent ? 'independent' : 'osm-fallback',
     trafficAvailable: false,
     stopsApplied: stops.length,
-    options: await applyTransitRoadRestrictions(driving, env),
+    // No precise traffic-adjusted ETA is claimed for qualitative NZTA levels.
+    options: await applyTransitRoadRestrictions(assessed, env),
     ...(roadAwareness ? { roadAwareness } : {}),
   };
 }

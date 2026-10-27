@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/domain/route_conditions.dart';
 import 'package:waybi_mobile/domain/route_preference.dart';
 import 'package:waybi_mobile/domain/road_event.dart';
 import 'package:waybi_mobile/data/parking_repository.dart';
@@ -17,6 +18,7 @@ RouteOption option(
   int? delay,
   List<String> restricted = const [],
   List<TransitLeg> transit = const [],
+  RouteConditions? conditions,
 }) => RouteOption(
   id: id,
   mode: mode,
@@ -31,6 +33,7 @@ RouteOption option(
   transit: transit,
   warnings: jam > 0 ? const ['This route includes a highway.'] : const [],
   description: 'Route $id',
+  conditions: conditions,
 );
 const closure = RoadEvent(
   id: 'closure',
@@ -339,6 +342,41 @@ void main() {
         await t.tap(button);
         await t.pump();
         expect(straight, 1);
+      },
+    );
+  }
+  for (final zh in [true, false]) {
+    testWidgets(
+      'partial official traffic is scoped honestly in route cards ($zh)',
+      (tester) async {
+        for (final (status, heavy, moderate, label) in [
+          ('live', 2000, 0, zh ? '部分路段拥堵' : 'Heavy sections'),
+          ('live', 0, 1000, zh ? '部分路段缓行' : 'Slow sections'),
+          ('live', 0, 0, zh ? '已知路段顺畅' : 'Known sections clear'),
+          ('unavailable', 0, 0, zh ? '路况未覆盖' : 'Traffic not covered'),
+          ('stale', 0, 0, zh ? '路况已过期' : 'Traffic outdated'),
+        ]) {
+          final conditions = RouteConditions(
+            expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+            trafficStatus: status,
+            coveredMeters: status == 'live' ? 3000 : 0,
+            heavyMeters: heavy,
+            moderateMeters: moderate,
+            rankingPenalty: 100,
+            incidentIds: const ['incident'],
+            roadworkIds: const ['works'],
+          );
+          final route = option('assessed', conditions: conditions);
+          await show(tester, [route], zh: zh);
+          expect(find.text(label), findsWidgets);
+          final reason = routeExplanation(route, [route], isChinese: zh);
+          expect(reason, contains(zh ? '用时为估算' : 'travel time is estimated'));
+          expect(reason, contains(zh ? '施工' : 'roadworks'));
+          if (status == 'live') {
+            expect(reason, contains(zh ? '路况覆盖' : 'traffic coverage'));
+          }
+          expect(tester.takeException(), isNull);
+        }
       },
     );
   }

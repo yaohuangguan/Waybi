@@ -123,6 +123,9 @@
     "apps/mobile/lib/domain/road_intelligence.dart": {
       "minimumLinePercent": 90
     },
+    "apps/mobile/lib/domain/route_conditions.dart": {
+      "minimumLinePercent": 100
+    },
     "apps/mobile/lib/domain/route_option.dart": {
       "minimumLinePercent": 80
     },

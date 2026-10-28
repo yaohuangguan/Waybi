@@ -235,8 +235,9 @@ class AppHarness {
       final q = request.url.queryParameters;
       final from = q['from']!.split(',').map(double.parse).toList();
       final to = q['to']!.split(',').map(double.parse).toList();
-      if (snappedDestinationLongitude != null)
+      if (snappedDestinationLongitude != null) {
         to[0] = snappedDestinationLongitude!;
+      }
       final mode = q['mode'] ?? 'drive';
       body = {
         'provider': 'independent',

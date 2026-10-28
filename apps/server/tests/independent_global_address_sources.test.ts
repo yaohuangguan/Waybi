@@ -7,7 +7,7 @@ test('LINZ national provider resolves an exact numbered address and keeps coordi
   const fetcher = async (url) => {
     assert.match(
       url.searchParams.get('where') || '',
-      /42 VERISSIMO DRIVE/
+      /full_road_name_ascii='Verissimo Drive' AND address_number=42/
     );
     return Response.json({
       features: [

@@ -1,4 +1,5 @@
 import type { ProviderPayload } from "./../../types.ts";
+import { addressLocalityTerms, normalizeAddressText } from '../numbered_street_query.ts';
 const ENDPOINT =
   'https://services.arcgis.com/xdsHIIxuCWByZiCB/arcgis/rest/services/LINZ_NZ_Addresses/FeatureServer/0/query';
 
@@ -9,9 +10,9 @@ function sql(value) {
 function titleWords(value) {
   return String(value || '')
     .toLowerCase()
-    .replace(/(^|[\s/-])([a-z])/g, (_match, prefix, letter) =>
+    .replace(/(^|[\s/'’-])(\p{L})/gu, (_match, prefix, letter) =>
       prefix + letter.toUpperCase()
-    );
+    ).replace(/\bMc([a-z])/g, (_match, letter) => `Mc${letter.toUpperCase()}`);
 }
 
 function inServiceArea(near) {
@@ -43,16 +44,27 @@ export const linzNzAddressProvider = {
     // LINZ is the national authoritative physical-address dataset. Query the
     // complete address prefix so partial input such as "42 veri" and a full
     // address such as "42 Verissimo Drive" use the same fast path.
-    url.searchParams.set(
-      'where',
-      parsed.number
-        ? `UPPER(full_address_ascii) LIKE '${sql(prefix)}%'`
-        : `UPPER(road_name_ascii)='${sql([parsed.roadName, parsed.roadType].filter(Boolean).join(' ').toUpperCase())}'`
-    );
+    const road = [parsed.roadName, parsed.roadType].filter(Boolean).join(' ');
+    const asciiRoad = titleWords(road.normalize('NFKD').replace(/\p{M}/gu, '').replaceAll('’', "'"));
+    // Keep indexed fields unwrapped. UPPER(full_address_ascii) scans millions
+    // of national records and was routinely timing out before yielding any.
+    const filters = [parsed.roadType
+      ? `full_road_name_ascii='${sql(asciiRoad)}'`
+      : `full_road_name_ascii LIKE '${sql(asciiRoad)}%'`];
+    if (parsed.number) {
+      const house = Number(parsed.number.split('/').at(-1).match(/^\d+/)?.[0]);
+      if (Number.isSafeInteger(house)) filters.push(`address_number=${house}`);
+      filters.push(`UPPER(full_address_number)='${sql(parsed.number.toUpperCase())}'`);
+    }
+    for (const term of addressLocalityTerms(parsed).flatMap(term => term.split(' '))) {
+      filters.push(`(${['suburb_locality_ascii', 'town_city_ascii', 'territorial_authority_ascii']
+        .map(field => `UPPER(${field}) LIKE '%${sql(term.toUpperCase())}%'`).join(' OR ')})`);
+    }
+    url.searchParams.set('where', filters.join(' AND '));
     url.searchParams.set(
       'outFields',
-      'OBJECTID,address_id,full_address_ascii,road_name_ascii,' +
-        'suburb_locality_ascii,town_city_ascii,territorial_authority_ascii'
+      'OBJECTID,address_id,road_id,full_address,full_address_ascii,full_road_name_ascii,road_name_ascii,' +
+        'suburb_locality,suburb_locality_ascii,town_city,town_city_ascii,territorial_authority_ascii'
     );
     url.searchParams.set('returnGeometry', 'true');
     url.searchParams.set('outSR', '4326');
@@ -81,11 +93,11 @@ export const linzNzAddressProvider = {
         return [];
       }
 
-      const fullAddress = titleWords(props.full_address_ascii || '');
+      const fullAddress = titleWords(String(props.full_address || props.full_address_ascii || '').split(',')[0]);
       if (!fullAddress) return [];
       const roadName = titleWords(props.road_name_ascii || '');
-      const suburb = titleWords(props.suburb_locality_ascii || '');
-      const city = titleWords(props.town_city_ascii || '');
+      const suburb = titleWords(props.suburb_locality || props.suburb_locality_ascii || '');
+      const city = titleWords(props.town_city || props.town_city_ascii || '');
       const authority = titleWords(props.territorial_authority_ascii || '');
       const displayAddress = [
         fullAddress,
@@ -126,29 +138,33 @@ export const linzNzAddressProvider = {
           _streetLocality: [suburb, city, authority, 'New Zealand']
             .filter((value, index, values) => value && values.indexOf(value) === index)
             .join(', '),
+          _streetId: String(props.road_id || normalizeAddressText([suburb, city, authority].join(' '))),
         },
       ];
     });
     if (!parsed.number && results.length) {
-      const latitude = results.reduce((sum, place) => sum + place.latitude, 0) / results.length;
-      const longitude = results.reduce((sum, place) => sum + place.longitude, 0) / results.length;
       const road = [parsed.roadName, parsed.roadType]
         .filter(Boolean)
         .map(titleWords)
         .join(' ');
-      const locality = results[0]._streetLocality || 'New Zealand';
-      return [{
-        id: `linz-nz-street:${road.toLowerCase()}`,
+      const streets = new Map<string, typeof results>();
+      for (const place of results) streets.set(place._streetId, [...(streets.get(place._streetId) || []), place]);
+      return [...streets].map(([id, addresses]) => {
+        const point = addresses[Math.floor(addresses.length / 2)];
+        const locality = point._streetLocality || 'New Zealand';
+        return {
+        id: `linz-nz-street:${id}:${road.toLowerCase()}`,
         provider: 'regional:linz-nz-addresses',
         sourceName: 'Toitū Te Whenua LINZ',
         name: road,
         address: locality,
         label: [road, locality].filter(Boolean).join(', '),
         isPoi: false,
-        latitude,
-        longitude,
-      }];
+        resultType: 'street',
+        latitude: point.latitude,
+        longitude: point.longitude,
+      }; });
     }
-    return results.map(({ _streetLocality, ...place }) => place);
+    return results.map(({ _streetLocality, _streetId, ...place }) => place);
   },
 };

@@ -1,4 +1,5 @@
 import type { ProviderPayload } from "./../../types.ts";
+import { normalizeAddressText } from '../numbered_street_query.ts';
 const ENDPOINT = 'https://mapspublic.aucklandcouncil.govt.nz/arcgis3/rest/services/NonCouncil/UnitaryPlanManagementLayers/MapServer/4/query';
 
 function sql(value) {
@@ -36,6 +37,19 @@ export const aucklandCouncilAddressProvider = {
         : `UPPER(RoadName) LIKE '${safeRoad}%'`
     ];
     if (parsed.roadType) filters.push(`UPPER(RoadType)='${sql(parsed.roadType)}'`);
+    // Constrain before the upstream record limit, rather than filter a handful
+    // of arbitrary Queen Street addresses after Otahuhu has already vanished.
+    const localities = String(parsed.locality || '').replace(/\b(?:Auckland(?:\s+region)?|New Zealand|NZ)\b/giu, '').split(',').filter(part => {
+      const term = normalizeAddressText(part).replace(/\b\d{4}\b/g, '').trim();
+      return term && !['auckland', 'auckland region', 'nz', 'new zealand'].includes(term);
+    });
+    for (const locality of localities) {
+      const original = locality.replace(/\b\d{4}\b/g, '').trim().toUpperCase();
+      const ascii = normalizeAddressText(original).toUpperCase();
+      filters.push(`(UPPER(Locality)='${sql(original)}' OR UPPER(Locality)='${sql(ascii)}')`);
+    }
+    const postcode = String(parsed.locality || '').match(/\b\d{4}\b/)?.[0];
+    if (postcode) filters.push(`(FullAddress LIKE '%${postcode}' OR FullAddress_macron LIKE '%${postcode}')`);
     if (parsed.number) {
       const house = Number(parsed.number.split('/').at(-1).match(/^\d+/)?.[0]);
       if (Number.isSafeInteger(house)) {
@@ -109,13 +123,17 @@ export const aucklandCouncilAddressProvider = {
     });
     results.sort((a, b) => a._numberDistance - b._numberDistance);
     if (!parsed.number && results.length) {
-      const first = results[0];
-      const latitude = results.reduce((sum, place) => sum + place.latitude, 0) / results.length;
-      const longitude = results.reduce((sum, place) => sum + place.longitude, 0) / results.length;
+      const streets = new Map<string, typeof results>();
+      for (const place of results) {
+        const key = normalizeAddressText(place.address.replace(place.name, ''));
+        streets.set(key, [...(streets.get(key) || []), place]);
+      }
+      return [...streets].map(([key, addresses]) => {
+      const first = addresses[Math.floor(addresses.length / 2)];
       const road = first.name.replace(/^\S+\s+/u, '');
       const locality = first.address.split(',').slice(1).join(',').trim();
-      return [{
-        id: `auckland-council:street:${road.toLowerCase()}`,
+      return {
+        id: `auckland-council:street:${road.toLowerCase()}:${key}`,
         provider: 'regional:auckland-council',
         sourceName: 'Auckland Council',
         name: road,
@@ -123,9 +141,9 @@ export const aucklandCouncilAddressProvider = {
         address: locality,
         label: [road, locality].filter(Boolean).join(', '),
         isPoi: false,
-        latitude,
-        longitude,
-      }];
+        latitude: first.latitude,
+        longitude: first.longitude,
+      }; });
     }
     return results.slice(0, 12).map(({ _numberDistance, ...place }) => place);
   }

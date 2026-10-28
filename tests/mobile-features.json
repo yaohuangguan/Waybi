@@ -75,6 +75,7 @@
       "id": "search",
       "label": "Multilingual search, cache, debounce, latency and selection races",
       "tests": [
+        "apps/mobile/test/google_place_picker_test.dart",
         "apps/mobile/test/local_multilingual_search_test.dart",
         "apps/mobile/test/search_recovery_test.dart",
         "apps/mobile/test/search_latency_test.dart",
@@ -428,7 +429,8 @@
       "id": "trips-watch-interactions",
       "label": "Watch details, failures, concurrent refresh and trip insights",
       "tests": [
-        "apps/mobile/test/trips_watch_interactions_test.dart"
+        "apps/mobile/test/trips_watch_interactions_test.dart",
+        "apps/mobile/test/progressive_trips_test.dart"
       ]
     },
     {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../domain/map_provider.dart';
@@ -138,6 +140,62 @@ class TripsSnapshot {
   final int? lifetimeDurationSeconds;
 }
 
+/// Publish cached records before starting independent network enhancements.
+/// A stalled commute must not hold back account history, or vice versa.
+Stream<TripsSnapshot> loadTripsInStages({
+  required Future<TripsSnapshot> Function() readSnapshot,
+  required List<Future<void> Function(VoidCallback)> refreshers,
+}) {
+  late final StreamController<TripsSnapshot> updates;
+  var listening = true;
+  var remaining = refreshers.length;
+  Future<void> pending = Future.value();
+  void publish() {
+    pending = pending
+        .then((_) async {
+          if (!listening) return;
+          final snapshot = await readSnapshot();
+          if (listening) updates.add(snapshot);
+        })
+        .catchError((Object error, StackTrace stack) {
+          if (listening) updates.addError(error, stack);
+        });
+  }
+
+  updates = StreamController<TripsSnapshot>(
+    onCancel: () {
+      listening = false;
+    },
+    onListen: () {
+      unawaited(() async {
+        publish();
+        await pending;
+        await Future<void>.delayed(Duration.zero);
+        if (!listening || refreshers.isEmpty) {
+          unawaited(updates.close());
+          return;
+        }
+        for (final refresh in refreshers) {
+          unawaited(() async {
+            try {
+              await refresh(publish);
+            } catch (_) {
+              /* Keep cached sections. */
+            } finally {
+              publish();
+              if (--remaining == 0) {
+                await pending;
+                unawaited(updates.close());
+              }
+            }
+          }());
+        }
+      }());
+    },
+  );
+  return updates.stream;
+}
+
 class TripsResult {
   const TripsResult.select(this.destination) : configureLabel = null;
   const TripsResult.configure(this.configureLabel) : destination = null;
@@ -151,11 +209,13 @@ class TripsPage extends StatefulWidget {
     super.key,
     required this.language,
     required this.loader,
+    this.progressiveLoader,
     this.onRouteWatchChanged,
   });
 
   final String language;
   final Future<TripsSnapshot> Function() loader;
+  final Stream<TripsSnapshot> Function()? progressiveLoader;
   final Future<void> Function(
     String label,
     RouteWatchItem? current,
@@ -171,6 +231,9 @@ class _TripsPageState extends State<TripsPage> {
   TripsSnapshot? _snapshot;
   bool _loading = true;
   String? _error;
+  StreamSubscription<TripsSnapshot>? _subscription;
+  Completer<void>? _refreshDone;
+  int _request = 0;
   final _historySearch = TextEditingController();
   String _historyMode = 'all';
   String _historyQuery = '';
@@ -187,31 +250,59 @@ class _TripsPageState extends State<TripsPage> {
 
   @override
   void dispose() {
+    _request++;
+    unawaited(_subscription?.cancel());
+    if (!(_refreshDone?.isCompleted ?? true)) _refreshDone!.complete();
     _historySearch.dispose();
     super.dispose();
   }
 
   Future<void> _refresh() async {
+    final request = ++_request;
+    // A provider's cancellation may wait for its own I/O. A new refresh must
+    // start immediately; the generation check rejects any late old snapshots.
+    unawaited(_subscription?.cancel());
+    if (!(_refreshDone?.isCompleted ?? true)) _refreshDone!.complete();
+    if (!mounted || request != _request) return;
+    final done = _refreshDone = Completer<void>();
     if (mounted) {
       setState(() {
         _loading = true;
         _error = null;
       });
     }
+    Stream<TripsSnapshot> source;
     try {
-      final snapshot = await widget.loader();
-      if (!mounted) return;
-      setState(() {
-        _snapshot = snapshot;
-        _loading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = _text('Could not refresh trips right now.', '暂时无法刷新行程信息。');
-      });
+      source =
+          widget.progressiveLoader?.call() ??
+          Stream<TripsSnapshot>.fromFuture(Future.sync(widget.loader));
+    } catch (error, stack) {
+      source = Stream<TripsSnapshot>.error(error, stack);
     }
+    _subscription = source.listen(
+      (snapshot) {
+        if (mounted && request == _request) {
+          setState(() {
+            _snapshot = snapshot;
+            _error = null;
+          });
+        }
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!mounted || request != _request) return;
+        setState(
+          () => _error = _text(
+            'Could not refresh trips right now.',
+            '暂时无法刷新行程信息。',
+          ),
+        );
+      },
+      onDone: () {
+        if (mounted && request == _request) setState(() => _loading = false);
+        if (!done.isCompleted) done.complete();
+      },
+    );
+    await done.future;
   }
 
   String _duration(int seconds) {

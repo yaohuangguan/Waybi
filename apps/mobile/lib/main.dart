@@ -351,6 +351,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   DateTime? _quickCommuteRefreshedAt;
   LatLng? _quickCommuteOrigin;
   bool _quickCommuteRefreshing = false;
+  Future<void>? _quickCommutePending;
   int _quickCommuteRequest = 0;
   RouteOption? _placeQuickRoute;
   bool _placeQuickRouteLoading = false;
@@ -441,6 +442,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   RouteOption? _activeTransitRoute;
   RouteOption? _activeNavigationRoute;
   final List<DestinationSuggestion> _routeStops = <DestinationSuggestion>[];
+  final Set<(double, double)> _googleSessionCoordinates = {};
   List<ParkingPlace> _parkingPlaces = const [];
   ParkingPlace? _selectedParking;
   PlaceSummary? _parkingOriginalPlace;
@@ -465,7 +467,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final place = _selectedPlace?.place;
     if (place == null) return null;
     return PointOfInterest(
-      placeID: place.reference?.provider == 'google' ? place.reference!.id : '',
+      placeID: ['google', 'google-ui-kit'].contains(place.reference?.provider)
+          ? place.reference!.id
+          : '',
       name: place.name,
       latLng: LatLng(
         latitude: place.location.latitude,
@@ -2091,7 +2095,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     mode: mode ?? WaybiTravelMode.drive,
   );
 
-  Future<void> _refreshQuickCommutes({bool force = false}) async {
+  Future<void> _refreshQuickCommutes({bool force = false}) {
+    if (!force && _quickCommutePending != null) return _quickCommutePending!;
+    late final Future<void> pending;
+    pending = _loadQuickCommutes(force: force).whenComplete(() {
+      if (identical(_quickCommutePending, pending)) _quickCommutePending = null;
+    });
+    return _quickCommutePending = pending;
+  }
+
+  Future<void> _loadQuickCommutes({bool force = false}) async {
     if (!mounted || !_settingsLoaded || _driveEngine.active) return;
     if (_quickCommuteRefreshing && !force) return;
     final origin = _gpsLocation;
@@ -3252,6 +3265,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _toggleFavorite(PointOfInterest poi) async {
+    if (_selectedPlace?.place.reference?.provider == 'google-ui-kit') {
+      setState(
+        () => _message = _appLanguage == 'zh' ? '可直接导航到此地点。收藏时，请先在地图上确认地点。' : 'You can navigate here. To save it, first confirm the place on the map.',
+      );
+      return;
+    }
     if (_account.profile == null) {
       _showProfile();
       return;
@@ -3480,14 +3499,45 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final poi = _selectedPoi;
     final selected = _selectedRoute;
     if (poi == null || selected == null) return;
+    GeoPoint savedPoint(GeoPoint point) {
+      if (!_googleSessionCoordinates.contains((
+            point.latitude,
+            point.longitude,
+          )) ||
+          selected.points.isEmpty) {
+        return point;
+      }
+      // Persist Valhalla's independent road geometry rather than Google's input.
+      return selected.points.reduce(
+        (a, b) =>
+            distanceMeters(
+                  a.latitude,
+                  a.longitude,
+                  point.latitude,
+                  point.longitude,
+                ) <
+                distanceMeters(
+                  b.latitude,
+                  b.longitude,
+                  point.latitude,
+                  point.longitude,
+                )
+            ? a
+            : b,
+      );
+    }
+
+    final destinationPoint = savedPoint(
+      GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
+    );
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getStringList('waybi.saved.routes') ?? <String>[];
     final record = jsonEncode({
       'savedAt': DateTime.now().toIso8601String(),
       'destination': {
         'name': poi.name,
-        'latitude': poi.latLng.latitude,
-        'longitude': poi.latLng.longitude,
+        'latitude': destinationPoint.latitude,
+        'longitude': destinationPoint.longitude,
       },
       'mode': selected.mode.apiValue,
       'provider': selected.provider,
@@ -3497,8 +3547,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           .map(
             (stop) => {
               'label': stop.label,
-              'latitude': stop.location.latitude,
-              'longitude': stop.location.longitude,
+              'latitude': savedPoint(
+                GeoPoint(stop.location.latitude, stop.location.longitude),
+              ).latitude,
+              'longitude': savedPoint(
+                GeoPoint(stop.location.latitude, stop.location.longitude),
+              ).longitude,
             },
           )
           .toList(),
@@ -4861,18 +4915,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
-  Future<TripsSnapshot> _loadTripsSnapshot() async {
-    if (_account.signedIn) {
-      try {
-        await _account.refresh(); // Detect newly deployed lifetime API.
-      } catch (_) {
-        // Cached profile and local guest totals still work offline.
-      }
-      await _syncGuestCompanionJourneys();
-      await _syncPendingAccountJourneys();
-    }
-    await _refreshQuickCommutes(force: true);
-
+  Future<TripsSnapshot> _readTripsSnapshot({
+    Map<String, RouteWatchItem> routeWatches = const {},
+  }) async {
     final quickPlaces = <String, TripDestination>{};
     for (final label in const ['Home', 'Work']) {
       final place = _quickLocations[label];
@@ -4930,25 +4975,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       );
     }
 
-    final routeWatches = <String, RouteWatchItem>{};
-    if (_account.signedIn && _account.profile?.isPlus == true) {
-      try {
-        for (final item in await _account.routeWatches()) {
-          final watch = RouteWatchItem.fromJson(item);
-          if (watch.id.isNotEmpty && watch.label.isNotEmpty) {
-            routeWatches[watch.label] = watch;
-          }
-        }
-      } catch (_) {
-        // Trips and navigation stay usable if Smart Commute is temporarily unavailable.
-      }
-    }
-    if (routeWatches.isNotEmpty) {
-      await _refreshSmartCommutes();
-    } else if (_smartCommuteRoutes.isNotEmpty && mounted) {
-      setState(_smartCommuteRoutes.clear);
-    }
-
     final prefs = await SharedPreferences.getInstance();
     const guestPrefix = 'waybi.companion.guest.v1.';
     return TripsSnapshot(
@@ -4970,12 +4996,60 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
+  Stream<TripsSnapshot> _loadTripsProgressively() {
+    final session = _account.sessionToken;
+    final watches = <String, RouteWatchItem>{};
+    return loadTripsInStages(
+      readSnapshot: () => _readTripsSnapshot(
+        routeWatches: _account.sessionToken == session
+            ? Map.of(watches)
+            : const {},
+      ),
+      refreshers: [
+        if (_account.signedIn)
+          (publish) async {
+            try {
+              await _account.refresh();
+            } catch (_) {
+              /* Keep cached profile. */
+            }
+            publish();
+            if (!mounted || _account.sessionToken != session) return;
+            await _syncGuestCompanionJourneys();
+            publish();
+            if (!mounted || _account.sessionToken != session) return;
+            await _syncPendingAccountJourneys();
+          },
+        (_) => _refreshQuickCommutes(),
+        if (_account.signedIn && _account.profile?.isPlus == true)
+          (publish) async {
+            for (final item in await _account.routeWatches()) {
+              if (!mounted || _account.sessionToken != session) return;
+              final watch = RouteWatchItem.fromJson(item);
+              if (watch.id.isNotEmpty && watch.label.isNotEmpty) {
+                watches[watch.label] = watch;
+              }
+            }
+            publish();
+            if (watches.isNotEmpty) {
+              await _refreshSmartCommutes();
+            } else if (_smartCommuteRoutes.isNotEmpty && mounted) {
+              setState(_smartCommuteRoutes.clear);
+            }
+          },
+      ],
+    );
+  }
+
+  Future<TripsSnapshot> _loadTripsSnapshot() => _loadTripsProgressively().last;
+
   Future<void> _showTrips() async {
     final result = await Navigator.of(context).push<TripsResult>(
       MaterialPageRoute(
         builder: (_) => TripsPage(
           language: _appLanguage,
           loader: _loadTripsSnapshot,
+          progressiveLoader: _loadTripsProgressively,
           onRouteWatchChanged: _setRouteWatch,
         ),
       ),
@@ -5229,6 +5303,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         transitionDuration: const Duration(milliseconds: 320),
         reverseTransitionDuration: const Duration(milliseconds: 240),
         pageBuilder: (_, animation, secondaryAnimation) => FullScreenSearch(
+          preferGoogle: true,
           provider: provider,
           resolve: (candidate) async {
             if (candidate.location != null) {
@@ -5292,12 +5367,83 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       );
       return null;
     }
+    if (place.reference?.provider == 'google-ui-kit') {
+      _googleSessionCoordinates.add((
+        place.location.latitude,
+        place.location.longitude,
+      ));
+    }
     if (!selectResult) {
       setState(
         () => _journeyPhase = _selectedPlace == null
             ? JourneyPhase.idle
             : JourneyPhase.placeSelected,
       );
+      return place;
+    }
+    if (place.reference?.provider == 'google-ui-kit') {
+      // The selected UI Kit coordinate is used for this navigation session.
+      // Persist only independently retrieved addresses, never Google content.
+      _selectPlace(place, SelectionSource.search);
+      if (saveAs != null) {
+        List<PlaceCandidate> matching = const [];
+        try {
+          matching = await _independentSearch.search(
+            place.name,
+            proximity: place.location,
+            language: _appLanguage,
+          );
+        } catch (_) {
+          /* Navigation remains available. */
+        }
+        final independent = matching
+            .where(
+              (candidate) =>
+                  candidate.location != null &&
+                  candidate.category != 'approximate_address' &&
+                  place.name.toLowerCase().startsWith(
+                    candidate.name.toLowerCase(),
+                  ) &&
+                  distanceMeters(
+                        place.location.latitude,
+                        place.location.longitude,
+                        candidate.location!.latitude,
+                        candidate.location!.longitude,
+                      ) <
+                      75,
+            )
+            .firstOrNull;
+        if (independent != null && mounted) {
+          final independentPlace = independent.toPlace(independent.location!);
+          _quickLocations[saveAs] = independentPlace;
+          _quickLocationProviders[saveAs] = _mapProvider;
+          await QuickLocationStore().save(
+            saveAs,
+            independentPlace,
+            _mapProvider,
+            ownerUserId: _account.signedIn ? _account.profile?.id : null,
+          );
+          if (_account.signedIn) {
+            try {
+              await _account.saveQuickLocation(
+                label: saveAs,
+                name: independentPlace.name,
+                address: independentPlace.address,
+                latitude: independentPlace.location.latitude,
+                longitude: independentPlace.location.longitude,
+                provider: _mapProvider.name,
+              );
+            } catch (_) {}
+          }
+          unawaited(_refreshQuickCommutes(force: true));
+        } else {
+          setState(
+            () =>
+                _message = _appLanguage == 'zh' ? '地点已选中。保存家或公司时，请先在地图上确认地点。' : 'Place selected. To save Home or Work, first confirm it on the map.',
+          );
+        }
+      }
+      if (!mounted) return place;
       return place;
     }
     if (saveAs != null) {

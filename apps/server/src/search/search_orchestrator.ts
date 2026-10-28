@@ -2,7 +2,7 @@ import { rankPlaces } from '../place_search_rank.ts';
 import { isGeographicPlace, normalizedPlaceName } from './place_intent.ts';
 import { distanceMeters } from '../geo.ts';
 import { searchRegionalAddressEnrichments } from './regional_address_registry.ts';
-import { parseNumberedStreetQuery, parseStreetQuery } from './numbered_street_query.ts';
+import { parseNumberedStreetQuery, parseStreetQuery, matchesAddressLocality } from './numbered_street_query.ts';
 
 
 function normalizedText(value) {
@@ -39,14 +39,14 @@ export function interpolateNumberedAddress(places, query) {
 
   const exact = (places || []).find((place) => {
     if (place?.interpolated === true || place?.approximate === true) return false;
-    if (!sameRequestedStreet(place, parsed)) return false;
+    if (!sameRequestedStreet(place, parsed) || !matchesAddressLocality(place, parsed)) return false;
     const number = leadingHouseNumber(place?.name) ?? leadingHouseNumber(place?.address);
     return number === wantedNumber;
   });
   if (exact) return null;
 
   const candidates = (places || [])
-    .filter((place) => sameRequestedStreet(place, parsed) &&
+    .filter((place) => sameRequestedStreet(place, parsed) && matchesAddressLocality(place, parsed) &&
       place?.interpolated !== true && place?.approximate !== true)
     .map((place) => ({
       place,
@@ -124,7 +124,7 @@ export function needsAddressEnrichment(places, query) {
   );
   if (!wanted) return false;
   return !(places || []).some((place) => {
-    if (place?.interpolated === true || place?.approximate === true) return false;
+    if (place?.interpolated === true || place?.approximate === true || !matchesAddressLocality(place, parsed)) return false;
     const candidates = [place?.name, place?.address, place?.label]
       .map(normalizedText)
       .filter(Boolean);
@@ -162,6 +162,10 @@ export function dedupeSearchResults(places) {
 
 export function mergeAndRankSearchResults(groups, query, near, limit = 12) {
   let merged = dedupeSearchResults(groups.flatMap((group) => group || []));
+  const parsed = parseNumberedStreetQuery(query) || parseStreetQuery(query);
+  // An explicit suburb/city is the destination, even when GPS is elsewhere.
+  // Never fill a qualified address search with namesakes from another town.
+  if (parsed?.locality) merged = merged.filter(place => matchesAddressLocality(place, parsed));
   const interpolated = interpolateNumberedAddress(merged, query);
   if (interpolated) merged = [interpolated, ...merged];
   return rankPlaces(merged, query, near).slice(0, limit);

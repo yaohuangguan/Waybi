@@ -5,11 +5,13 @@ import GoogleMaps
 import GoogleNavigation
 import UIKit
 import UserNotifications
+import WebKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var systemNavigation: AnyObject?
   private let headingHandler = DeviceHeadingStreamHandler()
+  private var googlePicker: WaybiGooglePlacePicker?
 
   override func application(
     _ application: UIApplication,
@@ -54,6 +56,30 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    FlutterMethodChannel(name: "waybi/google_place_picker", binaryMessenger: engineBridge.applicationRegistrar.messenger())
+      .setMethodCallHandler { [weak self] call, result in
+        guard call.method == "open", let args = call.arguments as? [String: Any],
+              let raw = args["url"] as? String, let url = URL(string: raw),
+              url.scheme == "https", url.host == "waybi.co", url.path == "/api/search/google",
+              url.user == nil, url.password == nil, url.port == nil else {
+          result(FlutterError(code: "invalid_picker", message: "Invalid search page", details: nil)); return
+        }
+        DispatchQueue.main.async {
+          guard let self, self.googlePicker == nil, let root = self.window?.rootViewController else {
+            result(nil); return
+          }
+          let picker = WaybiGooglePlacePicker(url: url) { [weak self] value in
+            self?.googlePicker = nil
+            result(value)
+          }
+          self.googlePicker = picker
+          let navigation = UINavigationController(rootViewController: picker)
+          navigation.modalPresentationStyle = .fullScreen
+          var presenter = root
+          while let presented = presenter.presentedViewController { presenter = presented }
+          presenter.present(navigation, animated: true)
+        }
+      }
     ExternalNavigationBridge.shared.attach(to: engineBridge.applicationRegistrar.messenger())
     FlutterMethodChannel(
       name: "waybi/system_navigation",
@@ -155,6 +181,58 @@ import UserNotifications
         result(nil)
       }
     }
+  }
+}
+
+private final class WaybiGooglePlacePicker: UIViewController, WKScriptMessageHandler, WKNavigationDelegate {
+  private let url: URL
+  private var completion: ((String?) -> Void)?
+  private var web: WKWebView?
+  init(url: URL, completion: @escaping (String?) -> Void) {
+    self.url = url; self.completion = completion
+    super.init(nibName: nil, bundle: nil)
+  }
+  required init?(coder: NSCoder) { fatalError("Use the search URL initializer") }
+  override func viewDidLoad() {
+    super.viewDidLoad()
+    title = "Waybi"
+    navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .close, target: self, action: #selector(closePicker))
+    let config = WKWebViewConfiguration()
+    config.websiteDataStore = .nonPersistent()
+    config.userContentController.add(self, name: "waybiPlaces")
+    let web = WKWebView(frame: .zero, configuration: config)
+    self.web = web; web.navigationDelegate = self; web.translatesAutoresizingMaskIntoConstraints = false
+    view.addSubview(web)
+    NSLayoutConstraint.activate([
+      web.leadingAnchor.constraint(equalTo: view.leadingAnchor), web.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      web.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), web.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+    ])
+    web.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20))
+  }
+  @objc private func closePicker() { finish(nil) }
+  private func finish(_ value: String?) {
+    guard let completion else { return }
+    self.completion = nil
+    web?.stopLoading(); web?.configuration.userContentController.removeScriptMessageHandler(forName: "waybiPlaces")
+    dismiss(animated: true) { completion(value) }
+  }
+  private func fallback() {
+    let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "q" })?.value ?? ""
+    let data = try? JSONSerialization.data(withJSONObject: ["status": "fallback", "query": query])
+    finish(data.flatMap { String(data: $0, encoding: .utf8) })
+  }
+  func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+    guard message.frameInfo.isMainFrame, message.frameInfo.securityOrigin.protocol == "https",
+          message.frameInfo.securityOrigin.host == "waybi.co", let body = message.body as? String,
+          body.utf8.count < 4096 else { return }
+    finish(body)
+  }
+  func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { fallback() }
+  func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { fallback() }
+  func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+    guard navigationAction.targetFrame?.isMainFrame != false, let next = navigationAction.request.url else { decisionHandler(.allow); return }
+    if next.scheme == "https" && next.host == "waybi.co" && next.path == "/api/search/google" { decisionHandler(.allow) }
+    else { decisionHandler(.cancel); if next.scheme == "https" { UIApplication.shared.open(next) } }
   }
 }
 

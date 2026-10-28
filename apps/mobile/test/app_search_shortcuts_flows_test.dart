@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,8 @@ import 'package:waybi_mobile/widgets/companion_search_prompt.dart';
 import 'package:waybi_mobile/widgets/full_screen_search.dart';
 import 'package:waybi_mobile/widgets/place_details_content.dart';
 import 'package:waybi_mobile/widgets/trips_page.dart';
+import 'package:waybi_mobile/widgets/route_preview_sheet.dart';
+import 'package:waybi_mobile/services/google_place_picker.dart';
 
 import 'support/app_harness.dart';
 
@@ -60,6 +63,100 @@ Future<void> edit(WidgetTester t, AppHarness h) async {
 }
 
 void main() {
+  void googleSelection() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          GooglePlacePicker.channel,
+          (_) async => jsonEncode({
+            'status': 'selected',
+            'id': 'google-id',
+            'query': 'New office',
+            'latitude': -37.2,
+            'longitude': 174.92,
+          }),
+        );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(GooglePlacePicker.channel, null),
+    );
+  }
+
+  flow(
+    'Google search navigates without storing its input coordinates in saved routes or favorites',
+    (t, h) async {
+      googleSelection();
+      h.snappedDestinationLongitude = 174.9199;
+      await h.boot(signedIn: true);
+      await h.act(
+        () => t
+            .widget<CompanionSearchPrompt>(find.byType(CompanionSearchPrompt))
+            .onSearch('New office'),
+      );
+      await h.until(
+        () => find.byType(PlaceDetailsContent).evaluate().isNotEmpty,
+        reason: 'Google selection should reach the real place card',
+      );
+      expect(details(t).selectedPlace.reference?.provider, 'google-ui-kit');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getStringList('waybi.recent.google'), isNull);
+      await h.act(details(t).onFavorite);
+      expect(h.savedPlaces, isEmpty);
+      await h.act(details(t).onNavigate);
+      await h.until(
+        () => find.byType(RoutePreviewSheet).evaluate().isNotEmpty,
+        reason:
+            'Selected Google point should receive a Valhalla-compatible route',
+      );
+      final preview = t.widget<RoutePreviewSheet>(
+        find.byType(RoutePreviewSheet),
+      );
+      await h.act(preview.onSave);
+      final route =
+          jsonDecode(prefs.getStringList('waybi.saved.routes')!.single) as Map;
+      expect((route['destination'] as Map)['longitude'], 174.9199);
+      expect(
+        h.routeRequests.any(
+          (request) => request.url.queryParameters['to'] == '174.92,-37.2',
+        ),
+        isTrue,
+      );
+    },
+  );
+  for (final matched in [true, false]) {
+    flow(
+      'Google Work selection saves only an independently verified shortcut: $matched',
+      (t, h) async {
+        googleSelection();
+        h.searchPlaces.add(
+          result(matched ? 'New office' : 'Another business', 174.92001),
+        );
+        await h.boot(signedIn: true);
+        await edit(t, h);
+        await t.tap(
+          find.descendant(
+            of: find.byKey(const ValueKey('Work')),
+            matching: find.byTooltip('Set location'),
+          ),
+        );
+        await h.until(
+          () => find.byType(PlaceDetailsContent).evaluate().isNotEmpty,
+          reason: 'Google Work selection should remain usable for navigation',
+        );
+        await h.frames(6);
+        final prefs = await SharedPreferences.getInstance();
+        final saved = prefs.getString('waybi.quick_location.Work');
+        if (matched) {
+          expect((jsonDecode(saved!) as Map)['longitude'], 174.92001);
+          expect(h.quickLocations.single['longitude'], 174.92001);
+        } else {
+          expect(saved, isNull);
+          expect(h.quickLocations, isEmpty);
+          expect(find.textContaining('To save Home or Work'), findsOneWidget);
+        }
+        expect(prefs.getStringList('waybi.recent.google'), isNull);
+      },
+    );
+  }
   flow('shortcut ordering and removal are persisted and can be restored', (
     t,
     h,

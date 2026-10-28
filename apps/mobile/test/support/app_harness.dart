@@ -97,6 +97,7 @@ class AppHarness {
   int reportStatus = 201;
   String? pendingNavigation;
   int? routeDistanceMeters;
+  double? snappedDestinationLongitude;
   bool parkingAvailable = false;
   Map<String, dynamic>? transitResponse;
   final routeWatchRows = <Map<String, dynamic>>[];
@@ -234,6 +235,8 @@ class AppHarness {
       final q = request.url.queryParameters;
       final from = q['from']!.split(',').map(double.parse).toList();
       final to = q['to']!.split(',').map(double.parse).toList();
+      if (snappedDestinationLongitude != null)
+        to[0] = snappedDestinationLongitude!;
       final mode = q['mode'] ?? 'drive';
       body = {
         'provider': 'independent',

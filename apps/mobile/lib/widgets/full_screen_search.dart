@@ -10,6 +10,7 @@ import '../data/search_history_store.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import '../providers/provider_contracts.dart';
+import '../services/google_place_picker.dart';
 
 class FullScreenSearch extends StatefulWidget {
   const FullScreenSearch({
@@ -23,6 +24,7 @@ class FullScreenSearch extends StatefulWidget {
     this.purpose,
     this.onDriveMode,
     this.marker = LocationMarkerStyle.kiwi,
+    this.preferGoogle = false,
   });
 
   final SearchProvider provider;
@@ -34,6 +36,7 @@ class FullScreenSearch extends StatefulWidget {
   final String? purpose;
   final VoidCallback? onDriveMode;
   final LocationMarkerStyle marker;
+  final bool preferGoogle;
 
   @override
   State<FullScreenSearch> createState() => _FullScreenSearchState();
@@ -46,6 +49,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
   Timer? _debounce;
   int _request = 0;
   bool _loading = false;
+  bool _googleUnavailable = false;
   bool _resolving = false;
   int _selectionGeneration = 0;
   String? _resultScope;
@@ -62,11 +66,36 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
   void initState() {
     super.initState();
     unawaited(_loadHistory());
-    if (widget.initialQuery.isNotEmpty) {
+    if (widget.initialQuery.isNotEmpty &&
+        !(widget.preferGoogle && GooglePlacePicker.supported)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _search(widget.initialQuery);
       });
     }
+    if (widget.preferGoogle && GooglePlacePicker.supported) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_googleSearch());
+      });
+    }
+  }
+
+  Future<void> _googleSearch() async {
+    _debounce?.cancel();
+    ++_request;
+    final result = await GooglePlacePicker.open(
+      query: _controller.text.trim(),
+      language: widget.language,
+      near: widget.currentLocation,
+    );
+    if (!mounted) return;
+    if (result.place != null) {
+      Navigator.of(context).pop(result.place);
+      return;
+    }
+    if (result.cancelled) return;
+    _googleUnavailable = true;
+    _controller.text = result.query;
+    _search(result.query, immediate: true);
   }
 
   Future<void> _loadHistory() async {
@@ -362,7 +391,13 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
             onChanged: _search,
             onSubmitted: (value) {
               unawaited(_rememberQuery(value));
-              _search(value, immediate: true);
+              if (widget.preferGoogle &&
+                  !_googleUnavailable &&
+                  GooglePlacePicker.supported) {
+                unawaited(_googleSearch());
+              } else {
+                _search(value, immediate: true);
+              }
             },
           ),
         ),

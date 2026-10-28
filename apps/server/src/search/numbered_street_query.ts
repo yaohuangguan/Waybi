@@ -16,12 +16,14 @@ export function parseNumberedStreetQuery(query) {
   const number = match[1].replace(/\s+/g, '');
   const words = match[2].trim().split(/\s+/).filter(Boolean);
   if (!words.length) return null;
-  const last = words.at(-1).toUpperCase().replace(/\./g, '');
-  const roadType = ROAD_TYPE_ALIASES.get(last) || null;
-  if (roadType) words.pop();
+  let typeIndex = words.findLastIndex(word => ROAD_TYPE_ALIASES.has(word.toUpperCase().replace(/\./g, '')));
+  if (typeIndex >= 0 && typeIndex < words.length - 1 && /^(?:north|south|east|west|n|s|e|w)$/i.test(words.slice(typeIndex + 1).join(' '))) typeIndex = -1;
+  const roadType = typeIndex >= 0 ? ROAD_TYPE_ALIASES.get(words[typeIndex].toUpperCase().replace(/\./g, '')) : null;
+  const inlineLocality = roadType ? words.splice(typeIndex).slice(1).join(' ') : '';
   const roadName = words.join(' ').trim();
   if (!roadName) return null;
-  return { number, roadName, roadType };
+  const locality = [inlineLocality, ...String(query).split(',').slice(1)].map(part => part.trim()).filter(Boolean).join(', ');
+  return { number, roadName, roadType, ...(locality ? { locality } : {}) };
 }
 
 
@@ -30,10 +32,26 @@ export function parseStreetQuery(query) {
   if (!raw || /^\d/u.test(raw)) return null;
   const words = raw.split(/\s+/).filter(Boolean);
   if (words.length < 2) return null;
-  const last = words.at(-1).toUpperCase().replace(/\./g, '');
-  const roadType = ROAD_TYPE_ALIASES.get(last) || null;
+  const typeIndex = words.length - 1;
+  const roadType = typeIndex >= 0 ? ROAD_TYPE_ALIASES.get(words[typeIndex].toUpperCase().replace(/\./g, '')) : null;
   if (!roadType) return null;
-  words.pop();
+  const inlineLocality = words.splice(typeIndex).slice(1).join(' ');
   const roadName = words.join(' ').trim();
-  return roadName ? { number: null, roadName, roadType } : null;
+  const locality = [inlineLocality, ...String(query).split(',').slice(1)].map(part => part.trim()).filter(Boolean).join(', ');
+  return roadName ? { number: null, roadName, roadType, ...(locality ? { locality } : {}) } : null;
+}
+
+export function normalizeAddressText(value) {
+  return String(value || '').normalize('NFKD').replace(/\p{M}/gu, '')
+    .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+export function addressLocalityTerms(parsed) {
+  return String(parsed?.locality || '').split(',').map(part => normalizeAddressText(part)
+    .replace(/\b(?:\d{4,6}|new zealand|nz)\b/g, '').trim()).filter(Boolean);
+}
+
+export function matchesAddressLocality(place, parsed) {
+  const address = ` ${normalizeAddressText([place.address, place.label].filter(Boolean).join(' '))} `;
+  return addressLocalityTerms(parsed).every(term => address.includes(` ${term} `));
 }

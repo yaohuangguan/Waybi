@@ -8,7 +8,7 @@ test('numbered street parsing is global and region-agnostic', () => {
     number: '42', roadName: 'Verissimo', roadType: 'DRIVE'
   });
   assert.deepEqual(parseNumberedStreetQuery('221B Baker Street, London'), {
-    number: '221B', roadName: 'Baker', roadType: 'STREET'
+    number: '221B', roadName: 'Baker', roadType: 'STREET', locality: 'London'
   });
   assert.equal(parseNumberedStreetQuery('Tokyo Station'), null);
 });

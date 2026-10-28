@@ -23,6 +23,8 @@ import { readTrafficFlowState, refreshTrafficFlowState } from './traffic_flow.ts
 import { handleRoadIntelligence } from './road_intelligence_api.ts';
 import { createRoadReport, readRoadReports, validRoadReportInput } from './road_reports.ts';
 import { reserveRoadReportQuota } from './road_report_quota.ts';
+import { handleGooglePlacePicker } from './google_place_picker.ts';
+import { sendGoogleSearchAlerts } from './google_search_budget.ts';
 import { readPublicEdgeJson, writePublicEdgeJson } from './public_edge_cache.ts';
 import { recordApiUsage, readUsageSummary } from './cost_guard.ts';
 import { readTransitSnapshot, refreshTransitSnapshot } from './transit_lanes.ts';
@@ -554,6 +556,7 @@ export default {
     }
     try {
       const featureResponse =
+        await handleGooglePlacePicker(request, env, ctx) ||
         await handleRoadIntelligence(request, env, ctx, readCameraState) ||
         await handleBilling(request, env) ||
         await handleAccount(request, env) ||
@@ -577,6 +580,7 @@ export default {
   async scheduled(event, env, ctx) {
     if (env.WAYBI_MIGRATION_PAUSED === 'true') return;
     if (event.cron === '*/5 * * * *') {
+      ctx.waitUntil(sendGoogleSearchAlerts(env));
       ctx.waitUntil(refreshTrafficFlowState(env));
       return;
     }

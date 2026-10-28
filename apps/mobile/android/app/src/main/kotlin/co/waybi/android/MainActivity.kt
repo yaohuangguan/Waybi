@@ -11,6 +11,16 @@ import android.os.Build
 import android.os.LocaleList
 import android.provider.Settings
 import java.util.Locale
+import android.app.Dialog
+import android.graphics.Color
+import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceError
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.LinearLayout
+import android.widget.Button
+import org.json.JSONObject
 
 class MainActivity : FlutterActivity() {
     override fun attachBaseContext(base: Context) {
@@ -27,6 +37,55 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "waybi/google_place_picker")
+            .setMethodCallHandler { call, result ->
+                val args = call.arguments as? Map<*, *>
+                val uri = (args?.get("url") as? String)?.let(Uri::parse)
+                if (call.method != "open" || uri?.scheme != "https" || uri.host != "waybi.co" || uri.path != "/api/search/google" || uri.userInfo != null || uri.port != -1) {
+                    result.error("invalid_picker", "Invalid search page", null)
+                    return@setMethodCallHandler
+                }
+                val dialog = Dialog(this, android.R.style.Theme_Material_Light_NoActionBar)
+                val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
+                val web = WebView(this)
+                val nonce = java.util.UUID.randomUUID().toString()
+                var finished = false
+                fun finish(value: String?) {
+                    if (finished) return
+                    finished = true
+                    web.stopLoading(); web.removeJavascriptInterface("WaybiPlaces"); dialog.dismiss(); web.destroy(); result.success(value)
+                }
+                val close = Button(this).apply { text = "← Waybi"; setOnClickListener { finish(null) } }
+                column.addView(close)
+                column.addView(web, LinearLayout.LayoutParams(-1, 0, 1f))
+                web.settings.javaScriptEnabled = true
+                web.settings.domStorageEnabled = true
+                web.settings.allowFileAccess = false
+                web.settings.allowContentAccess = false
+                web.addJavascriptInterface(object {
+                    @JavascriptInterface fun postMessage(body: String) {
+                        runOnUiThread {
+                            val validNonce = try { JSONObject(body).optString("nonce") == nonce } catch (_: Exception) { false }
+                            if (body.length < 4096 && validNonce && web.url?.startsWith("https://waybi.co/api/search/google") == true) finish(body)
+                        }
+                    }
+                }, "WaybiPlaces")
+                web.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                        if (!request.isForMainFrame) return false
+                        val next = request.url
+                        return !(next.scheme == "https" && next.host == "waybi.co" && next.path == "/api/search/google")
+                    }
+                    override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                        if (request.isForMainFrame) finish(JSONObject().put("status", "fallback").put("query", uri.getQueryParameter("q") ?: "").toString())
+                    }
+                }
+                dialog.setContentView(column)
+                dialog.setOnCancelListener { finish(null) }
+                dialog.show()
+                dialog.window?.setLayout(-1, -1)
+                web.loadUrl(uri.buildUpon().fragment(nonce).build().toString())
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "waybi/system_navigation")
             .setMethodCallHandler { call, result ->
                 val args = call.arguments as? Map<*, *> ?: emptyMap<Any, Any>()

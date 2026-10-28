@@ -267,6 +267,9 @@
     "apps/mobile/lib/services/external_navigation_inbox.dart": {
       "minimumLinePercent": 95
     },
+    "apps/mobile/lib/services/google_place_picker.dart": {
+      "minimumLinePercent": 100
+    },
     "apps/mobile/lib/services/native_map_language.dart": {
       "minimumLinePercent": 100
     },

@@ -1,12 +1,12 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "waybi",
-	"account_id": "cdc04de9bc4c6a41b5003758e505a0d1",
+	"account_id": "6b1d0dd4e6f7f30df92753cd1e2ee12d",
 	"main": "apps/server/src/worker.ts",
 	"workers_dev": true,
 	"routes": [
-		{ "pattern": "waybi.co", "custom_domain": true },
-		{ "pattern": "www.waybi.co", "custom_domain": true }
+		{ "pattern": "waybi.co/*", "zone_id": "85aece457d70df3d2aead8648c0f4c27" },
+		{ "pattern": "www.waybi.co/*", "zone_id": "85aece457d70df3d2aead8648c0f4c27" }
 	],
 	"compatibility_date": "2026-08-04",
 	"assets": {
@@ -41,14 +41,14 @@
 	"kv_namespaces": [
 		{
 			"binding": "CAMERA_DATA",
-			"id": "c874d6e739824c52be53071c85c9e005"
+			"id": "e8e1988e112e4937aceab62ad01535e7"
 		}
 	],
 	"d1_databases": [
 		{
 			"binding": "USER_DB",
 			"database_name": "waybi-users",
-			"database_id": "cd8e444b-d89e-452d-9ffe-9a0d9d7510f0"
+			"database_id": "e766fccb-6e83-405a-a0a2-ad82e795153e"
 		}
 	],
 	"triggers": {

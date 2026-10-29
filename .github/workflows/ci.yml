@@ -18,7 +18,7 @@ jobs:
       - run: node --check scripts/flutter-dev.mjs
       - run: node --check scripts/ios-device.mjs
       - run: node --check scripts/d1-migrate-remote.mjs
-      - run: node --test scripts/d1-migrate-remote.test.mjs scripts/check-mobile-coverage.test.mjs
+      - run: node --test scripts/d1-migrate-remote.test.mjs scripts/check-mobile-coverage.test.mjs scripts/check-cloudflare-account.test.mjs
       - run: pnpm typecheck:server
       - run: pnpm typecheck:nz-routing
       - run: pnpm test
@@ -146,6 +146,8 @@ jobs:
             exit 1
           fi
       - run: pnpm install --no-frozen-lockfile
+      - name: Verify publishing and migration credentials match the production account
+        run: node scripts/check-cloudflare-account.mjs
       - name: Deploy Cloudflare Worker
         run: pnpm deploy
       - name: Configure protected Google search and quota notification secrets

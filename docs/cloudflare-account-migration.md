@@ -24,6 +24,11 @@ The old D1 and R2 data remain intact for recovery. Do not restore old-account
 write traffic after the new database has accepted production writes without
 first reconciling those writes.
 
+`wrangler.legacy.jsonc` intentionally stays in the former account: it maintains
+the `kiwi-lens.nzs.workers.dev` URL as an HTTP gateway to the new production
+host, without a database binding. The optional Cloudflare Containers routing
+template points at the new account; it is not the deployed GCP Valhalla service.
+
 The runtime move does not change the private GCP Valhalla project, Google
 search's 9,990-per-month protection, or Flutter's API domain. Apple sign-in
 still reports `ready:false`; Developer membership and server credentials are

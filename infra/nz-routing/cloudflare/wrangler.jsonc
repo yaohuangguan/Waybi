@@ -1,7 +1,7 @@
 {
   "$schema": "../../../node_modules/wrangler/config-schema.json",
   "name": "waybi-nz-routing",
-  "account_id": "cdc04de9bc4c6a41b5003758e505a0d1",
+  "account_id": "6b1d0dd4e6f7f30df92753cd1e2ee12d",
   "main": "worker.ts",
   "compatibility_date": "2026-08-04",
   "containers": [{

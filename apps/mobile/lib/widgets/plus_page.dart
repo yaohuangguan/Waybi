@@ -616,9 +616,27 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
               ),
               TextButton(
                 onPressed: () => _openDocument(
-                  'https://github.com/yaohuangguan/Waybi#privacy',
+                  widget.language == 'zh'
+                      ? 'https://waybi.co/zh/privacy/'
+                      : 'https://waybi.co/privacy/',
                 ),
                 child: Text(t('Privacy & data', '隐私与数据')),
+              ),
+              TextButton(
+                onPressed: () => _openDocument(
+                  widget.language == 'zh'
+                      ? 'https://waybi.co/zh/terms/'
+                      : 'https://waybi.co/terms/',
+                ),
+                child: Text(t('Waybi terms', 'Waybi 使用条款')),
+              ),
+              TextButton(
+                onPressed: () => _openDocument(
+                  widget.language == 'zh'
+                      ? 'https://waybi.co/zh/support/'
+                      : 'https://waybi.co/support/',
+                ),
+                child: Text(t('Help & support', '帮助与支持')),
               ),
             ],
           ),

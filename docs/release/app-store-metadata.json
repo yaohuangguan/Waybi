@@ -1,0 +1,42 @@
+{
+  "status": "draft_for_owner_review_not_submitted",
+  "bundleId": "co.waybi.ios",
+  "version": "1.0.0",
+  "candidateBuild": 49,
+  "categorySuggestion": "Navigation",
+  "initialRegionSuggestion": "New Zealand; owner to choose availability before submission",
+  "supportEmail": "support@waybi.co",
+  "supportUrl": "https://waybi.co/support/",
+  "privacyPolicyUrl": "https://waybi.co/privacy/",
+  "termsUrl": "https://waybi.co/terms/",
+  "localizations": {
+    "en-AU": {
+      "name": "Waybi",
+      "subtitle": "Navigation, with a companion",
+      "promotionalText": "Plan a clearer journey in New Zealand, with address search, available route options, voice guidance and Waybi & Friends along the way.",
+      "keywords": "navigation,new zealand,auckland,route,driving,journey,voice,travel,map,companion",
+      "description": "Waybi brings navigation, road awareness and a little companionship to journeys in New Zealand.\n\nSearch for an address or place, compare available route options, and follow your journey with voice guidance. Review recent trips and saved places, and keep Home and Work close at hand. Waybi & Friends brings a travel companion and journal to the experience.\n\nBasic map and navigation use does not require a Waybi account. An optional account syncs supported saved information across your devices. Location permission is used for your position and guidance; active navigation can continue while the screen is locked when the relevant permissions are enabled.\n\nCoverage and data freshness vary by road and region. Traffic, closure, lane, camera and parking information may be incomplete or delayed. Follow actual road signs, road conditions and traffic laws. Waybi is supplementary guidance, not a guarantee of road access or safety.\n\nQuestions or feedback: support@waybi.co\nPrivacy: https://waybi.co/privacy/\nSupport: https://waybi.co/support/",
+      "supportUrl": "https://waybi.co/support/",
+      "privacyPolicyUrl": "https://waybi.co/privacy/"
+    },
+    "zh-Hans": {
+      "name": "Waybi",
+      "subtitle": "新西兰导航与旅行伙伴",
+      "promotionalText": "搜索地点、选择可用路线、跟随语音指引，让 Waybi 和旅行伙伴陪你探索新西兰。",
+      "keywords": "导航,新西兰,奥克兰,路线,地图,自驾,语音,旅行,目的地,旅伴,行程",
+      "description": "Waybi 将导航、道路提醒与旅行伙伴带到新西兰的日常出行。\n\n搜索地址和地点，比较可用的路线方案，跟随语音指引开始行程。在行程页查看最近出行、保存地点，让家和公司随时可用。Waybi & Friends 为旅途带来伙伴和旅行日记。\n\n基础地图和导航无需注册，账号用于同步支持的保存信息。定位权限用于显示位置与导航；开启相关权限后，导航期间可在锁屏时继续指引。\n\n不同道路和地区的数据覆盖、更新时间不同。拥堵、封路、车道、摄像头和停车信息可能不完整或延迟，请始终遵守实际道路标志、交通规则和现场情况。Waybi 是辅助指引，不保证道路可通行或安全。\n\n问题与反馈：support@waybi.co\n隐私政策：https://waybi.co/zh/privacy/\n帮助与支持：https://waybi.co/zh/support/",
+      "supportUrl": "https://waybi.co/zh/support/",
+      "privacyPolicyUrl": "https://waybi.co/zh/privacy/"
+    }
+  },
+  "pending": [
+    "Legal operator/copyright name and App Store Connect team details",
+    "Public support mailbox forwarding verified end to end",
+    "Actual distribution-build screenshots and device coverage",
+    "App Privacy answers and age-rating questionnaire",
+    "Export compliance based on the final binary",
+    "Owner decision on free-only launch or verified Plus subscriptions",
+    "Highest existing App Store Connect build number before upload",
+    "Distribution signing, Apple sign-in setup and TestFlight review"
+  ]
+}

@@ -76,6 +76,18 @@ for (const url of urls) {
   }
   if (contentUnits < 180) fail(`${pathname}: page is unexpectedly thin (${contentUnits} content units)`);
 
+  if (/^\/(zh\/)?(privacy|terms|support)\/$/.test(pathname)) {
+    if (!html.includes('href="mailto:support@waybi.co"')) fail(`${pathname}: missing public support contact`);
+    for (const page of ['privacy', 'terms', 'support']) {
+      if (!html.includes(`href="${lang.startsWith('zh') ? '/zh' : ''}/${page}/"`)) {
+        fail(`${pathname}: missing ${page} navigation`);
+      }
+    }
+    if (!html.includes('id="main"') || !html.includes('href="#main"')) fail(`${pathname}: missing skip navigation`);
+    if (/<script\b/i.test(html)) fail(`${pathname}: public service pages must work without scripts`);
+    if (html.includes('moviegoer24@gmail.com')) fail(`${pathname}: private forwarding inbox must not be published`);
+  }
+
   for (const match of html.matchAll(/<script\s+[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     try {
       JSON.parse(match[1]);

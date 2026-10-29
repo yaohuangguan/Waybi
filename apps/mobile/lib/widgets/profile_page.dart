@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:waybi_friends/waybi_friends.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/account_repository.dart';
 import '../data/friends_backup_service.dart';
@@ -110,6 +111,32 @@ class _ProfilePageState extends State<ProfilePage> {
 
   String _text(String english, String chinese) =>
       _appLanguage == 'zh' ? chinese : english;
+
+  Future<void> _openServicePage(String page) async {
+    final prefix = _appLanguage == 'zh' ? '/zh' : '';
+    try {
+      if (await launchUrl(
+        Uri.parse('https://waybi.co$prefix/$page/'),
+        mode: LaunchMode.externalApplication,
+      )) {
+        return;
+      }
+    } catch (_) {
+      // Keep account controls usable when a browser is unavailable.
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _text(
+              'Could not open this link. Please try again.',
+              '暂时无法打开链接，请重试。',
+            ),
+          ),
+        ),
+      );
+    }
+  }
 
   Future<void> _showMapDataLicences() async {
     await showModalBottomSheet<void>(
@@ -1437,6 +1464,26 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ],
+              Wrap(
+                spacing: 4,
+                children: [
+                  TextButton(
+                    key: const Key('profilePrivacy'),
+                    onPressed: () => _openServicePage('privacy'),
+                    child: Text(_text('Privacy policy', '隐私政策')),
+                  ),
+                  TextButton(
+                    key: const Key('profileTerms'),
+                    onPressed: () => _openServicePage('terms'),
+                    child: Text(_text('Terms of use', '使用条款')),
+                  ),
+                  TextButton(
+                    key: const Key('profileSupport'),
+                    onPressed: () => _openServicePage('support'),
+                    child: Text(_text('Help & support', '帮助与支持')),
+                  ),
+                ],
+              ),
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(

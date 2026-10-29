@@ -22,6 +22,7 @@ export default defineConfig({
     },
     workbox: {
       navigateFallback: '/index.html',
+      navigateFallbackDenylist: [/^\/(?:zh\/)?(?:privacy|terms|support)(?:\/|$)/],
       runtimeCaching: [
         { urlPattern: ({ url }) => url.pathname === '/api/cameras', handler: 'NetworkFirst', options: { cacheName: 'kiwi-camera-data', networkTimeoutSeconds: 5, expiration: { maxEntries: 2, maxAgeSeconds: 86400 } } },
         { urlPattern: ({ url }) => url.hostname.endsWith('tile.openstreetmap.org'), handler: 'CacheFirst', options: { cacheName: 'kiwi-map-tiles', expiration: { maxEntries: 500, maxAgeSeconds: 604800 } } }

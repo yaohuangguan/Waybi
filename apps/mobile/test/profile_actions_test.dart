@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -16,12 +17,13 @@ Widget screen(
   ValueChanged<ThemeMode>? theme,
   ValueChanged<String>? language,
   ValueChanged<LocationMarkerStyle>? marker,
+  String appLanguage = 'en',
 }) => MaterialApp(
   home: ProfilePage(
     account: account,
     voiceEnabled: true,
     lanesEnabled: true,
-    appLanguage: 'en',
+    appLanguage: appLanguage,
     voiceLanguage: 'en-NZ',
     onThemeModeChanged: theme,
     onVoiceChanged: (_) {},
@@ -60,6 +62,67 @@ Future<void> reveal(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  for (final signedIn in [false, true]) {
+    testWidgets(
+      'public policy links work ${signedIn ? 'with' : 'without'} an account',
+      (tester) async {
+        final account = AccountRepository();
+        addTearDown(account.dispose);
+        if (signedIn) {
+          account.profile = AccountProfile(
+            email: 'driver@example.test',
+            plan: 'free',
+            displayName: '',
+            providers: const [],
+            routes: const [],
+            places: const [],
+            reviews: const [],
+            recentDestinations: const [],
+          );
+        }
+        final messenger =
+            TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+        const channel = MethodChannel('plugins.flutter.io/url_launcher');
+        final urls = <String>[];
+        messenger.setMockMethodCallHandler(channel, (call) async {
+          if (call.method == 'launch') {
+            urls.add((call.arguments as Map)['url'] as String);
+          }
+          return true;
+        });
+        addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+        await tester.pumpWidget(
+          screen(account, appLanguage: signedIn ? 'zh' : 'en'),
+        );
+        for (final page in ['Privacy', 'Terms', 'Support']) {
+          final finder = find.byKey(Key('profile$page'));
+          await reveal(tester, finder);
+          await tester.ensureVisible(finder);
+          await tester.pumpAndSettle();
+          await tester.tap(finder);
+          await tester.pumpAndSettle();
+        }
+        final prefix = signedIn ? '/zh' : '';
+        expect(urls, [
+          'https://waybi.co$prefix/privacy/',
+          'https://waybi.co$prefix/terms/',
+          'https://waybi.co$prefix/support/',
+        ]);
+        messenger.setMockMethodCallHandler(channel, (_) async => false);
+        await tester.tap(find.byKey(const Key('profileSupport')));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            signedIn
+                ? '暂时无法打开链接，请重试。'
+                : 'Could not open this link. Please try again.',
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'profile appearance, marker and app-language controls deliver the chosen values',
     (tester) async {

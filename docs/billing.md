@@ -72,6 +72,6 @@ flutter test
 
 After products and secrets are configured, validate on a signed iPhone/TestFlight build with Apple's sandbox: localized products, a new monthly/yearly purchase, cancellation, restoration after app restart, a different Waybi account's rejection, expiration/refund, subscription management and account synchronization. Test Stripe separately with test Checkout and signed webhook retries before enabling live mode.
 
-Before App Store submission, set the application's privacy-policy URL and subscription metadata in App Store Connect. The current native page links Apple's standard EULA and the repository's published privacy/data description; update the latter to the final public privacy-policy URL when available. This change does not submit the application or configure merchant accounts.
+Before App Store submission, set the application's privacy-policy URL and subscription metadata in App Store Connect. The native page links Apple's standard EULA and the localized public privacy, terms and support pages at `https://waybi.co/privacy/`, `/terms/` and `/support/` (with `/zh/` equivalents). This change does not submit the application or configure merchant accounts.
 
 References: [Flutter in_app_purchase](https://pub.dev/packages/in_app_purchase), [Apple App Store Server API](https://developer.apple.com/documentation/appstoreserverapi), [Apple In-App Purchase key setup](https://github.com/apple/app-store-server-library-node#obtaining-an-in-app-purchase-key-from-app-store-connect), [Stripe webhooks](https://docs.stripe.com/webhooks).

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waybi_mobile/data/account_repository.dart';
 import 'package:waybi_mobile/data/plus_billing.dart';
@@ -88,6 +89,51 @@ class TestBilling extends PlusBillingGateway {
 }
 
 void main() {
+  testWidgets(
+    'Plus links use public localized policy pages and retain Apple EULA',
+    (tester) async {
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const channel = MethodChannel('plugins.flutter.io/url_launcher');
+      final urls = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'launch') {
+          urls.add((call.arguments as Map)['url'] as String);
+        }
+        return true;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final account = TestAccount();
+      addTearDown(account.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PlusPage(
+            account: account,
+            language: 'zh',
+            billing: TestBilling(available: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      for (final label in ['订阅条款', '隐私与数据', 'Waybi 使用条款', '帮助与支持']) {
+        final link = find.text(label);
+        await tester.scrollUntilVisible(
+          link,
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.ensureVisible(link);
+        await tester.tap(link);
+        await tester.pumpAndSettle();
+      }
+      expect(urls, [
+        'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
+        'https://waybi.co/zh/privacy/',
+        'https://waybi.co/zh/terms/',
+        'https://waybi.co/zh/support/',
+      ]);
+    },
+  );
   void size(WidgetTester tester) {
     tester.view.physicalSize = const Size(375, 667);
     tester.view.devicePixelRatio = 1;

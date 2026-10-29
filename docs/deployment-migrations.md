@@ -7,7 +7,9 @@ Every root `pnpm deploy` reconciles pending D1 migrations before building or pub
 GitHub Actions supplies both repository secrets to the deployment job:
 
 - `CLOUDFLARE_API_TOKEN`: the existing Worker publishing credential, with the required Worker/KV/routes access.
-- `CLOUDFLARE_D1_API_TOKEN`: D1 migration credential with **Account → D1 → Edit** for account cdc04de9bc4c6a41b5003758e505a0d1, the deployment account in wrangler.jsonc.
+- `CLOUDFLARE_D1_API_TOKEN`: D1 migration credential with **Account → D1 → Edit** for account 6b1d0dd4e6f7f30df92753cd1e2ee12d (moviegoer24), the deployment account in wrangler.jsonc.
+
+CI checks both credentials against the configured account and database before running migrations or publishing. Credentials for the former 7199 account must be replaced after the account move; the guard stops an accidental release with those credentials. See [the account migration record](cloudflare-account-migration.md).
 
 The migration launcher overrides `CLOUDFLARE_API_TOKEN` only inside its migration child process and removes the extra D1 variable from that child. It does not change the parent environment; subsequent Worker publishing continues using the original credential. Migration failure stops the deployment chain.
 
@@ -23,7 +25,7 @@ The user then added the separate D1 repository secret. This integration makes th
 
 ## Operational checks
 
-- Check the configured account before editing permissions. An unrelated Mac OAuth cannot administer the project's original account.
+- Check the configured account before editing permissions. The Mac default OAuth is moviegoer24; Windows defaults to 7199, so Windows deployments need the explicitly selected moviegoer24 profile.
 - Do not skip the migration gate, point production at an empty replacement database, or publish code requiring an absent table.
 - After a credential repair, deploy latest main and confirm migration reconciliation, Worker version and read-only health/auth configuration.
 - Apple config remains `ready:false` until the separate Developer membership, capability/key and provisioning setup. Test real Apple flows only after that setup.

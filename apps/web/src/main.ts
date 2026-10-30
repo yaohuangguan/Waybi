@@ -461,7 +461,8 @@ function requestCompassFromGesture() {
 }
 
 function updatePosition(latitude: number, longitude: number, heading: number | null, accuracy: number, speedMetersPerSecond?: number | null) {
-  if (!(latitude > -48 && latitude < -34 && longitude > 166 && longitude < 179)) return;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+      latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return;
   const previous = current;
   const now = Date.now();
   latestGpsFixAt = now;

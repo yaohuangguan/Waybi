@@ -10,6 +10,23 @@ function page() {
   const html=readFileSync('index.html','utf8');
   document.body.innerHTML=html.match(/<body[^>]*>([\s\S]*?)<\/body>/)![1].replace(/<script[\s\S]*?<\/script>/g,'');
 }
+it('accepts a valid overseas GPS fix and rejects invalid coordinates', async () => {
+  vi.useFakeTimers(); page();
+  let watch: PositionCallback | undefined;
+  Object.defineProperty(navigator, 'geolocation', {configurable:true,value:{
+    getCurrentPosition:(success:PositionCallback)=>success({coords:{latitude:-33.8688,longitude:151.2093,heading:null,speed:0,accuracy:5},timestamp:Date.now()} as GeolocationPosition),
+    watchPosition:(success:PositionCallback)=>{watch=success;return 1;},clearWatch:vi.fn(),
+  }});
+  vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('offline')));
+  await import('../src/main'); await vi.advanceTimersByTimeAsync(0);
+  document.querySelector<HTMLButtonElement>('#gpsBadge')!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(mocks.map.setPosition).toHaveBeenCalledWith([151.2093,-33.8688],null);
+  mocks.map.setPosition.mockClear();
+  watch?.({coords:{latitude:100,longitude:151.2093,heading:null,speed:0,accuracy:5},timestamp:Date.now()} as GeolocationPosition);
+  expect(mocks.map.setPosition).not.toHaveBeenCalled();
+  vi.clearAllTimers();
+});
 it('real navigator boots offline, retains saved cameras and exposes settings without GPS', async () => {
   vi.useFakeTimers();
   page();

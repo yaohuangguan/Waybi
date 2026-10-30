@@ -64,3 +64,5 @@ html{scroll-padding-top:110px}.wrap{width:min(1220px,calc(100% - 80px))}.site-he
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.card{transition:none}}
 
 .proof small{display:block;color:var(--muted);font-size:13px;line-height:1.45;margin-top:4px}.proof div{align-items:flex-start}.proof div>span{margin-top:2px}
+
+.web-map-entry{font-size:13px;color:var(--muted);margin-top:18px}.web-map-entry a{text-underline-offset:3px}

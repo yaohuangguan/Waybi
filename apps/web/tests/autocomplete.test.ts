@@ -1,5 +1,12 @@
 import { expect, it, vi } from 'vitest';
-import { initAutocomplete } from '../src/autocomplete';
+import { initAutocomplete, placeLabel } from '../src/autocomplete';
+
+it('keeps independent POI names beside their street addresses', () => {
+  const place = { id: 1, name:'Auckland Museum', label:'Museum Circuit, Auckland', address:'Museum Circuit, Auckland', isPoi:true, latitude:-36.86, longitude:174.77 };
+  expect(placeLabel(place)).toBe('Auckland Museum, Museum Circuit, Auckland');
+  expect(placeLabel({...place, label:'Auckland Museum, Auckland', address:'Auckland Museum, Auckland'})).toBe('Auckland Museum, Auckland');
+  expect(placeLabel({...place, isPoi:false})).toBe('Museum Circuit, Auckland');
+});
 
 function setup(recent: any[] = []) {
   document.body.innerHTML='<input id="origin"><input id="destination"><div id="results" hidden></div>';

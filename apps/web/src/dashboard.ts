@@ -35,7 +35,7 @@ document.body.innerHTML = `
           <div class="dashboard-empty-grid">
             <article><span>↗</span><strong>Recent navigation</strong><p>Keep a lightweight history of destinations, travel modes and trip distance.</p></article>
             <article><span>♥</span><strong>Saved places + notes</strong><p>Favorite places and keep private notes for the locations you return to.</p></article>
-            <article><span>★</span><strong>Your own reviews</strong><p>Store personal ratings and comments separately from public Google reviews.</p></article>
+            <article><span>★</span><strong>Your own reviews</strong><p>Keep personal ratings and comments private in your Waybi account.</p></article>
           </div>
           <div class="dashboard-empty-actions"><a class="site-primary-button" href="/app">Open navigator <span>→</span></a><small>Account features are optional. Core navigation works in guest mode.</small></div>
         </div>

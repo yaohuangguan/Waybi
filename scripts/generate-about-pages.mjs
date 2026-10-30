@@ -303,6 +303,7 @@ function renderPage(c) {
     <footer class="about-footer">
       <div><a href="${rootHome}">${esc(c.home)}</a><p>${esc(c.footCompany)}</p></div>
       <nav class="about-footer-links" aria-label="Footer">
+        <a href="/app">${localized?'网页版地图':'Web map'}</a>
         <a href="${localized?'/zh/new-zealand-navigation/':'/new-zealand-navigation/'}">${localized?'地图与导航':'Navigation'}</a>
         <a href="${localized?'/zh/safety-camera-navigation/':'/safety-camera-navigation/'}">${localized?'道路提醒':'Road awareness'}</a>
         <a href="${localized?'/zh/waybi-friends/':'/waybi-friends/'}">Waybi & Friends</a>

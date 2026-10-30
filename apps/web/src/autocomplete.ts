@@ -1,7 +1,12 @@
 import { t, type Language } from './i18n';
 import type { RecentDestination } from './account';
 
-export type SuggestedPlace = { id: string | number; label: string; latitude: number; longitude: number };
+export type SuggestedPlace = { id: string | number; label: string; name?: string; address?: string; isPoi?: boolean; latitude: number; longitude: number };
+export function placeLabel(place: SuggestedPlace): string {
+  if (!place.isPoi || !place.name) return place.label;
+  const address = place.address || place.label;
+  return address.startsWith(place.name) ? address : `${place.name}, ${address}`;
+}
 type Target = 'origin' | 'destination';
 
 export function initAutocomplete(options: {
@@ -10,6 +15,7 @@ export function initAutocomplete(options: {
   results: HTMLElement;
   language: () => Language;
   recent: () => RecentDestination[];
+  near?: () => [number, number] | null;
   select: (target: Target, place: SuggestedPlace) => void;
 }) {
   let timer = 0;
@@ -33,13 +39,13 @@ export function initAutocomplete(options: {
       pin.className = 'result-pin';
       pin.textContent = '⌖';
       const label = document.createElement('span');
-      label.textContent = place.label;
+      label.textContent = placeLabel(place);
       button.append(pin, label);
       button.onclick = () => {
         pending?.abort();
         window.clearTimeout(timer);
         options.results.hidden = true;
-        options.select(target, place);
+        options.select(target, { ...place, label: placeLabel(place) });
       };
       options.results.append(button);
     }
@@ -68,9 +74,12 @@ export function initAutocomplete(options: {
       timer = window.setTimeout(async () => {
         pending = new AbortController();
         try {
-          const searchUrl = `/api/search?q=${encodeURIComponent(query)}`;
+          const near = options.near?.();
+          const params = new URLSearchParams({ q: query, provider: 'independent', lang: options.language() });
+          if (near) params.set('near', near.join(','));
+          const searchUrl = `/api/search?${params}`;
           let response = await fetch(configured
-            ? `/api/suggest?q=${encodeURIComponent(query)}&lang=${options.language()}`
+            ? `/api/suggest?${params}`
             : searchUrl, { signal: pending.signal });
           if (configured && response.status === 503) {
             configured = false;

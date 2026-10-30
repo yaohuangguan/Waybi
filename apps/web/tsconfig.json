@@ -11,8 +11,7 @@
     ],
     "allowImportingTsExtensions": true,
     "types": [
-      "vite/client",
-      "google.maps"
+      "vite/client"
     ]
   },
   "include": [

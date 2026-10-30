@@ -4,14 +4,29 @@ import { readFileSync } from 'node:fs';
 const mocks=vi.hoisted(()=>({
   map: new Proxy({} as Record<string,any>,{get(target,key:string){return target[key]??=vi.fn().mockResolvedValue(undefined);}}),
 }));
-vi.mock('../src/google-map',()=>({GoogleMapAdapter: class {constructor(){return mocks.map;}}}));
-vi.mock('../src/google-routes',()=>({computeGoogleRoute:vi.fn(),computeGoogleRoutes:vi.fn(),enrichRouteLanes:(route:any)=>route}));
-import { computeGoogleRoutes } from '../src/google-routes';
+vi.mock('../src/waybi-map',()=>({WaybiMapAdapter: class {constructor(){return mocks.map;}}}));
 
 function page() {
   const html=readFileSync('index.html','utf8');
   document.body.innerHTML=html.match(/<body[^>]*>([\s\S]*?)<\/body>/)![1].replace(/<script[\s\S]*?<\/script>/g,'');
 }
+it('accepts a valid overseas GPS fix and rejects invalid coordinates', async () => {
+  vi.useFakeTimers(); page();
+  let watch: PositionCallback | undefined;
+  Object.defineProperty(navigator, 'geolocation', {configurable:true,value:{
+    getCurrentPosition:(success:PositionCallback)=>success({coords:{latitude:-33.8688,longitude:151.2093,heading:null,speed:0,accuracy:5},timestamp:Date.now()} as GeolocationPosition),
+    watchPosition:(success:PositionCallback)=>{watch=success;return 1;},clearWatch:vi.fn(),
+  }});
+  vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('offline')));
+  await import('../src/main'); await vi.advanceTimersByTimeAsync(0);
+  document.querySelector<HTMLButtonElement>('#gpsBadge')!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(mocks.map.setPosition).toHaveBeenCalledWith([151.2093,-33.8688],null);
+  mocks.map.setPosition.mockClear();
+  watch?.({coords:{latitude:100,longitude:151.2093,heading:null,speed:0,accuracy:5},timestamp:Date.now()} as GeolocationPosition);
+  expect(mocks.map.setPosition).not.toHaveBeenCalled();
+  vi.clearAllTimers();
+});
 it('real navigator boots offline, retains saved cameras and exposes settings without GPS', async () => {
   vi.useFakeTimers();
   page();
@@ -46,12 +61,9 @@ it('real navigator gets location, plans a selected place, starts and ends a trip
   }});
   const route={id:'drive',mode:'drive',provider:'waybi',durationSeconds:300,staticDurationSeconds:null,trafficDelaySeconds:null,distanceMeters:1000,description:'Direct',labels:[],warnings:[],coordinates:[[174.7633,-36.8485],[174.77,-36.84]],encodedPolyline:null,routeToken:null,traffic:{normal:0,slow:0,trafficJam:0},trafficIntervals:[],steps:[{location:[174.7633,-36.8485],name:'Queen Street',instruction:'Continue',maneuver:'depart',distance:1000,duration:300}],transit:[]};
   mocks.map.searchParking.mockResolvedValue([]);
-  const googleRoutes=await import('../src/google-routes');
-  vi.mocked(googleRoutes.computeGoogleRoutes).mockResolvedValue([{coordinates:route.coordinates,distance:1000,duration:300,steps:route.steps}] as any);
   vi.stubGlobal('fetch',vi.fn(async (input:any)=>{
     const path=String(input);
     if(path.includes('/api/auth/'))return Response.json({},{status:401});
-    if(path.includes('/api/config'))return Response.json({googleMapsApiKey:'test-only',googleMapId:null});
     if(path.includes('/api/suggest')||path.includes('/api/search?'))return Response.json([{id:1,label:'Airport',latitude:-36.84,longitude:174.77}]);
     if(path.includes('/api/route-options'))return Response.json({provider:'waybi',trafficAvailable:false,stopsApplied:0,options:[route]});
     if(path.includes('/api/speed-limit'))return Response.json({speedLimitKph:50});

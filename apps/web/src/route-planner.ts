@@ -38,6 +38,8 @@ export type PlannerStep = {
 };
 
 export type RouteOption = {
+  closureIds?: string[];
+  restrictedRoadIds?: string[];
   id: string;
   mode: TravelMode;
   durationSeconds: number;
@@ -69,11 +71,16 @@ export async function fetchRoutePlan(
   from: Coordinate,
   to: Coordinate,
   stops: Coordinate[],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  mode: TravelMode = 'drive',
+  language: 'en' | 'zh' = 'en'
 ): Promise<RoutePlan> {
   const query = new URLSearchParams({
     from: from.join(','),
-    to: to.join(',')
+    to: to.join(','),
+    provider: 'independent',
+    mode,
+    lang: language
   });
   if (stops.length) query.set('stops', stops.map((stop) => stop.join(',')).join(';'));
   const response = await fetch(`${baseUrl}/api/route-options?${query.toString()}`, { signal });
@@ -81,7 +88,11 @@ export async function fetchRoutePlan(
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error || `HTTP ${response.status}`);
   }
-  return response.json() as Promise<RoutePlan>;
+  const plan = await response.json() as RoutePlan;
+  if (plan.provider === 'google' || plan.options.some(option => option.provider === 'google')) {
+    throw new Error('Independent routing is temporarily unavailable');
+  }
+  return { ...plan, options: plan.options.filter(option => !option.closureIds?.length && !option.restrictedRoadIds?.length) };
 }
 
 export function decodePolyline(encoded: string): Coordinate[] {

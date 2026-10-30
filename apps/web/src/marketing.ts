@@ -30,7 +30,9 @@ const copy = {
     "lead": "Turn-by-turn guidance, useful road reminders, and a cosy room with Waybi, Clover and Sett. A little company, wherever your next journey takes you.",
     "start": "Get Waybi for iPhone",
     "discover": "Meet the friends",
-    "note": "For iPhone. Coming soon to the App Store.",
+    "note": "iPhone app in testing. Not yet on the App Store.",
+    "webMap": "Web map",
+    "webMapNote": "Prefer your browser?",
     "sticker": "Small bird.<br>Big adventure.",
     "preview": "Interface preview · sample route",
     "lane": "USE LANE",
@@ -64,12 +66,12 @@ const copy = {
         "Waybi Map follows your direction, opens up at speed and moves closer for turns. See recommended lanes when your navigation provider supplies them."
       ],
       [
-        "Found a place? Bring it along.",
-        "Open a Waybi navigation link or pass an address through iPhone Shortcuts. Review the route, then choose when to start."
+        "A route that suits your journey.",
+        "In the iPhone app, compare recommended, fastest and shortest alternatives, with free route filters. If a known closure affects your route, find a detour and review it before setting off."
       ],
       [
         "Keep the journeys that matter.",
-        "See your route, distance and time after arrival. Saved places and trip history make the familiar journeys easier to find again."
+        "Review completed journeys and recorded distance, time and trip totals. Saved places and trip history make familiar journeys easier to find again."
       ]
     ],
     "safetyLabel": "A LITTLE MORE AWARE OF WHAT’S AHEAD",
@@ -78,7 +80,7 @@ const copy = {
     "safetyItems": [
       "A clear camera reminder beneath the turn card",
       "Distinct symbols for community road reports",
-      "English or Chinese, with Google Maps or Waybi Map"
+      "English or Chinese, with Waybi Map"
     ],
     "demo": "Camera · 300 m",
     "demoRoad": "Queen Street · sample alert",
@@ -123,11 +125,19 @@ const copy = {
       ],
       [
         "Can I try it without an account?",
-        "Yes. Explore places and routes, and visit Waybi & Friends as a guest. Sign in when you want the account features, saved places and trip history."
+        "Yes. Explore places and routes, and visit Waybi & Friends in the iPhone app as a guest. Sign in for account sync, saved places and trip history. Apple sign-in is also supported on iPhone where enabled."
       ],
       [
-        "Which maps can I use?",
-        "Choose Google Maps or the independent Waybi Map. Both use the same Waybi navigation interface and road reminders. Map attribution stays visible."
+        "What powers Waybi Map?",
+        "The iPhone app uses Waybi Map, with our hosted New Zealand basemap and independent routing. Overseas journeys use available global map and routing services. Coverage varies by region, and map attribution stays visible."
+      ],
+      [
+        "What happens if a road is closed?",
+        "The iPhone app flags matched closures and offers Find detour. It checks available alternatives or requests a new route and checks it against known closures before you review it. If no checked detour is available, the blocked route stays unavailable to start. Road data can be incomplete; follow signs and temporary controls."
+      ],
+      [
+        "Can I use Waybi in a browser?",
+        "Yes. The web map supports place search, route planning and NZ fixed-camera context, and can be added to your home screen where supported. Waybi & Friends is in the iPhone app. Browser navigation needs the page in the foreground; locking the screen can pause location and voice guidance."
       ],
       [
         "Can I open an address from my calendar?",
@@ -166,7 +176,9 @@ const copy = {
     "lead": "清楚的转向提示，有用的沿途提醒，还有 Waybi、Clover 和 Sett 生活的小屋。下一程去哪里，都多一点陪伴。",
     "start": "获取 iPhone 版 Waybi",
     "discover": "认识小伙伴",
-    "note": "iPhone 版，即将登陆 App Store。",
+    "note": "iPhone 版测试中，尚未在 App Store 上架。",
+    "webMap": "网页版地图",
+    "webMapNote": "也可以在浏览器中使用：",
     "sticker": "小小 Waybi，<br>大大冒险。",
     "preview": "界面示意 · 示例路线",
     "lane": "推荐车道",
@@ -200,12 +212,12 @@ const copy = {
         "自研地图随行驶方向转动，车速快时看得更远，接近转弯时看得更清楚。导航服务有车道数据时，也会显示推荐车道。"
       ],
       [
-        "看到想去的地方，带过来。",
-        "通过 Waybi 导航链接或 iPhone 快捷指令传入地址，先看路线，再决定什么时候出发。"
+        "选一条适合这一程的路。",
+        "iPhone 版可比较推荐、最快和最短路线，路线筛选免费使用。遇到已知封路时，可以查找绕行路线，确认后再出发。"
       ],
       [
         "走过的路，留得下来。",
-        "到达后回顾路线、距离和用时。收藏地点与行程记录，让熟悉的旅程更容易再找到。"
+        "到达后回顾行程，查看已记录的里程、用时和行程总数。收藏地点与行程记录，让熟悉的旅程更容易再找到。"
       ]
     ],
     "safetyLabel": "多看清一点前方",
@@ -214,7 +226,7 @@ const copy = {
     "safetyItems": [
       "转向卡片下方，醒目的摄像头提示",
       "社区上报使用各自清楚的事件图标",
-      "中英文界面，Google Maps 或自研地图"
+      "中英文界面，Waybi 自研地图"
     ],
     "demo": "摄像头 · 300 米",
     "demoRoad": "Queen Street · 示例提醒",
@@ -259,11 +271,19 @@ const copy = {
       ],
       [
         "不注册也能使用吗？",
-        "可以。游客也能探索地点和路线、进入 Waybi & Friends。需要账户功能、保存地点或查看行程记录时，再登录。"
+        "可以。游客也能探索地点和路线，在 iPhone 版中进入 Waybi & Friends。需要账户同步、收藏地点或行程记录时，再登录。iPhone 版在配置启用时也支持 Apple 登录。"
       ],
       [
-        "可以用哪种地图？",
-        "可以选择 Google Maps 或 Waybi 自研地图，两者共用 Waybi 的导航界面与沿途提醒，并保留必要的地图署名。"
+        "Waybi 使用什么地图？",
+        "iPhone 版使用 Waybi 自研地图，结合自有的新西兰底图和独立路线服务。海外行程通过可用的全球地图与路线服务继续提供支持。具体覆盖因地区而异，地图署名会保留。"
+      ],
+      [
+        "遇到封路，可以重新规划吗？",
+        "iPhone 版会标出匹配到路线的封路，并提供“查找绕行”。它会检查现有备选路线，或重新请求路线，再对照已知封路复核，供你确认。找不到通过复核的绕行路线时，原先受阻路线仍不能开始导航。道路数据可能不完整，请以现场标志和临时管制为准。"
+      ],
+      [
+        "可以直接在浏览器中使用吗？",
+        "可以。网页版地图支持地点搜索、路线规划和新西兰固定摄像头信息，支持的浏览器还可将它添加到主屏幕。Waybi & Friends 在 iPhone 版中体验。网页导航需要保持前台，锁屏或切到后台可能暂停定位与语音。"
       ],
       [
         "能从日历打开一个地址吗？",
@@ -383,12 +403,13 @@ function render() {
             <h2 id="download-title">${language === 'zh' ? '把 Waybi，<br>带上你的下一程。' : 'Your next adventure.<br>With Waybi along.'}</h2>
             <p>${language === 'zh' ? '熟悉的转向提示，贴心的道路提醒，还有等你回家的小伙伴。' : 'Clear turns, thoughtful road reminders, and a little world to come home to.'}</p>
             ${appStoreUrl ? `<a class="button lime store-button" href="${appStoreUrl}" target="_blank" rel="noopener noreferrer">${language === 'zh' ? '在 App Store 下载' : 'Download on the App Store'} <span aria-hidden="true">↗</span></a>` : `<button class="button lime store-button" type="button" disabled>${language === 'zh' ? 'App Store · 即将上线' : 'Coming soon on the App Store'}</button>`}
-            <small class="release-note">${appStoreUrl ? (language === 'zh' ? '在 iPhone 上开启你的下一程。' : 'Start your next journey on iPhone.') : (language === 'zh' ? '目前尚未上架。发布后，这里将直接通往 App Store。' : 'Not listed yet. This will take you straight to the App Store when Waybi launches.')}</small>
+            <small class="release-note">${appStoreUrl ? (language === 'zh' ? '在 iPhone 上开启你的下一程。' : 'Start your next journey on iPhone.') : (language === 'zh' ? 'iPhone 版测试中，尚未上架。发布后，这里将直接通往 App Store。' : 'The iPhone app is in testing and not listed yet. This will link to the App Store when Waybi launches.')}</small>
+            <p class="web-map-entry">${c.webMapNote} <a href="/app">${c.webMap}<span aria-hidden="true"> ↗</span></a></p>
           </div>${bird}
         </section>
 
       </main>
-      <footer class="footer"><a class="brand" href="/">${logo}</a><div class="footer-links">${c.links.map((label, i) => `<a href="${['#download', '/dashboard', 'https://github.com/yaohuangguan/Waybi/issues'][i]}">${label}</a>`).join('')}<a href="/new-zealand-navigation/">${language === 'zh' ? '导航指南' : 'Navigation guide'}</a><a href="/safety-camera-navigation/">${language === 'zh' ? '摄像头提醒' : 'Safety cameras'}</a><a href="/route-watch/">Route Watch</a><a href="${language === 'zh' ? '/zh/about/' : '/about/'}">${language === 'zh' ? '关于我们' : 'About us'}</a>${(['privacy','terms','support'] as const).map((page, i) => `<a href="${language === 'zh' ? '/zh' : ''}/${page}/">${(language === 'zh' ? ['隐私政策','使用条款','帮助与支持'] : ['Privacy','Terms','Support'])[i]}</a>`).join('')}<a href="/zh/" lang="zh-CN">中文</a></div><p>${c.footer}<br>${c.disclaimer}</p><small>© ${new Date().getFullYear()} Waybi</small></footer>
+      <footer class="footer"><a class="brand" href="/">${logo}</a><div class="footer-links"><a href="/app">${c.webMap}</a>${c.links.map((label, i) => `<a href="${['#download', '/dashboard', 'https://github.com/yaohuangguan/Waybi/issues'][i]}">${label}</a>`).join('')}<a href="/new-zealand-navigation/">${language === 'zh' ? '导航指南' : 'Navigation guide'}</a><a href="/safety-camera-navigation/">${language === 'zh' ? '摄像头提醒' : 'Safety cameras'}</a><a href="/route-watch/">Route Watch</a><a href="${language === 'zh' ? '/zh/about/' : '/about/'}">${language === 'zh' ? '关于我们' : 'About us'}</a>${(['privacy','terms','support'] as const).map((page, i) => `<a href="${language === 'zh' ? '/zh' : ''}/${page}/">${(language === 'zh' ? ['隐私政策','使用条款','帮助与支持'] : ['Privacy','Terms','Support'])[i]}</a>`).join('')}<a href="/zh/" lang="zh-CN">中文</a></div><p>${c.footer}<br>${c.disclaimer}</p><small>© ${new Date().getFullYear()} Waybi</small></footer>
     </div>`;
   document.querySelector('.language')?.addEventListener('click', () => {
     language = language === 'zh' ? 'en' : 'zh';

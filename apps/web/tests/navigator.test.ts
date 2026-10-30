@@ -4,9 +4,7 @@ import { readFileSync } from 'node:fs';
 const mocks=vi.hoisted(()=>({
   map: new Proxy({} as Record<string,any>,{get(target,key:string){return target[key]??=vi.fn().mockResolvedValue(undefined);}}),
 }));
-vi.mock('../src/google-map',()=>({GoogleMapAdapter: class {constructor(){return mocks.map;}}}));
-vi.mock('../src/google-routes',()=>({computeGoogleRoute:vi.fn(),computeGoogleRoutes:vi.fn(),enrichRouteLanes:(route:any)=>route}));
-import { computeGoogleRoutes } from '../src/google-routes';
+vi.mock('../src/waybi-map',()=>({WaybiMapAdapter: class {constructor(){return mocks.map;}}}));
 
 function page() {
   const html=readFileSync('index.html','utf8');
@@ -46,12 +44,9 @@ it('real navigator gets location, plans a selected place, starts and ends a trip
   }});
   const route={id:'drive',mode:'drive',provider:'waybi',durationSeconds:300,staticDurationSeconds:null,trafficDelaySeconds:null,distanceMeters:1000,description:'Direct',labels:[],warnings:[],coordinates:[[174.7633,-36.8485],[174.77,-36.84]],encodedPolyline:null,routeToken:null,traffic:{normal:0,slow:0,trafficJam:0},trafficIntervals:[],steps:[{location:[174.7633,-36.8485],name:'Queen Street',instruction:'Continue',maneuver:'depart',distance:1000,duration:300}],transit:[]};
   mocks.map.searchParking.mockResolvedValue([]);
-  const googleRoutes=await import('../src/google-routes');
-  vi.mocked(googleRoutes.computeGoogleRoutes).mockResolvedValue([{coordinates:route.coordinates,distance:1000,duration:300,steps:route.steps}] as any);
   vi.stubGlobal('fetch',vi.fn(async (input:any)=>{
     const path=String(input);
     if(path.includes('/api/auth/'))return Response.json({},{status:401});
-    if(path.includes('/api/config'))return Response.json({googleMapsApiKey:'test-only',googleMapId:null});
     if(path.includes('/api/suggest')||path.includes('/api/search?'))return Response.json([{id:1,label:'Airport',latitude:-36.84,longitude:174.77}]);
     if(path.includes('/api/route-options'))return Response.json({provider:'waybi',trafficAvailable:false,stopsApplied:0,options:[route]});
     if(path.includes('/api/speed-limit'))return Response.json({speedLimitKph:50});

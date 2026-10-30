@@ -8,7 +8,7 @@ Source repository: https://github.com/yaohuangguan/Waybi
 
 ## Product
 
-Waybi combines route planning and turn-by-turn navigation with route-based and community road context. Official camera and speed-limit sources currently cover New Zealand. The mobile app supports Google Maps and an independent Waybi Map path with a Waybi-hosted NZ OpenStreetMap basemap and a global OpenFreeMap fallback. The web experience is backed by Cloudflare Workers.
+Waybi combines route planning and turn-by-turn navigation with route-based and community road context. Official camera and speed-limit sources currently cover New Zealand. The mobile app uses the independent Waybi Map with a Waybi-hosted NZ OpenStreetMap basemap and a global OpenFreeMap fallback. The web experience is backed by Cloudflare Workers.
 
 Core navigation includes place search, route planning, route alternatives, voice and lane guidance where provider data is available, Journey Brief, parking discovery, trip history and route-aware fixed safety-camera reminders.
 
@@ -22,13 +22,15 @@ Core navigation includes place search, route planning, route alternatives, voice
 
 ## Road data
 
-Waybi uses published fixed safety-camera locations from NZ Transport Agency Waka Kotahi. The production backend checks the source every six hours and retains the last validated snapshot when a refresh cannot be trusted.
+Waybi uses published fixed safety-camera locations from NZ Transport Agency Waka Kotahi. The production backend refreshes the official source and retains the last validated snapshot when a refresh cannot be trusted.
 
 Camera data does not represent every mobile enforcement activity, direction of travel, enforcement lane or road hazard. Navigation and camera information are driving aids. Road signs, temporary controls, current conditions and New Zealand law take priority.
 
 Route Watch checks saved Home → Work and Work → Home route corridors against official NZTA road events on a 15-minute schedule. It uses stored route geometry for background checks rather than continuously uploading a live GPS stream. Saved route geometry expires after 29 days.
 
 ## Availability
+
+The iPhone app is in testing and is not yet publicly listed on the App Store. The web map at /app uses MapLibre, the Waybi-hosted NZ PMTiles basemap, OpenFreeMap outside NZ, and independent search/routing. It does not load the Google Maps JavaScript SDK or require a Google browser map key. The PWA can be installed where supported; location and voice guidance may pause when backgrounded or locked. Waybi & Friends remains an iPhone app feature.
 
 Core navigation is designed to remain available without Waybi Plus. Route Watch and manual camera sync are Plus features. Remote push delivery for Route Watch should not be described as complete until APNs / FCM delivery is wired end to end.
 
@@ -44,7 +46,7 @@ The iPhone app includes a persistent animated companion room under Me → Waybi 
 
 Independent navigation follows heading and adjusts the camera by speed and upcoming turns. External waybi links and the Navigate with Waybi iPhone Shortcuts action open a destination for review. Google Calendar controls its own Open with picker; inclusion is not promised.
 
-Official road events cover NZTA in New Zealand and Transport for NSW in New South Wales, Australia. A shared Worker snapshot refreshes every three minutes. Map road-event layers start enabled, Discover shows nearby events, and route previews flag matched closures. Route alternatives without a matched closure are preferred when available; guaranteed closure-aware detours are not implemented.
+Official road events cover NZTA in New Zealand and Transport for NSW in New South Wales, Australia. Shared Worker snapshots refresh the available official road-event feeds. Map road-event layers start enabled, Discover shows nearby events, and route previews flag matched closures. Independent routes are checked against known closures and bus-only restrictions. The iPhone app can find and recheck detours; unavailable or still-blocked results remain unavailable to start. The web map uses the same independent route-options endpoint and refuses flagged routes. Coverage is not complete and no route is guaranteed open.
 
 Search-intent guides:
 - Google Maps alternative for New Zealand: https://waybi.co/google-maps-alternative-new-zealand/

@@ -183,7 +183,7 @@
         <div class="poi-scroll">
           <div class="poi-heading">
             <div>
-              <span id="poiType" class="eyebrow">GOOGLE PLACE</span>
+              <span id="poiType" class="eyebrow">OPENSTREETMAP</span>
               <h2 id="poiTitle">—</h2>
               <div id="poiRating" class="poi-rating" hidden></div>
             </div>
@@ -196,7 +196,7 @@
           <div class="poi-actions">
             <button id="poiNavigate" class="poi-navigate">➤ <span>导航到这里</span></button>
             <a id="poiWebsite" class="poi-action-link" target="_blank" rel="noopener noreferrer" hidden>网站 ↗</a>
-            <a id="poiGoogleMaps" class="poi-action-link" target="_blank" rel="noopener noreferrer" hidden>Google Maps ↗</a>
+            <a id="poiMapSource" class="poi-action-link" target="_blank" rel="noopener noreferrer" hidden>OpenStreetMap ↗</a>
           </div>
           <section id="poiAccountSection" class="poi-account">
             <div class="poi-section-head"><strong>我的地点</strong><span id="poiAccountHint"></span></div>
@@ -211,7 +211,7 @@
             <button id="poiSaveReview" type="button" disabled>Save my review</button>
           </section>
           <section id="poiReviewsSection" class="poi-reviews" hidden>
-            <div class="poi-section-head"><strong>Google 评论</strong><span id="poiReviewCount"></span></div>
+            <div class="poi-section-head"><strong>地点评价</strong><span id="poiReviewCount"></span></div>
             <div id="poiReviews"></div>
           </section>
         </div>
@@ -244,7 +244,7 @@
           <p id="parkingSummary" class="parking-summary"></p>
           <div id="parkingList" class="parking-list"></div>
           <div id="parkingActions" class="parking-actions" hidden></div>
-          <div class="parking-source"><span id="parkingSourceNote">Place locations by Google · availability not provided</span><a id="parkingSourceLink" href="https://services2.arcgis.com/JkPEgZJGxhSjYOo0/arcgis/rest/services/ParkingService/FeatureServer/1" target="_blank" rel="noopener noreferrer">AT source ↗</a></div>
+          <div class="parking-source"><span id="parkingSourceNote">OpenStreetMap · availability not provided</span><a id="parkingSourceLink" href="https://services2.arcgis.com/JkPEgZJGxhSjYOo0/arcgis/rest/services/ParkingService/FeatureServer/1" target="_blank" rel="noopener noreferrer">AT source ↗</a></div>
         </section>
         <div id="planningActions" class="planning-actions" hidden>
           <button id="addStopButton" type="button">＋ Add stop</button>
@@ -342,8 +342,7 @@
           <h1>Navigation with local road intelligence and a little more personality.</h1>
           <p>Waybi is a companion navigation app for everyday journeys. Plan routes, compare alternatives, see traffic-aware road context when available, discover parking near your destination, and switch between English and Chinese. In New Zealand, Waybi adds local road intelligence such as published NZTA fixed safety-camera awareness and Route Watch.</p>
           <div class="seo-actions">
-            <a href="/app">Open Waybi on the web</a>
-            <a href="/new-zealand-navigation/">Explore how Waybi navigates</a>
+                        <a href="/new-zealand-navigation/">Explore how Waybi navigates</a>
           </div>
         </section>
         <section class="seo-grid"><article class="seo-card"><h2>Maps & navigation</h2><p>Heading-up guidance, speed-aware zoom, and a look at the road before you leave.</p><a href="/new-zealand-navigation/">Take a closer look →</a></article><article class="seo-card"><h2>Road updates & cameras</h2><p>Official road events on your map, nearby updates in Discover, and NZ fixed-camera reminders.</p><a href="/safety-camera-navigation/">Take a closer look →</a></article><article class="seo-card"><h2>Route Watch</h2><p>Saved commute corridors checked against official NZTA road events, ready to review in Trips.</p><a href="/route-watch/">Take a closer look →</a></article><article class="seo-card"><h2>Waybi & Friends</h2><p>Small adventures, country-themed keepsakes, and three companions to come home to.</p><a href="/waybi-friends/">Take a closer look →</a></article></section>
@@ -362,8 +361,8 @@
         <section class="seo-faq">
           <span class="seo-kicker">GOOD TO KNOW</span>
           <h2>About Waybi navigation</h2>
-          <h3>Is Waybi a Google Maps replacement?</h3>
-          <p>Waybi supports Google Maps as well as its own independent map and routing layers. The product is being built so map providers can be changed without changing the overall Waybi navigation experience.</p>
+          <h3>What map does Waybi use?</h3>
+          <p>Waybi uses its own map experience, with a Waybi-hosted New Zealand basemap, independent routing and global map coverage where available. The iPhone app is in testing; the installable web map is available in your browser.</p>
           <h3>Does Waybi show every speed camera in New Zealand?</h3>
           <p>No. Waybi uses published fixed safety-camera information from NZ Transport Agency Waka Kotahi. Coverage does not represent every road hazard, mobile enforcement activity, camera direction or lane. Always follow road signs, current conditions and New Zealand law.</p>
           <h3>Can I use Waybi without an account?</h3>
@@ -371,7 +370,7 @@
         </section>
       </main>
       <footer class="seo-footer">
-        <div class="seo-wrap">Waybi · A clearer journey · <a href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" rel="noopener noreferrer">NZTA safety-camera source</a></div>
+        <div class="seo-wrap">Waybi · A clearer journey · <a href="/app">Web map</a> · <a href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" rel="noopener noreferrer">NZTA safety-camera source</a></div>
       </footer>
     </div>
 

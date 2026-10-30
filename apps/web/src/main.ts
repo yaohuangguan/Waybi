@@ -1,24 +1,20 @@
 import './style.css';
-declare global {
-  interface Window { gm_authFailure?: () => void }
-}
 
 import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@waybi/core';
 import './account.css';
 import { applyUiLanguage, t } from './i18n';
 import { currentAccountEmail, initAccount, isSignedIn, ownReview, recentDestinations, rememberDestination, rememberPreferences, rememberRoute, renderAccount, saveOwnReview, savePlace, savedPlace, type AccountProfile } from './account';
 import { lookAheadCenter } from './navigation-view';
-import { initAutocomplete, type SuggestedPlace } from './autocomplete';
-import { GoogleMapAdapter, type PoiSelection } from './google-map';
-import { computeGoogleRoute, computeGoogleRoutes, enrichRouteLanes } from './google-routes';
+import { initAutocomplete, placeLabel, type SuggestedPlace } from './autocomplete';
+import { WaybiMapAdapter, type PoiSelection } from './waybi-map';
 import { fetchRoutePlan, formatModeDuration, routeFromOption, type RouteOption as PlannerRouteOption, type RoutePlan as PlannerRoutePlan, type TravelMode } from './route-planner';
 import type { ParkingPlace } from './parking';
 
 type Language = 'zh' | 'en';
-type Place = { id: number; label: string; latitude: number; longitude: number };
+type Place = SuggestedPlace;
 type CameraResponse = { cameras: Camera[]; sourceUpdatedAt: string; checkedAt: string | null; syncStatus: string; syncError?: string | null; change?: { added: number; removed: number } };
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-const map = new GoogleMapAdapter();
+const map = new WaybiMapAdapter();
 let cameras: Camera[] = [];
 let cameraResponse: CameraResponse | null = null;
 let routeCameras: RouteCamera[] = [];
@@ -193,7 +189,7 @@ function renderParking() {
   const isAtSource = parkingPlaces[0]?.source === 'at';
   $('parkingSourceNote').textContent = isAtSource
     ? (language === 'zh' ? '来源：AT Open GIS · 总车位并非实时空位' : 'Source: AT Open GIS · total spaces are not live availability')
-    : (language === 'zh' ? '来源：Google Places · 不提供实时空位' : 'Source: Google Places · live spaces unavailable');
+    : (language === 'zh' ? '地点搜索 · 不提供实时空位' : 'Place search · live spaces unavailable');
   const sourceLink = $('parkingSourceLink') as HTMLAnchorElement;
   sourceLink.hidden = !isAtSource;
   sourceLink.textContent = language === 'zh' ? 'AT 原始数据 ↗' : 'AT source ↗';
@@ -260,7 +256,7 @@ function renderParking() {
     actions.append(direct);
     const detailsUrl = selectedParking.source === 'at'
       ? 'https://at.govt.nz/driving-and-parking/find-parking'
-      : selectedParking.googleMapsURI;
+      : selectedParking.sourceUrl;
     if (detailsUrl) {
       const details = document.createElement('a');
       details.href = detailsUrl;
@@ -481,7 +477,7 @@ function updatePosition(latitude: number, longitude: number, heading: number | n
   latestHeading = heading;
   if (!placeLookupStarted) {
     placeLookupStarted = true;
-    void api<{ label: string }>(`/api/reverse?at=${longitude},${latitude}`).then(({ label }) => {
+    void api<{ label: string }>(`/api/reverse?at=${longitude},${latitude}&provider=independent`).then(({ label }) => {
       currentPlaceLabel = label;
       ($('originInput') as HTMLInputElement).placeholder = `${t(language, 'currentPlace')}: ${label}`;
       $('gpsBadge').title = label;
@@ -671,7 +667,7 @@ function renderRouteInfo(option: PlannerRouteOption | null) {
     const slow = option.traffic.slow;
     const message = jam > 0
       ? `${jam} heavy-traffic section${jam === 1 ? '' : 's'} ahead`
-      : `${slow} slow section${slow === 1 ? '' : 's'} ahead`;
+      : slow > 0 ? `${slow} slow section${slow === 1 ? '' : 's'} ahead` : (language === 'zh' ? '沿途道路提示' : 'Road advisory');
     card.innerHTML = `<strong>⚠ Traffic advisory</strong><span>${escapeHtml(message)}${option.warnings[0] ? ` · ${escapeHtml(option.warnings[0])}` : ''}</span>`;
     root.append(card);
     root.hidden = false;
@@ -747,7 +743,7 @@ function renderRoutePlanner() {
       : formatModeDuration(option?.durationSeconds);
     const button = modes.querySelector<HTMLButtonElement>(`button[data-mode="${mode}"]`);
     if (button) {
-      const available = mode === 'drive' ? drivingAlternatives.length > 0 : Boolean(option);
+      const available = mode !== 'transit';
       button.disabled = !available;
       button.classList.toggle('selected', selectedTravelMode === mode);
     }
@@ -820,10 +816,14 @@ async function search(target: 'origin' | 'destination' | 'stop') {
   results.hidden = false;
   results.innerHTML = `<div class="search-message">${t(language, 'searching')}</div>`;
   try {
-    const places = await api<Place[]>(`/api/search?q=${encodeURIComponent(query)}`);
+    const near = manualOrigin || current;
+    const params = new URLSearchParams({ q: query, lang: language, provider: 'independent' });
+    if (near) params.set('near', near.join(','));
+    const places = await api<Place[]>(`/api/search?${params}`);
     results.replaceChildren();
     if (!places.length) { results.innerHTML = `<div class="search-message">${t(language, 'noResults')}</div>`; return; }
     for (const place of places) {
+      const displayLabel = placeLabel(place);
       const button = document.createElement('button');
       button.className = 'result-item';
       button.type = 'button';
@@ -831,23 +831,23 @@ async function search(target: 'origin' | 'destination' | 'stop') {
       pin.className = 'result-pin';
       pin.textContent = '⌖';
       const label = document.createElement('span');
-      label.textContent = place.label;
+      label.textContent = displayLabel;
       button.append(pin, label);
       button.onclick = () => {
         results.hidden = true;
         const coordinate: Coordinate = [place.longitude, place.latitude];
         if (target === 'origin') {
           manualOrigin = coordinate;
-          ($('originInput') as HTMLInputElement).value = place.label.split(',').slice(0, 2).join(',');
+          ($('originInput') as HTMLInputElement).value = displayLabel.split(',').slice(0, 2).join(',');
         } else if (target === 'stop') {
-          routeStops.push({ label: place.label.split(',').slice(0, 2).join(','), coordinate });
+          routeStops.push({ label: displayLabel.split(',').slice(0, 2).join(','), coordinate });
           ($('stopInput') as HTMLInputElement).value = '';
           renderStops();
         } else {
-          setDestinationSelection(coordinate, place.label.split(',').slice(0, 2).join(','));
+          setDestinationSelection(coordinate, displayLabel.split(',').slice(0, 2).join(','));
           ($('destinationInput') as HTMLInputElement).value = destinationName;
           $('clearDestinationButton').hidden = false;
-          void rememberDestination({ label: place.label, latitude: place.latitude, longitude: place.longitude });
+          void rememberDestination({ label: displayLabel, latitude: place.latitude, longitude: place.longitude });
         }
         if (destination && (manualOrigin || current)) void planRoute();
         else if (destination) toast(t(language, 'chooseOrigin'));
@@ -868,35 +868,21 @@ async function planRoute(modeOverride?: TravelMode) {
   $('tripEyebrow').textContent = 'CALCULATING ROUTE';
   $('tripTitle').textContent = t(language, 'routeCalculating');
   const requestedMode = modeOverride || selectedTravelMode;
+  ($('driveButton') as HTMLButtonElement).disabled = true;
   try {
     const stopCoordinates = routeStops.map((stop) => stop.coordinate);
-    const stopQuery = stopCoordinates.length
-      ? `&stops=${encodeURIComponent(stopCoordinates.map((stop) => stop.join(',')).join(';'))}`
-      : '';
-    const [planner, laneRoute] = await Promise.all([
-      fetchRoutePlan(API_BASE_URL, from, destination, stopCoordinates, signal).catch(() => null),
-      api<Route>(`/api/route?from=${from.join(',')}&to=${destination.join(',')}${stopQuery}`, signal).catch(() => undefined)
-    ]);
-    routePlan = planner;
-    const plannedDriving = planner?.provider === 'google'
-      ? planner.options.filter((option) => option.mode === 'drive')
-      : [];
-    drivingFromPlanner = Boolean(plannedDriving?.length && plannedDriving.every((option) => routeFromOption(option).coordinates.length >= 2));
-    if (drivingFromPlanner) {
-      drivingAlternatives = plannedDriving!.map((option) => enrichRouteLanes(routeFromOption(option), laneRoute));
-    } else if (stopCoordinates.length) {
-      if (!laneRoute) throw new Error('Route geometry is empty');
-      drivingAlternatives = [laneRoute];
-    } else {
-      drivingAlternatives = (await computeGoogleRoutes(from, destination, language))
-        .map((item) => enrichRouteLanes(item, laneRoute));
-    }
+    const planner = await fetchRoutePlan(API_BASE_URL, from, destination, stopCoordinates, signal, requestedMode, language);
     if (signal.aborted) return;
-    if (!drivingAlternatives.length) throw new Error('Route geometry is empty');
+    const usable = planner.options.filter(option => routeFromOption(option).coordinates.length >= 2);
+    if (!usable.some(option => option.mode === requestedMode)) {
+      throw new Error(language === 'zh' ? '暂无可用路线，请调整地点或稍后重试。' : 'No available route. Change the destination or try again later.');
+    }
+    routePlan = planner;
+    drivingAlternatives = usable.filter(option => option.mode === 'drive').map(routeFromOption);
+    drivingFromPlanner = true;
     selectedDrivingRoute = 0;
-    applyDrivingRoute(0);
-    selectedTravelMode = requestedMode !== 'drive' && planner?.options.some((option) => option.mode === requestedMode)
-      ? requestedMode : 'drive';
+    selectedTravelMode = requestedMode;
+    if (requestedMode === 'drive') applyDrivingRoute(0);
     $('tripEyebrow').textContent = navigating ? 'DRIVING MODE' : 'ROUTE READY';
     $('tripTitle').textContent = destinationName || t(language, 'destinationFallback');
     $('navDestinationTitle').textContent = destinationName || t(language, 'destinationFallback');
@@ -910,6 +896,14 @@ async function planRoute(modeOverride?: TravelMode) {
     if (navigating) updateGuidance();
   } catch (error) {
     if ((error as Error).name === 'AbortError' || signal.aborted) return;
+    if (navigating) stopNavigation();
+    route = null;
+    routePlan = null;
+    drivingAlternatives = [];
+    routeCameras = [];
+    map.clearRoute();
+    renderRoutePlanner();
+    ($('driveButton') as HTMLButtonElement).disabled = true;
     $('tripEyebrow').textContent = 'ROUTE ERROR';
     $('tripTitle').textContent = t(language, 'routeError');
     toast(`${t(language, 'routeFailed')}: ${String((error as Error).message)}`);
@@ -1255,7 +1249,7 @@ function renderPoiAccountState(place: PoiSelection) {
   comment.disabled = !signedIn;
   saveReview.disabled = !signedIn;
   $('poiOwnReviewHint').textContent = signedIn
-    ? (language === 'zh' ? '仅保存在 Waybi 账户，不会发布到 Google' : 'Private to Waybi; not posted to Google')
+    ? (language === 'zh' ? '仅保存在你的 Waybi 账户' : 'Private to your Waybi account')
     : (language === 'zh' ? '登录后撰写私人评价' : 'Sign in to write a private review');
   $('poiAccountHint').textContent = signedIn
     ? (language === 'zh' ? `同步到 ${currentAccountEmail()}` : `Synced to ${currentAccountEmail()}`)
@@ -1266,7 +1260,7 @@ function showPoiCard(place: PoiSelection) {
   if (uiMode === 'navigation') return;
   selectedPoi = place;
   $('poiTitle').textContent = place.name;
-  $('poiType').textContent = place.primaryType || 'GOOGLE PLACE';
+  $('poiType').textContent = place.primaryType || 'OPENSTREETMAP';
   $('poiAddress').textContent = place.address || `${place.coordinate[1].toFixed(5)}, ${place.coordinate[0].toFixed(5)}`;
 
   const rating = $('poiRating');
@@ -1328,9 +1322,9 @@ function showPoiCard(place: PoiSelection) {
   const website = $('poiWebsite') as HTMLAnchorElement;
   website.hidden = !place.websiteURI;
   website.href = place.websiteURI || '#';
-  const mapsLink = $('poiGoogleMaps') as HTMLAnchorElement;
-  mapsLink.hidden = !place.googleMapsURI;
-  mapsLink.href = place.googleMapsURI || '#';
+  const mapsLink = $('poiMapSource') as HTMLAnchorElement;
+  mapsLink.hidden = !place.sourceUrl;
+  mapsLink.href = place.sourceUrl || '#';
 
   const reviewsRoot = $('poiReviews');
   reviewsRoot.replaceChildren();
@@ -1354,13 +1348,13 @@ function showPoiCard(place: PoiSelection) {
     const copy = document.createElement('p');
     copy.textContent = review.text;
     root.append(head, copy);
-    if (review.googleMapsURI) {
+    if (review.sourceUrl) {
       const link = document.createElement('a');
       link.className = 'source-link';
-      link.href = review.googleMapsURI;
+      link.href = review.sourceUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.textContent = language === 'zh' ? '在 Google Maps 查看 ↗' : 'View on Google Maps ↗';
+      link.textContent = language === 'zh' ? '查看来源 ↗' : 'View source ↗';
       root.append(link);
     }
     reviewsRoot.append(root);
@@ -1494,6 +1488,7 @@ initAutocomplete({
   results: $('searchResults'),
   language: () => language,
   recent: recentDestinations,
+  near: () => manualOrigin || current,
   select: (target, place: SuggestedPlace) => {
     const coordinate: Coordinate = [place.longitude, place.latitude];
     if (target === 'origin') {
@@ -1536,14 +1531,7 @@ $('travelModes').addEventListener('click', (event) => {
     void planRoute(selectedTravelMode);
     return;
   }
-  if (selectedTravelMode === 'drive') {
-    applyDrivingRoute(selectedDrivingRoute);
-  } else {
-    routeCameras = [];
-    map.clearTrafficRoutes();
-  }
-  renderRoutePlanner();
-  renderParking();
+  void planRoute(selectedTravelMode);
 });
 $('driveButton').onclick = () => {
   if (navigating) stopNavigation();
@@ -1703,11 +1691,7 @@ setUiMode('explore');
 initBottomSheet();
 renderSpeedHud();
 renderTripFlags();
-window.gm_authFailure = () => {
-  toast(language === 'zh'
-    ? `Google 地图授权失败。请检查网页 API Key 是否允许 ${window.location.origin}/*，以及账单和 API 权限。`
-    : `Google Maps authorization failed. Allow ${window.location.origin}/* for the web API key and check billing/API restrictions.`);
-};
+$('trafficToggle').hidden = true;
 
 window.addEventListener('kiwi-account-change', () => {
   renderTripFlags();
@@ -1715,14 +1699,7 @@ window.addEventListener('kiwi-account-change', () => {
 });
 
 async function initializeMap() {
-  const config = await api<{
-    googleMapsApiKey: string;
-    googleMapId: string | null;
-  }>('/api/config');
-
   await map.init({
-    apiKey: config.googleMapsApiKey,
-    mapId: config.googleMapId || undefined,
     language,
     onDragStart: () => {
       following = false;
@@ -1741,7 +1718,7 @@ async function initializeMap() {
 }
 
 void initializeMap().catch((error) => {
-  toast(`Google Maps: ${String((error as Error).message)}`);
+  toast(`Waybi Map: ${String((error as Error).message)}`);
 });
 
 void initGps();

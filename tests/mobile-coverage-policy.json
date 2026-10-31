@@ -19,6 +19,9 @@
     }
   ],
   "files": {
+    "apps/mobile/lib/widgets/account_sign_in.dart": {
+      "minimumLinePercent": 90
+    },
     "apps/mobile/lib/data/account_repository.dart": {
       "minimumLinePercent": 40
     },

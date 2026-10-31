@@ -154,7 +154,7 @@ void main() {
     },
   );
   testWidgets(
-    'legacy profile validates credentials, reports errors and changes registration mode',
+    'legacy profile shares verified email registration and retains password sign-in',
     (t) async {
       final account = AccountRepository(
         client: MockClient(
@@ -163,15 +163,81 @@ void main() {
       );
       addTearDown(account.dispose);
       await t.pumpWidget(host(ProfileSheet(account: account)));
+      await t.pumpAndSettle();
+      await t.ensureVisible(find.text('Sign in with a password'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Sign in with a password'));
+      await t.pumpAndSettle();
       await t.enterText(find.byType(TextField).first, 'driver@example.test');
       await t.enterText(find.byType(TextField).last, 'test-only-long-password');
+      await t.ensureVisible(find.text('Sign in'));
+      await t.pumpAndSettle();
       await t.tap(find.text('Sign in'));
       await t.pumpAndSettle();
       expect(find.text('Try later'), findsOneWidget);
-      await t.tap(find.text('New here? Create an account'));
+      await t.ensureVisible(find.text('Use an email code instead'));
       await t.pumpAndSettle();
-      expect(find.text('Password (12+ characters)'), findsOneWidget);
-      expect(find.text('Create account'), findsOneWidget);
+      await t.tap(find.text('Use an email code instead'));
+      await t.pumpAndSettle();
+      expect(find.text('Password'), findsNothing);
+      expect(find.text('Continue with email'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'legacy profile preserves saved content and returns to the shared account entry after sign-out',
+    (t) async {
+      final paths = <String>[];
+      final account =
+          AccountRepository(
+              client: MockClient((request) async {
+                paths.add(request.url.path);
+                return http.Response('{}', 200);
+              }),
+            )
+            ..profile = AccountProfile.fromJson({
+              'user': {'email': 'driver@example.test'},
+              'routeHistory': [
+                {
+                  'destinationName': 'Airport',
+                  'mode': 'drive',
+                  'distanceMeters': 1500,
+                },
+              ],
+              'savedPlaces': [
+                {
+                  'name': 'Saved cafe',
+                  'isFavorite': true,
+                  'address': 'Queen Street',
+                },
+                {'name': 'Private note', 'note': 'Easy access'},
+              ],
+              'reviews': [
+                {
+                  'placeName': 'Cafe review',
+                  'rating': 5,
+                  'comment': 'Good coffee',
+                },
+              ],
+            });
+      addTearDown(account.dispose);
+      await t.pumpWidget(host(ProfileSheet(account: account)));
+      await t.pumpAndSettle();
+      expect(find.text('driver@example.test'), findsOneWidget);
+      expect(find.text('Favorites'), findsOneWidget);
+      expect(find.text('Airport'), findsOneWidget);
+      expect(find.text('drive · 1.5 km'), findsOneWidget);
+      await t.scrollUntilVisible(
+        find.text('Sign out'),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await t.pumpAndSettle();
+      expect(find.text('Good coffee'), findsOneWidget);
+      await t.tap(find.text('Sign out'));
+      await t.pumpAndSettle();
+      expect(paths, ['/api/auth/logout']);
+      expect(account.profile, isNull);
+      expect(find.text('Continue with email'), findsOneWidget);
     },
   );
   testWidgets(

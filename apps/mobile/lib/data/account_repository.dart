@@ -261,6 +261,55 @@ class AccountRepository extends ChangeNotifier {
     }
   }
 
+  Future<Map<String, dynamic>> requestEmailCode(
+    String email, {
+    String language = 'en',
+  }) async {
+    final response = await _request(
+      '/api/auth/email/request',
+      method: 'POST',
+      body: {'email': email.trim(), 'language': language},
+    );
+    return _body(response);
+  }
+
+  Future<void> authenticateWithEmailCode({
+    required String email,
+    required String challengeId,
+    required String code,
+    String language = 'en',
+    bool voiceEnabled = true,
+  }) async {
+    if (loading) return;
+    loading = true;
+    notifyListeners();
+    try {
+      final response = await _request(
+        '/api/auth/email/verify',
+        method: 'POST',
+        body: {
+          'email': email.trim(),
+          'challengeId': challengeId,
+          'code': code,
+          'language': language,
+          'voiceEnabled': voiceEnabled,
+        },
+      );
+      final next = AccountProfile.fromJson(_body(response));
+      final match = RegExp(r'(?:^|;\s*)waybi_session=([0-9a-f]{64})')
+          .firstMatch(response.headers['set-cookie'] ?? '');
+      if (match == null) throw StateError('Sign-in session was not returned');
+      final session = match.group(1)!;
+      await _storage.write(key: _storageKey, value: session);
+      _session = session;
+      profile = next;
+      notifyListeners();
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> authenticateWithGoogle({bool link = false}) async {
     loading = true;
     notifyListeners();

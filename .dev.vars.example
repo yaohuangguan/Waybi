@@ -1,0 +1,7 @@
+# Copy to .dev.vars for local wrangler development. Never commit actual secrets.
+# Verify the same sender domain in each configured provider.
+AUTH_EMAIL_FROM=accounts@your-verified-domain.example
+SENDPULSE_API_KEY=
+WAYBI_RESEND_API_KEY=
+# Generate: node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+EMAIL_OTP_SECRET=

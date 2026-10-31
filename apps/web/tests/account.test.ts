@@ -32,11 +32,11 @@ it('keeps guest navigation available and requires sign-in for saved data', async
   root.querySelector('button')!.click();
   expect(open).toHaveBeenCalledOnce();
 });
-it('registers, displays errors, recovers and clears the session on failed logout', async () => {
+it('keeps password sign-in available, displays errors and clears the session on failed logout', async () => {
   const {root,fetcher,loaded}=await guest();
   (root.querySelector('.account-link') as HTMLElement).click();
   const password=root.querySelector<HTMLInputElement>('input[type=password]')!;
-  expect(password.minLength).toBe(12);
+  expect(password.autocomplete).toBe('current-password');
   root.querySelector<HTMLInputElement>('input[type=email]')!.value='driver@example.test';
   password.value='test-only-long-password';
   fetcher.mockResolvedValueOnce(Response.json({error:'Try later'},{status:503}));
@@ -47,11 +47,53 @@ it('registers, displays errors, recovers and clears the session on failed logout
   submit();await vi.waitFor(()=>expect(account.isSignedIn()).toBe(true));
   expect(loaded).toHaveBeenCalledWith(profile);
   const request=fetcher.mock.calls.at(-1)!;
-  expect(request[0]).toBe('/api/auth/register');
+  expect(request[0]).toBe('/api/auth/login');
   expect(request[1]).toMatchObject({credentials:'same-origin',headers:expect.objectContaining({'x-waybi-client':'web'})});
   fetcher.mockRejectedValueOnce(new Error('offline'));
   (root.querySelector('button')!).click();
   await vi.waitFor(()=>expect(account.isSignedIn()).toBe(false));
+});
+it('requests an email code, prevents repeat submits, verifies it and clears the code after login', async () => {
+  const {root,fetcher,loaded}=await guest();
+  root.querySelector<HTMLInputElement>('input[type=email]')!.value='driver@example.test';
+  const submit=()=>root.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+  let deliver!: (response: Response) => void;
+  fetcher.mockImplementationOnce(()=>new Promise<Response>(resolve=>{deliver=resolve;}));
+  submit(); submit();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  expect(root.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(true);
+  deliver(Response.json({challengeId:'challenge',retryAfter:60,expiresIn:600}));
+  await vi.waitFor(()=>expect(root.textContent).toContain('Check your inbox'));
+  expect(fetcher.mock.calls[1][0]).toBe('/api/auth/email/request');
+  const resend=Array.from(root.querySelectorAll('button')).find(button=>button.textContent==='Resend code')!;
+  resend.click();
+  expect(root.textContent).toContain('Try again in');
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  root.querySelector<HTMLInputElement>('input[autocomplete=one-time-code]')!.value='123456';
+  fetcher.mockResolvedValueOnce(Response.json({error:'Code is invalid or expired'},{status:401}));
+  submit(); await vi.waitFor(()=>expect(root.textContent).toContain('Code is invalid'));
+  expect(loaded).not.toHaveBeenCalled();
+  fetcher.mockResolvedValueOnce(Response.json(profile));
+  submit(); await vi.waitFor(()=>expect(account.isSignedIn()).toBe(true));
+  expect(fetcher.mock.calls.at(-1)![0]).toBe('/api/auth/email/verify');
+  expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body)).toMatchObject({email:'driver@example.test',code:'123456',challengeId:'challenge'});
+  expect(root.querySelector('input[autocomplete=one-time-code]')).toBeNull();
+  expect(loaded).toHaveBeenCalledWith(profile);
+});
+it('can resend after the cooldown and change email without persisting a code', async () => {
+  const {root,fetcher}=await guest();
+  root.querySelector<HTMLInputElement>('input[type=email]')!.value='driver@example.test';
+  fetcher.mockResolvedValueOnce(Response.json({challengeId:'first',retryAfter:0}));
+  root.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+  await vi.waitFor(()=>expect(root.textContent).toContain('Check your inbox'));
+  root.querySelector<HTMLInputElement>('input[autocomplete=one-time-code]')!.value='123456';
+  fetcher.mockResolvedValueOnce(Response.json({challengeId:'second',retryAfter:60}));
+  Array.from(root.querySelectorAll('button')).find(b=>b.textContent==='Resend code')!.click();
+  await vi.waitFor(()=>expect(root.textContent).toContain('A new code has been sent.'));
+  expect(root.querySelector<HTMLInputElement>('input[autocomplete=one-time-code]')!.value).toBe('');
+  Array.from(root.querySelectorAll('button')).find(b=>b.textContent==='Change email')!.click();
+  expect(root.querySelector('input[autocomplete=one-time-code]')).toBeNull();
+  expect(localStorage.length).toBe(0);
 });
 it('syncs profile features and treats user text as plain text', async () => {
   const populated={...profile,recentDestinations:[{label:'Home',latitude:-37,longitude:174}],savedPlaces:[{placeId:'p',name:'<script>bad()</script>',address:'CBD',latitude:-37,longitude:174,isFavorite:true,note:'<img src=x>',updatedAt:1}],routeHistory:[{id:'r',destinationName:'Airport',latitude:-37,longitude:174,mode:'drive',distanceMeters:1500,durationSeconds:60,startedAt:1}],reviews:[{placeId:'p',placeName:'Cafe',rating:4,comment:'Nice',updatedAt:1}]};

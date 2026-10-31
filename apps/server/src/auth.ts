@@ -7,6 +7,7 @@ import { validCoordinate } from './geo.ts';
 import { handleFriendsBackup } from './friends_backup.ts';
 import { purgeDeletedReporterReports } from './road_reports.ts';
 import { appleAuthConfig, exchangeAppleAuthorization, sealAppleToken, revokeAppleAuthorization } from './apple_auth.ts';
+import { emailOtpReady, handleEmailOtp } from './email_otp.ts';
 
 const encoder = new TextEncoder();
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
@@ -154,6 +155,7 @@ async function userProfile(db, user, env) {
   const googleIdentity = await db.prepare('SELECT google_sub FROM google_identities WHERE user_id = ?').bind(user.id).first();
   const appleIdentity = await db.prepare('SELECT apple_sub FROM apple_identities WHERE user_id = ?').bind(user.id).first();
   const passwordUser = await db.prepare('SELECT password_hash FROM users WHERE id = ?').bind(user.id).first();
+  const emailIdentity = await db.prepare('SELECT verified_at FROM email_identities WHERE user_id = ?').bind(user.id).first();
   const recent = await db.prepare(`SELECT label, latitude, longitude FROM recent_destinations
     WHERE user_id = ? ORDER BY updated_at DESC LIMIT 20`).bind(user.id).all();
   const saved = await db.prepare(`SELECT place_id AS placeId, name, address, latitude, longitude,
@@ -180,7 +182,7 @@ async function userProfile(db, user, env) {
   const subscription = await subscriptionForUser(db, user.id);
   return {
     user: { id: user.id, email: user.email, displayName: profile?.display_name || '', providers: [
-      ...(passwordUser?.password_hash ? ['password'] : []), ...(googleIdentity ? ['google'] : []), ...(appleIdentity ? ['apple'] : [])
+      ...(emailIdentity ? ['email'] : []), ...(passwordUser?.password_hash ? ['password'] : []), ...(googleIdentity ? ['google'] : []), ...(appleIdentity ? ['apple'] : [])
     ] },
     language: profile?.language === 'zh' ? 'zh' : 'en',
     voiceEnabled: profile?.voice_enabled !== 0,
@@ -243,6 +245,12 @@ export async function handleAccount(request: Request, env) {
     }
   }
   const db = env.USER_DB;
+
+  if (path === '/api/auth/config' && request.method === 'GET') return response({
+    emailOtp: emailOtpReady(env), google: Boolean(env.GOOGLE_OAUTH_CLIENT_IDS), apple: appleAuthConfig(env).ready,
+  });
+  const emailResponse = await handleEmailOtp(request, env, user => issueSession(db, user, request, env));
+  if (emailResponse) return emailResponse;
 
   if (path === '/api/auth/apple/config' && request.method === 'GET') return response(appleAuthConfig(env));
   if ((path === '/api/auth/apple' || path === '/api/auth/apple/link') && request.method === 'POST') {

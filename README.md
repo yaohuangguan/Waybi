@@ -35,6 +35,7 @@ The project ships as both a **Flutter mobile app** and an installable **Vite PWA
 | Route Watch | Watches fixed **Home → Work** and **Work → Home** corridors against official NZTA road events |
 | Parking | Nearby parking discovery, Auckland Transport data where available, drive-to-parking and walking continuation |
 | Web / PWA | Search, routing, camera awareness and Cloudflare-hosted full-stack web experience |
+| Accounts | Unified mobile email-code, Google and iOS Apple sign-in; SendPulse with Resend fallback for email codes. See [account setup](docs/account-sign-in.md). |
 | Cost control | Provider usage telemetry and Cost Guard aggregation for Google usage and legacy provider records |
 
 ## Free navigation, paid intelligence

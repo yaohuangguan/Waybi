@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/account_repository.dart';
+import 'account_sign_in.dart';
 import '../data/plus_billing.dart';
 import 'waybi_bird.dart';
 
@@ -726,7 +727,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
   }
 }
 
-class _PlusSignIn extends StatefulWidget {
+class _PlusSignIn extends StatelessWidget {
   const _PlusSignIn({
     required this.account,
     required this.language,
@@ -735,173 +736,20 @@ class _PlusSignIn extends StatefulWidget {
   final AccountRepository account;
   final String language;
   final bool voiceEnabled;
-  @override
-  State<_PlusSignIn> createState() => _PlusSignInState();
-}
-
-class _PlusSignInState extends State<_PlusSignIn> {
-  final _form = GlobalKey<FormState>();
-  final _email = TextEditingController(), _password = TextEditingController();
-  bool _register = false, _busy = false, _showPassword = false;
-  String? _error;
-  String t(String en, String zh) => widget.language == 'zh' ? zh : en;
-  @override
-  void dispose() {
-    _email.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  Future<void> _authenticate({bool google = false}) async {
-    if (_busy || (!google && !_form.currentState!.validate())) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      if (google) {
-        await widget.account.authenticateWithGoogle();
-      } else {
-        await widget.account.authenticate(
-          _email.text,
-          _password.text,
-          register: _register,
-        );
-      }
-      try {
-        await widget.account.updatePreferences(
-          language: widget.language,
-          voiceEnabled: widget.voiceEnabled,
-        );
-      } catch (_) {
-        // Signing in succeeded; a preference sync can be retried later.
-      }
-      if (mounted) Navigator.pop(context);
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _error = t(
-            'Could not sign in. Check your details and try again.',
-            '登录失败，请检查账户信息后重试。',
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) => SingleChildScrollView(
     padding: EdgeInsets.fromLTRB(
       22,
       22,
       22,
       22 + MediaQuery.viewInsetsOf(context).bottom,
     ),
-    child: SingleChildScrollView(
-      child: Form(
-        key: _form,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              _register
-                  ? t('Create your Waybi account', '创建 Waybi 账户')
-                  : t('Welcome back.', '欢迎回来。'),
-              style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              t(
-                'Your Plus membership follows this account. Your selected plan stays saved.',
-                'Plus 权益属于这个账户，你选择的订阅方案会保留。',
-              ),
-              style: const TextStyle(fontSize: 12, height: 1.5),
-            ),
-            const SizedBox(height: 20),
-            TextFormField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              autofillHints: const [AutofillHints.email],
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(labelText: t('Email', '邮箱')),
-              validator: (value) =>
-                  RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
-                      .hasMatch(value?.trim() ?? '')
-                  ? null
-                  : t('Enter your email', '请输入有效邮箱'),
-            ),
-            const SizedBox(height: 13),
-            TextFormField(
-              controller: _password,
-              obscureText: !_showPassword,
-              autofillHints: [
-                _register ? AutofillHints.newPassword : AutofillHints.password,
-              ],
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) => _authenticate(),
-              decoration: InputDecoration(
-                labelText: _register
-                    ? t('Password · 12+ characters', '密码 · 至少 12 位')
-                    : t('Password', '密码'),
-                suffixIcon: IconButton(
-                  tooltip: _showPassword
-                      ? t('Hide password', '隐藏密码')
-                      : t('Show password', '显示密码'),
-                  onPressed: () =>
-                      setState(() => _showPassword = !_showPassword),
-                  icon: Icon(
-                    _showPassword
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                  ),
-                ),
-              ),
-              validator: (value) => (value?.length ?? 0) >= (_register ? 12 : 1)
-                  ? null
-                  : t('Check your password', '请检查密码长度'),
-            ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 13),
-                child: Text(
-                  _error!,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            const SizedBox(height: 20),
-            FilledButton(
-              onPressed: _busy ? null : () => _authenticate(),
-              child: Text(
-                _busy
-                    ? t('Please wait…', '请稍候…')
-                    : _register
-                    ? t('Create account', '创建账户')
-                    : t('Sign in', '登录'),
-              ),
-            ),
-            OutlinedButton(
-              onPressed: _busy ? null : () => _authenticate(google: true),
-              child: Text(t('Continue with Google', '使用 Google 继续')),
-            ),
-            TextButton(
-              onPressed: _busy
-                  ? null
-                  : () => setState(() => _register = !_register),
-              child: Text(
-                _register
-                    ? t('Already have an account? Sign in', '已有账户？登录')
-                    : t('New here? Create an account', '第一次来？创建账户'),
-              ),
-            ),
-          ],
-        ),
-      ),
+    child: AccountSignIn(
+      account: account,
+      language: language,
+      voiceEnabled: voiceEnabled,
+      onSignedIn: () => Navigator.pop(context),
     ),
   );
 }

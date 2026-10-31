@@ -185,10 +185,13 @@ void main() {
     );
   }
   flow(
-    'failed email sign-in keeps credentials editable and registration can be selected',
+    'failed password sign-in keeps credentials editable and can switch to verified email registration',
     (t, h) async {
       await h.boot();
       await h.tapText('Me');
+      await reveal(t, h, find.text('Sign in with a password'));
+      await t.tap(find.text('Sign in with a password'));
+      await h.frames();
       await reveal(t, h, find.text('Email'));
       await t.enterText(find.byType(TextField).first, 'driver@example.test');
       await t.enterText(find.byType(TextField).last, 'long-test-password');
@@ -204,14 +207,14 @@ void main() {
       );
       expect(find.textContaining('Fixture unavailable'), findsOneWidget);
       expect(find.byType(ProfilePage), findsOneWidget);
-      final create = find.text('New here? Create an account');
+      final create = find.text('Use an email code instead');
       await reveal(t, h, create);
       await t.tap(create);
       await h.frames();
-      await reveal(t, h, find.text('Password (12+ characters)'), delta: -200);
-      expect(find.text('Password (12+ characters)'), findsOneWidget);
+      await reveal(t, h, find.text('Continue with email'), delta: -200);
+      expect(find.text('Password'), findsNothing);
       expect(
-        find.widgetWithText(FilledButton, 'Create account'),
+        find.widgetWithText(FilledButton, 'Continue with email'),
         findsOneWidget,
       );
       final request = h.requests.lastWhere(

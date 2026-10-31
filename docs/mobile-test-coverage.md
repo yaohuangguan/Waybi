@@ -4,7 +4,7 @@ Scope is Waybi's first-party Flutter code, companion package and reusable map pa
 
 ## What the checks establish
 
-The reviewed inventory contains 148 Dart sources: 142 executable modules and six files containing only constants, exports or abstract interfaces. Each executable module must have executed line coverage and meet its reviewed per-file baseline. A new source file, a never-executed component, a missing report, or a coverage regression fails CI. Declaration exemptions have a reviewed content hash; adding logic cannot silently inherit an exemption.
+The reviewed inventory covers the first-party Dart sources in the app and its two shared packages. Each executable module must have executed line coverage and meet its reviewed per-file baseline. A new source file, a never-executed component, a missing report, or a coverage regression fails CI. Declaration exemptions have a reviewed content hash; adding logic cannot silently inherit an exemption.
 
 These are executable-line baselines, not a claim of 100% line, branch, function or hardware coverage. The app's large main.dart and retained legacy Google adapter still have substantial untested implementation paths; their limits remain visible in the report. Capability tests below exercise shared logic and user actions separately. Third-party Flutter/plugins and the vendored MapLibre SDK are compiled and exercised through app adapters, not counted as first-party coverage.
 
@@ -27,6 +27,7 @@ Test names in this table are under apps/mobile/test unless a package or native t
 
 | Capability | Automated regression evidence |
 | --- | --- |
+| Unified email OTP registration/login, password fallback, Google/Apple cancellation and policy links | `account_sign_in_test.dart`, `apple_profile_test.dart`, `plus_page_test.dart` |
 | Startup, onboarding, appearance and page navigation | `app_shell_test.dart`, `status_banner_test.dart`, `startup_handoff_test.dart` |
 | Location access, permanent denial and concurrent requests | `location_permission_gate_test.dart`, `app_shell_test.dart` |
 | Silent GPS, stream errors, stopped-trip races and stale fixes | `reliable_location_feed_test.dart`, `drive_engine_platform_test.dart`, `navigation_location_filter_test.dart` |

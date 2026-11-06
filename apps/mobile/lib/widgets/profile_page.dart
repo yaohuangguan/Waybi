@@ -12,6 +12,7 @@ import '../data/friends_backup_service.dart';
 import '../data/app_store_billing.dart';
 import '../data/plus_billing.dart';
 import 'plus_page.dart';
+import 'account_sign_in.dart';
 import '../data/camera_repository.dart';
 import '../domain/map_provider.dart';
 
@@ -90,9 +91,6 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  bool _register = false;
   String? _error;
   late bool _voice = widget.voiceEnabled;
   late bool _lanes = widget.lanesEnabled;
@@ -278,29 +276,6 @@ class _ProfilePageState extends State<ProfilePage> {
     'bundled-seed' => _text('Bundled verified snapshot', '内置已验证快照'),
     _ => _text('NZTA published data', 'NZTA 公开数据'),
   };
-
-  @override
-  void dispose() {
-    _email.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  Future<void> _signIn() async {
-    setState(() => _error = null);
-    try {
-      await widget.account.authenticate(
-        _email.text,
-        _password.text,
-        register: _register,
-      );
-      _password.clear();
-    } catch (error) {
-      if (mounted) {
-        setState(() => _error = '$error'.replaceFirst('Bad state: ', ''));
-      }
-    }
-  }
 
   Future<void> _google({bool link = false}) async {
     setState(() => _error = null);
@@ -881,83 +856,11 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               if (profile == null) ...[
                 const SizedBox(height: 19),
-                TextField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  autofillHints: const [AutofillHints.email],
-                  decoration: InputDecoration(
-                    labelText: _text('Email', '邮箱'),
-                    border: const OutlineInputBorder(),
-                  ),
+                AccountSignIn(
+                  account: widget.account,
+                  language: _appLanguage,
+                  voiceEnabled: _voice,
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _password,
-                  obscureText: true,
-                  autofillHints: [
-                    _register
-                        ? AutofillHints.newPassword
-                        : AutofillHints.password,
-                  ],
-                  decoration: InputDecoration(
-                    labelText: _register
-                        ? _text('Password (12+ characters)', '密码（至少 12 个字符）')
-                        : _text('Password', '密码'),
-                    border: const OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: widget.account.loading ? null : _signIn,
-                  child: Text(
-                    _register
-                        ? _text('Create account', '创建账号')
-                        : _text('Sign in', '登录'),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => setState(() => _register = !_register),
-                  child: Text(
-                    _register
-                        ? _text('Already have an account? Sign in', '已有账号？登录')
-                        : _text('New here? Create an account', '第一次使用？创建账号'),
-                  ),
-                ),
-                Center(
-                  child: Text(
-                    _text('or', '或'),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: widget.account.loading ? null : () => _google(),
-                  icon: const Text(
-                    'G',
-                    style: TextStyle(
-                      color: Color(0xFF4285F4),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 20,
-                    ),
-                  ),
-                  label: Text(_text('Continue with Google', '使用 Google 继续')),
-                ),
-                if (_offersApple) ...[
-                  const SizedBox(height: 8),
-                  IgnorePointer(
-                    ignoring: widget.account.loading,
-                    child: Opacity(
-                      opacity: widget.account.loading ? .5 : 1,
-                      child: SignInWithAppleButton(
-                        key: const Key('appleSignInButton'),
-                        onPressed: _apple,
-                        text: _text('Continue with Apple', '使用 Apple 继续'),
-                      ),
-                    ),
-                  ),
-                ],
               ] else ...[
                 const SizedBox(height: 14),
                 Row(
@@ -1018,8 +921,11 @@ class _ProfilePageState extends State<ProfilePage> {
                             .map(
                               (provider) => provider == 'google'
                                   ? 'Google'
+                                  : provider == 'apple'
+                                  ? 'Apple'
                                   : _text('Email', '邮箱'),
                             )
+                            .toSet()
                             .join(' · '),
                         style: TextStyle(
                           fontSize: 11,

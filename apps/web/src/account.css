@@ -9,6 +9,11 @@
 .account-button:disabled { opacity: .6; }
 .account-link { margin-top: 11px; padding: 0; border: 0; background: none; color: #496B32; font-size: 12px; font-weight: 800; }
 .account-error { color: #a83d27; font-size: 12px; }
+.account-form input[autocomplete=one-time-code] { font-size: 23px; letter-spacing: .35em; text-align: center; }
+.account-form input:read-only { background: #f1f5f5; }
+.account-policies { display: flex; justify-content: center; gap: 14px; margin-top: 16px; }
+.account-policies a { color: inherit; }
+.account-form [aria-busy=true], .account-form input:disabled { opacity: .65; }
 .profile-modal { width: min(600px, 100%); max-height: min(86dvh, 780px); }
 .profile-email { margin: 0 0 14px; color: #63766a; font-size: 13px; }
 .profile-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }

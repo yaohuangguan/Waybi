@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/account_repository.dart';
+import 'account_sign_in.dart';
 
 class ProfileSheet extends StatefulWidget {
   const ProfileSheet({super.key, required this.account});
@@ -11,34 +12,6 @@ class ProfileSheet extends StatefulWidget {
 }
 
 class _ProfileSheetState extends State<ProfileSheet> {
-  final _email = TextEditingController();
-  final _password = TextEditingController();
-  bool register = false;
-  String? error;
-
-  @override
-  void dispose() {
-    _email.dispose();
-    _password.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    setState(() => error = null);
-    try {
-      await widget.account.authenticate(
-        _email.text,
-        _password.text,
-        register: register,
-      );
-      _password.clear();
-    } catch (exception) {
-      if (mounted) {
-        setState(() => error = '$exception'.replaceFirst('Bad state: ', ''));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -91,63 +64,7 @@ class _ProfileSheetState extends State<ProfileSheet> {
                   ),
                   if (profile == null) ...[
                     const SizedBox(height: 12),
-                    const Text(
-                      'Explore as a guest, or sign in to sync trips, favorites and private reviews.',
-                    ),
-                    const SizedBox(height: 18),
-                    TextField(
-                      controller: _email,
-                      keyboardType: TextInputType.emailAddress,
-                      autofillHints: const [AutofillHints.email],
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _password,
-                      obscureText: true,
-                      autofillHints: [
-                        register
-                            ? AutofillHints.newPassword
-                            : AutofillHints.password,
-                      ],
-                      decoration: InputDecoration(
-                        labelText: register
-                            ? 'Password (12+ characters)'
-                            : 'Password',
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                    if (error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: Text(
-                          error!,
-                          style: const TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    const SizedBox(height: 14),
-                    FilledButton(
-                      onPressed: widget.account.loading ? null : _submit,
-                      child: Text(register ? 'Create account' : 'Sign in'),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() => register = !register),
-                      child: Text(
-                        register
-                            ? 'Already have an account? Sign in'
-                            : 'New here? Create an account',
-                      ),
-                    ),
-                    Text(
-                      'Email verification and password recovery are not available yet.',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 12,
-                      ),
-                    ),
+                    AccountSignIn(account: widget.account),
                   ] else ...[
                     Text(
                       profile.email,
@@ -221,7 +138,6 @@ class _ProfileSheetState extends State<ProfileSheet> {
                     OutlinedButton.icon(
                       onPressed: () async {
                         await widget.account.signOut();
-                        if (mounted) setState(() => error = null);
                       },
                       icon: const Icon(Icons.logout_rounded),
                       label: const Text('Sign out'),

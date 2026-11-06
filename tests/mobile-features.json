@@ -3,6 +3,15 @@
   "scope": "First-party Flutter mobile application for iOS and Android; execution coverage and capability tests are separate from physical-device validation.",
   "features": [
     {
+      "id": "unified-account-sign-in",
+      "label": "Shared email OTP, password fallback, Google and iOS Apple entry with provider failure recovery",
+      "tests": [
+        "apps/mobile/test/account_sign_in_test.dart",
+        "apps/mobile/test/apple_profile_test.dart",
+        "apps/mobile/test/plus_page_test.dart"
+      ]
+    },
+    {
       "id": "app-account-flows",
       "label": "Real app favorites, private reviews, saved routes, road reports and migrated shortcuts",
       "tests": [

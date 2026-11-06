@@ -23,7 +23,9 @@ export type AccountProfile = {
 };
 
 let profile: AccountProfile | null = null;
-let mode: 'login' | 'register' = 'login';
+let mode: 'code' | 'password' = 'code';
+let challenge: { email: string; id: string; resendAt: number } | null = null;
+let accountBusy = false;
 let accountRoot: HTMLElement;
 let getLanguage: () => Language;
 let getVoiceEnabled: () => boolean;
@@ -34,7 +36,8 @@ async function accountApi<T>(path: string, method = 'GET', body?: object): Promi
     method,
     credentials: 'same-origin',
     headers: method === 'GET' ? {} : { 'content-type': 'application/json', 'x-waybi-client': 'web' },
-    body: body ? JSON.stringify(body) : undefined
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(12_000)
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
@@ -43,19 +46,19 @@ async function accountApi<T>(path: string, method = 'GET', body?: object): Promi
 
 const copy = {
   en: {
-    title: 'Your account', guest: 'Guest mode: no preferences or destinations are saved.',
+    title: 'Welcome to Waybi', guest: 'Guest mode is always available. Sign in to sync your trips and places.',
     signedIn: 'Signed in as', email: 'Email', password: 'Password (12+ characters)',
     login: 'Sign in', register: 'Create account', switchLogin: 'Already have an account? Sign in',
     switchRegister: 'New here? Create an account', logout: 'Sign out',
-    warning: 'Email verification and password recovery are not available yet.',
+    warning: 'New here? Verifying your email creates your account automatically.',
     error: 'Could not connect to your account.'
   },
   zh: {
-    title: '账户', guest: '访客模式：不会保存偏好或目的地。',
+    title: '欢迎来到 Waybi', guest: '随时可使用访客模式。登录后同步行程和收藏地点。',
     signedIn: '已登录', email: '邮箱', password: '密码（至少 12 位）',
     login: '登录', register: '注册', switchLogin: '已有账户？登录',
     switchRegister: '没有账户？注册', logout: '退出登录',
-    warning: '目前尚未提供邮箱验证和找回密码。',
+    warning: '首次使用？验证邮箱后将自动创建账号。',
     error: '无法连接账户。'
   }
 };
@@ -104,50 +107,106 @@ export function renderAccount() {
   email.autocomplete = 'email';
   email.placeholder = words.email;
   email.setAttribute('aria-label', words.email);
-  const password = document.createElement('input');
-  password.type = 'password';
-  password.required = true;
-  password.minLength = mode === 'register' ? 12 : 1;
-  password.autocomplete = mode === 'register' ? 'new-password' : 'current-password';
-  password.placeholder = words.password;
-  password.setAttribute('aria-label', words.password);
+  const zh = getLanguage() === 'zh';
+  const text = (en: string, cn: string) => zh ? cn : en;
+  if (challenge) email.value = challenge.email;
+  email.readOnly = Boolean(challenge);
+  const credential = document.createElement('input');
+  credential.type = mode === 'password' ? 'password' : 'text';
+  credential.required = true;
+  credential.autocomplete = mode === 'password' ? 'current-password' : 'one-time-code';
+  credential.placeholder = mode === 'password' ? text('Password', '密码') : text('6-digit code', '6 位验证码');
+  credential.setAttribute('aria-label', credential.placeholder);
+  if (mode === 'code') { credential.inputMode = 'numeric'; credential.pattern = '[0-9]{6}'; credential.maxLength = 6; }
   const submit = document.createElement('button');
   submit.className = 'account-button';
   submit.type = 'submit';
-  submit.textContent = mode === 'login' ? words.login : words.register;
+  submit.textContent = mode === 'password' ? words.login : challenge ? text('Verify and continue', '验证并继续') : text('Continue with email', '使用邮箱继续');
   const status = document.createElement('span');
   status.className = 'account-error';
   status.setAttribute('role', 'status');
-  form.append(email, password, submit, status);
+  form.append(email);
+  if (mode === 'password' || challenge) form.append(credential);
+  form.append(submit, status);
   form.onsubmit = async (event) => {
     event.preventDefault();
+    if (accountBusy || !form.reportValidity()) return;
+    accountBusy = true;
     submit.disabled = true;
+    email.disabled = true;
+    credential.disabled = true;
+    switchMode.disabled = true;
+    form.setAttribute('aria-busy', 'true');
     status.textContent = '';
     try {
-      const next = await accountApi<AccountProfile>(`/api/auth/${mode === 'login' ? 'login' : 'register'}`, 'POST', {
+      if (mode === 'code' && !challenge) {
+        const sent = await accountApi<{challengeId: string; retryAfter: number}>('/api/auth/email/request', 'POST', {email: email.value.trim(), language: getLanguage()});
+        challenge = {email: email.value.trim(), id: sent.challengeId, resendAt: Date.now() + sent.retryAfter * 1000};
+        renderAccount();
+        accountRoot.querySelector<HTMLInputElement>('input[autocomplete=one-time-code]')?.focus();
+        return;
+      }
+      const next = await accountApi<AccountProfile>(mode === 'password' ? '/api/auth/login' : '/api/auth/email/verify', 'POST', {
         email: email.value,
-        password: password.value,
+        ...(mode === 'password' ? {password: credential.value} : {challengeId: challenge!.id, code: credential.value}),
         language: getLanguage(),
         voiceEnabled: getVoiceEnabled()
       });
       profile = next;
+      credential.value = '';
+      challenge = null;
       onProfileLoaded(next);
       renderAccount();
       window.dispatchEvent(new Event('kiwi-account-change'));
     } catch (error) {
       status.textContent = (error as Error).message || words.error;
       submit.disabled = false;
+    } finally {
+      accountBusy = false;
+      email.disabled = false;
+      credential.disabled = false;
+      switchMode.disabled = false;
+      form.removeAttribute('aria-busy');
     }
   };
   const switchMode = document.createElement('button');
   switchMode.type = 'button';
   switchMode.className = 'account-link';
-  switchMode.textContent = mode === 'login' ? words.switchRegister : words.switchLogin;
-  switchMode.onclick = () => { mode = mode === 'login' ? 'register' : 'login'; renderAccount(); };
+  switchMode.textContent = mode === 'code' ? text('Sign in with a password', '使用密码登录') : text('Use an email code instead', '改用邮箱验证码');
+  switchMode.onclick = () => { if (accountBusy) return; mode = mode === 'code' ? 'password' : 'code'; challenge = null; renderAccount(); };
   const warning = document.createElement('p');
   warning.className = 'account-warning';
   warning.textContent = words.warning;
   accountRoot.append(guest, form, switchMode, warning);
+  if (challenge) {
+    const note = document.createElement('p'); note.className = 'account-note';
+    note.textContent = text('Check your inbox. Your code expires in 10 minutes.', '请查收邮件，验证码 10 分钟内有效。');
+    form.before(note);
+    const resend = document.createElement('button'); resend.type = 'button'; resend.className = 'account-link';
+    resend.textContent = text('Resend code', '重新发送');
+    const changeEmail = document.createElement('button'); changeEmail.type = 'button'; changeEmail.className = 'account-link';
+    changeEmail.textContent = text('Change email', '更换邮箱');
+    changeEmail.onclick = () => { if (!accountBusy) { challenge = null; renderAccount(); } };
+    resend.onclick = async () => {
+      if (accountBusy || !challenge) return;
+      const remaining = Math.ceil((challenge.resendAt - Date.now()) / 1000);
+      if (remaining > 0) { status.textContent = text(`Try again in ${remaining} seconds.`, `请在 ${remaining} 秒后重试。`); return; }
+      accountBusy = true; resend.disabled = true; submit.disabled = true;
+      try {
+        const sent = await accountApi<{challengeId: string; retryAfter: number}>('/api/auth/email/request', 'POST', {email: challenge.email, language: getLanguage()});
+        challenge = {...challenge, id: sent.challengeId, resendAt: Date.now() + sent.retryAfter * 1000};
+        credential.value = ''; status.textContent = text('A new code has been sent.', '新验证码已发送。');
+      } catch (error) { status.textContent = (error as Error).message || words.error; }
+      finally { accountBusy = false; resend.disabled = false; submit.disabled = false; }
+    };
+    accountRoot.append(resend, document.createTextNode(' · '), changeEmail);
+  }
+  const policies = document.createElement('p'); policies.className = 'account-note account-policies';
+  for (const [page, label] of [['terms', text('Terms of use', '使用条款')], ['privacy', text('Privacy policy', '隐私政策')]] as const) {
+    const link = document.createElement('a'); link.href = `${zh ? '/zh' : ''}/${page}/`; link.textContent = label;
+    link.target = '_blank'; link.rel = 'noopener'; policies.append(link, document.createTextNode(' '));
+  }
+  accountRoot.append(policies);
 }
 
 export async function initAccount(root: HTMLElement, language: () => Language, voice: () => boolean,

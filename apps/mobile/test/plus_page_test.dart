@@ -222,7 +222,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('plus-plan-monthly')));
       await tester.tap(find.byKey(const ValueKey('plus-subscribe')));
       await tester.pumpAndSettle();
-      expect(find.text('Welcome back.'), findsOneWidget);
+      expect(find.text('Your journey starts here'), findsOneWidget);
+      await tester.ensureVisible(find.text('Sign in with a password'));
+      await tester.tap(find.text('Sign in with a password'));
+      await tester.pumpAndSettle();
       await tester.enterText(
         find.byType(TextFormField).first,
         'driver@example.test',
@@ -231,9 +234,10 @@ void main() {
         find.byType(TextFormField).last,
         'sample-password',
       );
+      await tester.ensureVisible(find.text('Sign in'));
       await tester.tap(find.text('Sign in'));
       await tester.pumpAndSettle();
-      expect(find.text('Welcome back.'), findsNothing);
+      expect(find.text('Your journey starts here'), findsNothing);
       expect(account.syncedVoice, false);
       expect(find.text('Subscribe to Plus'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('plus-subscribe')));

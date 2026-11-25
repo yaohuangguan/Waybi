@@ -222,7 +222,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('plus-plan-monthly')));
       await tester.tap(find.byKey(const ValueKey('plus-subscribe')));
       await tester.pumpAndSettle();
-      expect(find.text('Your journey starts here'), findsOneWidget);
+      expect(find.text('Sign in to Waybi'), findsOneWidget);
       await tester.ensureVisible(find.text('Sign in with a password'));
       await tester.tap(find.text('Sign in with a password'));
       await tester.pumpAndSettle();
@@ -237,7 +237,7 @@ void main() {
       await tester.ensureVisible(find.text('Sign in'));
       await tester.tap(find.text('Sign in'));
       await tester.pumpAndSettle();
-      expect(find.text('Your journey starts here'), findsNothing);
+      expect(find.text('Sign in to Waybi'), findsNothing);
       expect(account.syncedVoice, false);
       expect(find.text('Subscribe to Plus'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('plus-subscribe')));

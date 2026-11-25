@@ -10,7 +10,8 @@ Google and email/password sign-in remain. The native iOS profile adds an Apple b
 - Confirmed account deletion revokes Apple's refresh authorization before deleting the account and its cascading identity record. An Apple outage keeps the account and returns a retryable failure instead of claiming deletion succeeded.
 - The existing 15-minute cron checks up to five oldest identities per run, each no more frequently than daily. An explicit Apple `invalid_grant` revokes Waybi sessions and marks the identity withdrawn; transient outages do not log users out. This bounded queue needs capacity monitoring as accounts grow.
 - Apple login is iOS-only in this release. No new Android/web Apple OAuth service or redirect is enabled.
-- Missing configuration returns `ready:false` / HTTP 503. The app checks it before opening Apple's consent sheet and offers the existing sign-in methods. This is a configuration gate, not a validated App Store-ready Apple login.
+- **Identity-token mode (no key configured).** Apple sign-in is always available (`ready:true`). Without the optional `APPLE_AUTH_*` key the Worker trusts only Apple's RS256-signed, nonce-bound identity token (issuer, `co.waybi.ios` audience, expiry, nonce, signature), skips the authorization-code exchange, and stores an empty refresh credential. Daily status checks skip those identities and account deletion removes them without an Apple revoke call. `GET /api/auth/apple/config` reports `tokenExchange:false`.
+- **Full mode (key configured).** With every `APPLE_AUTH_*` value present (`tokenExchange:true`) the Worker also exchanges the single-use authorization code, stores the encrypted refresh token, runs daily status checks and revokes on deletion. Identities created in identity-token mode gain a refresh token the next time the user signs in with Apple. Configure the key before App Store review so deletion revokes Apple authorization as TN3194 recommends.
 
 ## Verified development checks
 

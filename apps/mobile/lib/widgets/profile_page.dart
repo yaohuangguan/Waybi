@@ -711,68 +711,72 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         body: SafeArea(
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(18, 20, 18, 32),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [WaybiColors.darkOcean, WaybiColors.ocean],
+              if (profile == null)
+                AccountSignIn(
+                  account: widget.account,
+                  language: _appLanguage,
+                  voiceEnabled: _voice,
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [WaybiColors.darkOcean, WaybiColors.ocean],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 27,
-                      backgroundColor: WaybiColors.sky,
-                      child: Text(
-                        profile?.displayName.isNotEmpty == true
-                            ? profile!.displayName[0].toUpperCase()
-                            : 'T',
-                        style: const TextStyle(
-                          color: WaybiColors.darkOcean,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: WaybiColors.sky,
+                        child: Text(
+                          profile.displayName.isNotEmpty
+                              ? profile.displayName[0].toUpperCase()
+                              : profile.email.isNotEmpty
+                              ? profile.email[0].toUpperCase()
+                              : 'W',
+                          style: const TextStyle(
+                            color: WaybiColors.darkOcean,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            profile?.displayName.isNotEmpty == true
-                                ? profile!.displayName
-                                : profile == null
-                                ? _text('Guest explorer', '访客')
-                                : _text('Waybi member', 'Waybi 用户'),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 19,
-                              fontWeight: FontWeight.w700,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              profile.displayName.isNotEmpty
+                                  ? profile.displayName
+                                  : _text('Waybi member', 'Waybi 用户'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                          Text(
-                            profile?.email ??
-                                _text(
-                                  'Sign in to sync your trips and places',
-                                  '登录以同步行程和地点',
-                                ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
+                            Text(
+                              profile.email,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    if (profile != null)
                       IconButton(
                         onPressed: _editName,
                         tooltip: _text('Edit profile', '编辑资料'),
@@ -781,9 +785,9 @@ class _ProfilePageState extends State<ProfilePage> {
                           color: WaybiColors.sky,
                         ),
                       ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 13),
@@ -794,7 +798,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               FriendsEntry(chinese: _appLanguage == 'zh'),
               if (widget.friendsBackup case final backup?)
                 AnimatedBuilder(
@@ -833,7 +837,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         : null,
                   ),
                 ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               _PlusCard(
                 isPlus: profile?.isPlus ?? false,
                 chinese: _appLanguage == 'zh',
@@ -854,14 +858,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   if (widget.plusBilling == null) billing.dispose();
                 },
               ),
-              if (profile == null) ...[
-                const SizedBox(height: 19),
-                AccountSignIn(
-                  account: widget.account,
-                  language: _appLanguage,
-                  voiceEnabled: _voice,
-                ),
-              ] else ...[
+              if (profile != null) ...[
                 const SizedBox(height: 14),
                 Row(
                   children: [

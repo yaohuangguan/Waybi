@@ -172,17 +172,50 @@ class _AccountSignInState extends State<AccountSignIn> {
     });
   }
 
+  Future<void> _openPolicy(String page) async {
+    final prefix = widget.language == 'zh' ? '/zh' : '';
+    await _run(() async {
+      if (!await launchUrl(
+        Uri.parse('https://waybi.co$prefix/$page/'),
+        mode: LaunchMode.externalApplication,
+      )) {
+        throw StateError(t('Could not open this page.', '暂时无法打开页面。'));
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.account,
     builder: (context, _) {
-      final colors = Theme.of(context).colorScheme;
+      final theme = Theme.of(context);
+      final colors = theme.colorScheme;
+      final dark = theme.brightness == Brightness.dark;
+      final muted = TextStyle(
+        color: colors.onSurfaceVariant,
+        fontSize: 12.5,
+        height: 1.4,
+      );
+      final buttonShape = RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      );
+      const buttonSize = Size.fromHeight(50);
+      final showApple = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
       return Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
         decoration: BoxDecoration(
-          color: colors.surfaceContainerLow,
-          border: Border.all(color: colors.outlineVariant),
-          borderRadius: BorderRadius.circular(24),
+          color: colors.surface,
+          border: Border.all(color: theme.dividerColor),
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: dark
+              ? null
+              : [
+                  BoxShadow(
+                    color: colors.shadow.withValues(alpha: .04),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
         ),
         child: AutofillGroup(
           child: Form(
@@ -191,31 +224,62 @@ class _AccountSignInState extends State<AccountSignIn> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.explore_outlined, size: 36, color: colors.primary),
-                const SizedBox(height: 12),
                 Text(
-                  t('Your journey starts here', '每一程，从这里开始'),
-                  textAlign: TextAlign.center,
+                  t('Sign in to Waybi', '登录 Waybi'),
                   style: const TextStyle(
-                    fontSize: 23,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 21,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -.2,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Text(
                   t(
-                    'Sign in or create an account to keep your trips, places and companions together.',
-                    '登录或注册，收藏地点、旅途记录和伙伴都在一起。',
+                    'Keep your trips, saved places and companions on every device.',
+                    '在所有设备上同步你的行程、收藏地点和旅伴。',
                   ),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: colors.onSurfaceVariant,
-                    fontSize: 13,
-                    height: 1.5,
-                  ),
+                  style: muted.copyWith(fontSize: 13),
                 ),
-                const SizedBox(height: 24),
-                if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 14),
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.errorContainer,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.error_outline_rounded,
+                              size: 18,
+                              color: colors.onErrorContainer,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: TextStyle(
+                                  color: colors.onErrorContainer,
+                                  fontSize: 13,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                if (showApple) ...[
                   IgnorePointer(
                     ignoring: _locked,
                     child: Opacity(
@@ -223,6 +287,13 @@ class _AccountSignInState extends State<AccountSignIn> {
                       child: SignInWithAppleButton(
                         key: const Key('appleSignInButton'),
                         text: t('Continue with Apple', '使用 Apple 继续'),
+                        height: 50,
+                        borderRadius: const BorderRadius.all(
+                          Radius.circular(14),
+                        ),
+                        style: dark
+                            ? SignInWithAppleButtonStyle.white
+                            : SignInWithAppleButtonStyle.black,
                         onPressed: () => _run(() async {
                           await widget.account.authenticateWithApple(
                             language: widget.language,
@@ -234,30 +305,49 @@ class _AccountSignInState extends State<AccountSignIn> {
                   ),
                   const SizedBox(height: 10),
                 ],
-                OutlinedButton.icon(
+                OutlinedButton(
+                  key: const Key('googleSignInButton'),
                   onPressed: _locked
                       ? null
                       : () => _run(() async {
                           await widget.account.authenticateWithGoogle();
                           await _signedIn();
                         }),
-                  icon: const Icon(Icons.account_circle_outlined),
-                  label: Text(t('Continue with Google', '使用 Google 继续')),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: buttonSize,
+                    shape: buttonShape,
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF1F1F1F),
+                    disabledBackgroundColor: Colors.white.withValues(alpha: .6),
+                    side: const BorderSide(color: Color(0xFFDADCE0)),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const GoogleLogo(size: 20),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          t('Continue with Google', '使用 Google 继续'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   child: Row(
                     children: [
                       const Expanded(child: Divider()),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          t('or use your email', '或使用邮箱'),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
+                        child: Text(t('or', '或'), style: muted),
                       ),
                       const Expanded(child: Divider()),
                     ],
@@ -285,7 +375,7 @@ class _AccountSignInState extends State<AccountSignIn> {
                       : t('Enter a valid email address', '请输入有效的邮箱地址'),
                 ),
                 if (_passwordMode) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   TextFormField(
                     controller: _password,
                     enabled: !_locked,
@@ -295,6 +385,7 @@ class _AccountSignInState extends State<AccountSignIn> {
                     onFieldSubmitted: (_) => _submit(),
                     decoration: InputDecoration(
                       labelText: t('Password', '密码'),
+                      prefixIcon: const Icon(Icons.lock_outline_rounded),
                       suffixIcon: IconButton(
                         tooltip: t('Show or hide password', '显示或隐藏密码'),
                         onPressed: _locked
@@ -314,18 +405,7 @@ class _AccountSignInState extends State<AccountSignIn> {
                         : t('Enter your password', '请输入密码'),
                   ),
                 ] else if (_challengeId != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    t(
-                      'Check your inbox. Your code is valid for 10 minutes.',
-                      '请查收邮件，验证码 10 分钟内有效。',
-                    ),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   TextFormField(
                     controller: _code,
                     enabled: !_locked,
@@ -337,17 +417,51 @@ class _AccountSignInState extends State<AccountSignIn> {
                     ],
                     textInputAction: TextInputAction.done,
                     onFieldSubmitted: (_) => _submit(),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      letterSpacing: 4,
+                      fontWeight: FontWeight.w600,
+                    ),
                     decoration: InputDecoration(
                       labelText: t('6-digit code', '6 位验证码'),
+                      helperText: t(
+                        'Check your inbox. Your code is valid for 10 minutes.',
+                        '请查收邮件，验证码 10 分钟内有效。',
+                      ),
+                      prefixIcon: const Icon(Icons.pin_outlined),
                     ),
                     validator: (value) =>
                         RegExp(r'^\d{6}$').hasMatch(value ?? '')
                         ? null
                         : t('Enter the six-digit code', '请输入 6 位验证码'),
                   ),
-                  Wrap(
-                    alignment: WrapAlignment.spaceBetween,
-                    children: [
+                ],
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: _locked ? null : _submit,
+                  style: FilledButton.styleFrom(
+                    minimumSize: buttonSize,
+                    shape: buttonShape,
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: Text(
+                    _locked
+                        ? t('Please wait…', '请稍候…')
+                        : _passwordMode
+                        ? t('Sign in', '登录')
+                        : _challengeId == null
+                        ? t('Continue with email', '使用邮箱继续')
+                        : t('Verify and continue', '验证并继续'),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  children: [
+                    if (!_passwordMode && _challengeId != null) ...[
                       TextButton(
                         onPressed: _locked || _remaining > 0 ? null : _sendCode,
                         child: Text(
@@ -369,72 +483,39 @@ class _AccountSignInState extends State<AccountSignIn> {
                               }),
                         child: Text(t('Change email', '更换邮箱')),
                       ),
-                    ],
-                  ),
-                ],
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        _error!,
-                        style: TextStyle(color: colors.error, fontSize: 13),
+                    ] else
+                      TextButton(
+                        onPressed: _locked ? null : _changeMethod,
+                        child: Text(
+                          _passwordMode
+                              ? t('Use an email code instead', '改用邮箱验证码')
+                              : t('Sign in with a password', '使用密码登录'),
+                        ),
                       ),
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: _locked ? null : _submit,
-                  child: Text(
-                    _locked
-                        ? t('Please wait…', '请稍候…')
-                        : _passwordMode
-                        ? t('Sign in', '登录')
-                        : _challengeId == null
-                        ? t('Continue with email', '使用邮箱继续')
-                        : t('Verify and continue', '验证并继续'),
-                  ),
+                  ],
                 ),
-                TextButton(
-                  onPressed: _locked ? null : _changeMethod,
-                  child: Text(
-                    _passwordMode
-                        ? t('Use an email code instead', '改用邮箱验证码')
-                        : t('Sign in with a password', '使用密码登录'),
-                  ),
-                ),
+                const Divider(height: 14),
                 Text(
                   t(
-                    'New here? Verifying your email creates your account automatically.',
-                    '首次使用？验证邮箱后将自动创建账号。',
+                    'New here? Verifying your email creates your account. By continuing you agree to our',
+                    '首次使用？验证邮箱即自动创建账号。继续即表示你同意',
                   ),
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: colors.onSurfaceVariant,
-                    fontSize: 12,
-                    height: 1.5,
-                  ),
+                  style: muted.copyWith(fontSize: 11.5),
                 ),
-                const SizedBox(height: 8),
                 Wrap(
                   alignment: WrapAlignment.center,
                   children: [
                     for (final page in ['terms', 'privacy'])
                       TextButton(
-                        onPressed: () async {
-                          final prefix = widget.language == 'zh' ? '/zh' : '';
-                          await _run(() async {
-                            if (!await launchUrl(
-                              Uri.parse('https://waybi.co$prefix/$page/'),
-                              mode: LaunchMode.externalApplication,
-                            )) {
-                              throw StateError(
-                                t('Could not open this page.', '暂时无法打开页面。'),
-                              );
-                            }
-                          });
-                        },
+                        onPressed: () => _openPolicy(page),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          textStyle: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                         child: Text(
                           page == 'terms'
                               ? t('Terms of use', '使用条款')
@@ -450,4 +531,83 @@ class _AccountSignInState extends State<AccountSignIn> {
       );
     },
   );
+}
+
+/// The four-colour Google "G" mark, drawn from Google's published 48×48 logo
+/// paths so the sign-in button carries the recognisable brand symbol.
+class GoogleLogo extends StatelessWidget {
+  const GoogleLogo({super.key, this.size = 20});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    excludeSemantics: true,
+    child: CustomPaint(
+      size: Size.square(size),
+      painter: const _GoogleLogoPainter(),
+    ),
+  );
+}
+
+class _GoogleLogoPainter extends CustomPainter {
+  const _GoogleLogoPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.scale(size.width / 48, size.height / 48);
+    final paint = Paint()..isAntiAlias = true;
+    canvas.drawPath(
+      Path()
+        ..moveTo(24, 9.5)
+        ..cubicTo(27.54, 9.5, 30.71, 10.72, 33.21, 13.1)
+        ..lineTo(40.06, 6.25)
+        ..cubicTo(35.9, 2.38, 30.47, 0, 24, 0)
+        ..cubicTo(14.62, 0, 6.51, 5.38, 2.56, 13.22)
+        ..lineTo(10.54, 19.41)
+        ..cubicTo(12.43, 13.72, 17.74, 9.5, 24, 9.5)
+        ..close(),
+      paint..color = const Color(0xFFEA4335),
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(46.98, 24.55)
+        ..cubicTo(46.98, 22.98, 46.83, 21.46, 46.6, 20)
+        ..lineTo(24, 20)
+        ..lineTo(24, 29.02)
+        ..lineTo(36.94, 29.02)
+        ..cubicTo(36.36, 31.98, 34.68, 34.5, 32.16, 36.2)
+        ..lineTo(39.89, 42.2)
+        ..cubicTo(44.4, 38.02, 46.98, 31.84, 46.98, 24.55)
+        ..close(),
+      paint..color = const Color(0xFF4285F4),
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(10.53, 28.59)
+        ..cubicTo(10.05, 27.14, 9.77, 25.6, 9.77, 24)
+        ..cubicTo(9.77, 22.4, 10.04, 20.86, 10.53, 19.41)
+        ..lineTo(2.55, 13.22)
+        ..cubicTo(0.92, 16.46, 0, 20.12, 0, 24)
+        ..cubicTo(0, 27.88, 0.92, 31.54, 2.56, 34.78)
+        ..lineTo(10.53, 28.59)
+        ..close(),
+      paint..color = const Color(0xFFFBBC05),
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(24, 48)
+        ..cubicTo(30.48, 48, 35.93, 45.87, 39.89, 42.19)
+        ..lineTo(32.16, 36.19)
+        ..cubicTo(30.01, 37.64, 27.24, 38.49, 24, 38.49)
+        ..cubicTo(17.74, 38.49, 12.43, 34.27, 10.53, 28.58)
+        ..lineTo(2.55, 34.77)
+        ..cubicTo(6.51, 42.62, 14.62, 48, 24, 48)
+        ..close(),
+      paint..color = const Color(0xFF34A853),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

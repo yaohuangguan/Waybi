@@ -57,6 +57,10 @@ Future<void> reveal(
     scrollable: find.byType(Scrollable).first,
     maxScrolls: 40,
   );
+  // scrollUntilVisible stops once any pixel is on screen; centre the target
+  // so taps land on it regardless of how tall the content above it is.
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
 }
 
 void main() {

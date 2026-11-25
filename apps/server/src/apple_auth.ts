@@ -9,10 +9,14 @@ function bytes(value: string) {
 }
 const part = (value: string) => JSON.parse(new TextDecoder().decode(bytes(value)));
 const keys = new WeakMap<typeof fetch, { until: number; fetchedAt: number; values: JsonWebKey[] }>();
+/** Native Sign in with Apple only needs the app's bundle id: the identity token
+ * is verified against Apple's public keys. The optional Sign in with Apple key
+ * (APPLE_AUTH_*) adds the authorization-code exchange, which yields a refresh
+ * token used for daily status checks and revocation on account deletion. */
 export function appleAuthConfig(env: any) {
-  return { clientId: env.APPLE_AUTH_CLIENT_ID || 'co.waybi.ios',
-    ready: Boolean(env.APPLE_AUTH_TEAM_ID && env.APPLE_AUTH_KEY_ID && env.APPLE_AUTH_PRIVATE_KEY &&
-      /^[a-f0-9]{64}$/i.test(env.APPLE_AUTH_TOKEN_KEY || '')) };
+  const tokenExchange = Boolean(env.APPLE_AUTH_TEAM_ID && env.APPLE_AUTH_KEY_ID && env.APPLE_AUTH_PRIVATE_KEY &&
+    /^[a-f0-9]{64}$/i.test(env.APPLE_AUTH_TOKEN_KEY || ''));
+  return { clientId: env.APPLE_AUTH_CLIENT_ID || 'co.waybi.ios', ready: true, tokenExchange };
 }
 export async function nonceHash(raw: string) {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(raw)))]
@@ -50,7 +54,7 @@ export async function verifyAppleIdentity(token: unknown, clientId: string, nonc
   return { sub: claims.sub as string, email: verified && typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : null };
 }
 export async function appleClientSecret(env: any, now = Date.now()) {
-  if (!appleAuthConfig(env).ready) throw new Error('Apple sign-in unavailable');
+  if (!appleAuthConfig(env).tokenExchange) throw new Error('Apple token exchange unavailable');
   const pem = env.APPLE_AUTH_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/-----[^-]+-----|\s/g, '');
   const key = await crypto.subtle.importKey('pkcs8', Uint8Array.from(atob(pem), c => c.charCodeAt(0)),
     { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
@@ -76,6 +80,7 @@ export async function exchangeAppleAuthorization(env: any, body: any, fetcher: t
   }
   const nonce = await nonceHash(body.rawNonce);
   const identity = await verifyAppleIdentity(body.identityToken, appleAuthConfig(env).clientId, nonce, { fetcher });
+  if (!appleAuthConfig(env).tokenExchange) return { ...identity, refreshToken: null };
   const tokens = await tokenRequest(env, { grant_type: 'authorization_code', code: body.authorizationCode }, fetcher);
   const exchanged = await verifyAppleIdentity(tokens.id_token, appleAuthConfig(env).clientId, nonce, { fetcher });
   if (exchanged.sub !== identity.sub) throw new Error('Apple identity mismatch');
@@ -109,9 +114,9 @@ export async function revokeAppleAuthorization(env: any, sealed: string, fetcher
 /** Use existing 15-minute cron; check up to five oldest identities per run,
  * each at most daily. Never interpret an outage as revoked authorization. */
 export async function refreshAppleAuthorizations(env: any, now = Date.now(), fetcher: typeof fetch = fetch) {
-  if (!env.USER_DB || !appleAuthConfig(env).ready) return;
+  if (!env.USER_DB || !appleAuthConfig(env).tokenExchange) return;
   const db = env.USER_DB;
-  const rows = await db.prepare('SELECT apple_sub, user_id, refresh_token FROM apple_identities WHERE checked_at < ? AND revoked_at IS NULL ORDER BY checked_at LIMIT 5')
+  const rows = await db.prepare('SELECT apple_sub, user_id, refresh_token FROM apple_identities WHERE checked_at < ? AND revoked_at IS NULL AND length(refresh_token) > 0 ORDER BY checked_at LIMIT 5')
     .bind(now - 86400000).all();
   for (const row of rows.results || []) {
     try {

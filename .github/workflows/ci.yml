@@ -18,7 +18,7 @@ jobs:
       - run: node --check scripts/flutter-dev.mjs
       - run: node --check scripts/ios-device.mjs
       - run: node --check scripts/d1-migrate-remote.mjs
-      - run: node --test scripts/d1-migrate-remote.test.mjs scripts/check-mobile-coverage.test.mjs scripts/check-cloudflare-account.test.mjs
+      - run: node --test scripts/d1-migrate-remote.test.mjs scripts/check-mobile-coverage.test.mjs scripts/check-cloudflare-account.test.mjs scripts/asc-beta-review.test.mjs
       - run: pnpm typecheck:server
       - run: pnpm typecheck:nz-routing
       - run: pnpm test

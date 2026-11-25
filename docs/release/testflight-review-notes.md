@@ -39,8 +39,11 @@ Before submitting, fill the App Store Connect contact fields with the owner's
 confirmed information and create a dedicated reviewer account if reviewers need
 protected features. No credentials belong in this document or source control.
 
-Apple sign-in and StoreKit products are pending owner account setup. Do not claim
-they are ready in review notes. The existing backend has a production-first,
+Apple sign-in works in identity-token mode (see `docs/apple-sign-in.md`); the
+optional server key for revocation on deletion is still pending. StoreKit
+products are pending owner account setup. Do not claim they are ready in review
+notes. `.github/workflows/testflight-beta-review.yml` submits a build for external
+testing using the What to Test and review notes in `scripts/asc-beta-review.mjs`. The existing backend has a production-first,
 transaction-not-found-only Sandbox lookup for TestFlight; real Sandbox purchase
 and restoration are still unverified until keys/products are configured.
 

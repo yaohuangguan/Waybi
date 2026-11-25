@@ -254,7 +254,6 @@ export async function handleAccount(request: Request, env) {
 
   if (path === '/api/auth/apple/config' && request.method === 'GET') return response(appleAuthConfig(env));
   if ((path === '/api/auth/apple' || path === '/api/auth/apple/link') && request.method === 'POST') {
-    if (!appleAuthConfig(env).ready) return response({ error: 'Apple sign-in is not configured' }, 503);
     const linking = path.endsWith('/link');
     const current = linking ? await userFromRequest(db, request) : null;
     if (linking && !current) return response({ error: 'Not signed in' }, 401);
@@ -276,8 +275,11 @@ export async function handleAccount(request: Request, env) {
       if (existing) return response({ error: 'This email already has an account. Sign in with your existing method, then link Apple in My Account.' }, 409);
       user = { id: crypto.randomUUID(), email: identity.email };
     }
-    const storedToken = identity.refreshToken ? await sealAppleToken(env, identity.refreshToken) : linked?.refresh_token;
-    if (!storedToken) return response({ error: 'Apple authorization is incomplete. Please try again.' }, 401);
+    // Without the optional Sign in with Apple key there is no refresh token; '' marks
+    // an identity verified from Apple's signed identity token alone.
+    const storedToken = identity.refreshToken ? await sealAppleToken(env, identity.refreshToken)
+      : linked?.refresh_token ?? (appleAuthConfig(env).tokenExchange ? null : '');
+    if (storedToken == null) return response({ error: 'Apple authorization is incomplete. Please try again.' }, 401);
     const statements = [];
     if (!linking && !linked) statements.push(
       db.prepare('INSERT INTO users (id, email, password_salt, password_hash, created_at) VALUES (?, ?, ?, ?, ?)')
@@ -392,7 +394,7 @@ export async function handleAccount(request: Request, env) {
     // before removing the account so a KV failure never returns a false
     // deletion confirmation.
     const apple = await db.prepare('SELECT refresh_token FROM apple_identities WHERE user_id = ?').bind(user.id).first();
-    if (apple) {
+    if (apple?.refresh_token) {
       try { await revokeAppleAuthorization(env, apple.refresh_token); }
       catch { return response({ error: 'Apple authorization could not be revoked. Please retry account deletion.' }, 503); }
     }

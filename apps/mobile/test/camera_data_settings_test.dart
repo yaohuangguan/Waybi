@@ -221,6 +221,8 @@ void main() {
         300,
         scrollable: find.byType(Scrollable).first,
       );
+      await tester.ensureVisible(reload);
+      await tester.pumpAndSettle();
       await tester.tap(reload);
       await tester.pumpAndSettle();
       expect(reloads, 1);

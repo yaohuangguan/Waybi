@@ -71,7 +71,8 @@ test('Apple identity verifies signature, issuer, audience, expiry and nonce; cli
   assert.equal(mock.keyCalls,1,'unknown key ids must not repeatedly fetch Apple keys');
   const secret=await appleClientSecret(envKeys);
   assert.equal(JSON.parse(Buffer.from(secret.split('.')[0],'base64url').toString()).alg,'ES256');
-  assert.equal(appleAuthConfig({}).ready,false);
+  assert.deepEqual(appleAuthConfig({}),{clientId:'co.waybi.ios',ready:true,tokenExchange:false});
+  assert.equal(appleAuthConfig(envKeys).tokenExchange,true);
 });
 test('Apple refresh credentials are authenticated-encrypted and reject a different storage key',async()=>{
   const sealed=await sealAppleToken(envKeys,'private-refresh-token');
@@ -122,5 +123,31 @@ test('Apple verified email never takes over an existing account; private-relay l
     assert.equal(sql.prepare('SELECT count(*) AS c FROM sessions').get().c,0);
     assert.ok(sql.prepare('SELECT revoked_at FROM apple_identities').get().revoked_at);
     assert.equal(sql.prepare('SELECT count(*) AS c FROM users').get().c,1);
+  }finally{globalThis.fetch=previous;sql.close();}
+});
+test('Apple sign-in works from the signed identity token alone when the optional key is absent',async()=>{
+  const {sql,env:full}=database(),previous=globalThis.fetch;
+  const env={USER_DB:full.USER_DB};let tokenCalls=0;
+  globalThis.fetch=(async(url:any)=>{
+    if(String(url).endsWith('/auth/keys'))return Response.json({keys:[jwk]});
+    tokenCalls++;return new Response(null,{status:500});
+  }) as typeof fetch;
+  try{
+    const config:any=await (await handleAccount(new Request('https://waybi.co/api/auth/apple/config'),env)).json();
+    assert.equal(config.ready,true);
+    assert.equal((await handleAccount(call('apple',{...authorize(),rawNonce:'m'.repeat(64)}),env)).status,401,'nonce must match');
+    const tampered=jwt().split('.');tampered[2]=jwt({sub:'other'}).split('.')[2];
+    assert.equal((await handleAccount(call('apple',authorize('x',tampered.join('.'))),env)).status,401,'signature must match');
+    const response=await handleAccount(call('apple',authorize()),env);assert.equal(response.status,200);
+    const profile:any=await response.json();assert.deepEqual(profile.user.providers,['apple']);
+    const cookie=response.headers.get('set-cookie').match(/waybi_session=([a-f0-9]{64})/)[1];
+    assert.equal(sql.prepare('SELECT refresh_token FROM apple_identities').get().refresh_token,'');
+    assert.equal((await handleAccount(call('apple',authorize()),env)).status,200,'returning users sign in again');
+    assert.equal(sql.prepare('SELECT count(*) AS c FROM users').get().c,1);
+    sql.prepare('UPDATE apple_identities SET checked_at=0').run();
+    await refreshAppleAuthorizations({...env,...envKeys},Date.now(),async()=>{throw new Error('must not refresh an empty token');});
+    assert.equal((await handleAccount(call('delete',{email:profile.user.email,confirmation:'DELETE'},cookie),env)).status,200);
+    assert.equal(sql.prepare('SELECT count(*) AS c FROM apple_identities').get().c,0);
+    assert.equal(tokenCalls,0,'no Apple token endpoint calls without the key');
   }finally{globalThis.fetch=previous;sql.close();}
 });

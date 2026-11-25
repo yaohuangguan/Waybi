@@ -1,0 +1,230 @@
+name: iOS TestFlight
+
+# Archives the Flutter iOS app on a GitHub-hosted Mac and uploads it to
+# App Store Connect / TestFlight. Signing is fully automatic: xcodebuild uses an
+# App Store Connect API key (Admin role) to fetch cloud-managed certificates and
+# provisioning profiles, so no .p12 or .mobileprovision lives in the repo or in
+# secrets. Setup and secrets: docs/release/testflight-ci.md.
+#
+# - Run workflow (workflow_dispatch): signed archive + upload to TestFlight.
+# - Pull request touching this file: unsigned archive only (dry run, no secrets).
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'CFBundleVersion. Empty = the +N in apps/mobile/pubspec.yaml. Must be higher than any build already uploaded for this version.'
+        required: false
+        type: string
+      upload:
+        description: 'Upload to TestFlight (untick to only build a signed IPA artifact)'
+        required: false
+        type: boolean
+        default: true
+  pull_request:
+    paths:
+      - .github/workflows/ios-testflight.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.47.5'
+  APPLE_TEAM_ID: U94L2UMT25
+  SIGNED: ${{ github.event_name == 'workflow_dispatch' }}
+
+jobs:
+  testflight:
+    runs-on: macos-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          echo "ARCHIVE_PATH=$RUNNER_TEMP/Waybi.xcarchive" >> "$GITHUB_ENV"
+          echo "EXPORT_PATH=$RUNNER_TEMP/export" >> "$GITHUB_ENV"
+
+      - name: Install App Store Connect API key
+        if: env.SIGNED == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          missing=()
+          [ -n "$ASC_KEY_ID" ] || missing+=(ASC_KEY_ID)
+          [ -n "$ASC_ISSUER_ID" ] || missing+=(ASC_ISSUER_ID)
+          [ -n "$ASC_KEY_P8_BASE64" ] || missing+=(ASC_KEY_P8_BASE64)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository secrets: ${missing[*]}. See docs/release/testflight-ci.md."
+            exit 1
+          fi
+          key_dir="$RUNNER_TEMP/asc"
+          mkdir -p "$key_dir"
+          key_path="$key_dir/AuthKey_${ASC_KEY_ID}.p8"
+          # Accept either the base64 of the .p8 file or the raw PEM text.
+          if printf '%s' "$ASC_KEY_P8_BASE64" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$ASC_KEY_P8_BASE64" > "$key_path"
+          else
+            printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$key_path"
+          fi
+          chmod 600 "$key_path"
+          if ! grep -q 'BEGIN PRIVATE KEY' "$key_path"; then
+            echo "::error::ASC_KEY_P8_BASE64 did not decode to a .p8 private key."
+            exit 1
+          fi
+          echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Write optional dart defines
+        env:
+          WAYBI_DART_DEFINES_JSON: ${{ secrets.WAYBI_DART_DEFINES_JSON }}
+        run: |
+          if [ -n "$WAYBI_DART_DEFINES_JSON" ]; then
+            printf '%s' "$WAYBI_DART_DEFINES_JSON" > .dart-defines.ci.json
+            python3 -c 'import json; json.load(open(".dart-defines.ci.json"))'
+            echo "DART_DEFINE_ARGS=--dart-define-from-file=.dart-defines.ci.json" >> "$GITHUB_ENV"
+            echo "Using WAYBI_DART_DEFINES_JSON overrides."
+          else
+            echo "No dart-define overrides; using the app's built-in defaults."
+          fi
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve version
+        env:
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          version_line=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}')
+          build_name="${version_line%%+*}"
+          build_number="${version_line#*+}"
+          if [ -n "$INPUT_BUILD_NUMBER" ]; then
+            build_number="$INPUT_BUILD_NUMBER"
+          fi
+          if ! [[ "$build_number" =~ ^[0-9]+$ ]]; then
+            echo "::error::Build number '$build_number' must be a positive integer."
+            exit 1
+          fi
+          echo "BUILD_NAME=$build_name" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
+          echo "### Waybi iOS $build_name ($build_number)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Prepare Flutter iOS project
+        run: |
+          flutter config --enable-swift-package-manager
+          flutter pub get
+          # Writes Generated.xcconfig (version, dart defines) and runs CocoaPods
+          # without compiling; xcodebuild below does the real build.
+          flutter build ios --release --config-only \
+            --build-name "$BUILD_NAME" --build-number "$BUILD_NUMBER" \
+            $DART_DEFINE_ARGS
+
+      - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          if [ "$SIGNED" = true ]; then
+            signing=(-allowProvisioningUpdates
+              -authenticationKeyPath "$ASC_KEY_PATH"
+              -authenticationKeyID "$ASC_KEY_ID"
+              -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          else
+            signing=(CODE_SIGNING_ALLOWED=NO)
+          fi
+          if ! xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            "${signing[@]}" > "$RUNNER_TEMP/xcodebuild-archive.log" 2>&1; then
+            grep -E 'error:|requires a provisioning profile|No profiles|No Account' "$RUNNER_TEMP/xcodebuild-archive.log" | sort -u | head -40 || true
+            echo "--- last 80 lines ---"
+            tail -80 "$RUNNER_TEMP/xcodebuild-archive.log"
+            echo "::error::xcodebuild archive failed (full log in the xcodebuild-logs artifact)."
+            exit 1
+          fi
+          tail -5 "$RUNNER_TEMP/xcodebuild-archive.log"
+          if [ "$SIGNED" != true ]; then
+            echo "Unsigned archive built. Signing and upload run only from **Run workflow**." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Export and upload to App Store Connect
+        if: env.SIGNED == 'true'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          DESTINATION: ${{ inputs.upload && 'upload' || 'export' }}
+        run: |
+          plist="$RUNNER_TEMP/ExportOptions.plist"
+          cat > "$plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>${DESTINATION}</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          PLIST
+          plutil -lint "$plist"
+          if ! xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportOptionsPlist "$plist" \
+            -exportPath "$EXPORT_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" > "$RUNNER_TEMP/xcodebuild-export.log" 2>&1; then
+            tail -80 "$RUNNER_TEMP/xcodebuild-export.log"
+            echo "::error::Export/upload failed (full log in the xcodebuild-logs artifact)."
+            exit 1
+          fi
+          tail -20 "$RUNNER_TEMP/xcodebuild-export.log"
+          if [ "$DESTINATION" = upload ]; then
+            echo "Uploaded $BUILD_NAME ($BUILD_NUMBER) to App Store Connect. It shows in TestFlight once Apple finishes processing (usually 5–30 min)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Signed IPA exported, not uploaded: see the waybi-ios-ipa artifact." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep signed IPA
+        if: env.SIGNED == 'true' && !inputs.upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: waybi-ios-ipa
+          path: ${{ runner.temp }}/export/*.ipa
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Keep build logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcodebuild-logs
+          path: ${{ runner.temp }}/xcodebuild-*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Remove API key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc" .dart-defines.ci.json

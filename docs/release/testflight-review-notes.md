@@ -56,8 +56,11 @@ support decision before submission. Screenshots are pending, not fabricated.
 
 - Verify paid team, identifiers and agreements; do not infer activation from payment.
 - Enable Apple sign-in and store credentials securely on the server.
-- Create/verify distribution signing for App and navigation extension.
-- Confirm next build number, archive/export, upload and check processing.
+- Create/verify distribution signing for App and navigation extension. The
+  `iOS TestFlight` workflow does this with cloud-managed signing; see
+  [testflight-ci.md](testflight-ci.md).
+- Confirm next build number, archive/export, upload and check processing
+  (`gh workflow run ios-testflight.yml -f build_number=<N>`).
 - Run the physical-device test matrix with the distribution build.
 - Set up internal and external groups and submit the first external Beta Review.
 

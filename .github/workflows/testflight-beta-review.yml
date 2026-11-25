@@ -1,0 +1,107 @@
+name: TestFlight Beta Review
+
+# Sends an uploaded TestFlight build to external (public) testing: waits for
+# processing, answers export compliance, fills Test Information and What to Test,
+# adds the build to the "Public testers" group with a public link, and submits it
+# to Beta App Review. Uses the same App Store Connect API key as iOS TestFlight.
+# Details: docs/release/testflight-ci.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Build (CFBundleVersion) to submit. Empty = the +N in apps/mobile/pubspec.yaml.'
+        required: false
+        type: string
+      group_name:
+        description: 'External TestFlight group that gets the public link'
+        required: false
+        type: string
+        default: Public testers
+      dry_run:
+        description: 'Only read App Store Connect and report what would change'
+        required: false
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - .github/workflows/testflight-beta-review.yml
+      - scripts/asc-beta-review.mjs
+      - scripts/asc-beta-review.test.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight-beta-review
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test scripts/asc-beta-review.test.mjs
+
+  submit:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Resolve version
+        env:
+          INPUT_BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          version_line=$(grep -E '^version:' apps/mobile/pubspec.yaml | head -1 | awk '{print $2}')
+          build_number="${INPUT_BUILD_NUMBER:-${version_line#*+}}"
+          if ! [[ "$build_number" =~ ^[0-9]+$ ]]; then
+            echo "::error::Build number '$build_number' must be a positive integer."
+            exit 1
+          fi
+          echo "APP_VERSION=${version_line%%+*}" >> "$GITHUB_ENV"
+          echo "BUILD_NUMBER=$build_number" >> "$GITHUB_ENV"
+
+      - name: Install App Store Connect API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8_BASE64" ]; then
+            echo "::error::Missing ASC_KEY_ID, ASC_ISSUER_ID or ASC_KEY_P8_BASE64. See docs/release/testflight-ci.md."
+            exit 1
+          fi
+          key_path="$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+          mkdir -p "$(dirname "$key_path")"
+          if printf '%s' "$ASC_KEY_P8_BASE64" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$ASC_KEY_P8_BASE64" > "$key_path"
+          else
+            printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$key_path"
+          fi
+          chmod 600 "$key_path"
+          echo "ASC_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Submit to Beta App Review
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_REVIEW_CONTACT_FIRST_NAME: ${{ secrets.ASC_REVIEW_CONTACT_FIRST_NAME }}
+          ASC_REVIEW_CONTACT_LAST_NAME: ${{ secrets.ASC_REVIEW_CONTACT_LAST_NAME }}
+          ASC_REVIEW_CONTACT_PHONE: ${{ secrets.ASC_REVIEW_CONTACT_PHONE }}
+          ASC_REVIEW_CONTACT_EMAIL: ${{ secrets.ASC_REVIEW_CONTACT_EMAIL }}
+          GROUP_NAME: ${{ inputs.group_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: node scripts/asc-beta-review.mjs
+
+      - name: Remove API key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"

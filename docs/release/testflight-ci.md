@@ -50,6 +50,33 @@ takes 5–30 minutes before the build appears in TestFlight. Internal testers ca
 use it right away. External groups need Beta App Review: see
 [testflight-review-notes.md](testflight-review-notes.md).
 
+## Public testing (Beta App Review)
+
+```powershell
+gh workflow run testflight-beta-review.yml -R yaohuangguan/Waybi -f build_number=50
+```
+
+`.github/workflows/testflight-beta-review.yml` runs `scripts/asc-beta-review.mjs`
+with the same API key. It waits until the build has processed, then:
+
+- answers export compliance as exempt (standard HTTPS and OS-provided encryption only);
+- fills TestFlight Test Information (beta description, `support@waybi.co`
+  feedback, privacy policy) and the Beta App Review notes (no demo account needed);
+- sets bilingual What to Test for the build;
+- creates or reuses the external group **Public testers** with a public link and adds the build;
+- submits the build to Beta App Review and prints the public link in the run summary.
+
+Every step is idempotent, so re-running for the same build is safe. Tick
+*dry_run* to only read App Store Connect. Beta App Review needs a contact
+name, phone and email. The script keeps whatever App Store Connect already has
+(TestFlight → Test Information → Beta App Review Information). If those are
+empty, fill them there once or add the optional secrets
+`ASC_REVIEW_CONTACT_FIRST_NAME`, `ASC_REVIEW_CONTACT_LAST_NAME`,
+`ASC_REVIEW_CONTACT_PHONE` and `ASC_REVIEW_CONTACT_EMAIL`. Contact details never
+go in the repo. Apple usually reviews within 24–48 hours. The public link
+works for testers once the build is approved, and later builds of the same
+version usually skip full review.
+
 ## Optional secret
 
 `WAYBI_DART_DEFINES_JSON` is a JSON object passed as `--dart-define-from-file`

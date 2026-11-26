@@ -1,4 +1,6 @@
 import type { Coordinate, Route } from '@waybi/core';
+import { apiFetch } from './api';
+import { formatDuration, type Language } from './i18n';
 
 export type TravelMode = 'drive' | 'transit' | 'walk' | 'bicycle';
 
@@ -83,12 +85,7 @@ export async function fetchRoutePlan(
     lang: language
   });
   if (stops.length) query.set('stops', stops.map((stop) => stop.join(',')).join(';'));
-  const response = await fetch(`${baseUrl}/api/route-options?${query.toString()}`, { signal });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `HTTP ${response.status}`);
-  }
-  const plan = await response.json() as RoutePlan;
+  const plan = await apiFetch<RoutePlan>(`${baseUrl}/api/route-options?${query.toString()}`, { signal });
   if (plan.provider === 'google' || plan.options.some(option => option.provider === 'google')) {
     throw new Error('Independent routing is temporarily unavailable');
   }
@@ -137,11 +134,6 @@ export function routeFromOption(option: RouteOption): Route {
   };
 }
 
-export function formatModeDuration(seconds: number | null | undefined) {
-  if (!Number.isFinite(seconds) || !seconds) return '—';
-  const minutes = Math.max(1, Math.round(seconds / 60));
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return remainder ? `${hours} h ${remainder} min` : `${hours} h`;
+export function formatModeDuration(seconds: number | null | undefined, language: Language = 'en') {
+  return formatDuration(seconds, language);
 }

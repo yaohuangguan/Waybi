@@ -551,3 +551,17 @@ html[lang^='zh'] { font-family: 'Hiragino Sans GB', 'PingFang SC', 'Noto Sans SC
   body[data-mode='navigation'] .camera-alert,
   body.nav-sheet-expanded[data-mode='navigation'] .camera-alert { left: 28px; right: auto; width: 440px; }
 }
+
+/* Navigation keeps running while a reroute is pending or failing. */
+.nav-status { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 9px 12px; border-radius: 12px; background: var(--status-info-bg, #eaf3dc); color: var(--status-info-text, #2d4720); font-size: 12px; font-weight: 700; line-height: 1.35; }
+.nav-status::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.nav-status[data-kind='rerouting']::before { animation: nav-status-pulse 1s ease-in-out infinite; }
+.nav-status[data-kind='offline'], .nav-status[data-kind='retry'], .nav-status[data-kind='busy'] { background: var(--status-warn-bg, #fff2df); color: var(--status-warn-text, #6f4310); }
+@keyframes nav-status-pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .nav-status[data-kind='rerouting']::before { animation: none; } }
+/* During navigation, messages sit above the trip sheet and never cover the turn banner. */
+body[data-mode='navigation'] .toast { top: auto; bottom: calc(var(--nav-sheet-clearance, calc(248px + env(safe-area-inset-bottom))) + 4px); }
+@media (min-width: 760px) { body[data-mode='navigation'] .toast { left: 28px; transform: none; bottom: calc(var(--nav-sheet-clearance, 300px) + 28px); width: 440px; } }
+/* The journey summary's action is a real primary button. */
+.primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 18px; border: 0; border-radius: 14px; background: var(--action-bg); color: var(--action-text); font-size: 15px; font-weight: 700; }
+.primary-button:hover { background: var(--action-bg-hover); }

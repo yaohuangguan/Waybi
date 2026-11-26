@@ -9,6 +9,9 @@ import { initAutocomplete, placeLabel, type SuggestedPlace } from './autocomplet
 import { WaybiMapAdapter, type PoiSelection } from './waybi-map';
 import { fetchRoutePlan, formatModeDuration, routeFromOption, type RouteOption as PlannerRouteOption, type RoutePlan as PlannerRoutePlan, type TravelMode } from './route-planner';
 import type { ParkingPlace } from './parking';
+import { apiFetch, describeError, isAbortError } from './api';
+import { currentPlatform, isStandalone, permissionHelpKey } from './geo-help';
+import { RouteRequestCoordinator, journeySummaryKind, layoutSignature, type PlanTrigger } from './route-requests';
 
 type Language = 'zh' | 'en';
 type Place = SuggestedPlace;
@@ -50,11 +53,17 @@ let latestGpsFixAt = 0;
 let mapLanguage: Language | null = null;
 let laneGuidanceEnabled = localStorage.getItem('kiwi-lane-guidance') !== 'off';
 let searchTarget: 'origin' | 'destination' | 'stop' = 'destination';
-let routeAbort: AbortController | null = null;
+const routeRequests = new RouteRequestCoordinator();
 let lastRerouteAt = 0;
+let rerouteTimer = 0;
+let rerouteStatusTimer = 0;
+type RerouteStatus = { kind: 'rerouting' } | { kind: 'offline' | 'retry' | 'busy'; until: number };
+let rerouteStatus: RerouteStatus | null = null;
 let lastTurnKey = '';
 let wakeLock: WakeLockSentinel | null = null;
 let toastTimeout = 0;
+type TripState = 'stateCalculating' | 'stateRouteReady' | 'stateRouteError' | 'stateDriving' | 'stateGuidance' | 'stateReady' | 'stateArrived' | 'stateParkingReached';
+let tripState: TripState = 'stateReady';
 type GpsStatus = 'idle' | 'locating' | 'active' | 'denied' | 'unavailable';
 let gpsStatus: GpsStatus = 'idle';
 let gpsAccuracy: number | null = null;
@@ -284,23 +293,19 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char);
 }
 
-function toast(message: string) {
+function toast(message: string, duration = 4500) {
   const element = $('toast');
   element.textContent = message;
   element.hidden = false;
   window.clearTimeout(toastTimeout);
-  toastTimeout = window.setTimeout(() => { element.hidden = true; }, 4500);
+  // Longer messages stay a little longer so they can be read.
+  toastTimeout = window.setTimeout(() => { element.hidden = true; }, Math.max(duration, Math.min(10000, message.length * 70)));
 }
 
 const API_BASE_URL = '';
 
-async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { signal });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `HTTP ${response.status}`);
-  }
-  return response.json() as Promise<T>;
+function api<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return apiFetch<T>(`${API_BASE_URL}${path}`, { signal });
 }
 
 function renderTripFlags() {
@@ -502,7 +507,8 @@ function updatePosition(latitude: number, longitude: number, heading: number | n
     else map.setView(center, 15);
     map.setFollowHeading(mapHeading);
   }
-  if (destination && !route && !manualOrigin) void planRoute();
+  // A GPS fix only starts a plan when none is in flight and no failure backoff is running.
+  if (destination && !route && !manualOrigin) void planRoute(undefined, 'auto');
   if (navigating && route) updateGuidance();
 }
 
@@ -530,7 +536,7 @@ function handleGpsError(error: GeolocationPositionError) {
   gpsStatus = error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable';
   gpsAccuracy = null;
   renderGpsStatus();
-  if (error.code === error.PERMISSION_DENIED) toast(t(language, 'permissionHelp'));
+  if (error.code === error.PERMISSION_DENIED) toast(t(language, permissionHelpKey(currentPlatform(), isStandalone())), 9000);
 }
 
 function startGpsWatch() {
@@ -568,41 +574,42 @@ function requestGps() {
   );
 }
 
+/**
+ * Starts tracking only when location was already granted. The permission
+ * prompt itself is only ever shown from a user gesture (GPS badge, "use my
+ * location", recenter, choosing a destination or starting navigation).
+ */
 async function initGps() {
   if (!navigator.geolocation) {
     gpsStatus = 'unavailable';
     renderGpsStatus();
     return;
   }
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-  if ('permissions' in navigator) {
-    try {
-      const permission = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+  if (!('permissions' in navigator)) { gpsStatus = 'idle'; renderGpsStatus(); return; }
+  try {
+    const permission = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+    if (permission.state === 'granted') startGpsWatch();
+    else {
+      gpsStatus = permission.state === 'denied' ? 'denied' : 'idle';
+      renderGpsStatus();
+    }
+    permission.onchange = () => {
       if (permission.state === 'granted') startGpsWatch();
       else {
-        gpsStatus = permission.state === 'denied' ? 'denied' : 'idle';
-        renderGpsStatus();
-        if (permission.state === 'prompt' && !standalone) requestGps();
-      }
-      permission.onchange = () => {
-        if (permission.state === 'granted') startGpsWatch();
-        else {
-          if (gpsWatchId !== null) {
-            navigator.geolocation.clearWatch(gpsWatchId);
-            gpsWatchId = null;
-          }
-          gpsStatus = permission.state === 'denied' ? 'denied' : 'idle';
-          gpsAccuracy = null;
-          renderGpsStatus();
+        if (gpsWatchId !== null) {
+          navigator.geolocation.clearWatch(gpsWatchId);
+          gpsWatchId = null;
         }
-      };
-      return;
-    } catch { /* older Safari may not expose geolocation through Permissions API */ }
-  }
-  if (standalone) {
+        gpsStatus = permission.state === 'denied' ? 'denied' : 'idle';
+        gpsAccuracy = null;
+        renderGpsStatus();
+      }
+    };
+  } catch {
+    // Older Safari does not expose geolocation through the Permissions API.
     gpsStatus = 'idle';
     renderGpsStatus();
-  } else requestGps();
+  }
 }
 
 function renderStops() {
@@ -851,7 +858,7 @@ async function search(target: 'origin' | 'destination' | 'stop') {
           void rememberDestination({ label: displayLabel, latitude: place.latitude, longitude: place.longitude });
         }
         if (destination && (manualOrigin || current)) void planRoute();
-        else if (destination) toast(t(language, 'chooseOrigin'));
+        else if (destination) { requestGps(); toast(t(language, 'chooseOrigin')); }
       };
       results.append(button);
     }
@@ -860,31 +867,83 @@ async function search(target: 'origin' | 'destination' | 'stop') {
   }
 }
 
-async function planRoute(modeOverride?: TravelMode) {
+function secondsUntil(until: number) { return Math.max(1, Math.ceil((until - Date.now()) / 1000)); }
+
+/** Non-blocking navigation status shown in the trip sheet while a reroute is pending or failing. */
+function renderRerouteStatus() {
+  const node = $('navStatus');
+  window.clearTimeout(rerouteStatusTimer);
+  if (!rerouteStatus || !navigating) { node.hidden = true; node.textContent = ''; node.removeAttribute('data-kind'); return; }
+  node.hidden = false;
+  node.dataset.kind = rerouteStatus.kind;
+  if (rerouteStatus.kind === 'rerouting') { node.textContent = t(language, 'rerouting'); return; }
+  const key = rerouteStatus.kind === 'offline' ? 'rerouteOffline' : rerouteStatus.kind === 'busy' ? 'rerouteBusy' : 'rerouteRetry';
+  node.textContent = t(language, key, { seconds: secondsUntil(rerouteStatus.until) });
+  // Keep the countdown honest without re-rendering every frame.
+  rerouteStatusTimer = window.setTimeout(renderRerouteStatus, 1000);
+}
+
+function setRerouteStatus(next: RerouteStatus | null) {
+  rerouteStatus = next;
+  renderRerouteStatus();
+  requestAnimationFrame(updateNavigationOverlayLayout);
+}
+
+function clearRerouteRetry() {
+  window.clearTimeout(rerouteTimer);
+  rerouteTimer = 0;
+}
+
+function isOffRoute() {
+  if (!current || !route) return false;
+  return nearestOnRoute(current, route.coordinates).offsetMeters > 100;
+}
+
+function scheduleRerouteRetry(delay: number) {
+  clearRerouteRetry();
+  rerouteTimer = window.setTimeout(() => {
+    rerouteTimer = 0;
+    if (!navigating || manualOrigin) return;
+    if (!isOffRoute()) { setRerouteStatus(null); routeRequests.backoff.succeed(); return; }
+    lastRerouteAt = Date.now();
+    void planRoute(undefined, 'reroute');
+  }, delay + 50);
+}
+
+function setTripState(state: TripState) {
+  tripState = state;
+  $('tripEyebrow').textContent = t(language, state);
+}
+
+async function planRoute(modeOverride?: TravelMode, trigger: PlanTrigger = 'user') {
   const from = manualOrigin || current;
   if (!from || !destination) return;
-  routeAbort?.abort();
-  routeAbort = new AbortController();
-  const signal = routeAbort.signal;
-  $('tripEyebrow').textContent = 'CALCULATING ROUTE';
-  $('tripTitle').textContent = t(language, 'routeCalculating');
+  if (!routeRequests.canStart(trigger)) return;
+  const controller = routeRequests.begin(trigger);
+  const signal = controller.signal;
+  const rerouting = navigating && trigger !== 'user';
   const requestedMode = modeOverride || selectedTravelMode;
-  ($('driveButton') as HTMLButtonElement).disabled = true;
+  if (rerouting) setRerouteStatus({ kind: 'rerouting' });
+  else {
+    setTripState('stateCalculating');
+    $('tripTitle').textContent = t(language, 'routeCalculating');
+    ($('driveButton') as HTMLButtonElement).disabled = true;
+  }
   try {
     const stopCoordinates = routeStops.map((stop) => stop.coordinate);
     const planner = await fetchRoutePlan(API_BASE_URL, from, destination, stopCoordinates, signal, requestedMode, language);
-    if (signal.aborted) return;
+    if (signal.aborted || !routeRequests.isCurrent(controller)) return;
     const usable = planner.options.filter(option => routeFromOption(option).coordinates.length >= 2);
-    if (!usable.some(option => option.mode === requestedMode)) {
-      throw new Error(language === 'zh' ? '暂无可用路线，请调整地点或稍后重试。' : 'No available route. Change the destination or try again later.');
-    }
+    if (!usable.some(option => option.mode === requestedMode)) throw new Error(t(language, 'noRouteAvailable'));
+    routeRequests.succeed(controller);
+    clearRerouteRetry();
     routePlan = planner;
     drivingAlternatives = usable.filter(option => option.mode === 'drive').map(routeFromOption);
     drivingFromPlanner = true;
     selectedDrivingRoute = 0;
     selectedTravelMode = requestedMode;
     if (requestedMode === 'drive') applyDrivingRoute(0);
-    $('tripEyebrow').textContent = navigating ? 'DRIVING MODE' : 'ROUTE READY';
+    setTripState(navigating ? 'stateDriving' : 'stateRouteReady');
     $('tripTitle').textContent = destinationName || t(language, 'destinationFallback');
     $('navDestinationTitle').textContent = destinationName || t(language, 'destinationFallback');
     $('sheetNextCamera').textContent = routeCameras.length
@@ -893,11 +952,22 @@ async function planRoute(modeOverride?: TravelMode) {
     $('navNextCamera').textContent = $('sheetNextCamera').textContent;
     renderRoutePlanner();
     renderParking();
-    if (navigating && selectedTravelMode !== 'drive') document.body.dataset.travelMode = selectedTravelMode;
-    if (navigating) updateGuidance();
+    if (navigating) {
+      setRerouteStatus(null);
+      if (selectedTravelMode !== 'drive') document.body.dataset.travelMode = selectedTravelMode;
+      updateGuidance();
+    }
   } catch (error) {
-    if ((error as Error).name === 'AbortError' || signal.aborted) return;
-    if (navigating) stopNavigation();
+    if (isAbortError(error) || signal.aborted || !routeRequests.isCurrent(controller)) return;
+    const failure = describeError(error);
+    const { delay, notify } = routeRequests.fail(controller, failure.retryAfterMs);
+    if (navigating) {
+      // Never end a trip because a reroute failed: keep guiding along the last
+      // known route and retry quietly until the user ends navigation.
+      setRerouteStatus({ kind: failure.offline ? 'offline' : failure.rateLimited ? 'busy' : 'retry', until: Date.now() + delay });
+      scheduleRerouteRetry(delay);
+      return;
+    }
     route = null;
     routePlan = null;
     drivingAlternatives = [];
@@ -905,9 +975,14 @@ async function planRoute(modeOverride?: TravelMode) {
     map.clearRoute();
     renderRoutePlanner();
     ($('driveButton') as HTMLButtonElement).disabled = true;
-    $('tripEyebrow').textContent = 'ROUTE ERROR';
+    setTripState('stateRouteError');
     $('tripTitle').textContent = t(language, 'routeError');
-    toast(`${t(language, 'routeFailed')}: ${String((error as Error).message)}`);
+    // One message per failure streak; GPS-triggered retries stay silent.
+    if (notify) {
+      if (failure.rateLimited) toast(t(language, 'routeBusy', { seconds: Math.ceil(delay / 1000) }));
+      else if (failure.offline) toast(t(language, 'routeOffline'));
+      else toast(`${t(language, 'routeFailed')}: ${failure.message}`);
+    }
   }
 }
 
@@ -922,8 +997,8 @@ function clearDestination() {
   map.renderParking([], null, selectParking);
   $('parkingSection').hidden = true;
   $('navParkingHint').hidden = true;
-  routeAbort?.abort();
-  routeAbort = null;
+  routeRequests.reset();
+  clearRerouteRetry();
   destination = null;
   destinationName = '';
   route = null;
@@ -950,7 +1025,7 @@ function clearDestination() {
   $('clearDestinationButton').hidden = true;
   ($('driveButton') as HTMLButtonElement).disabled = true;
 
-  $('tripEyebrow').textContent = 'READY TO GO';
+  setTripState('stateReady');
   $('tripTitle').textContent = t(language, 'initialTitle');
   $('tripDistance').textContent = '—';
   $('tripArrival').textContent = '—';
@@ -1098,10 +1173,14 @@ function updateGuidance() {
     if (latestGpsFixAt - arrivalWithinRadiusAt >= 750) { stopNavigation(true); return; }
   } else arrivalWithinRadiusAt = 0;
   const position = nearestOnRoute(current, route.coordinates);
-  if (position.offsetMeters > 100 && Date.now() - lastRerouteAt > 20000 && !manualOrigin) {
+  if (position.offsetMeters > 100 && !manualOrigin && !rerouteTimer && Date.now() - lastRerouteAt > 20000 && routeRequests.canStart('reroute')) {
     lastRerouteAt = Date.now();
-    void planRoute();
-    return;
+    void planRoute(undefined, 'reroute');
+  } else if (position.offsetMeters <= 60 && rerouteStatus && rerouteStatus.kind !== 'rerouting') {
+    // Back on the old route: the pending retry is no longer needed.
+    clearRerouteRetry();
+    routeRequests.backoff.succeed();
+    setRerouteStatus(null);
   }
   const progress = position.alongMeters;
   const remaining = Math.max(0, route.distance - progress);
@@ -1167,7 +1246,7 @@ async function startNavigation() {
   requestCompassFromGesture();
   document.body.dataset.travelMode = selectedTravelMode;
   $('followButton').classList.add('active');
-  $('tripEyebrow').textContent = selectedTravelMode === 'drive' ? 'DRIVING MODE' : 'GUIDANCE MODE';
+  setTripState(selectedTravelMode === 'drive' ? 'stateDriving' : 'stateGuidance');
   $('driveLabel').textContent = t(language, 'stop');
   $('driveIcon').textContent = '■';
   $('drivingStatus').textContent = t(language, 'drivingStarted');
@@ -1195,6 +1274,11 @@ function stopNavigation(arrived = false) {
     }).catch(() => { /* Ending navigation must work even if account sync fails. */ });
   }
   navigating = false;
+  clearRerouteRetry();
+  setRerouteStatus(null);
+  // A failed or pending reroute must not keep running after the trip ends.
+  if (routeRequests.pendingTrigger !== 'user') routeRequests.cancel();
+  routeRequests.backoff.succeed();
   stopSpeech();
   showJourneySummary(arrived);
   delete document.body.dataset.travelMode;
@@ -1208,7 +1292,7 @@ function stopNavigation(arrived = false) {
     $('bottomPanel').classList.remove('sheet-collapsed');
     requestAnimationFrame(() => $('parkingSection').scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   }
-  $('tripEyebrow').textContent = arrived ? (parkedAtParking ? 'PARKING REACHED' : 'ARRIVED') : 'ROUTE READY';
+  setTripState(arrived ? (parkedAtParking ? 'stateParkingReached' : 'stateArrived') : 'stateRouteReady');
   $('driveLabel').textContent = t(language, 'start');
   $('driveIcon').textContent = '➤';
   $('drivingStatus').textContent = t(language, 'drivingStopped');
@@ -1502,7 +1586,7 @@ initAutocomplete({
       void rememberDestination({ label: place.label, latitude: place.latitude, longitude: place.longitude });
     }
     if (destination && (manualOrigin || current)) void planRoute();
-    else if (destination) toast(t(language, 'chooseOrigin'));
+    else if (destination) { requestGps(); toast(t(language, 'chooseOrigin')); }
   }
 });
 $('useGpsButton').onclick = () => {
@@ -1682,9 +1766,16 @@ $('laneToggle').addEventListener('change', () => {
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void updateWakeLock(); });
 $('gpsBadge').onclick = () => { requestCompassFromGesture(); requestGps(); };
+let lastLayout = layoutSignature(window.innerWidth, window.innerHeight);
 window.addEventListener('resize', () => {
+  // Keyboards and collapsing address bars resize the viewport constantly; only a
+  // rotation or a breakpoint change should undo the user's own pan and zoom.
+  const layout = layoutSignature(window.innerWidth, window.innerHeight);
+  const changed = layout !== lastLayout;
+  lastLayout = layout;
   if (!route) return;
   requestAnimationFrame(updateNavigationOverlayLayout);
+  if (!changed) return;
   if (navigating && current && following) map.focusNavigation(lookAheadCenter(current, latestHeading, route));
   else if (uiMode === 'explore') map.fitRoute(route);
 });
@@ -1773,10 +1864,13 @@ function changeLanguage(next: Language) {
 }
 
 function showJourneySummary(arrived: boolean) {
+  const elapsed = Date.now() - journeyStarted;
+  const kind = journeySummaryKind(arrived, journeyDistance, elapsed);
+  if (kind === 'none') { toast(t(language, 'navigationEnded')); return; }
   const root = $('journeySummaryOverlay');
-  const points = journeyPoints;
-  const title = language === 'zh' ? (arrived ? '到啦！' : '本次导航已结束') : (arrived ? 'You made it!' : 'Journey complete');
-  const minutes = Math.max(1, Math.round((Date.now() - journeyStarted) / 60000));
+  const points = journeyPoints.length ? journeyPoints : current ? [current] : [];
+  const title = t(language, kind === 'arrived' ? 'journeyArrived' : 'journeyEnded');
+  const minutes = Math.max(1, Math.round(elapsed / 60000));
   const minX = Math.min(...points.map(p => p[0])), maxX = Math.max(...points.map(p => p[0]));
   const minY = Math.min(...points.map(p => p[1])), maxY = Math.max(...points.map(p => p[1]));
   const aspect = Math.cos((minY + maxY) / 2 * Math.PI / 180);
@@ -1785,14 +1879,14 @@ function showJourneySummary(arrived: boolean) {
   root.replaceChildren();
   const modal = document.createElement('section'); modal.className = 'modal journey-summary';
   modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', 'journeySummaryTitle');
-  modal.innerHTML = `<img src="/brand/waybi-lockup.svg" alt="Waybi" width="210" /><h2 id="journeySummaryTitle">${title}</h2>
-    <p>${escapeHtml(destinationName)}</p><div class="journey-stats"><div><strong>${formatDistance(journeyDistance, language)}</strong><span>${language === 'zh' ? '行驶距离' : 'Travelled'}</span></div>
-    <div><strong>${minutes} ${language === 'zh' ? '分钟' : 'min'}</strong><span>${language === 'zh' ? '行程用时' : 'Journey time'}</span></div></div>
-    <svg class="journey-trace" viewBox="0 0 360 190" role="img" aria-label="${language === 'zh' ? '行程路线总览' : 'Journey route overview'}"><rect width="360" height="190" rx="20" fill="#eaf5cf"/>
+  modal.innerHTML = `<img src="/brand/waybi-lockup.svg" alt="Waybi" width="210" height="66" /><h2 id="journeySummaryTitle">${escapeHtml(title)}</h2>
+    <p>${escapeHtml(destinationName)}</p><div class="journey-stats"><div><strong>${formatDistance(journeyDistance, language)}</strong><span>${t(language, 'journeyTravelled')}</span></div>
+    <div><strong>${escapeHtml(t(language, 'durationMinutes', { minutes }))}</strong><span>${t(language, 'journeyTime')}</span></div></div>
+    <svg class="journey-trace" viewBox="0 0 360 190" role="img" aria-label="${escapeHtml(t(language, 'journeyOverview'))}"><rect width="360" height="190" rx="20" fill="#eaf5cf"/>
     <polyline points="${trace}" fill="none" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
     <polyline points="${trace}" fill="none" stroke="#486b29" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <p>${language === 'zh' ? '小 kiwi 陪你，又完成了一段旅程。' : 'A little kiwi, a good journey.'}</p>`;
-  const done = document.createElement('button'); done.className = 'primary-button'; done.textContent = language === 'zh' ? '继续探索' : 'Keep exploring';
+    <p>${escapeHtml(t(language, 'journeyTagline'))}</p>`;
+  const done = document.createElement('button'); done.type = 'button'; done.className = 'primary-button'; done.textContent = t(language, 'keepExploring');
   done.onclick = () => { root.hidden = true; $('driveButton').focus(); };
   modal.append(done); root.append(modal); root.hidden = false; done.focus();
 }

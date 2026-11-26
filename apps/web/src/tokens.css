@@ -1,21 +1,69 @@
+/*
+ * Waybi design tokens. Brand colours are fixed; neutral, text, action and
+ * status tokens have light and dark values. Dark values apply when the
+ * system prefers dark (unless the user forced light) or when the user picked
+ * dark in Settings (`<html data-theme="dark">`).
+ */
 :root {
-  --font-ui: 'DM Sans', 'Hiragino Sans GB', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei UI', sans-serif;
+  color-scheme: light;
+  --font-ui: 'DM Sans', 'Hiragino Sans GB', 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei UI', system-ui, sans-serif;
 
+  /* Brand (theme independent) */
   --brand-sky: #D0F58A;
   --brand-coastal: #79A83B;
   --brand-ocean: #486B29;
   --brand-teal: #729F36;
   --deep-ocean: #152510;
   --dark-ocean: #152510;
+  --on-dark: #F8FBEF;
+
+  /* Neutrals */
+  --page: #F8FBEF;
   --surface: #fff;
   --surface-subtle: #F8FBEF;
-  --text-primary: #23351D;
-  --text-secondary: #64705B;
+  --surface-muted: #F0F4EE;
+  --surface-strong: #E3ECDA;
+  --surface-glass: rgba(248, 252, 254, .97);
   --border: #DBE5CB;
-  --focus: #486B29;
-  --danger: #dc2626;
+  --border-strong: #C5D5BA;
+
+  /* Text (all ≥ 4.5:1 on --surface and --surface-muted) */
+  --text-primary: #23351D;
+  --text-strong: #152510;
+  --text-secondary: #56634E;
+  --text-muted: #56635C;
+  --accent-text: #3F6327;
+  --link: #3F6327;
+
+  /* Actions */
+  --action-bg: #486B29;
+  --action-bg-hover: #3A5820;
+  --action-text: #fff;
+  --action-soft-bg: #E6F1D6;
+  --action-soft-text: #2C4719;
+  --selected-bg: #EAF4DE;
+  --selected-border: #729F36;
+  --disabled-bg: #E4EADF;
+  --disabled-text: #56614F;
+  --focus: #3F6B22;
+  --focus-ring: 0 0 0 3px rgba(114, 159, 54, .45);
+
+  /* Status */
+  --danger: #b42318;
   --warning: #f59e0b;
   --success: #15803d;
+  --status-info-bg: #EAF3DC;
+  --status-info-text: #2D4720;
+  --status-warn-bg: #FFF2DF;
+  --status-warn-text: #6F4310;
+  --status-warn-border: #EFC681;
+
+  /* Elevation */
+  --overlay: rgba(7, 20, 15, .52);
+  --shadow: rgba(20, 40, 31, .18);
+  --lockup-word: #29441F;
+  --lockup-tag: #56634E;
+
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -27,3 +75,86 @@
   --radius-panel: 18px;
   --radius-sheet: 24px;
 }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --page: #0E150B;
+    --surface: #172015;
+    --surface-subtle: #121A10;
+    --surface-muted: #212C1E;
+    --surface-strong: #2A3826;
+    --surface-glass: rgba(18, 26, 16, .96);
+    --border: #2F3D2B;
+    --border-strong: #42543C;
+    --text-primary: #E3ECD8;
+    --text-strong: #F3F8EC;
+    --text-secondary: #B1BEA8;
+    --text-muted: #A9B6A1;
+    --accent-text: #B9DE7E;
+    --link: #B9DE7E;
+    --action-bg: #B9DE7E;
+    --action-bg-hover: #CBEB95;
+    --action-text: #132110;
+    --action-soft-bg: #2A3A22;
+    --action-soft-text: #D3EDA8;
+    --selected-bg: #263520;
+    --selected-border: #9CC860;
+    --disabled-bg: #263022;
+    --disabled-text: #A5B19D;
+    --focus: #C5E88D;
+    --focus-ring: 0 0 0 3px rgba(197, 232, 141, .5);
+    --status-info-bg: #22301C;
+    --status-info-text: #CDE7A6;
+    --status-warn-bg: #3A2A12;
+    --status-warn-text: #F6D39A;
+    --status-warn-border: #7A5A25;
+    --overlay: rgba(0, 0, 0, .64);
+    --shadow: rgba(0, 0, 0, .45);
+    --lockup-word: #E3ECD8;
+    --lockup-tag: #B1BEA8;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --page: #0E150B;
+  --surface: #172015;
+  --surface-subtle: #121A10;
+  --surface-muted: #212C1E;
+  --surface-strong: #2A3826;
+  --surface-glass: rgba(18, 26, 16, .96);
+  --border: #2F3D2B;
+  --border-strong: #42543C;
+  --text-primary: #E3ECD8;
+  --text-strong: #F3F8EC;
+  --text-secondary: #B1BEA8;
+  --text-muted: #A9B6A1;
+  --accent-text: #B9DE7E;
+  --link: #B9DE7E;
+  --action-bg: #B9DE7E;
+  --action-bg-hover: #CBEB95;
+  --action-text: #132110;
+  --action-soft-bg: #2A3A22;
+  --action-soft-text: #D3EDA8;
+  --selected-bg: #263520;
+  --selected-border: #9CC860;
+  --disabled-bg: #263022;
+  --disabled-text: #A5B19D;
+  --focus: #C5E88D;
+  --focus-ring: 0 0 0 3px rgba(197, 232, 141, .5);
+  --status-info-bg: #22301C;
+  --status-info-text: #CDE7A6;
+  --status-warn-bg: #3A2A12;
+  --status-warn-text: #F6D39A;
+  --status-warn-border: #7A5A25;
+  --overlay: rgba(0, 0, 0, .64);
+  --shadow: rgba(0, 0, 0, .45);
+  --lockup-word: #E3ECD8;
+  --lockup-tag: #B1BEA8;
+}
+
+/* Inline Waybi lockup: the word mark follows the theme. */
+.waybi-lockup { display: block; height: auto; }
+.waybi-lockup .lockup-word { fill: var(--lockup-word); }
+.waybi-lockup .lockup-tag { fill: var(--lockup-tag); }

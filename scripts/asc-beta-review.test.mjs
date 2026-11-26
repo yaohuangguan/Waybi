@@ -24,6 +24,13 @@ test('existing review contact wins; secrets fill only the gaps', () => {
   assert.equal(merged.contactEmail, 'support@waybi.co');
   assert.equal(merged.demoAccountRequired, false);
   assert.deepEqual(missingContact(merged), ['contactPhone']);
+  assert.equal('demoAccountName' in merged, false);
+  const demo = mergeReviewDetail({}, { ASC_REVIEW_DEMO_EMAIL: 'review@waybi.test', ASC_REVIEW_DEMO_PASSWORD: 'pw-from-secret' });
+  assert.equal(demo.demoAccountRequired, true);
+  assert.equal(demo.demoAccountName, 'review@waybi.test');
+  assert.equal(demo.demoAccountPassword, 'pw-from-secret');
+  assert.match(demo.notes, /Sign in with a password/);
+  assert.equal(mergeReviewDetail({}, { ASC_REVIEW_DEMO_EMAIL: 'only@email.test' }).demoAccountRequired, false);
   assert.ok(WHAT_TO_TEST.length < 4000);
 });
 

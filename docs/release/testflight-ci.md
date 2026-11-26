@@ -73,7 +73,15 @@ name, phone and email. The script keeps whatever App Store Connect already has
 empty, fill them there once or add the optional secrets
 `ASC_REVIEW_CONTACT_FIRST_NAME`, `ASC_REVIEW_CONTACT_LAST_NAME`,
 `ASC_REVIEW_CONTACT_PHONE` and `ASC_REVIEW_CONTACT_EMAIL`. Contact details never
-go in the repo. Apple usually reviews within 24–48 hours. The public link
+go in the repo.
+
+Camera alerts, Smart Commute and the other core features are Waybi Plus, so
+reviewers sign in with a dedicated demo account, `appreview@waybi.co`. Migration
+`0020_app_review_plus.sql` gives that account Plus until 2027-06-01. Its password
+is only in the `ASC_REVIEW_DEMO_PASSWORD` secret, and `ASC_REVIEW_DEMO_EMAIL`
+holds the email. When both are set the script fills them in as the Beta App
+Review sign-in information. The review notes explain how to sign in with a
+password and where the Plus features are. Apple usually reviews within 24–48 hours. The public link
 works for testers once the build is approved, and later builds of the same
 version usually skip full review.
 

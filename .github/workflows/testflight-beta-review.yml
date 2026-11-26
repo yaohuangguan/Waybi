@@ -98,6 +98,8 @@ jobs:
           ASC_REVIEW_CONTACT_LAST_NAME: ${{ secrets.ASC_REVIEW_CONTACT_LAST_NAME }}
           ASC_REVIEW_CONTACT_PHONE: ${{ secrets.ASC_REVIEW_CONTACT_PHONE }}
           ASC_REVIEW_CONTACT_EMAIL: ${{ secrets.ASC_REVIEW_CONTACT_EMAIL }}
+          ASC_REVIEW_DEMO_EMAIL: ${{ secrets.ASC_REVIEW_DEMO_EMAIL }}
+          ASC_REVIEW_DEMO_PASSWORD: ${{ secrets.ASC_REVIEW_DEMO_PASSWORD }}
           GROUP_NAME: ${{ inputs.group_name }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: node scripts/asc-beta-review.mjs

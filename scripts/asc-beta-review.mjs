@@ -13,7 +13,8 @@
 //
 // Contact name/phone for Beta App Review are never stored in the repo: existing
 // values in App Store Connect are kept, and missing ones may come from the
-// optional ASC_REVIEW_CONTACT_* secrets.
+// optional ASC_REVIEW_CONTACT_* secrets. The Plus demo account comes from the
+// ASC_REVIEW_DEMO_EMAIL / ASC_REVIEW_DEMO_PASSWORD secrets.
 //
 // Env: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH, BUILD_NUMBER, APP_VERSION,
 // optional BUNDLE_ID, GROUP_NAME, DRY_RUN=true, ASC_REVIEW_CONTACT_{FIRST_NAME,
@@ -46,11 +47,15 @@ export const TEST_INFO = {
     'Basic map and navigation use does not require an account; an optional account syncs saved information across devices.',
 };
 
-export const WHAT_TO_TEST = `Please test Waybi on familiar New Zealand journeys: address search, route options, rerouting, voice and lock-screen navigation, Trips, and account sign-in (Apple, Google or email code) from Me. Follow actual road signs; have a passenger record issues or stop safely. Send feedback through TestFlight or support@waybi.co with the build number, device and steps.
+export const WHAT_TO_TEST = `Please test Waybi on familiar New Zealand journeys: address search, route options, rerouting, voice and lock-screen navigation, safety camera alerts and Smart Commute (Waybi Plus), Trips, and account sign-in (Apple, Google or email code) from Me. Follow actual road signs; have a passenger record issues or stop safely. Send feedback through TestFlight or support@waybi.co with the build number, device and steps.
 
-请在熟悉的新西兰路线测试 Waybi：地址搜索、备选路线、偏航重算、语音和锁屏导航、行程页，以及在“我的”页面用 Apple、Google 或邮箱验证码登录。请遵守实际道路标志，由乘客记录或安全停车后反馈。可通过 TestFlight 或 support@waybi.co 反馈 build、设备和复现步骤。`;
+请在熟悉的新西兰路线测试 Waybi：地址搜索、备选路线、偏航重算、语音和锁屏导航、测速摄像头提醒和智能通勤（Waybi Plus）、行程页，以及在“我的”页面用 Apple、Google 或邮箱验证码登录。请遵守实际道路标志，由乘客记录或安全停车后反馈。可通过 TestFlight 或 support@waybi.co 反馈 build、设备和复现步骤。`;
 
-export const REVIEW_NOTES = `No account is needed to review Waybi. Open the app, allow location (optional), search a public Auckland place such as "Sky Tower", pick a route and preview or start guidance. Me shows sign-in (Apple, Google or a one-time email code), Waybi & Friends, Plus, privacy policy, terms and support. A signed-in account can be deleted from Me > Delete account. Waybi is a navigation app: please follow road rules when testing while driving.`;
+export const REVIEW_NOTES = `Waybi's core driving features are part of Waybi Plus: safety camera alerts on the route, camera catalog checks, Smart Commute and saved-route disruption alerts, offline route corridor, arrival parking help and remembering where you parked. In-app purchase is not live in TestFlight yet, so the demo account below already has Plus.
+
+To sign in: open Me, tap "Sign in with a password", enter the demo email and password, then tap Sign in. Me then shows the Plus membership.
+
+To try Plus features: search a public Auckland place such as "Sky Tower", pick a driving route and start guidance; safety cameras along the route are announced and shown. Smart Commute is under Trips. Basic map, search and navigation also work without an account. The account can be deleted from Me > Delete account; please use the demo account rather than deleting it. Waybi is a navigation app: please follow road rules when testing while driving.`;
 
 /** Fields required by Beta App Review that are still empty after merging. */
 export function missingContact(detail) {
@@ -59,12 +64,17 @@ export function missingContact(detail) {
 
 export function mergeReviewDetail(current = {}, env = {}) {
   const pick = (key, envKey) => current[key] || env[envKey] || null;
+  // Plus features need a signed-in Plus account; the demo account comes only
+  // from repository secrets so its password never lands in the repo.
+  const demo = env.ASC_REVIEW_DEMO_EMAIL && env.ASC_REVIEW_DEMO_PASSWORD
+    ? { demoAccountRequired: true, demoAccountName: env.ASC_REVIEW_DEMO_EMAIL, demoAccountPassword: env.ASC_REVIEW_DEMO_PASSWORD }
+    : { demoAccountRequired: false };
   return {
     contactFirstName: pick('contactFirstName', 'ASC_REVIEW_CONTACT_FIRST_NAME'),
     contactLastName: pick('contactLastName', 'ASC_REVIEW_CONTACT_LAST_NAME'),
     contactPhone: pick('contactPhone', 'ASC_REVIEW_CONTACT_PHONE'),
     contactEmail: pick('contactEmail', 'ASC_REVIEW_CONTACT_EMAIL') || TEST_INFO.feedbackEmail,
-    demoAccountRequired: false,
+    ...demo,
     notes: REVIEW_NOTES,
   };
 }

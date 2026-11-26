@@ -220,8 +220,17 @@
     "apps/mobile/lib/drive/system_navigation.dart": {
       "minimumLinePercent": 85
     },
+    "apps/mobile/lib/drive/custom_voice.dart": {
+      "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/drive/voice_clip_player.dart": {
+      "minimumLinePercent": 90
+    },
     "apps/mobile/lib/drive/voice_engine.dart": {
       "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/drive/voice_recorder.dart": {
+      "minimumLinePercent": 90
     },
     "apps/mobile/lib/main.dart": {
       "minimumLinePercent": 10
@@ -350,6 +359,9 @@
     },
     "apps/mobile/lib/widgets/profile_page.dart": {
       "minimumLinePercent": 65
+    },
+    "apps/mobile/lib/widgets/custom_voice_page.dart": {
+      "minimumLinePercent": 90
     },
     "apps/mobile/lib/widgets/profile_sheet.dart": {
       "minimumLinePercent": 40

@@ -86,16 +86,22 @@ class FakeClips implements CustomVoiceClips {
 
 class FakeRecorder implements VoiceRecorder {
   bool permission = true;
+  bool failStart = false;
+  bool emptyStop = false;
   String? path;
   int bytes = 4096;
   @override
   Future<bool> requestPermission() async => permission;
   @override
-  Future<void> start(String path) async => this.path = path;
+  Future<void> start(String path) async {
+    if (failStart) throw StateError('no microphone');
+    this.path = path;
+  }
+
   @override
   Future<String?> stop() async {
     final target = path;
-    if (target == null) return null;
+    if (target == null || emptyStop) return null;
     await File(target).writeAsBytes(List.filled(bytes, 1));
     return target;
   }

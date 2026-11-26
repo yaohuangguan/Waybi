@@ -2,6 +2,7 @@ import { fetchPublicDetour } from './public_detour.ts';
 import type { ProviderPayload } from "./types.ts";
 import type { LonLat, RouteRequestOptions, UsageRecorder } from './types.ts';
 import { fetchNzRouting, nzRoutingEndpoint } from './nz_routing.ts';
+import { conciseExitInstructions } from './route_instructions.ts';
 import { readRouteRoadSnapshots } from './regional_road_events.ts';
 import { matchRouteClosures, crossesExcludedRoads } from './routing_closures.ts';
 import type { ClosureLocation } from './routing_closures.ts';
@@ -225,7 +226,7 @@ async function fallbackDrivingRoutes(from, to, stops: LonLat[] = [], mode = 'DRI
   if (!response.ok) throw new Error(`Fallback route HTTP ${response.status}`);
   const payload = await response.json<ProviderPayload>();
   if (payload.code !== 'Ok') throw new Error('Fallback route unavailable');
-  return normalizeOsrmRoutes(payload, mode);
+  return normalizeOsrmRoutes(payload, mode, options.language);
 }
 
 export function maneuverLanes(step: ProviderPayload) {
@@ -242,32 +243,36 @@ export function maneuverLanes(step: ProviderPayload) {
   return Array.isArray(intersection.lanes) ? intersection.lanes : [];
 }
 
-export function normalizeOsrmRoutes(payload: ProviderPayload, mode: string) {
-  return (payload.routes || []).slice(0, 3).map((route, index) => ({
-    id: `${mode.toLowerCase()}-${index}`,
-    mode: mode.toLowerCase(),
-    durationSeconds: Number(route.duration || 0),
-    staticDurationSeconds: Number(route.duration || 0),
-    trafficDelaySeconds: null,
-    distanceMeters: Number(route.distance || 0),
-    coordinates: route.geometry?.coordinates || [],
-    encodedPolyline: null,
-    routeToken: null,
-    description: osrmRoadDescription(route) || (index === 0 ? 'Recommended route' : `Alternative ${index + 1}`),
-    labels: [],
-    warnings: [],
-    traffic: { normal: 0, slow: 0, trafficJam: 0 },
-    trafficIntervals: [],
-    steps: (route.legs || []).flatMap((leg) => (leg.steps || []).map((step) => ({
-      distance: Number(step.distance || 0), duration: Number(step.duration || 0),
-      name: step.name || '', maneuver: step.maneuver?.type || '',
-      modifier: step.maneuver?.modifier || '', location: step.maneuver?.location || [],
-      instruction: step.maneuver?.instruction || '',
-      lanes: maneuverLanes(step)
-    }))),
-    transit: [],
-    provider: 'osm-fallback'
-  }));
+export function normalizeOsrmRoutes(payload: ProviderPayload, mode: string, language?: string) {
+  return (payload.routes || []).slice(0, 3).map((route, index) => {
+    const steps: ProviderPayload[] = (route.legs || []).flatMap((leg) => leg.steps || []);
+    const instructions = conciseExitInstructions(steps, language);
+    return {
+      id: `${mode.toLowerCase()}-${index}`,
+      mode: mode.toLowerCase(),
+      durationSeconds: Number(route.duration || 0),
+      staticDurationSeconds: Number(route.duration || 0),
+      trafficDelaySeconds: null,
+      distanceMeters: Number(route.distance || 0),
+      coordinates: route.geometry?.coordinates || [],
+      encodedPolyline: null,
+      routeToken: null,
+      description: osrmRoadDescription(route) || (index === 0 ? 'Recommended route' : `Alternative ${index + 1}`),
+      labels: [],
+      warnings: [],
+      traffic: { normal: 0, slow: 0, trafficJam: 0 },
+      trafficIntervals: [],
+      steps: steps.map((step, stepIndex) => ({
+        distance: Number(step.distance || 0), duration: Number(step.duration || 0),
+        name: step.name || '', maneuver: step.maneuver?.type || '',
+        modifier: step.maneuver?.modifier || '', location: step.maneuver?.location || [],
+        instruction: instructions[stepIndex],
+        lanes: maneuverLanes(step)
+      })),
+      transit: [],
+      provider: 'osm-fallback'
+    };
+  });
 }
 
 function osrmRoadDescription(route: ProviderPayload): string {
@@ -318,7 +323,7 @@ export async function routeOptions(
     const requestOptions = detourLocalRoads ? { ...options, detourLocalRoads: true } : options;
     if (!ownedUnavailable && nzRoutingEndpoint(env, points)) {
       try {
-        return normalizeOsrmRoutes(await fetchNzRouting(env, points, mode, requestOptions, exclusions), mode)
+        return normalizeOsrmRoutes(await fetchNzRouting(env, points, mode, requestOptions, exclusions), mode, options.language)
           .map(route => ({ ...route, routingEngine: 'valhalla' }));
       } catch (error) {
         ownedUnavailable = true;
@@ -328,7 +333,7 @@ export async function routeOptions(
         // The public free fallback also supports directed road exclusions.
       }
     }
-    if (exclusions.length) return normalizeOsrmRoutes(await fetchPublicDetour(points, requestOptions, exclusions), mode)
+    if (exclusions.length) return normalizeOsrmRoutes(await fetchPublicDetour(points, requestOptions, exclusions), mode, options.language)
       .map(route => ({ ...route, routingEngine: 'public-valhalla' }));
     return (await fallbackDrivingRoutes(from, to, stops, mode, options))
       .map(route => ({ ...route, routingEngine: 'osrm' }));

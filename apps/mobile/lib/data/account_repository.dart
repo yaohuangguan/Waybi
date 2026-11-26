@@ -158,7 +158,17 @@ class AccountRepository extends ChangeNotifier {
   }
 
   Map<String, dynamic> _body(http.Response response) {
-    final decoded = jsonDecode(response.body);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } on FormatException {
+      // A proxy 502/503 page is HTML; never surface a parser error.
+      throw StateError(
+        response.statusCode >= 500 || response.statusCode == 429
+            ? 'Waybi is temporarily unavailable. Try again shortly.'
+            : 'Invalid account response',
+      );
+    }
     if (decoded is! Map<String, dynamic>) {
       throw StateError('Invalid account response');
     }

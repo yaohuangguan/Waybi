@@ -1,8 +1,7 @@
-import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import 'http_guard.dart';
 import '../domain/map_provider.dart';
 
 class PlacePhoto {
@@ -152,24 +151,29 @@ class PlaceDetailsRepository {
     final response = await _client
         .get(uri)
         .timeout(const Duration(seconds: 26));
-    if (response.statusCode != 200) {
-      throw StateError('Place photos unavailable');
-    }
-    return PlaceDetails.fromJson(
-      jsonDecode(response.body) as Map<String, dynamic>,
+    final decoded = decodeJsonResponse(
+      response,
+      unavailable: 'Place photos unavailable',
     );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Place photos unavailable');
+    }
+    return PlaceDetails.fromJson(decoded);
   }
 
   Future<PlaceDetails> fetch(String placeId, {String language = 'en'}) async {
     final uri = Uri.parse('$workerBaseUrl/api/place-details')
         .replace(queryParameters: {'placeId': placeId, 'lang': language});
-    final response = await _client.get(uri);
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode != 200 || decoded is! Map<String, dynamic>) {
-      final message = decoded is Map<String, dynamic>
-          ? decoded['error']?.toString()
-          : null;
-      throw StateError(message ?? 'Place details unavailable');
+    // Check the status before decoding: a Cloudflare 502 is an HTML page.
+    final response = await _client
+        .get(uri)
+        .timeout(const Duration(seconds: 15));
+    final decoded = decodeJsonResponse(
+      response,
+      unavailable: 'Place details unavailable',
+    );
+    if (decoded is! Map<String, dynamic>) {
+      throw ApiException('Place details unavailable');
     }
     return PlaceDetails.fromJson(decoded);
   }

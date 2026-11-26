@@ -131,12 +131,18 @@ class ParkingRepository {
         properties['STREET'],
         properties['SUBURB'],
       ].where((part) => part != null && '$part'.trim().isNotEmpty).join(' ');
-      final name = [
-        properties['SHORTDESCRIPTION'],
-        properties['LONGDESCRIPTION'],
-        address,
-        'AT car park',
-      ].map((part) => '$part'.trim()).firstWhere((part) => part.isNotEmpty);
+      // ArcGIS sends JSON null for missing descriptions; never show "null".
+      final name =
+          [
+                properties['SHORTDESCRIPTION'],
+                properties['LONGDESCRIPTION'],
+                address,
+                'AT car park',
+              ]
+              .map((part) => part == null ? '' : '$part'.trim())
+              .firstWhere(
+                (part) => part.isNotEmpty && part.toLowerCase() != 'null',
+              );
       final clearance = double.tryParse(
         '${properties['CLEARANCEMETERS'] ?? ''}',
       );

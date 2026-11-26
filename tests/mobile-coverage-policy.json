@@ -48,6 +48,9 @@
     "apps/mobile/lib/data/friends_backup_service.dart": {
       "minimumLinePercent": 85
     },
+    "apps/mobile/lib/data/http_guard.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/data/navigation_feedback_repository.dart": {
       "minimumLinePercent": 95
     },

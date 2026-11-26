@@ -1,8 +1,7 @@
-import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import 'http_guard.dart';
 
 class ExplorePlace {
   const ExplorePlace({
@@ -91,12 +90,13 @@ class ExploreRepository {
     final response = await _client
         .get(uri)
         .timeout(const Duration(seconds: 45));
-    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-    if (response.statusCode != 200 || decoded is! List<dynamic>) {
-      final message = decoded is Map<String, dynamic>
-          ? decoded['error']?.toString()
-          : null;
-      throw StateError(message ?? 'Explore places are unavailable');
+    // Status first: an upstream 502 page is HTML, not JSON.
+    final decoded = decodeJsonResponse(
+      response,
+      unavailable: 'Explore places are unavailable',
+    );
+    if (decoded is! List<dynamic>) {
+      throw ApiException('Explore places are unavailable');
     }
     return decoded
         .whereType<Map<String, dynamic>>()

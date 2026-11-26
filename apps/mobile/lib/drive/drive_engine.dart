@@ -26,6 +26,7 @@ import 'camera_alert_lifecycle.dart';
 import 'camera_matcher.dart';
 import 'route_camera_matcher.dart';
 import 'route_progress_tracker.dart';
+import 'custom_voice.dart';
 import 'voice_engine.dart';
 import 'navigation_language.dart';
 import 'navigation_location_filter.dart';
@@ -76,6 +77,9 @@ class DriveEngine extends ChangeNotifier {
 
   final CameraMatcher _cameraMatcher;
   final VoiceEngine _voiceEngine;
+
+  /// Waybi Plus recorded voice; null or inactive means the standard voice.
+  set customVoice(CustomVoiceClips? clips) => _voiceEngine.customVoice = clips;
   final SpeedLimitRepository _speedLimitRepository;
   final TrafficFlowRepository _trafficFlowRepository;
   final RoadIntelligenceEngine _roadIntelligence;

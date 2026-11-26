@@ -123,6 +123,7 @@ void main() {
           scrollable: find.byType(Scrollable).first,
         );
         await tester.ensureVisible(link);
+        await tester.pumpAndSettle();
         await tester.tap(link);
         await tester.pumpAndSettle();
       }
@@ -219,6 +220,10 @@ void main() {
         300,
         scrollable: find.byType(Scrollable).first,
       );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('plus-plan-monthly')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('plus-plan-monthly')));
       await tester.tap(find.byKey(const ValueKey('plus-subscribe')));
       await tester.pumpAndSettle();

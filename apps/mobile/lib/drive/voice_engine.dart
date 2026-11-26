@@ -5,11 +5,27 @@ import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import '../domain/map_layer_settings.dart';
+import 'custom_voice.dart';
+import 'voice_clip_player.dart';
 
 /// One completion-aware queue and temporary audio session for spoken guidance.
+///
+/// When a Waybi Plus member has recorded a custom voice pack, sentences are
+/// split into recorded clips and TTS text. Any clip that is missing or fails
+/// to play is spoken by TTS instead, so guidance never goes silent.
 class VoiceEngine {
-  VoiceEngine({FlutterTts? tts}) : _tts = tts ?? FlutterTts();
+  VoiceEngine({
+    FlutterTts? tts,
+    this._customVoice,
+    VoiceClipPlayer Function()? clipPlayer,
+  }) : _tts = tts ?? FlutterTts(),
+       _clipPlayerFactory = clipPlayer ?? AudioplayersClipPlayer.new;
   final FlutterTts _tts;
+  CustomVoiceClips? _customVoice;
+  final VoiceClipPlayer Function() _clipPlayerFactory;
+  VoiceClipPlayer? _clipPlayer;
+
+  set customVoice(CustomVoiceClips? clips) => _customVoice = clips;
   static const _audioSession = MethodChannel('waybi/navigation_audio');
   Future<void>? _initializing;
   String _language = 'en-NZ';
@@ -64,19 +80,31 @@ class VoiceEngine {
       }
       final text = message().trim();
       if (text.isEmpty) return false;
-      await _tts.setLanguage(language ?? _language);
+      final speechLanguage = language ?? _language;
+      await _tts.setLanguage(speechLanguage);
+      final pack = speechLanguage.startsWith('zh') ? 'zh' : 'en';
+      final segments = _plan(text, pack);
       try {
-        // Configure mixing before activating; activating an exclusive session
-        // even briefly can pause music without giving it a chance to resume.
-        if (defaultTargetPlatform == TargetPlatform.iOS) {
-          await _audioSession.invokeMethod<void>('prepare');
-        }
-        if (generation != _generation || !(stillRelevant?.call() ?? true)) {
-          return false;
-        }
-        final result = await _tts.speak(text);
-        if (result != 1 && result != true) {
-          throw StateError('Speech did not complete');
+        for (final segment in segments) {
+          // Configure mixing before activating; activating an exclusive
+          // session even briefly can pause music without giving it a chance
+          // to resume.
+          if (defaultTargetPlatform == TargetPlatform.iOS) {
+            await _audioSession.invokeMethod<void>('prepare');
+          }
+          if (generation != _generation ||
+              (segment == segments.first && !(stillRelevant?.call() ?? true))) {
+            return false;
+          }
+          if (segment is ClipSegment &&
+              await _playClip(pack, segment, generation)) {
+            continue;
+          }
+          if (generation != _generation) return false;
+          final result = await _tts.speak(segment.text);
+          if (result != 1 && result != true) {
+            throw StateError('Speech did not complete');
+          }
         }
         return true;
       } finally {
@@ -92,6 +120,43 @@ class VoiceEngine {
     return speech;
   }
 
+  List<VoiceSegment> _plan(String text, String pack) {
+    final clips = _customVoice;
+    if (clips == null) return [TtsSegment(text)];
+    try {
+      final playable = clips.playable(pack);
+      if (playable.isEmpty) return [TtsSegment(text)];
+      return planCustomVoice(text, pack, playable);
+    } catch (error) {
+      debugPrint('Custom voice planning failed: $error');
+      return [TtsSegment(text)];
+    }
+  }
+
+  /// True when the clip played to the end. False means: speak it with TTS.
+  Future<bool> _playClip(
+    String pack,
+    ClipSegment segment,
+    int generation,
+  ) async {
+    final clips = _customVoice;
+    final path = clips?.clipPath(pack, segment.phraseId);
+    if (clips == null || path == null) return false;
+    try {
+      await (_clipPlayer ??= _clipPlayerFactory()).play(path);
+      return true;
+    } catch (error) {
+      // A cancelled generation is not a broken clip.
+      if (generation != _generation) return true;
+      debugPrint('Custom voice clip ${segment.phraseId} failed: $error');
+      clips.reportBroken(pack, segment.phraseId);
+      try {
+        await _clipPlayer?.stop();
+      } catch (_) {}
+      return false;
+    }
+  }
+
   Future<void> guidance(
     String message, {
     String? language,
@@ -104,13 +169,18 @@ class VoiceEngine {
 
   Future<void> stop() async {
     ++_generation;
-    final stopped = _initializing == null
-        ? Future<void>.value()
-        : _tts.stop().then<void>((_) {}).whenComplete(_releaseIosAudio);
+    final clipPlayer = _clipPlayer;
+    final stopped = Future.wait<void>([
+      if (_initializing != null) _tts.stop().then<void>((_) {}),
+      if (clipPlayer != null) clipPlayer.stop().catchError((Object _) {}),
+    ]).then<void>((_) {});
+    final released = _initializing == null && clipPlayer == null
+        ? stopped
+        : stopped.whenComplete(_releaseIosAudio);
     // Some engines do not resolve speak() when cancelled. New speech must
     // wait for stop(), without waiting on that abandoned completion future.
-    _speechQueue = stopped;
-    await stopped;
+    _speechQueue = released;
+    await released;
   }
 
   Future<bool> cameraAlert({
@@ -134,7 +204,13 @@ class VoiceEngine {
         : '$type in $metres metres$road.';
   }, stillRelevant: stillRelevant);
 
-  Future<void> dispose() => stop();
+  Future<void> dispose() async {
+    await stop();
+    final player = _clipPlayer;
+    _clipPlayer = null;
+    await player?.dispose();
+  }
+
   Future<bool> roadAlert(
     String Function() message, {
     String? language,

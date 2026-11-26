@@ -11,6 +11,8 @@ import '../data/account_repository.dart';
 import '../data/friends_backup_service.dart';
 import '../data/app_store_billing.dart';
 import '../data/plus_billing.dart';
+import '../drive/custom_voice.dart';
+import 'custom_voice_page.dart';
 import 'plus_page.dart';
 import 'account_sign_in.dart';
 import '../data/camera_repository.dart';
@@ -22,6 +24,7 @@ class ProfilePage extends StatefulWidget {
     required this.account,
     this.friendsBackup,
     this.plusBilling,
+    this.customVoice,
     required this.voiceEnabled,
     required this.lanesEnabled,
     this.keepScreenAwake = true,
@@ -56,6 +59,7 @@ class ProfilePage extends StatefulWidget {
   final AccountRepository account;
   final FriendsBackupService? friendsBackup;
   final PlusBillingGateway? plusBilling;
+  final CustomVoiceController? customVoice;
   final bool voiceEnabled;
   final bool lanesEnabled;
   final bool keepScreenAwake;
@@ -106,6 +110,37 @@ class _ProfilePageState extends State<ProfilePage> {
   late bool _notifySavedRouteDisruptions = widget.notifySavedRouteDisruptions;
   late CameraSnapshot? _cameraSnapshot = widget.cameraSnapshot;
   bool _cameraSyncing = false;
+
+  Future<void> _openPlus() async {
+    final billing =
+        widget.plusBilling ?? AppStoreBillingGateway(widget.account);
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PlusPage(
+          account: widget.account,
+          voiceEnabled: _voice,
+          language: _appLanguage,
+          billing: billing,
+        ),
+      ),
+    );
+    if (widget.plusBilling == null) billing.dispose();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openCustomVoice(CustomVoiceController customVoice) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CustomVoicePage(
+          controller: customVoice,
+          language: _appLanguage,
+          initialPack: _language == 'zh-CN' ? 'zh' : 'en',
+          onOpenPlus: _openPlus,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
 
   String _text(String english, String chinese) =>
       _appLanguage == 'zh' ? chinese : english;
@@ -841,22 +876,7 @@ class _ProfilePageState extends State<ProfilePage> {
               _PlusCard(
                 isPlus: profile?.isPlus ?? false,
                 chinese: _appLanguage == 'zh',
-                onOpen: () async {
-                  final billing =
-                      widget.plusBilling ??
-                      AppStoreBillingGateway(widget.account);
-                  await Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => PlusPage(
-                        account: widget.account,
-                        voiceEnabled: _voice,
-                        language: _appLanguage,
-                        billing: billing,
-                      ),
-                    ),
-                  );
-                  if (widget.plusBilling == null) billing.dispose();
-                },
+                onOpen: _openPlus,
               ),
               if (profile != null) ...[
                 const SizedBox(height: 14),
@@ -1182,6 +1202,37 @@ class _ProfilePageState extends State<ProfilePage> {
                 value: _voice,
                 onChanged: _voiceChanged,
               ),
+              if (widget.customVoice case final customVoice?)
+                ListTile(
+                  key: const ValueKey('custom-voice-entry'),
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    customVoice.plus
+                        ? Icons.record_voice_over_rounded
+                        : Icons.lock_rounded,
+                  ),
+                  title: Text(_text('My navigation voice', '我的导航语音')),
+                  subtitle: Text(
+                    customVoice.plus
+                        ? (customVoice.enabled
+                              ? _text(
+                                  'On · guidance uses your recordings',
+                                  '已开启 · 导航使用你的录音',
+                                )
+                              : _text(
+                                  'Record phrases in your own voice',
+                                  '用你自己的声音录制播报短语',
+                                ))
+                        : _text(
+                            'Plus · guidance in your own voice',
+                            'Plus · 用你自己的声音导航',
+                          ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => customVoice.plus
+                      ? _openCustomVoice(customVoice)
+                      : _openPlus(),
+                ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.language_rounded),

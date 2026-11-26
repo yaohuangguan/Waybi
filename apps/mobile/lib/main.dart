@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
@@ -55,6 +56,7 @@ import 'widgets/journey_summary_sheet.dart';
 
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'drive/custom_voice.dart';
 import 'drive/drive_engine.dart';
 import 'drive/system_navigation.dart';
 import 'widgets/system_navigation_status.dart';
@@ -256,6 +258,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final AccountRepository _account = AccountRepository();
   late final _friendsBackup = FriendsBackupService(_account);
   late final _plusBilling = AppStoreBillingGateway(_account);
+  final CustomVoiceController _customVoice = CustomVoiceController(
+    rootDirectory: getApplicationDocumentsDirectory,
+  );
   final PlaceDetailsRepository _placeDetailsRepository =
       PlaceDetailsRepository();
 
@@ -515,6 +520,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     unawaited(WaybiNotificationService.instance.initialize());
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
+    _driveEngine.customVoice = _customVoice;
+    _syncCustomVoiceEntitlement();
+    unawaited(_customVoice.load());
     _plusBilling.initialize();
     unawaited(_account.restore().then((_) => _friendsBackup.start()));
     unawaited(_driveEngine.loadCameras());
@@ -822,7 +830,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
+  /// Custom voice is Plus-only: a lapsed or signed-out account immediately
+  /// falls back to the standard voice (recordings stay on the device).
+  void _syncCustomVoiceEntitlement() => _customVoice.setPlus(
+    _account.signedIn && _account.profile?.isPlus == true,
+  );
+
   void _onAccountChanged() {
+    _syncCustomVoiceEntitlement();
     if (mounted) setState(() {});
     if (_settingsLoaded && _account.signedIn && _account.profile != null) {
       unawaited(_syncQuickLocationsWithAccount());
@@ -1685,6 +1700,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _headingSubscription?.cancel();
     _mapRefreshTimer?.cancel();
     _account.removeListener(_onAccountChanged);
+    _driveEngine.customVoice = null;
+    _customVoice.dispose();
     _driveEngine.removeListener(_onEngineChanged);
     unawaited(_systemNavigation.stop());
     _systemNavigation.dispose();
@@ -3178,6 +3195,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           account: _account,
           friendsBackup: _friendsBackup,
           plusBilling: _plusBilling,
+          customVoice: _customVoice,
           voiceEnabled: _voiceEnabled,
           lanesEnabled: _lanesEnabled,
           keepScreenAwake: _keepScreenAwake,

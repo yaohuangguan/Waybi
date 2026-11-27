@@ -55,21 +55,31 @@ export async function reserveGoogleUnits(env: any, sku: string, units = 1, now =
   const amount = Math.max(1, Math.round(units));
   if (amount > limit) return false;
   try {
-    const row = await db.prepare(`
+    const reserved = await reserveDailyQuotaUnits(db, `google:${sku}`, amount, limit, now);
+    if (!reserved) console.warn(JSON.stringify({ level: 'warn', event: 'google_daily_budget_exhausted', sku, limit }));
+    return reserved;
+  } catch (error) {
+    console.warn(JSON.stringify({ level: 'warn', event: 'google_budget_unavailable', sku,
+      message: String((error as Error)?.message || error).slice(0, 200) }));
+    return false;
+  }
+}
+
+/**
+ * One atomic UPSERT against the shared quota counters: true when `amount`
+ * more units of `key` still fit under `limit` for the UTC day. Database errors
+ * are thrown so each caller can fail closed with its own log event.
+ */
+export async function reserveDailyQuotaUnits(db: any, key: string, amount: number, limit: number, now = new Date()): Promise<boolean> {
+  const row = await db.prepare(`
       INSERT INTO api_usage_daily (day, provider, sku, calls, units, updated_at)
       VALUES (?, '__waybi_quotas', ?, 1, ?, ?)
       ON CONFLICT(day, provider, sku) DO UPDATE SET
         calls = calls + 1, units = units + excluded.units, updated_at = excluded.updated_at
       WHERE units + excluded.units <= ?
       RETURNING units
-    `).bind(now.toISOString().slice(0, 10), `google:${sku}`, amount, now.getTime(), limit).first();
-    if (!row) console.warn(JSON.stringify({ level: 'warn', event: 'google_daily_budget_exhausted', sku, limit }));
-    return Boolean(row);
-  } catch (error) {
-    console.warn(JSON.stringify({ level: 'warn', event: 'google_budget_unavailable', sku,
-      message: String((error as Error)?.message || error).slice(0, 200) }));
-    return false;
-  }
+    `).bind(now.toISOString().slice(0, 10), key, amount, now.getTime(), limit).first();
+  return Boolean(row);
 }
 
 export function googleBudgetExhaustedResponse(now = new Date()) {

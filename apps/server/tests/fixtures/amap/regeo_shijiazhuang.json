@@ -1,0 +1,28 @@
+{
+  "status": "1",
+  "info": "OK",
+  "infocode": "10000",
+  "regeocode": {
+    "formatted_address": "河北省石家庄市长安区建北街道建设北大街56号",
+    "addressComponent": {
+      "country": "中国",
+      "province": "河北省",
+      "city": "石家庄市",
+      "citycode": "0311",
+      "district": "长安区",
+      "adcode": "130102",
+      "township": "建北街道",
+      "towncode": "130102001000",
+      "neighborhood": { "name": [], "type": [] },
+      "building": { "name": [], "type": [] },
+      "streetNumber": {
+        "street": "建设北大街",
+        "number": "56号",
+        "location": "114.516300,38.040900",
+        "direction": "东",
+        "distance": "21.5"
+      },
+      "businessAreas": [[]]
+    }
+  }
+}

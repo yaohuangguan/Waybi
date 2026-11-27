@@ -39,6 +39,7 @@ import { clientFingerprint, clientIp, guardApiRequest } from './abuse_guard.ts';
 import { reserveGoogleUnits } from './google_budget.ts';
 import { nominatimArray } from './nominatim.ts';
 import { nzRoutingEndpoint } from './nz_routing.ts';
+import { amapSearchApplies } from './search/amap_search.ts';
 
 const CAMERA_KEY = 'cameras/current';
 // Camera locations are slow-changing metadata, not live traffic frames.
@@ -492,11 +493,14 @@ async function handleApi(request: Request, env, ctx) {
     return independentPlaceDetails(url, env);
   }
   if (url.pathname === '/api/search') {
-    if (url.searchParams.get('provider') === 'independent') {
+    const mainlandChina = amapSearchApplies(env, validateCoordinatePair(url.searchParams.get('near')));
+    if (url.searchParams.get('provider') === 'independent' || mainlandChina) {
       // Keep Waybi's fallback inside the same bounded, cached search stack.
       // Public Nominatim is a legacy compatibility path, not typeahead.
       const suggestUrl = new URL(url);
       suggestUrl.pathname = '/api/suggest';
+      // In mainland China a submitted search uses Amap keyword + around search.
+      if (mainlandChina) suggestUrl.searchParams.set('mode', 'search');
       return handlePlaces(new Request(suggestUrl, request), env,
         (provider, sku, units) => ctx.waitUntil(recordApiUsage(env, { provider, sku, calls: units, units })), ctx);
     }

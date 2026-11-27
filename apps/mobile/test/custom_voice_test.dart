@@ -574,34 +574,38 @@ void main() {
       final recordButton = find.byKey(
         const ValueKey('custom-voice-record-in_50'),
       );
-      await tester.runAsync(() async {
-        await tester.tap(recordButton);
+      // Recording, keeping and deleting do real file I/O; wait for each step
+      // to finish instead of a fixed delay so a busy machine can't flake it.
+      Future<void> tapAndAwait(Finder target, bool Function() done) async {
+        await tester.runAsync(() async {
+          await tester.tap(target);
+          await tester.pump();
+          for (var i = 0; i < 250 && !done(); i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            await tester.pump();
+          }
+        });
         await tester.pump();
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-      await tester.pump();
+      }
+
+      await tapAndAwait(recordButton, () => recorder.path != null);
       expect(find.text('Recording… tap stop when done'), findsOneWidget);
-      await tester.runAsync(() async {
-        await tester.tap(recordButton);
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-      await tester.pump();
+      await tapAndAwait(
+        recordButton,
+        () => find.text('New take — keep it?').evaluate().isNotEmpty,
+      );
       expect(find.text('New take — keep it?'), findsOneWidget);
-      await tester.runAsync(() async {
-        await tester.tap(find.byKey(const ValueKey('custom-voice-keep-in_50')));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-      await tester.pump();
+      await tapAndAwait(
+        find.byKey(const ValueKey('custom-voice-keep-in_50')),
+        () => voice.recorded('en').contains('in_50'),
+      );
       expect(voice.recorded('en'), {'in_50'});
       expect(find.byTooltip('Re-record'), findsOneWidget);
 
-      await tester.runAsync(() async {
-        await tester.tap(
-          find.byKey(const ValueKey('custom-voice-delete-in_50')),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-      await tester.pump();
+      await tapAndAwait(
+        find.byKey(const ValueKey('custom-voice-delete-in_50')),
+        () => voice.recorded('en').isEmpty,
+      );
       expect(voice.recorded('en'), isEmpty);
     });
 

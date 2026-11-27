@@ -70,4 +70,71 @@ void main() {
       CameraAlertPhase.idle,
     );
   });
+
+  test('a second pass of the same camera is tracked separately', () {
+    final lifecycle = CameraAlertLifecycle();
+    final start = DateTime.utc(2026, 9, 26, 12);
+    lifecycle.update(
+      const CameraMatch(camera: camera, distanceMeters: 60),
+      start,
+    );
+    final passed = lifecycle.update(
+      null,
+      start.add(const Duration(seconds: 2)),
+    );
+    expect(passed.alertKey, camera.id);
+    expect(passed.passKey, isNull);
+    // The route comes back past the camera two minutes later.
+    const back = CameraMatch(
+      camera: camera,
+      distanceMeters: 400,
+      passKey: 'camera-1#2',
+    );
+    expect(back.alertKey, 'camera-1#2');
+    final approaching = lifecycle.update(
+      back,
+      start.add(const Duration(minutes: 2)),
+    );
+    expect(approaching.phase, CameraAlertPhase.approaching);
+    expect(approaching.cameraId, camera.id);
+    expect(approaching.alertKey, 'camera-1#2');
+    lifecycle.update(
+      const CameraMatch(
+        camera: camera,
+        distanceMeters: 40,
+        passKey: 'camera-1#2',
+      ),
+      start.add(const Duration(minutes: 2, seconds: 30)),
+    );
+    final secondPass = lifecycle.update(
+      null,
+      start.add(const Duration(minutes: 2, seconds: 32)),
+    );
+    expect(secondPass.phase, CameraAlertPhase.passed);
+    expect(secondPass.cameraId, camera.id);
+    expect(secondPass.alertKey, 'camera-1#2');
+    expect(const CameraAlertState.idle().alertKey, isNull);
+  });
+
+  test('spoken reminders expire with the cooldown or when passed', () {
+    final spoken = SpokenCameraAlerts(lifetime: const Duration(minutes: 5));
+    final start = DateTime.utc(2026, 9, 26, 12);
+    spoken.record('camera-1', 300, start);
+    expect(spoken.contains('camera-1', 300), isTrue);
+    expect(spoken.contains('camera-1', 800), isTrue);
+    spoken.record('camera-2', 800, start);
+    expect(spoken.contains('camera-2', 300), isFalse);
+    spoken.passed('camera-1');
+    spoken.passed(null);
+    expect(spoken.contains('camera-1', 300), isFalse);
+    expect(spoken.contains('camera-2', 800), isTrue);
+    spoken.expire(start.add(const Duration(minutes: 4)));
+    expect(spoken.contains('camera-2', 800), isTrue);
+    spoken.expire(start.add(const Duration(minutes: 5)));
+    expect(spoken.contains('camera-2', 800), isFalse);
+    spoken
+      ..record('camera-3', 800, start)
+      ..clear();
+    expect(spoken.contains('camera-3', 800), isFalse);
+  });
 }

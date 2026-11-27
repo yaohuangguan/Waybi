@@ -75,9 +75,23 @@ class RoadEvent {
   final DateTime? validUntil;
   final Map<String, Object?> metadata;
 
+  /// Active at [now]. Use this for anything shown or spoken as happening.
   bool isCurrent(DateTime now) =>
       (validFrom == null || !now.isBefore(validFrom!)) &&
       (validUntil == null || now.isBefore(validUntil!));
+
+  /// Active now or scheduled to start within [window]: a 21:00 closure seen
+  /// at 20:45 still matters to a route that reaches it after 21:00.
+  bool isCurrentOrUpcoming(
+    DateTime now, {
+    Duration window = const Duration(hours: 12),
+  }) =>
+      (validFrom == null || !now.add(window).isBefore(validFrom!)) &&
+      (validUntil == null || now.isBefore(validUntil!));
+
+  /// Scheduled but not started yet.
+  bool isUpcoming(DateTime now) =>
+      validFrom != null && now.isBefore(validFrom!);
 
   RoadEvent withDistance({required double fromDriver, double? alongRoute}) =>
       RoadEvent(

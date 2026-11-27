@@ -91,4 +91,28 @@ void main() {
       isNull,
     );
   });
+
+  test('Android "no bearing" and poor courses are unknown, not north', () {
+    expect(NavigationMotionEstimator.usableCourse(0, 0), isNull);
+    expect(NavigationMotionEstimator.usableCourse(0, 5), 0);
+    expect(NavigationMotionEstimator.usableCourse(90, 40), isNull);
+    expect(NavigationMotionEstimator.usableCourse(-1, -1), isNull);
+    expect(NavigationMotionEstimator.usableCourse(null, 1), isNull);
+    expect(NavigationMotionEstimator.usableCourse(double.nan, 1), isNull);
+    expect(NavigationMotionEstimator.usableCourse(370, 1), 10);
+    expect(NavigationMotionEstimator.usableCourse(90, double.nan), 90);
+    expect(NavigationMotionEstimator.usableCourse(90, null), 90);
+    final motion = NavigationMotionEstimator().update(
+      NavigationLocationFix(
+        point: const GeoPoint(-36.85, 174.76),
+        accuracyMeters: 5,
+        speedMetresPerSecond: 10,
+        timestamp: DateTime(2026),
+      ),
+      heading: 0,
+      headingAccuracy: 0,
+    );
+    expect(motion.speedMetresPerSecond, 10);
+    expect(motion.heading, isNull);
+  });
 }

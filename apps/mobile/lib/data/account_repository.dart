@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
 import 'apple_sign_in.dart';
+import 'http_guard.dart';
 
 class CompanionTotals {
   const CompanionTotals({
@@ -42,6 +43,7 @@ class AccountProfile {
     this.id = '',
     this.subscriptionSource,
     this.subscriptionExpiresAt,
+    this.appleSubscriptionActive = false,
   });
 
   final String email;
@@ -57,6 +59,10 @@ class AccountProfile {
   final String id;
   final String? subscriptionSource;
   final DateTime? subscriptionExpiresAt;
+
+  /// An App Store subscription is still renewing. Deleting the account does
+  /// not cancel it: the user must cancel in App Store subscriptions.
+  final bool appleSubscriptionActive;
 
   bool get isPlus => plan == 'plus';
 
@@ -100,8 +106,34 @@ class AccountProfile {
       plan:
           (json['subscription'] as Map<String, dynamic>?)?['plan'] as String? ??
           'free',
+      appleSubscriptionActive:
+          (json['subscription']
+              as Map<String, dynamic>?)?['appleSubscriptionActive'] ==
+          true,
     );
   }
+}
+
+/// Outcome of a confirmed account deletion.
+class AccountDeletionResult {
+  const AccountDeletionResult({
+    this.appleSubscriptionActive = false,
+    this.stripeSubscriptionsCancelled = 0,
+  });
+
+  factory AccountDeletionResult.fromJson(Map<String, dynamic> json) =>
+      AccountDeletionResult(
+        appleSubscriptionActive: json['appleSubscriptionActive'] == true,
+        stripeSubscriptionsCancelled:
+            (json['stripeSubscriptionsCancelled'] as num?)?.toInt() ?? 0,
+      );
+
+  /// The account is gone but Apple will keep billing until the user cancels
+  /// in App Store subscriptions (https://apps.apple.com/account/subscriptions).
+  final bool appleSubscriptionActive;
+
+  /// Web (Stripe) subscriptions the server cancelled as part of deletion.
+  final int stripeSubscriptionsCancelled;
 }
 
 class AccountRepository extends ChangeNotifier {
@@ -158,14 +190,26 @@ class AccountRepository extends ChangeNotifier {
   }
 
   Map<String, dynamic> _body(http.Response response) {
-    final decoded = jsonDecode(response.body);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } on FormatException {
+      // A proxy 502/503 page is HTML; never surface a parser error.
+      throw StateError(
+        response.statusCode >= 500 || response.statusCode == 429
+            ? 'Waybi is temporarily unavailable. Try again shortly.'
+            : 'Invalid account response',
+      );
+    }
     if (decoded is! Map<String, dynamic>) {
       throw StateError('Invalid account response');
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(
-        decoded['error'] as String? ??
-            'Account request failed (${response.statusCode})',
+      // Keeps the server code: ROUTE_WATCH_LIMIT (409),
+      // SUBSCRIPTION_CANCEL_FAILED (503), RATE_LIMITED (429).
+      throw apiError(
+        response,
+        fallback: 'Account request failed (${response.statusCode})',
       );
     }
     return decoded;
@@ -456,11 +500,17 @@ class AccountRepository extends ChangeNotifier {
 
   /// Deletes the signed-in cloud account. A failed request keeps the session
   /// intact, so a dropped connection cannot be mistaken for success.
-  Future<void> deleteAccount({required String email}) async {
+  ///
+  /// Throws an [ApiException] with code `SUBSCRIPTION_CANCEL_FAILED` when a
+  /// web subscription could not be cancelled (nothing was deleted). Check
+  /// [AccountDeletionResult.appleSubscriptionActive] afterwards (and
+  /// [AccountProfile.appleSubscriptionActive] before) to send the user to App
+  /// Store subscription management.
+  Future<AccountDeletionResult> deleteAccount({required String email}) async {
     if (!signedIn || profile == null || email != profile!.email) {
       throw StateError('Sign in again before deleting the account');
     }
-    _body(
+    final body = _body(
       await _request(
         '/api/auth/delete',
         method: 'POST',
@@ -468,6 +518,7 @@ class AccountRepository extends ChangeNotifier {
       ),
     );
     await signOut();
+    return AccountDeletionResult.fromJson(body);
   }
 
   Future<Map<String, dynamic>> appleBillingConfig() async =>

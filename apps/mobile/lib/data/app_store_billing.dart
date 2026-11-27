@@ -41,11 +41,16 @@ class AppStoreBillingGateway extends PlusBillingGateway {
     this.account, {
     AppStoreClient? store,
     bool? supportsStore,
+    this.restoreGrace = const Duration(seconds: 3),
   }) : _store = store ?? NativeAppStoreClient(),
        _supported =
            supportsStore ??
            (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS);
   final AccountRepository account;
+
+  /// How long to wait after `restorePurchases` returns for restored
+  /// transactions. With nothing to restore StoreKit sends none at all.
+  final Duration restoreGrace;
   final AppStoreClient _store;
   final bool _supported;
   StreamSubscription<List<PurchaseDetails>>? _listener;
@@ -60,6 +65,7 @@ class AppStoreBillingGateway extends PlusBillingGateway {
   Future<void>? _configuration;
   Completer<void>? _purchase;
   Completer<void>? _restore;
+  bool _restoreActivity = false;
   String? _requestedProduct;
   bool _ready = false;
   bool _configured = false;
@@ -104,6 +110,10 @@ class AppStoreBillingGateway extends PlusBillingGateway {
   }
 
   void _queue(List<PurchaseDetails> updates) {
+    if (_restore != null &&
+        updates.any((p) => p.status == PurchaseStatus.restored)) {
+      _restoreActivity = true;
+    }
     _updates = _updates
         .then((_) async {
           await _configuration;
@@ -117,14 +127,27 @@ class AppStoreBillingGateway extends PlusBillingGateway {
     if (_restore?.isCompleted == false) _restore!.completeError(error);
   }
 
+  /// An unfinished transaction stays in the StoreKit queue, and the next
+  /// purchase of that product fails with `storekit_duplicate_product_object`.
+  Future<void> _finish(PurchaseDetails purchase) async {
+    if (!purchase.pendingCompletePurchase) return;
+    try {
+      await _store.complete(purchase);
+    } catch (error) {
+      debugPrint('Could not finish App Store transaction: $error');
+    }
+  }
+
   Future<void> _handle(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
       if (purchase.status == PurchaseStatus.pending) continue;
       if (purchase.status == PurchaseStatus.canceled) {
+        await _finish(purchase);
         _fail(const PlusPurchaseCancelled());
         continue;
       }
       if (purchase.status == PurchaseStatus.error) {
+        await _finish(purchase);
         _fail(StateError('App Store purchase failed'));
         continue;
       }
@@ -143,7 +166,12 @@ class AppStoreBillingGateway extends PlusBillingGateway {
         _pending[id] = purchase;
         continue;
       }
-      if (!_ids.contains(purchase.productID)) continue;
+      if (!_ids.contains(purchase.productID)) {
+        // Not a Waybi Plus product: nothing to unlock, but never leave it
+        // blocking the queue.
+        await _finish(purchase);
+        continue;
+      }
       if (!_processing.add(id)) continue;
       _pending.remove(id);
       try {
@@ -179,8 +207,7 @@ class AppStoreBillingGateway extends PlusBillingGateway {
     _products.clear();
     final config = await _readConfiguration();
     _ready = config['ready'] == true;
-    final annual =
-        config['annual'] as String? ?? 'co.waybi.ios.plus.annual';
+    final annual = config['annual'] as String? ?? 'co.waybi.ios.plus.annual';
     if (!_supported || !_ready || !await _store.available()) {
       return PlusOffering(
         available: false,
@@ -280,11 +307,18 @@ class AppStoreBillingGateway extends PlusBillingGateway {
     }
     final completion = Completer<void>();
     _restore = completion;
+    _restoreActivity = false;
     try {
-      await Future.wait<void>([
-        completion.future.timeout(const Duration(minutes: 2)),
-        _store.restore(account.profile!.id),
-      ], eagerError: true);
+      await _store.restore(account.profile!.id);
+      // Restored transactions arrive on the purchase stream after restore()
+      // returns. Nothing to restore means no events: finish promptly instead
+      // of spinning until a two-minute timeout reports a failure.
+      final settled = await Future.any<bool>([
+        completion.future.then((_) => true),
+        Future<bool>.delayed(restoreGrace, () => false),
+      ]);
+      if (!settled && !_restoreActivity) return;
+      await completion.future.timeout(const Duration(minutes: 2));
     } finally {
       _restore = null;
     }

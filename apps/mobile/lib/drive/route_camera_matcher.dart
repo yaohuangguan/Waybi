@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
+import '../domain/route_geometry.dart';
 import '../domain/route_option.dart';
 import '../domain/safety_camera.dart';
 
@@ -24,11 +25,29 @@ class RouteCameraMatch {
     required this.alongMeters,
     required this.offsetMeters,
     required this.highConfidence,
+    this.pass = 0,
   });
   final SafetyCamera camera;
   final double alongMeters;
   final double offsetMeters;
   final bool highConfidence;
+
+  /// 0 for the first time the route passes this camera, 1 for the second…
+  final int pass;
+
+  /// Identity of this pass for alert de-duplication. The first pass keeps the
+  /// camera id, so a reroute before the camera does not announce it again.
+  String get alertKey => pass == 0 ? camera.id : '${camera.id}#${pass + 1}';
+
+  RouteCameraMatch withPass(int value) => value == pass
+      ? this
+      : RouteCameraMatch(
+          camera: camera,
+          alongMeters: alongMeters,
+          offsetMeters: offsetMeters,
+          highConfidence: highConfidence,
+          pass: value,
+        );
 }
 
 /// A narrow route corridor limits alerts from adjacent roads. Only
@@ -45,25 +64,28 @@ class RouteCameraMatcher {
     double? headingDegrees,
   }) {
     if (route.length < 2) return null;
+    // Share one cumulative-distance array per route list instead of
+    // re-measuring every segment with haversine on each projection.
+    final cumulative = cumulativeMeters ?? RouteGeometry.of(route).cumulative;
     RouteProjection? best;
-    var travelled = 0.0;
     var bestScore = double.infinity;
-    var firstSegment = 0;
-    if (cumulativeMeters != null) {
-      var low = 0, high = cumulativeMeters.length - 1;
-      while (low < high) {
-        final middle = (low + high) ~/ 2;
-        if (cumulativeMeters[middle] < minAlongMeters) {
-          low = middle + 1;
-        } else {
-          high = middle;
-        }
+    var low = 0, high = cumulative.length - 1;
+    while (low < high) {
+      final middle = (low + high) ~/ 2;
+      if (cumulative[middle] < minAlongMeters) {
+        low = middle + 1;
+      } else {
+        high = middle;
       }
-      firstSegment = math.max(0, low - 1);
     }
+    final firstSegment = math.max(0, low - 1);
     for (var index = firstSegment; index < route.length - 1; index++) {
-      if (cumulativeMeters != null) travelled = cumulativeMeters[index];
+      final travelled = cumulative[index];
       if (travelled > maxAlongMeters) break;
+      final segmentLength = cumulative[index + 1] - travelled;
+      if (segmentLength <= 0 || travelled + segmentLength < minAlongMeters) {
+        continue;
+      }
       final start = route[index];
       final end = route[index + 1];
       final latitudeRadians = (start.latitude + end.latitude) * math.pi / 360;
@@ -73,20 +95,6 @@ class RouteCameraMatcher {
       final y = (point.latitude - start.latitude) * metresPerLatitude;
       final dx = (end.longitude - start.longitude) * metresPerLongitude;
       final dy = (end.latitude - start.latitude) * metresPerLatitude;
-      final segmentLength = cumulativeMeters != null
-          ? cumulativeMeters[index + 1] - travelled
-          : distanceMeters(
-              start.latitude,
-              start.longitude,
-              end.latitude,
-              end.longitude,
-            );
-      if (segmentLength <= 0 ||
-          travelled + segmentLength < minAlongMeters ||
-          travelled > maxAlongMeters) {
-        travelled += segmentLength;
-        continue;
-      }
       final lengthSquared = dx * dx + dy * dy;
       final minFraction = ((minAlongMeters - travelled) / segmentLength).clamp(
         0.0,
@@ -99,10 +107,16 @@ class RouteCameraMatcher {
       final fraction = lengthSquared == 0
           ? 0.0
           : ((x * dx + y * dy) / lengthSquared).clamp(minFraction, maxFraction);
-      final offset = math.sqrt(
-        math.pow(x - fraction * dx, 2) + math.pow(y - fraction * dy, 2),
-      );
+      final offsetX = x - fraction * dx, offsetY = y - fraction * dy;
+      final offset = math.sqrt(offsetX * offsetX + offsetY * offsetY);
       final along = travelled + segmentLength * fraction;
+      // The heading penalty is never negative, so a farther segment cannot win.
+      // Skipping the bearing trigonometry keeps whole-route scans cheap.
+      if (offset >= bestScore ||
+          along < minAlongMeters ||
+          along > maxAlongMeters) {
+        continue;
+      }
       final bearing = bearingDegrees(
         start.latitude,
         start.longitude,
@@ -114,9 +128,7 @@ class RouteCameraMatcher {
           (headingDegrees == null
               ? 0
               : angleDifference(headingDegrees, bearing) / 180 * 25);
-      if (along >= minAlongMeters &&
-          along <= maxAlongMeters &&
-          score < bestScore) {
+      if (score < bestScore) {
         bestScore = score;
         best = RouteProjection(
           alongMeters: travelled + segmentLength * fraction,
@@ -128,72 +140,121 @@ class RouteCameraMatcher {
           ),
         );
       }
-      travelled += segmentLength;
     }
     return best;
   }
 
   List<RouteCameraMatch> match(RouteOption route, List<SafetyCamera> cameras) {
     if (route.points.length < 2 || cameras.isEmpty) return const [];
-    var geometryMeters = 0.0;
-    for (var i = 1; i < route.points.length; i++) {
-      geometryMeters += distanceMeters(
-        route.points[i - 1].latitude,
-        route.points[i - 1].longitude,
-        route.points[i].latitude,
-        route.points[i].longitude,
-      );
-    }
+    final geometry = RouteGeometry.of(route.points);
     final scale = route.distanceMeters > 0
-        ? geometryMeters / route.distanceMeters
+        ? geometry.totalMeters / route.distanceMeters
         : 1.0;
+    final positions = routeStepPositions(route, geometry);
     final stepPositions = [
-      for (final step in route.steps)
+      for (var i = 0; i < route.steps.length; i++)
         (
-          road: step.roadName.isNotEmpty ? step.roadName : step.instruction,
-          begin: step.alongRouteMeters != null
-              ? step.alongRouteMeters! * scale
-              : project(step.location, route.points)?.alongMeters,
-          length: step.distanceMeters * scale,
+          road: route.steps[i].roadName.isNotEmpty
+              ? route.steps[i].roadName
+              : route.steps[i].instruction,
+          begin: positions[i],
+          length: route.steps[i].distanceMeters * scale,
         ),
     ];
+    var south = 90.0, north = -90.0, west = 180.0, east = -180.0;
+    for (final point in route.points) {
+      south = math.min(south, point.latitude);
+      north = math.max(north, point.latitude);
+      west = math.min(west, point.longitude);
+      east = math.max(east, point.longitude);
+    }
+    // ~65 m corridor plus margin; a camera outside the route box cannot match.
+    const margin = .002;
+    final longitudeMargin =
+        margin /
+        math.max(
+          .2,
+          math.cos(math.max(south.abs(), north.abs()) * math.pi / 180),
+        );
     final matches = <RouteCameraMatch>[];
     for (final camera in cameras) {
-      final projection = project(
-        GeoPoint(camera.latitude, camera.longitude),
-        route.points,
-      );
-      if (projection == null ||
-          !_directionMatches(camera.location, projection.bearingDegrees)) {
+      if (camera.latitude < south - margin ||
+          camera.latitude > north + margin ||
+          camera.longitude < west - longitudeMargin ||
+          camera.longitude > east + longitudeMargin) {
         continue;
       }
-      final sameRoad = stepPositions.any(
-        (step) =>
-            step.begin != null &&
-            projection.alongMeters >= step.begin! - 50 &&
-            projection.alongMeters <= step.begin! + step.length + 50 &&
-            _roadMatches(camera.location, step.road),
-      );
-      final isRedLight = camera.type.toLowerCase().contains('red light');
-      final maxOffset = sameRoad
-          ? 65.0
-          : isRedLight
-          ? 18.0
-          : 28.0;
-      if (projection.offsetMeters > maxOffset) continue;
-      matches.add(
-        RouteCameraMatch(
-          camera: camera,
-          alongMeters: projection.alongMeters,
-          offsetMeters: projection.offsetMeters,
-          highConfidence:
-              projection.offsetMeters <= 18 ||
-              (sameRoad && projection.offsetMeters <= 40),
-        ),
-      );
+      final point = GeoPoint(camera.latitude, camera.longitude);
+      for (final projection in _passes(point, geometry)) {
+        if (!_directionMatches(camera.location, projection.bearingDegrees)) {
+          continue;
+        }
+        final sameRoad = stepPositions.any(
+          (step) =>
+              projection.alongMeters >= step.begin - 50 &&
+              projection.alongMeters <= step.begin + step.length + 50 &&
+              _roadMatches(camera.location, step.road),
+        );
+        final isRedLight = camera.type.toLowerCase().contains('red light');
+        final maxOffset = sameRoad
+            ? 65.0
+            : isRedLight
+            ? 18.0
+            : 28.0;
+        if (projection.offsetMeters > maxOffset) continue;
+        matches.add(
+          RouteCameraMatch(
+            camera: camera,
+            alongMeters: projection.alongMeters,
+            offsetMeters: projection.offsetMeters,
+            highConfidence:
+                projection.offsetMeters <= 18 ||
+                (sameRoad && projection.offsetMeters <= 40),
+          ),
+        );
+      }
     }
     matches.sort((a, b) => a.alongMeters.compareTo(b.alongMeters));
-    return matches;
+    return [
+      for (final match in matches)
+        match.withPass(
+          matches
+              .where(
+                (other) =>
+                    other.camera.id == match.camera.id &&
+                    other.alongMeters < match.alongMeters,
+              )
+              .length,
+        ),
+    ];
+  }
+
+  /// Every separate pass of the route by [point] (≥150 m apart along the
+  /// route), nearest first. An out-and-back passes the same camera twice.
+  List<RouteProjection> _passes(GeoPoint point, RouteGeometry geometry) {
+    const separation = 150.0, corridor = 65.0;
+    final passes = <RouteProjection>[];
+    final windows = <(double, double)>[(0, double.infinity)];
+    while (windows.isNotEmpty && passes.length < 4) {
+      final (from, to) = windows.removeLast();
+      if (to - from <= 0) continue;
+      final best = geometry.project(
+        point,
+        minAlongMeters: from,
+        maxAlongMeters: to,
+      );
+      if (best == null || best.offsetMeters > corridor) continue;
+      // A window edge is not a pass: the road simply continues away from it.
+      final atEdge =
+          (from > 0 && best.alongMeters <= from + 1) ||
+          (to.isFinite && best.alongMeters >= to - 1);
+      if (!atEdge) passes.add(best);
+      windows
+        ..add((from, best.alongMeters - separation))
+        ..add((best.alongMeters + separation, to));
+    }
+    passes.sort((a, b) => a.offsetMeters.compareTo(b.offsetMeters));
+    return passes;
   }
 
   RouteCameraMatch? upcoming(

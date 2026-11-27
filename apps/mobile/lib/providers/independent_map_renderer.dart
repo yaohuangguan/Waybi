@@ -16,6 +16,7 @@ import '../domain/road_event.dart';
 import '../domain/transit_lane.dart';
 import '../domain/transit_lane_map.dart';
 import '../domain/transit_review_corridor.dart';
+import '../domain/route_geometry.dart';
 import '../domain/route_traffic_match.dart';
 import 'location_marker_art.dart';
 import 'road_event_marker_art.dart';
@@ -122,6 +123,15 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
   int _generation = 0;
   String? _trafficTileSignature;
   final _signatures = <String, int>{};
+
+  /// Route progress changed without the rest of the scene.
+  bool _progressDirty = false;
+
+  /// Chunk index whose filters are applied to the route layers.
+  int? _appliedHeadChunk;
+  _RouteChunks? _chunks;
+  _TrafficSpans? _trafficSpans;
+  final _pointHashes = <String, (List<GeoPoint>, int)>{};
   final _pointers = <int, Offset>{};
   bool _gestureReported = false;
   EdgeInsets get _padding => _placePadding ?? widget.contentPadding;
@@ -152,6 +162,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     _trafficTileSignature = null;
     _signatures.clear();
     _sceneDirty = true;
+    _appliedHeadChunk = null;
     _appliedPadding = null;
     _style = widget.styleLoader(
       dark: _dark!,
@@ -196,9 +207,13 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         !listEquals(oldWidget.trafficSegments, widget.trafficSegments) ||
         !listEquals(oldWidget.explorePlaces, widget.explorePlaces) ||
         oldWidget.selectedPlace != widget.selectedPlace ||
-        !_sameRoutes(oldWidget.routePaths, widget.routePaths) ||
+        _routeChange(oldWidget.routePaths, widget.routePaths) ==
+            _RouteChange.scene ||
         oldWidget.trafficTileOverlay != widget.trafficTileOverlay ||
         _trafficMinute != DateTime.now().millisecondsSinceEpoch ~/ 60000;
+    _progressDirty |=
+        _routeChange(oldWidget.routePaths, widget.routePaths) !=
+        _RouteChange.none;
     _queueSync();
     if (oldWidget.contentPadding != widget.contentPadding) {
       unawaited(_updatePadding());
@@ -402,6 +417,8 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         'waybi-transit-lanes',
         'waybi-route-traffic',
         'waybi-route',
+        'waybi-route-head',
+        'waybi-route-traffic-head',
         'waybi-road-events',
         'waybi-pins',
         'waybi-driver',
@@ -420,19 +437,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             lineCap: 'round',
             lineJoin: 'round',
           ),
-          filter: [
-            'all',
-            [
-              '==',
-              ['get', 'active'],
-              active,
-            ],
-            [
-              '!=',
-              ['get', 'traversed'],
-              true,
-            ],
-          ],
+          filter: active ? _activeFilter(-1) : _alternativeFilter,
           belowLayerId: overlayAnchor,
           enableInteraction: false,
         );
@@ -446,40 +451,60 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
             lineCap: 'round',
             lineJoin: 'round',
           ),
-          filter: [
-            'all',
-            [
-              '==',
-              ['get', 'active'],
-              active,
-            ],
-            [
-              '!=',
-              ['get', 'traversed'],
-              true,
-            ],
-          ],
+          filter: active ? _activeFilter(-1) : _alternativeFilter,
           belowLayerId: overlayAnchor,
           enableInteraction: false,
         );
       }
+      // Opaque, pre-blended greys: the driven part is drawn in pieces (route
+      // chunks plus the piece at the car), and translucent overlaps would
+      // show as dots at every joint.
       for (final casing in [true, false]) {
         await c.addLineLayer(
           'waybi-route',
           casing ? 'waybi-traversed-edge' : 'waybi-traversed-line',
           ml.LineLayerProperties(
-            lineColor: casing ? '#707A83' : '#AAB2BA',
+            lineColor: casing ? '#8A9198' : '#BBC1C7',
             lineWidth: casing ? 8 : 5.5,
-            lineOpacity: .8,
             lineCap: 'round',
             lineJoin: 'round',
           ),
-          filter: [
-            '==',
-            ['get', 'traversed'],
-            true,
-          ],
+          filter: _traversedFilter(-1),
           belowLayerId: 'waybi-route-edge',
+          enableInteraction: false,
+        );
+      }
+      // The route piece at the car (and a Just Drive trail's live end): a
+      // few points re-sent per update instead of the whole route.
+      for (final (id, below, color, width, filter) in [
+        (
+          'waybi-head-traversed-edge',
+          'waybi-traversed-line',
+          '#8A9198',
+          8.0,
+          _headTraversedFilter,
+        ),
+        (
+          'waybi-head-traversed-line',
+          'waybi-route-edge',
+          '#BBC1C7',
+          5.5,
+          _headTraversedFilter,
+        ),
+        ('waybi-head-edge', 'waybi-route-line', '#486B29', 10.0, _headFilter),
+        ('waybi-head-line', overlayAnchor, '#A8D86A', 7.0, _headFilter),
+      ]) {
+        await c.addLineLayer(
+          'waybi-route-head',
+          id,
+          ml.LineLayerProperties(
+            lineColor: color,
+            lineWidth: width,
+            lineCap: 'round',
+            lineJoin: 'round',
+          ),
+          filter: filter,
+          belowLayerId: below,
           enableInteraction: false,
         );
       }
@@ -562,29 +587,35 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
       // official traffic sections that actually align with this route are drawn,
       // at exactly the route width, so there is one visual path rather than a
       // competing traffic ribbon beside it.
-      await c.addLineLayer(
-        'waybi-route-traffic',
-        'waybi-route-traffic-flow',
-        ml.LineLayerProperties(
-          lineColor: [
-            'match',
-            ['get', 'level'],
-            'free',
-            '#36B85A',
-            'moderate',
-            '#F2A900',
-            'heavy',
-            '#D93025',
-            '#A8D86A',
-          ],
-          lineWidth: 7,
-          lineOpacity: .98,
-          lineCap: 'round',
-          lineJoin: 'round',
-        ),
-        belowLayerId: overlayAnchor,
-        enableInteraction: false,
-      );
+      for (final (source, id) in [
+        ('waybi-route-traffic', 'waybi-route-traffic-flow'),
+        // Traffic in the route piece at the car, clipped there each update.
+        ('waybi-route-traffic-head', 'waybi-route-traffic-head-flow'),
+      ]) {
+        await c.addLineLayer(
+          source,
+          id,
+          ml.LineLayerProperties(
+            lineColor: [
+              'match',
+              ['get', 'level'],
+              'free',
+              '#36B85A',
+              'moderate',
+              '#F2A900',
+              'heavy',
+              '#D93025',
+              '#A8D86A',
+            ],
+            lineWidth: 7,
+            lineOpacity: .98,
+            lineCap: 'round',
+            lineJoin: 'round',
+          ),
+          belowLayerId: overlayAnchor,
+          enableInteraction: false,
+        );
+      }
       await c.addCircleLayer(
         'waybi-pins',
         'waybi-pins-dot',
@@ -853,18 +884,302 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     if (_ready && !_syncing) unawaited(_sync());
   }
 
-  bool _sameRoutes(List<MapRoutePath> a, List<MapRoutePath> b) {
-    if (a.length != b.length) return false;
+  static const _chunkSentinel = 1000000000;
+
+  static const _alternativeFilter = [
+    'all',
+    [
+      '==',
+      ['get', 'active'],
+      false,
+    ],
+    [
+      '!=',
+      ['get', 'traversed'],
+      true,
+    ],
+  ];
+
+  /// Active features, minus route chunks up to and including [head].
+  static List<Object> _activeFilter(int head) => [
+    'all',
+    [
+      '==',
+      ['get', 'active'],
+      true,
+    ],
+    [
+      '!=',
+      ['get', 'traversed'],
+      true,
+    ],
+    [
+      '>',
+      [
+        'coalesce',
+        ['get', 'chunk'],
+        _chunkSentinel,
+      ],
+      head,
+    ],
+  ];
+
+  /// Traversed features, plus route chunks before [head].
+  static List<Object> _traversedFilter(int head) => [
+    'any',
+    [
+      '==',
+      ['get', 'traversed'],
+      true,
+    ],
+    [
+      '<',
+      [
+        'coalesce',
+        ['get', 'chunk'],
+        _chunkSentinel,
+      ],
+      head,
+    ],
+  ];
+
+  static const _headTraversedFilter = [
+    '==',
+    ['get', 'traversed'],
+    true,
+  ];
+  static const _headFilter = [
+    'all',
+    [
+      '==',
+      ['get', 'active'],
+      true,
+    ],
+    [
+      '!=',
+      ['get', 'traversed'],
+      true,
+    ],
+  ];
+
+  MapRoutePath? get _activeRoute => widget.routePaths
+      .where((route) => route.active && !route.trail)
+      .firstOrNull;
+
+  /// What changed between two route lists, without comparing points.
+  _RouteChange _routeChange(List<MapRoutePath> a, List<MapRoutePath> b) {
+    if (a.length != b.length) return _RouteChange.scene;
+    var change = _RouteChange.none;
     for (var i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id ||
-          a[i].active != b[i].active ||
-          a[i].traversed != b[i].traversed ||
-          a[i].trail != b[i].trail ||
-          !identical(a[i].points, b[i].points)) {
-        return false;
+      final x = a[i], y = b[i];
+      if (x.id != y.id ||
+          x.active != y.active ||
+          x.traversed != y.traversed ||
+          x.trail != y.trail ||
+          x.live != y.live ||
+          (x.progressMeters == null) != (y.progressMeters == null)) {
+        return _RouteChange.scene;
       }
+      if (!x.sameGeometry(y)) {
+        if (!x.live) return _RouteChange.scene;
+        change = _RouteChange.progress;
+      }
+      if (x.progressMeters != y.progressMeters) change = _RouteChange.progress;
     }
-    return true;
+    return change;
+  }
+
+  /// O(1) identity for a path's geometry; hashes points only for a new list.
+  int _routeKey(MapRoutePath route) {
+    final cached = _pointHashes[route.id];
+    final geometry =
+        route.revision ??
+        (cached != null && identical(cached.$1, route.points)
+            ? cached.$2
+            : (_pointHashes[route.id] = (
+                route.points,
+                Object.hashAll(route.points),
+              )).$2);
+    return Object.hash(
+      route.id,
+      route.active,
+      route.traversed,
+      route.trail,
+      route.progressMeters != null,
+      geometry,
+    );
+  }
+
+  Map<String, dynamic> _lineFeature(
+    String id,
+    List<GeoPoint> points,
+    Map<String, dynamic> properties,
+  ) => {
+    'type': 'Feature',
+    'id': id,
+    'geometry': {
+      'type': 'LineString',
+      'coordinates': [
+        for (final p in points) [p.longitude, p.latitude],
+      ],
+    },
+    'properties': properties,
+  };
+
+  _RouteChunks _chunksFor(MapRoutePath route) {
+    final key = _routeKey(route);
+    final cached = _chunks;
+    if (cached != null && cached.key == key) return cached;
+    return _chunks = _RouteChunks(key, RouteGeometry.of(route.points));
+  }
+
+  /// The route as fixed-length pieces, sent once per route. Progress only
+  /// changes which pieces the traversed and active filters select.
+  List<Map<String, dynamic>> _chunkFeatures(MapRoutePath route) {
+    final chunks = _chunksFor(route);
+    return [
+      for (var i = 0; i < chunks.count; i++)
+        if (chunks.slice(i) case final points when points.length > 1)
+          _lineFeature('${route.id}:chunk:$i', points, {
+            'active': true,
+            'traversed': false,
+            'chunk': i,
+          }),
+    ];
+  }
+
+  Future<void> _syncRouteProgress() async {
+    final c = _controller!;
+    final route = _activeRoute;
+    final progress = route?.progressMeters;
+    final chunks = route != null && progress != null ? _chunksFor(route) : null;
+    final head = chunks == null ? -1 : chunks.indexAt(progress!);
+    if (_appliedHeadChunk != head) {
+      for (final id in ['waybi-route-edge', 'waybi-route-line']) {
+        await c.setFilter(id, _activeFilter(head));
+      }
+      for (final id in ['waybi-traversed-edge', 'waybi-traversed-line']) {
+        await c.setFilter(id, _traversedFilter(head));
+      }
+      _appliedHeadChunk = head;
+    }
+    final live = widget.routePaths
+        .where((path) => path.live)
+        .toList(growable: false);
+    await _setSource(
+      'waybi-route-head',
+      Object.hash(
+        route == null || chunks == null ? null : _routeKey(route),
+        progress,
+        Object.hashAll(
+          live.map(
+            (path) => Object.hash(
+              path.id,
+              path.revision,
+              identityHashCode(path.points),
+            ),
+          ),
+        ),
+      ),
+      () => _collection([
+        if (route != null && chunks != null) ...[
+          if (chunks.geometry.slice(chunks.start(head), progress!)
+              case final driven when driven.length > 1)
+            _lineFeature('${route.id}:head:driven', driven, {
+              'active': true,
+              'traversed': true,
+            }),
+          if (chunks.geometry.slice(progress, chunks.end(head)) case final ahead
+              when ahead.length > 1)
+            _lineFeature('${route.id}:head', ahead, {
+              'active': true,
+              'traversed': false,
+            }),
+        ],
+        for (final path in live)
+          if (path.points.length > 1)
+            _lineFeature(path.id, path.points, {
+              'active': path.active,
+              'traversed': path.traversed,
+            }),
+      ]),
+    );
+    await _syncRouteTraffic(
+      route,
+      progress ?? 0,
+      chunks == null ? 0 : chunks.end(head),
+      head,
+    );
+  }
+
+  /// Traffic is matched to a route once per (route, traffic snapshot); each
+  /// update only clips the already-matched spans at the car.
+  Future<void> _syncRouteTraffic(
+    MapRoutePath? route,
+    double progress,
+    double headEnd,
+    int head,
+  ) async {
+    final segments = widget.navigating && widget.layers.traffic && route != null
+        ? widget.trafficSegments
+        : const <TrafficFlowSegment>[];
+    final routeKey = route == null ? 0 : _routeKey(route);
+    var spans = _trafficSpans;
+    if (spans == null ||
+        spans.routeKey != routeKey ||
+        !identical(spans.segments, segments)) {
+      spans = _trafficSpans = _TrafficSpans(
+        routeKey,
+        segments,
+        route == null ? const [] : routeTrafficSpans(segments, route.points),
+      );
+    }
+    final geometry = route == null ? null : RouteGeometry.of(route.points);
+    final level = widget.trafficFresh;
+    Map<String, dynamic> feature(
+      RouteTrafficSpan span,
+      double from,
+      double to,
+    ) => _lineFeature('route-${span.segment.id}', geometry!.slice(from, to), {
+      'level': level ? span.segment.level.name : 'unknown',
+    });
+    // Ahead of the piece at the car: re-sent only when that piece changes.
+    final ahead = spans.spans
+        .where((span) => span.endMeters > headEnd)
+        .toList(growable: false);
+    await _setSource(
+      'waybi-route-traffic',
+      Object.hash(identityHashCode(spans), level, headEnd),
+      () => _collection([
+        for (final span in ahead)
+          if (math.max(span.startMeters, headEnd) < span.endMeters)
+            feature(span, math.max(span.startMeters, headEnd), span.endMeters),
+      ]),
+    );
+    final near = spans.spans
+        .where(
+          (span) => span.startMeters < headEnd && span.endMeters > progress,
+        )
+        .toList(growable: false);
+    await _setSource(
+      'waybi-route-traffic-head',
+      Object.hash(
+        identityHashCode(spans),
+        level,
+        head,
+        near.isEmpty ? null : progress,
+      ),
+      () => _collection([
+        for (final span in near)
+          if (math.max(span.startMeters, progress) <
+              math.min(span.endMeters, headEnd))
+            feature(
+              span,
+              math.max(span.startMeters, progress),
+              math.min(span.endMeters, headEnd),
+            ),
+      ]),
+    );
   }
 
   Future<void> _sync() async {
@@ -873,6 +1188,7 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
     try {
       while (mounted && _ready && _dirty && generation == _generation) {
         _dirty = false;
+        final scene = _sceneDirty;
         if (_sceneDirty) {
           _sceneDirty = false;
           _trafficMinute = DateTime.now().millisecondsSinceEpoch ~/ 60000;
@@ -883,57 +1199,39 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
           final reviewCorridors = widget.layers.transitLanes
               ? widget.transitReviewCorridors
               : const <TransitReviewCorridor>[];
+          final laneTime = DateTime.now();
           await _setSource(
             'waybi-transit-lanes',
             Object.hash(
               widget.layers.transitLanes,
-              _trafficMinute,
               Object.hashAll(transit),
               Object.hashAll(reviewCorridors),
+              // Lane colours follow their schedules; only a status change
+              // needs the 5k-point source again.
+              Object.hashAll(
+                transit.map((lane) => lane.schedule.activeAt(laneTime)),
+              ),
             ),
             () => transitLaneFeatureCollection(
               transit,
-              DateTime.now(),
+              laneTime,
               reviewCorridors,
             ),
           );
-          final activeRoute = widget.routePaths
-              .where((route) => route.active && !route.trail)
-              .firstOrNull;
+          final activeRoute = _activeRoute;
           final destinationRoute =
               activeRoute ??
               widget.routePaths.where((route) => route.traversed).lastOrNull;
-          final allTraffic = widget.layers.traffic
+          final traffic = widget.layers.traffic && !widget.navigating
               ? widget.trafficSegments
                     .where((segment) => segment.hasRoadGeometry)
-                    .toList(growable: false)
-              : const <TrafficFlowSegment>[];
-          final traffic = widget.navigating
-              ? const <TrafficFlowSegment>[]
-              : allTraffic;
-          final routeTraffic = widget.navigating && activeRoute != null
-              ? allTraffic
-                    .where(
-                      (segment) =>
-                          trafficSegmentMatchesRoute(segment, activeRoute),
-                    )
                     .toList(growable: false)
               : const <TrafficFlowSegment>[];
           final trafficHash = Object.hash(
             widget.layers.traffic,
             widget.trafficFresh,
             widget.navigating,
-            Object.hashAll(
-              traffic.map(
-                (segment) => Object.hash(
-                  segment.id,
-                  segment.level,
-                  segment.start,
-                  segment.end,
-                  Object.hashAll(segment.geometry),
-                ),
-              ),
-            ),
+            Object.hashAll(traffic),
           );
           await _setSource(
             'waybi-traffic',
@@ -961,77 +1259,21 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                 },
             ]),
           );
-          final routeTrafficHash = Object.hash(
-            widget.trafficFresh,
-            Object.hashAll(activeRoute?.points ?? const <GeoPoint>[]),
-            Object.hashAll(
-              routeTraffic.map(
-                (segment) => Object.hash(
-                  segment.id,
-                  segment.level,
-                  Object.hashAll(segment.geometry),
-                ),
-              ),
-            ),
-          );
-          await _setSource(
-            'waybi-route-traffic',
-            routeTrafficHash,
-            () => _collection([
-              for (final segment in routeTraffic)
-                if (trafficGeometryOnRoute(segment, activeRoute!).length >= 2)
-                  {
-                    'type': 'Feature',
-                    'id': 'route-${segment.id}',
-                    'geometry': {
-                      'type': 'LineString',
-                      'coordinates': [
-                        for (final p in trafficGeometryOnRoute(
-                          segment,
-                          activeRoute,
-                        ))
-                          [p.longitude, p.latitude],
-                      ],
-                    },
-                    'properties': {
-                      'level': widget.trafficFresh
-                          ? segment.level.name
-                          : 'unknown',
-                    },
-                  },
-            ]),
-          );
-          final routeHash = Object.hashAll(
-            widget.routePaths.map(
-              (route) => Object.hash(
-                route.id,
-                route.active,
-                route.traversed,
-                route.trail,
-                Object.hashAll(route.points),
-              ),
-            ),
-          );
+          final staticRoutes = widget.routePaths
+              .where((route) => !route.live)
+              .toList(growable: false);
           await _setSource(
             'waybi-route',
-            routeHash,
+            Object.hashAll(staticRoutes.map(_routeKey)),
             () => _collection([
-              for (final route in widget.routePaths)
-                if (route.points.length > 1)
-                  {
-                    'type': 'Feature',
-                    'id': route.id,
-                    'geometry': {
-                      'type': 'LineString',
-                      'coordinates': [
-                        for (final p in route.points) [p.longitude, p.latitude],
-                      ],
-                    },
-                    'properties': <String, dynamic>{
-                      'active': route.active,
-                      'traversed': route.traversed,
-                    },
-                  },
+              for (final route in staticRoutes)
+                if (route.progressMeters != null && route.active)
+                  ..._chunkFeatures(route)
+                else if (route.points.length > 1)
+                  _lineFeature(route.id, route.points, {
+                    'active': route.active,
+                    'traversed': route.traversed,
+                  }),
             ]),
           );
           final cameras = widget.cameras
@@ -1103,6 +1345,10 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
                 ),
             ]),
           );
+        }
+        if (scene || _progressDirty) {
+          _progressDirty = false;
+          await _syncRouteProgress();
         }
         final driverHash = Object.hash(
           widget.locationEnabled,
@@ -1359,4 +1605,34 @@ class _IndependentMapRendererState extends State<IndependentMapRenderer>
         ),
     ],
   );
+}
+
+enum _RouteChange { none, progress, scene }
+
+/// A route cut into fixed-length pieces (at most ~400).
+class _RouteChunks {
+  _RouteChunks(this.key, this.geometry)
+    : meters = math.max(200.0, geometry.totalMeters / 400) {
+    count = math.max(1, (geometry.totalMeters / meters).ceil());
+  }
+  final int key;
+  final RouteGeometry geometry;
+  final double meters;
+  late final int count;
+  final _slices = <int, List<GeoPoint>>{};
+
+  int indexAt(double along) =>
+      (along / meters).floor().clamp(0, count - 1).toInt();
+  double start(int index) => index * meters;
+  double end(int index) =>
+      index >= count - 1 ? geometry.totalMeters : (index + 1) * meters;
+  List<GeoPoint> slice(int index) =>
+      _slices[index] ??= geometry.slice(start(index), end(index));
+}
+
+class _TrafficSpans {
+  _TrafficSpans(this.routeKey, this.segments, this.spans);
+  final int routeKey;
+  final List<TrafficFlowSegment> segments;
+  final List<RouteTrafficSpan> spans;
 }

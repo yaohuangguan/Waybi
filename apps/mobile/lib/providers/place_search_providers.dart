@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:http/http.dart' as http;
 
+import '../data/http_guard.dart';
 import '../data/api_config.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
@@ -19,6 +20,9 @@ class WorkerSearchProvider implements CachedSearchProvider, ExploreProvider {
   final bool mapCompatible;
 
   final http.Client _client;
+
+  /// One back-off for /api/suggest and /api/search (one server bucket).
+  final RateLimitGate _gate = RateLimitGate();
   final _searchCache = <String, (DateTime, List<PlaceCandidate>)>{};
   final _searchPending = <String, Future<List<PlaceCandidate>>>{};
 
@@ -120,7 +124,11 @@ class WorkerSearchProvider implements CachedSearchProvider, ExploreProvider {
               '${proximity.longitude.toStringAsFixed(3)},${proximity.latitude.toStringAsFixed(3)}',
       },
     );
+    // While the Worker's Retry-After lasts, fail fast: typing must not keep
+    // sending requests to a rate-limited search.
+    _gate.check();
     var response = await _client.get(uri).timeout(const Duration(seconds: 4));
+    _gate.observe(response);
     var data = response.statusCode == 200
         ? jsonDecode(response.body) as List<dynamic>
         : const <dynamic>[];
@@ -130,6 +138,8 @@ class WorkerSearchProvider implements CachedSearchProvider, ExploreProvider {
       response = await _client
           .get(fallbackUri)
           .timeout(const Duration(seconds: 4));
+      // 429, or 503 SEARCH_BUSY with Retry-After from the Nominatim queue.
+      _gate.observe(response);
       if (response.statusCode == 200) {
         data = jsonDecode(response.body) as List<dynamic>;
       }
@@ -223,6 +233,9 @@ class IndependentSearchProvider
     }
   }
   final http.Client _client;
+
+  /// Back-off for the Worker suggest/search/reverse endpoints.
+  final RateLimitGate _workerGate = RateLimitGate();
   static const _base = String.fromEnvironment(
     'KIWI_PHOTON_URL',
     defaultValue: 'https://photon.komoot.io',
@@ -410,7 +423,10 @@ class IndependentSearchProvider
     GeoPoint? proximity,
     String language,
   ) async {
-    if (!_streetAddressPattern.hasMatch(query.trim())) return const [];
+    if (!_streetAddressPattern.hasMatch(query.trim()) ||
+        _workerGate.remaining != null) {
+      return const [];
+    }
     try {
       final params = {
         'q': query.trim(),
@@ -430,6 +446,7 @@ class IndependentSearchProvider
             headers: headers,
           )
           .timeout(const Duration(seconds: 9));
+      _workerGate.observe(response);
       var decoded = response.statusCode == 200
           ? jsonDecode(response.body) as List<dynamic>
           : const <dynamic>[];
@@ -443,6 +460,7 @@ class IndependentSearchProvider
               headers: headers,
             )
             .timeout(const Duration(seconds: 9));
+        _workerGate.observe(response);
         decoded = response.statusCode == 200
             ? jsonDecode(response.body) as List<dynamic>
             : const <dynamic>[];
@@ -946,6 +964,7 @@ class IndependentSearchProvider
     String preferredName = '',
   }) async {
     if (workerOnly) {
+      if (_workerGate.remaining != null) return null;
       try {
         final uri = Uri.parse('$workerBaseUrl/api/reverse').replace(
           queryParameters: {
@@ -956,6 +975,7 @@ class IndependentSearchProvider
         final response = await _client
             .get(uri)
             .timeout(const Duration(seconds: 4));
+        _workerGate.observe(response);
         if (response.statusCode != 200) return null;
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         if (data is! Map<String, dynamic>) return null;

@@ -181,7 +181,7 @@ void main() {
     expect(account.profile?.isPlus, false);
   });
 
-  test('cancelled purchase reports cancellation without unlocking or completing it', () async {
+  test('cancelled purchase reports cancellation and finishes the transaction without unlocking', () async {
     final offering = await gateway.load();
     final buying = gateway.subscribe(offering.plans.single);
     final cancelled = expectLater(
@@ -191,7 +191,11 @@ void main() {
     store.stream.add([purchase(PurchaseStatus.canceled)]);
     await cancelled;
     expect(account.transaction, isNull);
-    expect(store.completed, 0);
+    expect(
+      store.completed,
+      1,
+      reason: 'An unfinished transaction blocks the next purchase',
+    );
     expect(account.profile?.isPlus, false);
   });
 
@@ -229,4 +233,83 @@ void main() {
       expect(store.completed, 1);
     },
   );
+
+  test(
+    'failed and foreign transactions are finished without unlocking',
+    () async {
+      final offering = await gateway.load();
+      final buying = gateway.subscribe(offering.plans.single);
+      final failed = expectLater(buying, throwsStateError);
+      store.stream.add([
+        purchase(PurchaseStatus.error),
+        purchase(PurchaseStatus.purchased, id: 'co.other.product'),
+        purchase(PurchaseStatus.canceled)..pendingCompletePurchase = false,
+      ]);
+      await failed;
+      await tick();
+      expect(store.completed, 2);
+      expect(account.transaction, isNull);
+      expect(account.profile?.isPlus, false);
+    },
+  );
+
+  test('a failure to finish a transaction is not fatal', () async {
+    final throwing = ThrowingCompleteStore();
+    final failing = AppStoreBillingGateway(
+      account,
+      store: throwing,
+      supportsStore: true,
+    );
+    addTearDown(() async {
+      failing.dispose();
+      await throwing.stream.close();
+    });
+    final offering = await failing.load();
+    final buying = failing.subscribe(offering.plans.single);
+    final cancelled = expectLater(
+      buying,
+      throwsA(isA<PlusPurchaseCancelled>()),
+    );
+    throwing.stream.add([purchase(PurchaseStatus.canceled)]);
+    await cancelled;
+  });
+
+  test('restore with nothing to restore finishes promptly', () async {
+    final empty = EmptyRestoreStore();
+    final quick = AppStoreBillingGateway(
+      account,
+      store: empty,
+      supportsStore: true,
+      restoreGrace: const Duration(milliseconds: 20),
+    );
+    addTearDown(() async {
+      quick.dispose();
+      await empty.stream.close();
+    });
+    await quick.load();
+    final started = DateTime.now();
+    await quick.restore();
+    expect(
+      DateTime.now().difference(started),
+      lessThan(const Duration(seconds: 2)),
+    );
+    expect(empty.restoredUser, userId);
+    expect(account.profile?.isPlus, false);
+    // Another restore can start immediately.
+    await quick.restore();
+  });
+}
+
+class ThrowingCompleteStore extends TestStore {
+  @override
+  Future<void> complete(PurchaseDetails purchase) async {
+    throw StateError('StoreKit unavailable');
+  }
+}
+
+class EmptyRestoreStore extends TestStore {
+  @override
+  Future<void> restore(String userId) async {
+    restoredUser = userId;
+  }
 }

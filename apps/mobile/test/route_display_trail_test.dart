@@ -79,4 +79,46 @@ void main() {
     trail.add(fix(nearby, 32));
     expect(trail.paths.single.points, [a, nearby]);
   });
+  test('trail chunks freeze with stable identity and a small live end', () {
+    final trail = DriveTrail(chunkPoints: 3, maxPoints: 7);
+    var t = DateTime(2026);
+    for (var i = 0; i < 4; i++) {
+      t = t.add(const Duration(seconds: 1));
+      trail.add(
+        NavigationLocationFix(
+          point: GeoPoint(-36.85 - i * .0002, 174.76),
+          accuracyMeters: 5,
+          speedMetresPerSecond: 20,
+          timestamp: t,
+        ),
+      );
+    }
+    final first = trail.paths;
+    expect(identical(trail.paths, first), isTrue);
+    expect(first.first.live, isFalse);
+    expect(first.first.revision, isNotNull);
+    expect(first.last.live, isTrue);
+    final revision = trail.revision;
+    for (var i = 4; i < 12; i++) {
+      t = t.add(const Duration(seconds: 1));
+      trail.add(
+        NavigationLocationFix(
+          point: GeoPoint(-36.85 - i * .0002, 174.76),
+          accuracyMeters: 5,
+          speedMetresPerSecond: 20,
+          timestamp: t,
+        ),
+      );
+    }
+    expect(trail.revision, greaterThan(revision));
+    expect(trail.paths.expand((p) => p.points).length, lessThanOrEqualTo(7));
+    expect(trail.paths.first.sameGeometry(trail.paths.first), isTrue);
+    expect(
+      const MapRoutePath(
+        id: 'a',
+        points: [a],
+      ).sameGeometry(const MapRoutePath(id: 'a', points: [b])),
+      isFalse,
+    );
+  });
 }

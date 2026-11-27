@@ -2,44 +2,27 @@ import 'dart:math' as math;
 
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
+import '../domain/route_geometry.dart';
 import 'route_camera_matcher.dart';
 
 /// Tracks the local route corridor so a crossing or GPS jitter cannot jump
 /// straight to a later occurrence of the same road.
 class RouteProgressTracker {
-  RouteProgressTracker(this.points) : _cumulative = [0] {
-    for (var i = 1; i < points.length; i++) {
-      _cumulative.add(
-        _cumulative.last +
-            distanceMeters(
-              points[i - 1].latitude,
-              points[i - 1].longitude,
-              points[i].latitude,
-              points[i].longitude,
-            ),
-      );
-    }
-  }
+  RouteProgressTracker(this.points) : geometry = RouteGeometry.of(points);
   final List<GeoPoint> points;
-  final List<double> _cumulative;
-  double get totalMeters => _cumulative.last;
-  final RouteCameraMatcher _matcher = const RouteCameraMatcher();
+
+  /// Shared cumulative distances; other route consumers reuse the same array.
+  final RouteGeometry geometry;
+  double get totalMeters => geometry.totalMeters;
   RouteProjection? _previous;
   GeoPoint? _lastPoint;
-  DateTime? _lastTime;
+  DateTime? _lastTime, _firstAttemptAt;
 
-  static double geometryLength(List<GeoPoint> points) {
-    var length = 0.0;
-    for (var i = 1; i < points.length; i++) {
-      length += distanceMeters(
-        points[i - 1].latitude,
-        points[i - 1].longitude,
-        points[i].latitude,
-        points[i].longitude,
-      );
-    }
-    return length;
-  }
+  /// The last committed (on-route) progress, if any.
+  RouteProjection? get committed => _previous;
+
+  static double geometryLength(List<GeoPoint> points) =>
+      RouteGeometry.of(points).totalMeters;
 
   RouteProjection? update(
     GeoPoint point, {
@@ -75,13 +58,23 @@ class RouteProgressTracker {
                 math.max(0, elapsed) * math.max(3, speedKph / 3.6) +
                 accuracyMeters * 2,
           );
+    } else {
+      // A new route starts where the car is. Without history, a full-route
+      // search could snap 5–10 m of noise onto the return leg of an
+      // out-and-back (skipping the U-turn), and progress never moves back.
+      // Widen the window only as fast as the car could have travelled.
+      _firstAttemptAt ??= time;
+      final elapsed = math.max(
+        0,
+        time.difference(_firstAttemptAt!).inMilliseconds / 1000,
+      );
+      maxAlong =
+          150 + accuracyMeters * 2 + elapsed * math.max(3, speedKph / 3.6);
     }
-    final projected = _matcher.project(
+    final projected = geometry.project(
       point,
-      points,
       minAlongMeters: minAlong,
       maxAlongMeters: maxAlong,
-      cumulativeMeters: _cumulative,
       headingDegrees: speedKph >= 15 ? headingDegrees : null,
     );
     if (projected == null) return null;

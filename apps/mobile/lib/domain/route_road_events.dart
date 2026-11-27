@@ -1,5 +1,6 @@
 import '../drive/route_camera_matcher.dart';
 import 'geo_math.dart';
+import 'route_geometry.dart';
 import 'road_event.dart';
 import 'route_option.dart';
 
@@ -16,14 +17,8 @@ List<RoadEvent> routeClosures(
   }
   final at = now ?? DateTime.now();
   const matcher = RouteCameraMatcher();
-  final cumulative = <double>[0];
-  for (var i = 1; i < route.points.length; i++) {
-    final a = route.points[i - 1], b = route.points[i];
-    cumulative.add(
-      cumulative.last +
-          distanceMeters(a.latitude, a.longitude, b.latitude, b.longitude),
-    );
-  }
+  // Shared with progress tracking: not re-measured on every 15 s check.
+  final cumulative = RouteGeometry.of(route.points).cumulative;
   final length = cumulative.last;
   if (length <= 0) return const [];
   final west = route.points

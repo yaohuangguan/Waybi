@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 
 import '../data/api_config.dart';
+import '../data/http_guard.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_reachability.dart';
 import '../domain/route_option.dart';
@@ -22,6 +23,10 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
   final _lastRequest = <String, DateTime>{};
   final _pending = <Uri, Future<http.Response>>{};
   final http.Client _client;
+
+  /// The Worker's routing back-off (HTTP 429). Previews, place-card quick
+  /// routes and reroutes all fail fast until its Retry-After has passed.
+  final RateLimitGate _waybiGate = RateLimitGate();
   final bool useWaybiProxy;
   final String proxyBaseUrl;
 
@@ -97,6 +102,11 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     ];
   }
 
+  /// Navigation stops waiting for a reroute after 12 s; abort the HTTP
+  /// request just before that so a slow server never sees overlapping calls.
+  static const rerouteTimeout = Duration(seconds: 11);
+
+  /// Throws [RateLimitedException] when the server sheds load (HTTP 429).
   Future<RouteOption> reroute({
     required GeoPoint origin,
     required GeoPoint destination,
@@ -105,6 +115,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     required String language,
     double? headingDegrees,
     List<RouteExclusion> avoid = const [],
+    Duration timeout = rerouteTimeout,
   }) async {
     final options = await _fetchMode(
       _validatedPoints(origin, destination, stops),
@@ -113,6 +124,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
       alternatives: mode == WaybiTravelMode.drive && stops.isEmpty,
       headingDegrees: headingDegrees,
       avoid: avoid,
+      timeout: timeout,
     );
     if (options.isEmpty) throw StateError('No route from current location');
     return mode == WaybiTravelMode.drive
@@ -140,6 +152,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     bool alternatives = true,
     double? headingDegrees,
     List<RouteExclusion> avoid = const [],
+    Duration? timeout,
   }) async {
     if (useWaybiProxy) {
       return _fetchWaybiMode(
@@ -149,6 +162,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
         alternatives: alternatives,
         headingDegrees: headingDegrees,
         avoid: avoid,
+        timeout: timeout ?? const Duration(seconds: 40),
       );
     }
     if (avoid.isNotEmpty) {
@@ -190,8 +204,9 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     );
     final response = await _limitedGet(
       uri,
-      timeout: Duration(seconds: alternatives ? 10 : 8),
+      timeout: timeout ?? Duration(seconds: alternatives ? 10 : 8),
     );
+    throwIfRateLimited(response);
     if (response.statusCode != 200) {
       throw StateError(
         'Independent directions unavailable: ${response.statusCode}',
@@ -295,6 +310,7 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     required bool alternatives,
     double? headingDegrees,
     List<RouteExclusion> avoid = const [],
+    required Duration timeout,
   }) async {
     final uri = Uri.parse('$proxyBaseUrl/api/route-options').replace(
       queryParameters: {
@@ -322,9 +338,14 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
           'heading': '${headingDegrees % 360}',
       },
     );
-    final response = await _client
-        .get(uri, headers: const {'Accept': 'application/json'})
-        .timeout(const Duration(seconds: 40));
+    _waybiGate.check();
+    final response = await abortableGet(
+      _client,
+      uri,
+      headers: const {'Accept': 'application/json'},
+      timeout: timeout,
+    );
+    _waybiGate.observe(response);
     if (response.statusCode != 200) {
       throw StateError('Waybi directions unavailable: ${response.statusCode}');
     }

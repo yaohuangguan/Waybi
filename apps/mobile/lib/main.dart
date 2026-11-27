@@ -254,7 +254,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   late final DriveEngine _driveEngine = widget.driveEngine ?? DriveEngine();
   late final IndependentNavigationEngine _independentNavigation;
   final AccountRepository _account = AccountRepository();
-  late final _friendsBackup = FriendsBackupService(_account);
+  late final _friendsBackup = FriendsBackupService(
+    _account,
+    deferWhile: () => _driveEngine.active,
+  );
   late final _plusBilling = AppStoreBillingGateway(_account);
   final PlaceDetailsRepository _placeDetailsRepository =
       PlaceDetailsRepository();
@@ -949,6 +952,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _mapRefreshTimer?.cancel();
       _mapRefreshTimer = null;
       _driveEngine.stopTrafficFlowRefresh();
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      // Browsing needs no GPS in the background; Drive keeps its own feed.
+      unawaited(_browseLocationFeed?.pause());
     }
     if (state == AppLifecycleState.resumed) {
       unawaited(_friendsBackup.sync());
@@ -1782,6 +1790,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _resumeBrowseTracking() async {
+    _browseLocationFeed?.resume();
     await _startTracking();
     await _browseLocationFeed?.recover(force: true);
   }
@@ -1808,18 +1817,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         /* iOS simulator and non-iOS use GPS course. */
       },
     );
-    _browseLocationFeed = ReliableLocationFeed(
-      settings: defaultTargetPlatform == TargetPlatform.iOS
-          ? AppleSettings(
-              accuracy: LocationAccuracy.bestForNavigation,
-              distanceFilter: 0,
-              pauseLocationUpdatesAutomatically: false,
-              allowBackgroundLocationUpdates: false,
-            )
-          : const LocationSettings(
-              accuracy: LocationAccuracy.bestForNavigation,
-              distanceFilter: 0,
-            ),
+    _browseLocationFeed = ReliableLocationFeed.profile(
+      LocationFeedProfile.browse,
       onPosition: _onPosition,
       onIssue: _onBrowseLocationIssue,
     )..start();
@@ -1876,6 +1875,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         timestamp: position.timestamp,
       ),
       heading: position.heading,
+      headingAccuracy: position.headingAccuracy,
     );
     final speedMetresPerSecond = _driveEngine.active
         ? _driveEngine.speedKph / 3.6

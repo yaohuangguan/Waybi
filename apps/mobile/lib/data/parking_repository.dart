@@ -131,12 +131,18 @@ class ParkingRepository {
         properties['STREET'],
         properties['SUBURB'],
       ].where((part) => part != null && '$part'.trim().isNotEmpty).join(' ');
-      final name = [
-        properties['SHORTDESCRIPTION'],
-        properties['LONGDESCRIPTION'],
-        address,
-        'AT car park',
-      ].map((part) => '$part'.trim()).firstWhere((part) => part.isNotEmpty);
+      // ArcGIS sends JSON null for missing descriptions; never show "null".
+      final name =
+          [
+                properties['SHORTDESCRIPTION'],
+                properties['LONGDESCRIPTION'],
+                address,
+                'AT car park',
+              ]
+              .map((part) => part == null ? '' : '$part'.trim())
+              .firstWhere(
+                (part) => part.isNotEmpty && part.toLowerCase() != 'null',
+              );
       final clearance = double.tryParse(
         '${properties['CLEARANCEMETERS'] ?? ''}',
       );
@@ -173,8 +179,11 @@ class ParkingRepository {
     final nearby = places
         .map((place) {
           final location = GeoPoint(place.latitude, place.longitude);
+          // Past the daily Google budget Explore returns OpenStreetMap car
+          // parks; never label those Google or send their ids to Google.
+          final google = place.isGoogle;
           return ParkingPlace(
-            id: 'google-${place.placeId}',
+            id: google ? 'google-${place.placeId}' : place.placeId,
             name: place.name,
             address: place.address,
             location: location,
@@ -184,8 +193,8 @@ class ParkingRepository {
               location.latitude,
               location.longitude,
             ),
-            source: 'Google',
-            googlePlaceId: place.placeId,
+            source: google ? 'Google' : 'OpenStreetMap',
+            googlePlaceId: google ? place.placeId : null,
           );
         })
         .where((place) => place.distanceMeters <= 1500)

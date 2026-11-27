@@ -48,6 +48,12 @@
     "apps/mobile/lib/data/friends_backup_service.dart": {
       "minimumLinePercent": 85
     },
+    "apps/mobile/lib/data/http_guard.dart": {
+      "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/data/json_file_cache.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/data/navigation_feedback_repository.dart": {
       "minimumLinePercent": 95
     },
@@ -129,6 +135,9 @@
     "apps/mobile/lib/domain/route_conditions.dart": {
       "minimumLinePercent": 100
     },
+    "apps/mobile/lib/domain/route_geometry.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/domain/route_option.dart": {
       "minimumLinePercent": 80
     },
@@ -205,6 +214,9 @@
     "apps/mobile/lib/drive/reliable_location_feed.dart": {
       "minimumLinePercent": 85
     },
+    "apps/mobile/lib/drive/reroute_scheduler.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/drive/route_camera_matcher.dart": {
       "minimumLinePercent": 95
     },
@@ -215,6 +227,9 @@
       "minimumLinePercent": 100
     },
     "apps/mobile/lib/drive/route_progress_tracker.dart": {
+      "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/drive/speed_limit_pacer.dart": {
       "minimumLinePercent": 95
     },
     "apps/mobile/lib/drive/system_navigation.dart": {

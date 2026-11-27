@@ -93,6 +93,9 @@
     "apps/mobile/lib/data/transit_lane_repository.dart": {
       "minimumLinePercent": 75
     },
+    "apps/mobile/lib/data/voice_pack_repository.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/data/usage_telemetry_repository.dart": {
       "minimumLinePercent": 100
     },
@@ -241,6 +244,18 @@
     "apps/mobile/lib/drive/voice_clip_player.dart": {
       "minimumLinePercent": 90
     },
+    "apps/mobile/lib/drive/voice_phrases.dart": {
+      "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/drive/voice_prompts.dart": {
+      "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/drive/voice_take_session.dart": {
+      "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/drive/voice_utterance.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/drive/voice_engine.dart": {
       "minimumLinePercent": 95
     },
@@ -384,6 +399,9 @@
     "apps/mobile/lib/widgets/profile_page.dart": {
       "minimumLinePercent": 65
     },
+    "apps/mobile/lib/widgets/custom_voice_guided_page.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/widgets/custom_voice_page.dart": {
       "minimumLinePercent": 90
     },
@@ -413,6 +431,12 @@
     },
     "apps/mobile/lib/widgets/trips_page.dart": {
       "minimumLinePercent": 75
+    },
+    "apps/mobile/lib/widgets/voice_pack_import_page.dart": {
+      "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/widgets/voice_pack_share_page.dart": {
+      "minimumLinePercent": 95
     },
     "apps/mobile/lib/widgets/waybi_bird.dart": {
       "minimumLinePercent": 100

@@ -138,7 +138,7 @@ void main() {
         roadName: 'Symonds Street',
       );
       await flush();
-      expect(tts.spoken.single, '前方 150 米有${entry.value}，位于Symonds Street。');
+      expect(tts.spoken.single, '150 米后有${entry.value}，位于 Symonds Street。');
       tts.completeSpeech();
       expect(await alert, true);
       await voice.dispose();
@@ -168,7 +168,10 @@ void main() {
     tts.completeSpeech();
     await next;
     await flush();
-    expect(tts.spoken.last, contains('Fixed speed camera'));
+    expect(
+      tts.spoken.last,
+      'In 300 metres, speed camera on Queen Street.',
+    );
     tts.completeSpeech();
     expect(await camera, true);
     await voice.dispose();
@@ -294,7 +297,10 @@ void main() {
     tts.completeSpeech();
     await turn;
     await flush();
-    expect(tts.spoken.last, contains('Red-light + speed camera in 476 metres'));
+    expect(
+      tts.spoken.last,
+      'In 476 metres, red-light + speed camera on Green Lane East.',
+    );
     tts.completeSpeech();
     expect(await alert, true);
     final unknown = voice.cameraAlert(
@@ -303,7 +309,7 @@ void main() {
       roadName: '',
     );
     await flush();
-    expect(tts.spoken.last, 'Safety camera in 300 metres.');
+    expect(tts.spoken.last, 'In 300 metres, safety camera.');
     tts.completeSpeech();
     await unknown;
     await voice.dispose();

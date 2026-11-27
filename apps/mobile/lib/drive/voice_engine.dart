@@ -4,9 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
-import '../domain/map_layer_settings.dart';
 import 'custom_voice.dart';
 import 'voice_clip_player.dart';
+import 'voice_prompts.dart';
 
 /// Order of spoken prompts. Within one priority, prompts play first-in,
 /// first-out; a higher priority always plays before a lower one.
@@ -23,14 +23,17 @@ enum VoicePriority {
 
 class _Utterance {
   _Utterance(
-    this.message, {
+    this.build, {
     required this.language,
     required this.stillRelevant,
     required this.priority,
     required this.generation,
     required this.sequence,
   });
-  final String Function() message;
+
+  /// Builds the prompt when it is spoken. [String] is the pack ('en' or
+  /// 'zh') a free-form message is spoken in.
+  final VoiceUtterance Function(String pack) build;
   final String? language;
   final bool Function()? stillRelevant;
   final VoicePriority priority;
@@ -51,9 +54,12 @@ class _Utterance {
 /// One completion-aware priority queue and temporary audio session for spoken
 /// guidance. Speech never overlaps; turn prompts never wait behind alerts.
 ///
-/// When a Waybi Plus member has recorded a custom voice pack, sentences are
-/// split into recorded clips and TTS text. Any clip that is missing or fails
-/// to play is spoken by TTS instead, so guidance never goes silent.
+/// With a custom voice (a Plus member's recordings or an installed shared
+/// pack), prompts built from parts play every recorded phrase as its clip
+/// and only the rest (unrecorded phrases, road names, numbers) with TTS.
+/// Free-form messages are matched phrase by phrase at clause starts. Any clip
+/// that is missing or fails to play is spoken by TTS instead, so guidance
+/// never goes silent.
 class VoiceEngine {
   VoiceEngine({
     FlutterTts? tts,
@@ -113,13 +119,13 @@ class VoiceEngine {
   }
 
   Future<bool> _enqueue(
-    String Function() message, {
+    VoiceUtterance Function(String pack) build, {
     String? language,
     bool Function()? stillRelevant,
     VoicePriority priority = VoicePriority.alert,
   }) {
     final utterance = _Utterance(
-      message,
+      build,
       language: language,
       stillRelevant: stillRelevant,
       priority: priority,
@@ -190,12 +196,18 @@ class VoiceEngine {
       if (!_live(utterance)) return;
       await initialize();
       if (!_live(utterance)) return;
-      final text = utterance.message().trim();
-      if (text.isEmpty) return;
-      final speechLanguage = utterance.language ?? _language;
+      final requested = utterance.language ?? _language;
+      final prompt = utterance.build(requested.startsWith('zh') ? 'zh' : 'en');
+      if (prompt.isEmpty) return;
+      final speechLanguage =
+          utterance.language ??
+          (prompt.structured ? prompt.speechLanguage : _language);
       await _tts.setLanguage(speechLanguage);
-      final pack = speechLanguage.startsWith('zh') ? 'zh' : 'en';
-      final segments = _plan(text, pack);
+      final pack = prompt.structured
+          ? prompt.language
+          : (speechLanguage.startsWith('zh') ? 'zh' : 'en');
+      final segments = _plan(prompt, pack);
+      if (segments.isEmpty) return;
       for (final segment in segments) {
         // Configure mixing before activating; activating an exclusive session
         // even briefly can pause music without giving it a chance to resume.
@@ -205,7 +217,8 @@ class VoiceEngine {
         }
         // Relevance is decided once, before the first word; a sentence that
         // has started finishes unless it is interrupted or stopped.
-        if (identical(segment, segments.first) ? !_live(utterance)
+        if (identical(segment, segments.first)
+            ? !_live(utterance)
             : utterance.aborted || utterance.generation != _generation) {
           return;
         }
@@ -248,16 +261,24 @@ class VoiceEngine {
     }
   }
 
-  List<VoiceSegment> _plan(String text, String pack) {
+  List<VoiceSegment> _plan(VoiceUtterance prompt, String pack) {
+    final standard = [TtsSegment(prompt.text)];
     final clips = _customVoice;
-    if (clips == null) return [TtsSegment(text)];
+    if (clips == null) return standard;
     try {
       final playable = clips.playable(pack);
-      if (playable.isEmpty) return [TtsSegment(text)];
-      return planCustomVoice(text, pack, playable);
+      if (playable.isEmpty) return standard;
+      if (!prompt.structured) {
+        return planCustomVoice(prompt.text, pack, playable);
+      }
+      return planUtterance(
+        prompt,
+        playable,
+        omitRoadNames: clips.omitRoadNames,
+      );
     } catch (error) {
       debugPrint('Custom voice planning failed: $error');
-      return [TtsSegment(text)];
+      return standard;
     }
   }
 
@@ -287,17 +308,26 @@ class VoiceEngine {
     }
   }
 
+  /// A free-form message, such as a trip notice.
   Future<void> guidance(
     String message, {
     String? language,
     bool Function()? stillRelevant,
     VoicePriority priority = VoicePriority.guidance,
   }) => _enqueue(
-    () => message,
+    (pack) => VoiceUtterance.freeform(message, pack),
     language: language,
     stillRelevant: stillRelevant,
     priority: priority,
   ).then<void>((_) {});
+
+  /// A prompt built by [VoicePrompts], spoken in its own language.
+  Future<bool> say(
+    VoiceUtterance prompt, {
+    bool Function()? stillRelevant,
+    VoicePriority priority = VoicePriority.guidance,
+  }) =>
+      _enqueue((_) => prompt, stillRelevant: stillRelevant, priority: priority);
 
   /// A maneuver prompt. [message] is built when it is spoken, so a distance
   /// reflects the car's position then, and [stillRelevant] drops a prompt the
@@ -308,8 +338,19 @@ class VoiceEngine {
     bool Function()? stillRelevant,
     bool urgent = false,
   }) => _enqueue(
-    message,
+    (pack) => VoiceUtterance.freeform(message(), pack),
     language: language,
+    stillRelevant: stillRelevant,
+    priority: urgent ? VoicePriority.urgent : VoicePriority.guidance,
+  );
+
+  /// [turnPrompt] for a prompt built from parts ([VoicePrompts.turn]).
+  Future<bool> turnUtterance(
+    VoiceUtterance Function() prompt, {
+    bool Function()? stillRelevant,
+    bool urgent = false,
+  }) => _enqueue(
+    (_) => prompt(),
     stillRelevant: stillRelevant,
     priority: urgent ? VoicePriority.urgent : VoicePriority.guidance,
   );
@@ -344,19 +385,15 @@ class VoiceEngine {
     String? speedLimit,
     int Function()? currentDistanceMeters,
     bool Function()? stillRelevant,
-  }) => _enqueue(() {
-    final kind = CameraKindLabel.fromType(cameraType);
-    final type = kind == CameraKind.spotSpeed && _language != 'zh-CN'
-        ? 'Fixed speed camera'
-        : kind.cameraLabel(_language == 'zh-CN' ? 'zh' : 'en');
-    final metres = currentDistanceMeters?.call() ?? distanceMeters;
-    final road = roadName.trim().isEmpty
-        ? ''
-        : (_language == 'zh-CN' ? '，位于$roadName' : ' on $roadName');
-    return _language == 'zh-CN'
-        ? '前方 $metres 米有$type$road。'
-        : '$type in $metres metres$road.';
-  }, stillRelevant: stillRelevant);
+  }) => _enqueue(
+    (_) => VoicePrompts.camera(
+      metres: currentDistanceMeters?.call() ?? distanceMeters,
+      cameraType: cameraType,
+      roadName: roadName,
+      language: _language == 'zh-CN' ? 'zh' : 'en',
+    ),
+    stillRelevant: stillRelevant,
+  );
 
   Future<void> dispose() async {
     await stop();
@@ -369,5 +406,15 @@ class VoiceEngine {
     String Function() message, {
     String? language,
     bool Function()? stillRelevant,
-  }) => _enqueue(message, language: language, stillRelevant: stillRelevant);
+  }) => _enqueue(
+    (pack) => VoiceUtterance.freeform(message(), pack),
+    language: language,
+    stillRelevant: stillRelevant,
+  );
+
+  /// [roadAlert] for a prompt built from parts ([VoicePrompts.transitLane]).
+  Future<bool> roadAlertUtterance(
+    VoiceUtterance Function() prompt, {
+    bool Function()? stillRelevant,
+  }) => _enqueue((_) => prompt(), stillRelevant: stillRelevant);
 }

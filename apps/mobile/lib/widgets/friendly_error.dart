@@ -15,6 +15,15 @@ abstract final class WaybiErrorCode {
   static const plusRequired = 'PLUS_REQUIRED';
   static const billingUnavailable = 'BILLING_UNAVAILABLE';
   static const billingError = 'BILLING_ERROR';
+  static const voicePackLimit = 'VOICE_PACK_LIMIT';
+  static const voicePackNotFound = 'VOICE_PACK_NOT_FOUND';
+  static const voiceSharingUnavailable = 'VOICE_SHARING_UNAVAILABLE';
+  static const voiceConsentRequired = 'CONSENT_REQUIRED';
+  static const voicePackTooLarge = 'VOICE_PACK_TOO_LARGE';
+  static const voiceClipInvalid = 'INVALID_CLIP';
+  static const voiceClipIntegrity = 'CLIP_INTEGRITY';
+  static const voicePackPurgeFailed = 'VOICE_PACK_PURGE_FAILED';
+  static const voicePackDeleteFailed = 'VOICE_PACK_DELETE_FAILED';
 }
 
 /// Reads `statusCode`/`status`, `code` and `retryAfter` from typed request
@@ -148,6 +157,51 @@ String friendlyErrorMessage(
       return t(
         'Subscriptions are temporarily unavailable. Please try again later.',
         '订阅服务暂时不可用，请稍后重试。',
+      );
+    case WaybiErrorCode.voicePackLimit:
+      return t(
+        'You already share 5 voices. Revoke one to share another.',
+        '你已分享 5 个语音。撤销一个后才能再分享。',
+      );
+    case WaybiErrorCode.voicePackNotFound:
+      return t(
+        'That voice code isn’t valid or has been revoked. Check it, or ask for a new one.',
+        '这个语音代码无效或已被撤销。请核对，或向对方重新索取。',
+      );
+    case WaybiErrorCode.voiceSharingUnavailable:
+      return t(
+        'Voice sharing is temporarily unavailable. Please try again later.',
+        '语音分享暂时不可用，请稍后重试。',
+      );
+    case WaybiErrorCode.voiceConsentRequired:
+      return t(
+        'Confirm this is your own voice and that you agree to share it.',
+        '请确认这是你本人的声音并同意分享。',
+      );
+    case WaybiErrorCode.voicePackTooLarge:
+      return t(
+        'Your recordings are too large to share. Re-record the longest phrases and try again.',
+        '录音太大，无法分享。请重录较长的短语后再试。',
+      );
+    case WaybiErrorCode.voiceClipInvalid:
+      return t(
+        'One of your recordings can’t be shared. Re-record it and try again.',
+        '有一段录音无法分享，请重录后再试。',
+      );
+    case WaybiErrorCode.voiceClipIntegrity:
+      return t(
+        'A recording was damaged in transfer. Please try again.',
+        '有录音在传输中损坏，请重试。',
+      );
+    case WaybiErrorCode.voicePackPurgeFailed:
+      return t(
+        'The code was revoked, but some recordings are still being removed. Please try again.',
+        '代码已撤销，但部分录音尚未删除，请重试。',
+      );
+    case WaybiErrorCode.voicePackDeleteFailed:
+      return t(
+        'Your shared voice recordings couldn’t be removed, so your account was not deleted. Please try again.',
+        '已分享的语音录音未能删除，因此账号没有被删除。请重试。',
       );
     case WaybiErrorCode.invalidRequest:
       return generic;

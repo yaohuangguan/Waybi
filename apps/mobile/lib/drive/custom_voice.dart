@@ -1,247 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// One recordable phrase in the custom voice pack.
-///
-/// [en] / [zh] list every spelling the guidance code produces for the
-/// phrase; the first entry is the prompt the user reads aloud when recording.
-@immutable
-class VoicePhrase {
-  const VoicePhrase(this.id, this.group, this.en, this.zh, {this.metres});
-  final String id;
-  final VoicePhraseGroup group;
-  final List<String> en;
-  final List<String> zh;
+import 'voice_phrases.dart';
+import 'voice_utterance.dart';
 
-  /// Distance phrases only: the distance this clip announces.
-  final int? metres;
-
-  List<String> texts(String language) => language == 'zh' ? zh : en;
-  String prompt(String language) => texts(language).first;
-}
-
-enum VoicePhraseGroup { distance, maneuver, camera, arrival }
-
-const _distances = [50, 100, 200, 300, 400, 500, 800, 1000, 1500, 2000];
-
-String _enDistance(int metres) =>
-    metres >= 1000 ? 'In ${_km(metres)} kilometres' : 'In $metres metres';
-String _zhDistance(int metres) =>
-    metres >= 1000 ? '${_km(metres)} 公里后' : '$metres 米后';
-String _km(int metres) => metres % 1000 == 0
-    ? '${metres ~/ 1000}'
-    : (metres / 1000).toStringAsFixed(1);
-
-/// Fixed phrases, matched against the sentences produced by
-/// `navigation_language.dart`, `VoiceEngine.cameraAlert` and arrival speech.
-final List<VoicePhrase> customVoicePhrases = List.unmodifiable([
-  for (final metres in _distances)
-    VoicePhrase(
-      'in_$metres',
-      VoicePhraseGroup.distance,
-      [_enDistance(metres)],
-      [_zhDistance(metres)],
-      metres: metres,
-    ),
-  const VoicePhrase(
-    'turn_left',
-    VoicePhraseGroup.maneuver,
-    ['Turn left'],
-    ['左转'],
-  ),
-  const VoicePhrase(
-    'turn_right',
-    VoicePhraseGroup.maneuver,
-    ['Turn right'],
-    ['右转'],
-  ),
-  const VoicePhrase(
-    'bear_left',
-    VoicePhraseGroup.maneuver,
-    ['Bear left', 'Turn slight left', 'Slight left'],
-    ['向左前方行驶'],
-  ),
-  const VoicePhrase(
-    'bear_right',
-    VoicePhraseGroup.maneuver,
-    ['Bear right', 'Turn slight right', 'Slight right'],
-    ['向右前方行驶'],
-  ),
-  const VoicePhrase(
-    'sharp_left',
-    VoicePhraseGroup.maneuver,
-    ['Turn sharp left', 'Sharp left'],
-    ['向左急转'],
-  ),
-  const VoicePhrase(
-    'sharp_right',
-    VoicePhraseGroup.maneuver,
-    ['Turn sharp right', 'Sharp right'],
-    ['向右急转'],
-  ),
-  const VoicePhrase(
-    'keep_left',
-    VoicePhraseGroup.maneuver,
-    ['Keep left'],
-    ['靠左行驶'],
-  ),
-  const VoicePhrase(
-    'keep_right',
-    VoicePhraseGroup.maneuver,
-    ['Keep right'],
-    ['靠右行驶'],
-  ),
-  const VoicePhrase(
-    'continue_straight',
-    VoicePhraseGroup.maneuver,
-    ['Continue straight'],
-    ['继续直行'],
-  ),
-  const VoicePhrase(
-    'continue_route',
-    VoicePhraseGroup.maneuver,
-    ['Continue on route'],
-    ['沿路线继续行驶'],
-  ),
-  const VoicePhrase(
-    'uturn',
-    VoicePhraseGroup.maneuver,
-    ['Make a U-turn'],
-    ['掉头'],
-  ),
-  for (var exit = 1; exit <= 4; exit++)
-    VoicePhrase(
-      'roundabout_exit_$exit',
-      VoicePhraseGroup.maneuver,
-      ['At the roundabout, take exit $exit'],
-      ['进入环岛，从第 $exit 个出口驶出'],
-    ),
-  const VoicePhrase(
-    'roundabout',
-    VoicePhraseGroup.maneuver,
-    ['Enter the roundabout'],
-    ['驶入环岛'],
-  ),
-  const VoicePhrase(
-    'exit_left',
-    VoicePhraseGroup.maneuver,
-    ['Take the left exit'],
-    ['从左侧出口驶出'],
-  ),
-  const VoicePhrase(
-    'exit_right',
-    VoicePhraseGroup.maneuver,
-    ['Take the right exit'],
-    ['从右侧出口驶出'],
-  ),
-  const VoicePhrase(
-    'exit',
-    VoicePhraseGroup.maneuver,
-    ['Take the exit'],
-    ['从出口驶出'],
-  ),
-  const VoicePhrase(
-    'ramp',
-    VoicePhraseGroup.maneuver,
-    ['Take the ramp'],
-    ['驶入匝道'],
-  ),
-  const VoicePhrase(
-    'merge',
-    VoicePhraseGroup.maneuver,
-    ['Merge ahead'],
-    ['汇入前方道路'],
-  ),
-  const VoicePhrase(
-    'ferry',
-    VoicePhraseGroup.maneuver,
-    ['Take the ferry'],
-    ['搭乘渡轮'],
-  ),
-  const VoicePhrase(
-    'camera_speed',
-    VoicePhraseGroup.camera,
-    ['Speed camera', 'Fixed speed camera'],
-    ['定点测速摄像头'],
-  ),
-  const VoicePhrase(
-    'camera_average',
-    VoicePhraseGroup.camera,
-    ['Average-speed camera'],
-    ['区间测速摄像头'],
-  ),
-  const VoicePhrase(
-    'camera_red_light_speed',
-    VoicePhraseGroup.camera,
-    ['Red-light + speed camera'],
-    ['红灯及测速摄像头'],
-  ),
-  const VoicePhrase(
-    'camera_red_light',
-    VoicePhraseGroup.camera,
-    ['Red-light camera'],
-    ['红灯摄像头'],
-  ),
-  const VoicePhrase(
-    'camera_bus_lane',
-    VoicePhraseGroup.camera,
-    ['Bus-lane camera'],
-    ['专用车道摄像头'],
-  ),
-  const VoicePhrase(
-    'camera_safety',
-    VoicePhraseGroup.camera,
-    ['Safety camera'],
-    ['安全摄像头'],
-  ),
-  const VoicePhrase(
-    'arrived',
-    VoicePhraseGroup.arrival,
-    ['You have arrived', 'Arrive at destination'],
-    ['已到达目的地', '到达目的地'],
-  ),
-]);
-
-VoicePhrase? customVoicePhrase(String id) {
-  for (final phrase in customVoicePhrases) {
-    if (phrase.id == id) return phrase;
-  }
-  return null;
-}
-
-/// A piece of one guidance sentence: a recorded clip, or text for system TTS.
-@immutable
-sealed class VoiceSegment {
-  const VoiceSegment(this.text);
-
-  /// The words this segment stands for, used if a clip cannot be played.
-  final String text;
-}
-
-class ClipSegment extends VoiceSegment {
-  const ClipSegment(this.phraseId, super.text);
-  final String phraseId;
-  @override
-  bool operator ==(Object other) =>
-      other is ClipSegment && other.phraseId == phraseId && other.text == text;
-  @override
-  int get hashCode => Object.hash(phraseId, text);
-  @override
-  String toString() => 'Clip($phraseId)';
-}
-
-class TtsSegment extends VoiceSegment {
-  const TtsSegment(super.text);
-  @override
-  bool operator ==(Object other) => other is TtsSegment && other.text == text;
-  @override
-  int get hashCode => text.hashCode;
-  @override
-  String toString() => 'Tts($text)';
-}
+export 'voice_phrases.dart';
+export 'voice_utterance.dart';
 
 final _boundaryPunctuation = RegExp(r'[,.;:!?，。；：！？、]');
 final _onlyPunctuation = RegExp(r'^[\s,.;:!?，。；：！？、]*$');
@@ -251,8 +19,9 @@ final _enDistancePattern = RegExp(
 );
 final _zhDistancePattern = RegExp(r'^(\d+(?:\.\d+)?) ?(米|公里)后');
 
-/// Splits a guidance sentence into recorded clips and TTS text.
+/// Splits a free-form sentence into recorded clips and TTS text.
 ///
+/// Only for messages that were not built from parts (see [planUtterance]).
 /// Phrases are only matched at the start of a clause (start of text, after a
 /// clip, or after punctuation), so words inside road names never trigger a
 /// clip. Distances use a clip only when the spoken distance is close to the
@@ -270,6 +39,7 @@ List<VoiceSegment> planCustomVoice(
   final candidates = <(String, String)>[
     for (final phrase in customVoicePhrases)
       if (phrase.group != VoicePhraseGroup.distance &&
+          phrase.standalone &&
           recorded.contains(phrase.id))
         for (final spelling in phrase.texts(language)) (phrase.id, spelling),
   ]..sort((a, b) => b.$2.length.compareTo(a.$2.length));
@@ -349,8 +119,8 @@ List<VoiceSegment> planCustomVoice(
   final metres = unit.startsWith('k') || unit == '公里' ? value * 1000 : value;
   String? best;
   var bestError = double.infinity;
-  for (final distance in _distances) {
-    final id = 'in_$distance';
+  for (final distance in voiceDistances) {
+    final id = VoicePhraseId.distance(distance);
     if (!recorded.contains(id)) continue;
     final error = (metres - distance).abs();
     final tolerance = distance * 0.08 < 15 ? 15 : distance * 0.08;
@@ -377,17 +147,56 @@ abstract class CustomVoiceClips {
 
   /// Called when a clip failed to play; it is skipped until re-recorded.
   void reportBroken(String language, String phraseId);
+
+  /// Leave road names (and the words introducing them) out of prompts, so
+  /// a fully recorded pack speaks only in the recorded voice.
+  bool get omitRoadNames;
 }
 
-/// On-device custom voice pack, gated on Waybi Plus.
+/// A voice someone shared, installed on this device.
+@immutable
+class InstalledVoicePack {
+  const InstalledVoicePack({
+    required this.code,
+    required this.name,
+    required this.clips,
+    required this.installedAt,
+  });
+
+  final String code;
+  final String name;
+
+  /// language → phrase ids with an installed clip.
+  final Map<String, Set<String>> clips;
+  final DateTime installedAt;
+
+  int get clipCount => clips.values.fold(0, (sum, ids) => sum + ids.length);
+  List<String> get languages => [
+    for (final language in CustomVoiceController.languages)
+      if (clips[language]?.isNotEmpty ?? false) language,
+  ];
+}
+
+/// Which voice guidance uses.
+enum VoiceChoice { standard, own, shared }
+
+/// The custom navigation voice: the member's own recordings (Waybi Plus)
+/// and voices other people shared (free to use).
 ///
-/// Recordings live only in the app's documents directory and are never
-/// uploaded. If Plus lapses, the files are kept but not played; the member
-/// can still delete them.
+/// Own recordings live in the app's documents directory and are only
+/// uploaded when the member chooses to share them. If Plus lapses, the files
+/// are kept but not played; the member can still delete them. An installed
+/// shared voice is a separate folder per share code and keeps working even
+/// if its owner later revokes the code.
 class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   CustomVoiceController({required this._rootDirectory});
 
   static const enabledKey = 'waybi.plus.custom_voice.enabled.v1';
+  static const omitRoadNamesKey = 'waybi.custom_voice.omit_road_names.v1';
+  static const activeVoiceKey = 'waybi.custom_voice.active.v1';
+
+  /// Shared clips are checked by size and SHA-256 before installing.
+  static const minimumPackClipBytes = 512;
   static const languages = ['en', 'zh'];
 
   /// Files smaller than this are treated as failed recordings.
@@ -397,16 +206,47 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   final Map<String, Set<String>> _recorded = {for (final l in languages) l: {}};
   final Map<String, Set<String>> _broken = {for (final l in languages) l: {}};
   Directory? _root;
+  Directory? _packsRoot;
   bool _plus = false;
-  bool _enabled = false;
+
+  /// 'standard', 'own' or 'pack:<code>'.
+  String _choice = 'standard';
+  bool _omitRoadNames = false;
   bool _loaded = false;
+  final Map<String, InstalledVoicePack> _packs = {};
+  final Map<String, Map<String, Set<String>>> _packBroken = {};
 
   bool get plus => _plus;
-  bool get enabled => _enabled;
-  bool get loaded => _loaded;
 
-  /// True when guidance should use the recorded clips.
-  bool get active => _plus && _enabled;
+  /// The member's own recordings are the chosen voice.
+  bool get enabled => _choice == 'own';
+  bool get loaded => _loaded;
+  @override
+  bool get omitRoadNames => _omitRoadNames;
+
+  /// The installed shared voice guidance uses, if one is chosen.
+  String? get activePackCode {
+    if (!_choice.startsWith('pack:')) return null;
+    final code = _choice.substring(5);
+    return _packs.containsKey(code) ? code : null;
+  }
+
+  VoiceChoice get choice => activePackCode != null
+      ? VoiceChoice.shared
+      : enabled
+      ? VoiceChoice.own
+      : VoiceChoice.standard;
+
+  /// Installed shared voices, newest first.
+  List<InstalledVoicePack> get installedPacks => List.unmodifiable(
+    _packs.values.toList()
+      ..sort((a, b) => b.installedAt.compareTo(a.installedAt)),
+  );
+  InstalledVoicePack? installedPack(String code) => _packs[code];
+
+  /// True when guidance should use recorded clips: the member's own (with
+  /// Plus) or an installed shared voice (free).
+  bool get active => (enabled && _plus) || activePackCode != null;
 
   Set<String> recorded(String language) =>
       Set.unmodifiable(_recorded[language] ?? const <String>{});
@@ -416,7 +256,14 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _enabled = prefs.getBool(enabledKey) ?? false;
+      _choice =
+          prefs.getString(activeVoiceKey) ??
+          ((prefs.getBool(enabledKey) ?? false) ? 'own' : 'standard');
+      _omitRoadNames = prefs.getBool(omitRoadNamesKey) ?? false;
+      await _loadPacks();
+      if (_choice.startsWith('pack:') && activePackCode == null) {
+        _choice = 'standard';
+      }
       final root = await _voiceRoot();
       for (final language in languages) {
         final set = _recorded[language]!..clear();
@@ -447,15 +294,43 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
     notifyListeners();
   }
 
+  /// Turns the member's own recordings on (Plus only) or off.
   Future<void> setEnabled(bool enabled) async {
-    if (enabled && !_plus) return;
-    _enabled = enabled;
+    if (enabled) return useOwnVoice();
+    if (this.enabled) await useStandardVoice();
+  }
+
+  Future<void> useStandardVoice() => _choose('standard');
+
+  Future<void> useOwnVoice() async {
+    if (_plus) await _choose('own');
+  }
+
+  /// Uses an installed shared voice; anyone can.
+  Future<void> usePack(String code) async {
+    if (_packs.containsKey(code)) await _choose('pack:$code');
+  }
+
+  Future<void> _choose(String choice) async {
+    _choice = choice;
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(enabledKey, enabled);
+      await prefs.setString(activeVoiceKey, choice);
+      await prefs.setBool(enabledKey, choice == 'own');
     } catch (_) {
-      /* The toggle still applies for this session. */
+      /* The choice still applies for this session. */
+    }
+  }
+
+  Future<void> setOmitRoadNames(bool omit) async {
+    _omitRoadNames = omit;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(omitRoadNamesKey, omit);
+    } catch (_) {
+      /* The choice still applies for this session. */
     }
   }
 
@@ -532,6 +407,11 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   @override
   Set<String> playable(String language) {
     if (!active) return const {};
+    final code = activePackCode;
+    if (code != null) {
+      final clips = _packs[code]!.clips[language] ?? const <String>{};
+      return clips.difference(_packBroken[code]?[language] ?? const {});
+    }
     final recorded = _recorded[language];
     if (recorded == null || recorded.isEmpty) return const {};
     return recorded.difference(_broken[language]!);
@@ -539,6 +419,18 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
 
   @override
   String? clipPath(String language, String phraseId) {
+    final code = activePackCode;
+    if (code == null) return recordingPath(language, phraseId);
+    final root = _packsRoot;
+    if (root == null ||
+        !(_packs[code]!.clips[language]?.contains(phraseId) ?? false)) {
+      return null;
+    }
+    return '${root.path}/$code/$language/$phraseId.m4a';
+  }
+
+  /// The member's own recording of [phraseId], for previews.
+  String? recordingPath(String language, String phraseId) {
     final root = _root;
     if (root == null || !(_recorded[language]?.contains(phraseId) ?? false)) {
       return null;
@@ -548,6 +440,181 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
 
   @override
   void reportBroken(String language, String phraseId) {
-    if (_broken[language]?.add(phraseId) ?? false) notifyListeners();
+    final code = activePackCode;
+    final broken = code == null
+        ? _broken[language]
+        : ((_packBroken[code] ??= {})[language] ??= {});
+    if (broken?.add(phraseId) ?? false) notifyListeners();
+  }
+
+  /// The member's playable recordings, for sharing.
+  List<({String language, String phraseId, String path})>
+  shareableRecordings() {
+    final root = _root;
+    if (root == null) return const [];
+    return [
+      for (final language in languages)
+        for (final phrase in voicePhrasesFor(language))
+          if (_recorded[language]!.contains(phrase.id) &&
+              !_broken[language]!.contains(phrase.id))
+            (
+              language: language,
+              phraseId: phrase.id,
+              path: _finalPath(root, language, phrase.id),
+            ),
+    ];
+  }
+
+  Future<Directory> _sharedRoot() async {
+    final cached = _packsRoot;
+    if (cached != null) return cached;
+    final base = await _rootDirectory();
+    return _packsRoot = Directory('${base.path}/custom_voice_packs');
+  }
+
+  static final _packCode = RegExp(r'^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}$');
+
+  Future<void> _loadPacks() async {
+    _packs.clear();
+    final root = await _sharedRoot();
+    if (!await root.exists()) return;
+    await for (final entry in root.list()) {
+      if (entry is! Directory) continue;
+      final name = entry.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (name.startsWith('.')) {
+        // Unfinished installs and previews.
+        await _deleteDirectory(entry);
+        continue;
+      }
+      if (!_packCode.hasMatch(name)) continue;
+      try {
+        final info = jsonDecode(
+          await File('${entry.path}/pack.json').readAsString(),
+        );
+        final clips = <String, Set<String>>{};
+        for (final language in languages) {
+          final ids = (info['clips']?[language] as List? ?? const [])
+              .whereType<String>();
+          for (final id in ids) {
+            final file = File('${entry.path}/$language/$id.m4a');
+            if (!(customVoicePhrase(id)?.availableIn(language) ?? false) ||
+                !await file.exists() ||
+                await file.length() < minimumPackClipBytes) {
+              continue;
+            }
+            (clips[language] ??= {}).add(id);
+          }
+        }
+        if (clips.isEmpty) continue;
+        _packs[name] = InstalledVoicePack(
+          code: name,
+          name: info['name'] as String? ?? name,
+          clips: clips,
+          installedAt: DateTime.fromMillisecondsSinceEpoch(
+            (info['installedAt'] as num?)?.toInt() ?? 0,
+          ),
+        );
+      } catch (error) {
+        debugPrint('Shared voice $name unreadable: $error');
+      }
+    }
+  }
+
+  /// Installs a shared voice from verified clip bytes (language → phrase id
+  /// → audio), replacing an earlier install of the same code. Phrases this
+  /// app version does not know are left out.
+  Future<InstalledVoicePack> installPack({
+    required String code,
+    required String name,
+    required Map<String, Map<String, Uint8List>> clips,
+    DateTime? now,
+  }) async {
+    if (!_packCode.hasMatch(code)) throw ArgumentError.value(code, 'code');
+    final root = await _sharedRoot();
+    final staging = Directory(
+      '${root.path}/.install-$code-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    final installed = <String, Set<String>>{};
+    try {
+      for (final MapEntry(key: language, value: byId) in clips.entries) {
+        if (!languages.contains(language)) continue;
+        for (final MapEntry(key: id, value: bytes) in byId.entries) {
+          if (!(customVoicePhrase(id)?.availableIn(language) ?? false) ||
+              bytes.length < minimumPackClipBytes) {
+            continue;
+          }
+          final file = File('${staging.path}/$language/$id.m4a');
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes, flush: true);
+          (installed[language] ??= {}).add(id);
+        }
+      }
+      if (installed.isEmpty) {
+        throw StateError('The shared voice has no usable recordings');
+      }
+      final installedAt = now ?? DateTime.now();
+      await File('${staging.path}/pack.json').writeAsString(
+        jsonEncode({
+          'code': code,
+          'name': name,
+          'installedAt': installedAt.millisecondsSinceEpoch,
+          'clips': {
+            for (final MapEntry(:key, :value) in installed.entries)
+              key: value.toList()..sort(),
+          },
+        }),
+      );
+      final target = Directory('${root.path}/$code');
+      if (await target.exists()) await target.delete(recursive: true);
+      await staging.rename(target.path);
+      final pack = InstalledVoicePack(
+        code: code,
+        name: name,
+        clips: installed,
+        installedAt: installedAt,
+      );
+      _packs[code] = pack;
+      _packBroken.remove(code);
+      notifyListeners();
+      return pack;
+    } catch (_) {
+      await _deleteDirectory(staging);
+      rethrow;
+    }
+  }
+
+  /// Deletes an installed shared voice and its files.
+  Future<void> removePack(String code) async {
+    final root = await _sharedRoot();
+    await _deleteDirectory(Directory('${root.path}/$code'));
+    _packs.remove(code);
+    _packBroken.remove(code);
+    if (_choice == 'pack:$code') {
+      await _choose('standard');
+    } else {
+      notifyListeners();
+    }
+  }
+
+  /// Saves a downloaded clip to play as a preview before installing.
+  Future<String> writePreview(
+    String code,
+    String language,
+    String phraseId,
+    Uint8List bytes,
+  ) async {
+    final root = await _sharedRoot();
+    final file = File('${root.path}/.preview/$code-$language-$phraseId.m4a');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  Future<void> _deleteDirectory(Directory directory) async {
+    try {
+      if (await directory.exists()) await directory.delete(recursive: true);
+    } catch (error) {
+      debugPrint('Custom voice cleanup failed: $error');
+    }
   }
 }

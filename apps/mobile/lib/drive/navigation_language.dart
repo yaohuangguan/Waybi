@@ -1,62 +1,90 @@
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 
 import '../domain/route_option.dart';
+import 'voice_phrases.dart';
+import 'voice_utterance.dart';
 
 String routeStepInstruction(RouteStepInfo? step, String language) {
   final chinese = language == 'zh';
-  if (step == null) return chinese ? '沿路线继续行驶' : 'Continue on route';
-  final supplied = step.instruction.trim();
+  final supplied = step?.instruction.trim() ?? '';
   if (supplied.isNotEmpty &&
       (!chinese || RegExp(r'[\u3400-\u9fff]').hasMatch(supplied))) {
     return supplied;
   }
-
   // OSRM exposes structured maneuver type/modifier/name rather than a ready
   // human sentence. Always synthesize a useful prompt when instruction is
   // empty; otherwise English Practice navigation ends up with a blank card
   // and silent TTS.
+  return renderUtteranceParts(routeStepParts(step, language), language);
+}
+
+/// The fixed phrase for a structured OSRM-style maneuver.
+String routeStepActionPhrase(RouteStepInfo step) {
   final type = step.maneuverType.toLowerCase();
   final modifier = step.maneuverModifier.toLowerCase();
-  final road = step.roadName.trim();
-  String action;
-  if (type == 'arrive') {
-    action = chinese ? '到达目的地' : 'Arrive at destination';
-  } else if (type.contains('roundabout') || type == 'rotary') {
-    action = chinese ? '驶入环岛' : 'Enter the roundabout';
-  } else if (modifier == 'uturn') {
-    action = chinese ? '掉头' : 'Make a U-turn';
-  } else if (type == 'merge') {
-    action = chinese ? '汇入前方道路' : 'Merge ahead';
-  } else if (type == 'off ramp' || type == 'offramp') {
-    final left = modifier.contains('left');
-    action = chinese
-        ? '从${left ? '左侧' : '右侧'}出口驶出'
-        : 'Take the ${left ? 'left' : 'right'} exit';
-  } else if (type == 'on ramp' || type == 'onramp') {
-    action = chinese ? '驶入匝道' : 'Take the ramp';
-  } else if (type == 'fork') {
-    final left = modifier.contains('left');
-    action = chinese
-        ? (left ? '靠左行驶' : '靠右行驶')
-        : (left ? 'Keep left' : 'Keep right');
-  } else if (modifier.contains('slight left')) {
-    action = chinese ? '向左前方行驶' : 'Bear left';
-  } else if (modifier.contains('slight right')) {
-    action = chinese ? '向右前方行驶' : 'Bear right';
-  } else if (modifier.contains('sharp left')) {
-    action = chinese ? '向左急转' : 'Turn sharp left';
-  } else if (modifier.contains('sharp right')) {
-    action = chinese ? '向右急转' : 'Turn sharp right';
-  } else if (modifier.contains('left')) {
-    action = chinese ? '左转' : 'Turn left';
-  } else if (modifier.contains('right')) {
-    action = chinese ? '右转' : 'Turn right';
-  } else {
-    action = chinese ? '继续直行' : 'Continue straight';
+  if (type == 'arrive') return VoicePhraseId.arriveAtDestination;
+  if (type == 'depart') return VoicePhraseId.depart;
+  if (type.startsWith('exit ') &&
+      (type.contains('roundabout') || type == 'exit rotary')) {
+    return VoicePhraseId.exitRoundabout;
   }
-  if (road.isEmpty || type == 'arrive') return action;
-  return chinese ? '$action，驶向 $road' : '$action onto $road';
+  if (type.contains('roundabout') || type == 'rotary') {
+    return VoicePhraseId.roundabout;
+  }
+  if (modifier == 'uturn') return VoicePhraseId.uturn;
+  if (type == 'merge') return VoicePhraseId.merge;
+  if (type == 'off ramp' || type == 'offramp') {
+    return modifier.contains('left')
+        ? VoicePhraseId.exitLeft
+        : VoicePhraseId.exitRight;
+  }
+  if (type == 'on ramp' || type == 'onramp') return VoicePhraseId.ramp;
+  if (type == 'fork') {
+    return modifier.contains('left')
+        ? VoicePhraseId.keepLeft
+        : VoicePhraseId.keepRight;
+  }
+  if (modifier.contains('slight left')) return VoicePhraseId.bearLeft;
+  if (modifier.contains('slight right')) return VoicePhraseId.bearRight;
+  if (modifier.contains('sharp left')) return VoicePhraseId.sharpLeft;
+  if (modifier.contains('sharp right')) return VoicePhraseId.sharpRight;
+  if (modifier.contains('left')) return VoicePhraseId.turnLeft;
+  if (modifier.contains('right')) return VoicePhraseId.turnRight;
+  return VoicePhraseId.continueStraight;
 }
+
+/// A maneuver as parts: the action, then the road it leads to
+/// ("Turn left onto Queen Street", "左转，驶向 Queen Street").
+List<UtterancePart> routeStepParts(RouteStepInfo? step, String language) {
+  if (step == null) return const [PhrasePart(VoicePhraseId.continueRoute)];
+  final action = routeStepActionPhrase(step);
+  final road = step.roadName.trim();
+  return [
+    PhrasePart(action),
+    if (road.isNotEmpty && action != VoicePhraseId.arriveAtDestination)
+      ...roadNameParts(
+        road,
+        language,
+        connector: action == VoicePhraseId.depart
+            ? VoicePhraseId.on
+            : VoicePhraseId.onto,
+      ),
+  ];
+}
+
+/// "onto Queen Street" / "，驶向 Queen Street", flagged as road-name parts.
+/// Chinese always uses "驶向"; English uses [connector].
+List<UtterancePart> roadNameParts(
+  String road,
+  String language, {
+  String connector = VoicePhraseId.onto,
+}) => language == 'zh'
+    ? [
+        const PausePart('，', road: true),
+        const PhrasePart(VoicePhraseId.toward, road: true),
+        DynamicPart(road, road: true),
+      ]
+    : [PhrasePart(connector, road: true), DynamicPart(road, road: true)];
 
 /// Localize structured maneuvers immediately, even when native map labels
 /// still use the language selected when the SDK process was initialized.

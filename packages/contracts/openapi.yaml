@@ -370,7 +370,137 @@ paths:
         '400': { description: Malformed route watch id }
         '401': { description: Sign in required }
         '403': { $ref: '#/components/responses/PlusRequired' }
+  /voice-packs:
+    post:
+      summary: Share the signed-in Plus member's recorded navigation voice
+      description: >-
+        multipart/form-data with a `manifest` JSON part
+        ({ name, consent: true, clips: [{ language, phraseId, contentType, bytes, sha256 }] })
+        and one file part per clip named `clip:<language>:<phraseId>`. Web
+        (same origin) or mobile (x-waybi-client mobile, no Origin) clients only.
+        Limits: phraseId ^[a-z0-9_]{1,48}$, language en or zh, content type
+        audio/mp4, audio/m4a, audio/x-m4a or audio/aac, 512 B to 256 KB per
+        clip, at most 200 clips and 8 MB per pack, name 1-40 characters, at
+        most 5 active packs per member. The server recomputes every SHA-256.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [manifest]
+              properties:
+                manifest: { type: string, description: JSON manifest }
+              additionalProperties: { type: string, format: binary }
+      responses:
+        '201':
+          description: Shared; the code and link are ready to send
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pack: { $ref: '#/components/schemas/VoicePack' }
+        '400': { description: 'Invalid manifest or clip (codes INVALID_REQUEST, INVALID_CLIP, CLIP_INTEGRITY, CONSENT_REQUIRED)' }
+        '401': { description: Sign in required (code SIGN_IN_REQUIRED) }
+        '403': { $ref: '#/components/responses/PlusRequired' }
+        '409':
+          description: Five packs are already shared (code VOICE_PACK_LIMIT)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '413': { description: A clip or the pack is too large (code VOICE_PACK_TOO_LARGE) }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/VoiceSharingUnavailable' }
+  /voice-packs/mine:
+    get:
+      summary: The signed-in member's active shared voice packs (no Plus needed, so a lapsed member can still revoke)
+      responses:
+        '200':
+          description: Active packs, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  limit: { type: integer, example: 5 }
+                  packs:
+                    type: array
+                    items: { $ref: '#/components/schemas/VoicePack' }
+        '401': { description: Sign in required (code SIGN_IN_REQUIRED) }
+        '503': { $ref: '#/components/responses/VoiceSharingUnavailable' }
+  /voice-packs/{code}:
+    parameters:
+      - $ref: '#/components/parameters/VoicePackCode'
+    get:
+      summary: Public manifest of a shared voice (anyone with the code; viewing is not an import)
+      responses:
+        '200':
+          description: Pack and per-language clip manifest
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pack: { $ref: '#/components/schemas/SharedVoicePack' }
+        '404': { description: Unknown or revoked code (code VOICE_PACK_NOT_FOUND) }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/VoiceSharingUnavailable' }
+    delete:
+      summary: Revoke a pack you shared; its clips are deleted and the code stops working
+      description: Repeat the call if it answered VOICE_PACK_PURGE_FAILED; the pack is already unavailable.
+      responses:
+        '200': { description: Revoked and removed }
+        '401': { description: Sign in required (code SIGN_IN_REQUIRED) }
+        '404': { description: Not a pack you shared (code VOICE_PACK_NOT_FOUND) }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { description: 'Revoked, but some recordings remain; retry (code VOICE_PACK_PURGE_FAILED), or sharing unavailable (VOICE_SHARING_UNAVAILABLE)' }
+  /voice-packs/{code}/import:
+    parameters:
+      - $ref: '#/components/parameters/VoicePackCode'
+    post:
+      summary: Count one completed install of a shared voice
+      description: Web or mobile client only. No account needed.
+      responses:
+        '200': { description: Counted }
+        '404': { description: Unknown or revoked code (code VOICE_PACK_NOT_FOUND) }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /voice-packs/{code}/clips/{language}/{phraseId}:
+    parameters:
+      - $ref: '#/components/parameters/VoicePackCode'
+      - in: path
+        name: language
+        required: true
+        schema: { type: string, enum: [en, zh] }
+      - in: path
+        name: phraseId
+        required: true
+        schema: { type: string, pattern: '^[a-z0-9_]{1,48}$' }
+    get:
+      summary: One recorded clip of a shared voice
+      description: >-
+        Immutable for the life of the pack (cache-control public, one year).
+        ETag and x-content-sha256 carry the SHA-256 from the manifest; clients
+        verify it before installing. Only misses count toward the rate limit.
+      responses:
+        '200':
+          description: Audio
+          content:
+            audio/mp4:
+              schema: { type: string, format: binary }
+            audio/aac:
+              schema: { type: string, format: binary }
+        '404': { description: Unknown or revoked code, or a phrase not in the pack (code VOICE_PACK_NOT_FOUND) }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/VoiceSharingUnavailable' }
 components:
+  parameters:
+    VoicePackCode:
+      in: path
+      name: code
+      required: true
+      description: Ten characters from 23456789ABCDEFGHJKMNPQRSTUVWXYZ; case, spaces and dashes are ignored
+      schema: { type: string }
   responses:
     BadRequest:
       description: Invalid request
@@ -408,6 +538,11 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
+    VoiceSharingUnavailable:
+      description: Voice sharing storage is not available (code VOICE_SHARING_UNAVAILABLE)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
   schemas:
     Error:
       type: object
@@ -417,6 +552,33 @@ components:
         code: { type: string, example: RATE_LIMITED }
         requestId: { type: string, format: uuid, description: Present on 5xx responses from the global handler }
         retryAfter: { type: integer, description: Seconds, when the request can be retried }
+    VoicePack:
+      type: object
+      properties:
+        code: { type: string, example: 7KQ2MXPA4R }
+        name: { type: string, maxLength: 40 }
+        languages: { type: array, items: { type: string, enum: [en, zh] } }
+        clipCount: { type: integer }
+        totalBytes: { type: integer }
+        createdAt: { type: integer, description: Epoch milliseconds }
+        importCount: { type: integer }
+        url: { type: string, example: 'https://waybi.co/voice/7KQ2MXPA4R' }
+    SharedVoicePack:
+      allOf:
+        - $ref: '#/components/schemas/VoicePack'
+        - type: object
+          properties:
+            clips:
+              type: object
+              description: language -> phraseId -> clip
+              additionalProperties:
+                type: object
+                additionalProperties:
+                  type: object
+                  properties:
+                    bytes: { type: integer }
+                    contentType: { type: string }
+                    sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
     Place:
       type: object
       properties:

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../drive/voice_prompts.dart';
 import 'geo_math.dart';
 import 'map_provider.dart';
 import 'route_option.dart';
@@ -403,15 +404,7 @@ class TransitLaneNotice {
         : (zh ? '请保持普通车道' : 'Stay in a general traffic lane');
   }
 
-  String speech(String language) {
-    final zh = language == 'zh';
-    final road = lane.roadName.isEmpty
-        ? ''
-        : '${lane.roadName}${zh ? '，' : '. '}';
-    final schedule = lane.schedule
-        .label(language, speech: true)
-        .replaceAll(' · 24/7', '');
-    final stop = zh ? '。' : '. ';
-    return '${zh ? '前方' : 'Ahead, '}$road${lane.label(language)}$stop$schedule$stop${instruction(language)}$stop';
-  }
+  /// The spoken reminder; see [VoicePrompts.transitLane] for its parts.
+  String speech(String language) =>
+      VoicePrompts.transitLane(this, language).text;
 }

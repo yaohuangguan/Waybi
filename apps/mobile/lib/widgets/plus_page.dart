@@ -214,8 +214,8 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
       Icons.record_voice_over_rounded,
       t('Your navigation voice', '我的导航语音'),
       t(
-        'Record your own turn-by-turn phrases. Recordings stay on this device; anything not recorded uses the standard voice.',
-        '录下你自己的转弯播报短语，录音只保存在本机；没录的部分继续使用标准语音。',
+        'Record your own guidance phrases. They stay on this device unless you share them by code; the rest uses the standard voice.',
+        '录下你的播报短语，可用代码分享；不分享就只存本机，没录的用标准语音。',
       ),
     ),
     (

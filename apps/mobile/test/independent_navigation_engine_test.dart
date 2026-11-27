@@ -14,6 +14,7 @@ import 'package:waybi_mobile/domain/transit_lane.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/drive/navigation_language.dart';
 import 'package:waybi_mobile/drive/voice_engine.dart';
+import 'package:waybi_mobile/drive/voice_utterance.dart';
 import 'package:waybi_mobile/drive/route_progress_tracker.dart';
 import 'package:waybi_mobile/providers/independent_navigation_engine.dart';
 
@@ -67,15 +68,24 @@ class FakeDrive extends DriveEngine {
     spoken.add(message);
   }
 
+  final prompts = <VoiceUtterance>[];
+  @override
+  Future<void> speakUtterance(VoiceUtterance prompt) async {
+    prompts.add(prompt);
+    spoken.add(prompt.text);
+  }
+
   final urgency = <bool>[];
   final relevance = <bool Function()?>[];
   @override
-  Future<void> speakTurn(
-    String Function() message, {
+  Future<void> speakTurnUtterance(
+    VoiceUtterance Function() prompt, {
     bool Function()? stillRelevant,
     bool urgent = false,
   }) async {
-    spoken.add(message());
+    final built = prompt();
+    prompts.add(built);
+    spoken.add(built.text);
     urgency.add(urgent);
     relevance.add(stillRelevant);
   }

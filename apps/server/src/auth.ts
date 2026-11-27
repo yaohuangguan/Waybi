@@ -10,6 +10,7 @@ import { appleAuthConfig, exchangeAppleAuthorization, sealAppleToken, revokeAppl
 import { emailOtpReady, handleEmailOtp } from './email_otp.ts';
 import { clientFingerprint, clientIp } from './abuse_guard.ts';
 import { cancelStripeSubscriptionsForDeletion } from './billing.ts';
+import { purgeVoicePacksForDeletion } from './voice_packs.ts';
 
 const encoder = new TextEncoder();
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
@@ -497,6 +498,12 @@ export async function handleAccount(request: Request, env, ctx?: Pick<ExecutionC
     if (!stripe.ok) {
       return response({ error: 'Your subscription could not be cancelled. Please retry account deletion.',
         code: 'SUBSCRIPTION_CANCEL_FAILED' }, 503);
+    }
+    // Shared voice recordings live in R2, outside D1 cascades. Remove them
+    // first, so a storage failure never returns a false confirmation.
+    if (!await purgeVoicePacksForDeletion(env, db, user.id)) {
+      return response({ error: 'Your shared voice recordings could not be removed. Please retry account deletion.',
+        code: 'VOICE_PACK_DELETE_FAILED' }, 503);
     }
     // Apple subscriptions can only be cancelled by the user in the App Store.
     const appleSubscriptionActive = await appleSubscriptionRenewing(db, user.id);

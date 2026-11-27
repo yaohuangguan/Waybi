@@ -2,7 +2,11 @@ openapi: 3.0.3
 info:
   title: Waybi API
   version: 0.1.0
-  description: Shared HTTP contract for the PWA and a future iOS client.
+  description: >-
+    Shared HTTP contract for the PWA and mobile clients. Every endpoint may
+    answer 429 (per-client burst limit, with Retry-After) where noted and 500
+    with a generic body and requestId; error bodies never contain internal
+    details.
 servers:
   - url: /api
 paths:
@@ -20,6 +24,7 @@ paths:
                   ok: { type: boolean }
                   cameraCount: { type: integer }
                   syncStatus: { type: string, enum: [seed, live, stale] }
+        '500': { $ref: '#/components/responses/InternalError' }
   /cameras:
     get:
       summary: All fixed safety cameras and source freshness
@@ -106,12 +111,26 @@ paths:
         '502': { description: AT source temporarily unavailable }
   /search:
     get:
-      summary: Search addresses within New Zealand
+      summary: Search addresses and places (Nominatim plus official address sources)
+      description: >-
+        With provider=independent this is the independent typeahead stack (same
+        as /suggest). Public Nominatim requests are serialized per Worker
+        isolate at one per second.
       parameters:
         - in: query
           name: q
           required: true
-          schema: { type: string, minLength: 3, maxLength: 120 }
+          schema: { type: string, minLength: 2, maxLength: 120 }
+        - in: query
+          name: near
+          description: longitude,latitude used to bias results
+          schema: { type: string }
+        - in: query
+          name: lang
+          schema: { type: string, enum: [en, zh] }
+        - in: query
+          name: provider
+          schema: { type: string, enum: [independent] }
       responses:
         '200':
           description: Matching places
@@ -119,13 +138,154 @@ paths:
             application/json:
               schema:
                 type: array
-                items:
-                  type: object
-                  properties:
-                    id: { type: integer }
-                    label: { type: string }
-                    latitude: { type: number }
-                    longitude: { type: number }
+                items: { $ref: '#/components/schemas/Place' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Upstream' }
+        '503':
+          description: Search queue busy (code SEARCH_BUSY); retry after the Retry-After header
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /suggest:
+    get:
+      summary: Place typeahead
+      description: >-
+        Without provider=independent, Google Places Text Search is used while
+        its daily server budget lasts; beyond it the independent (non-Google)
+        providers answer instead.
+      parameters:
+        - in: query
+          name: q
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 120 }
+        - in: query
+          name: near
+          description: longitude,latitude; nearby results rank ahead of overseas namesakes
+          schema: { type: string }
+        - in: query
+          name: lang
+          schema: { type: string, enum: [en, zh] }
+        - in: query
+          name: provider
+          schema: { type: string, enum: [independent, geoapify] }
+      responses:
+        '200':
+          description: Ranked suggestions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Place' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Upstream' }
+        '503':
+          description: No place search provider is available
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /place-details:
+    get:
+      summary: Google place details (Google map mode only)
+      parameters:
+        - in: query
+          name: placeId
+          required: true
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]{8,300}$' }
+      responses:
+        '200': { description: Place details }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { description: Place not found }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Upstream' }
+        '503': { $ref: '#/components/responses/GoogleBudgetExhausted' }
+  /place-photo:
+    get:
+      summary: Google place photo proxy (Google map mode only)
+      parameters:
+        - in: query
+          name: name
+          required: true
+          schema: { type: string, pattern: '^places/[A-Za-z0-9_-]+/photos/[A-Za-z0-9_-]+$' }
+      responses:
+        '200': { description: Image bytes }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Upstream' }
+        '503': { $ref: '#/components/responses/GoogleBudgetExhausted' }
+  /speed-limit:
+    get:
+      summary: Posted speed limit from the NZTA National Speed Limit Register
+      description: Shared per ~11 m cell (coordinates rounded to 1e-4 degrees) through the edge cache for up to an hour.
+      parameters:
+        - in: query
+          name: at
+          required: true
+          description: longitude,latitude
+          schema: { type: string }
+      responses:
+        '200':
+          description: Current limit, or null outside NZ / without a zone
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  speedLimitKph: { type: integer, nullable: true }
+                  zoneName: { type: string, nullable: true }
+                  source: { type: string, nullable: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Upstream' }
+  /road-events:
+    get:
+      summary: Official road events and community reports for a region
+      description: >-
+        Includes events active now AND events scheduled to start within the
+        next scheduledWindowHours (12); check validFrom/validUntil before
+        treating an event as active. Without bbox or radiusMeters the whole
+        region selected by near (or country) is returned.
+      parameters:
+        - in: query
+          name: near
+          description: longitude,latitude selecting the official source region
+          schema: { type: string }
+        - in: query
+          name: country
+          schema: { type: string, enum: [NZ, AU] }
+        - in: query
+          name: bbox
+          description: Optional west,south,east,north filter, at most 10 degrees on each side
+          schema: { type: string }
+        - in: query
+          name: radiusMeters
+          description: Optional filter around near
+          schema: { type: integer, minimum: 100, maximum: 300000 }
+      responses:
+        '200':
+          description: Events in the requested area
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, syncStatus]
+                properties:
+                  syncStatus: { type: string, enum: [live, stale, unavailable] }
+                  checkedAt: { type: string, format: date-time, nullable: true }
+                  retrievedAt: { type: string, format: date-time, nullable: true }
+                  scheduledWindowHours: { type: integer, example: 12 }
+                  failedFeeds:
+                    type: array
+                    description: Source feeds that failed in the latest refresh; their recent events are retained
+                    items: { type: string }
+                  officialCoverage:
+                    type: array
+                    items: { type: string }
+                  events:
+                    type: array
+                    items: { $ref: '#/components/schemas/RoadEvent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
   /route:
     get:
       summary: Driving route with turn steps
@@ -140,15 +300,27 @@ paths:
           required: true
           description: longitude,latitude
           schema: { type: string }
+        - in: query
+          name: stops
+          description: Up to 23 longitude,latitude pairs separated by ';'. Any malformed entry is a 400.
+          schema: { type: string }
       responses:
         '200':
           description: Route
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Route' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { description: No driving route found }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Upstream' }
   /route-watches:
     get:
-      summary: Evaluate and list the signed-in user's saved Route Watch routes
+      summary: List the signed-in user's saved Route Watch routes
+      description: >-
+        Returns the status stored by the 15-minute evaluation. Only watches not
+        checked in the last 15 minutes are re-evaluated; if the road-event
+        snapshot is unavailable those report status unknown.
       responses:
         '200':
           description: Current Route Watch states from official road-event matching
@@ -157,18 +329,34 @@ paths:
               schema:
                 type: object
                 properties:
-                  entitlement: { type: string, enum: [plus-preview] }
+                  entitlement: { type: string, enum: [plus] }
                   watches:
                     type: array
                     items: { $ref: '#/components/schemas/RouteWatch' }
         '401': { description: Sign in required }
+        '403': { $ref: '#/components/responses/PlusRequired' }
+        '500': { $ref: '#/components/responses/InternalError' }
     post:
       summary: Create or refresh a Route Watch from the current driving route geometry
+      description: Mobile client only (x-waybi-client mobile). At most 8 watches per user; updating an existing label is always allowed.
       responses:
         '201':
           description: Route Watch saved and evaluated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entitlement: { type: string, enum: [plus] }
+                  watch: { $ref: '#/components/schemas/RouteWatch' }
         '400': { description: Invalid route geometry or destination }
         '401': { description: Sign in required }
+        '403': { $ref: '#/components/responses/PlusRequired' }
+        '409':
+          description: Watch limit reached (code ROUTE_WATCH_LIMIT)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
   /route-watches/{id}:
     delete:
       summary: Stop watching a saved route
@@ -179,9 +367,98 @@ paths:
           schema: { type: string }
       responses:
         '200': { description: Route Watch deleted }
+        '400': { description: Malformed route watch id }
         '401': { description: Sign in required }
+        '403': { $ref: '#/components/responses/PlusRequired' }
 components:
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Per-client burst limit reached (code RATE_LIMITED)
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PlusRequired:
+      description: Waybi Plus is required (code PLUS_REQUIRED)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    GoogleBudgetExhausted:
+      description: The daily Google budget for this feature is used up (code GOOGLE_BUDGET_EXHAUSTED); retry after Retry-After
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Upstream:
+      description: An upstream provider failed; generic message
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalError:
+      description: Unexpected error; generic message with a requestId for support
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string, description: Human-readable, safe to display }
+        code: { type: string, example: RATE_LIMITED }
+        requestId: { type: string, format: uuid, description: Present on 5xx responses from the global handler }
+        retryAfter: { type: integer, description: Seconds, when the request can be retried }
+    Place:
+      type: object
+      properties:
+        id:
+          description: Provider identifier (Nominatim returns integers, other providers strings)
+          oneOf:
+            - { type: string }
+            - { type: integer }
+        provider: { type: string }
+        name: { type: string }
+        address: { type: string }
+        label: { type: string }
+        isPoi: { type: boolean }
+        resultType: { type: string }
+        countryCode: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        distanceMeters: { type: integer, description: From near, when given }
+    RoadEvent:
+      type: object
+      required: [id, type, location, severity]
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [roadClosure, roadworks, incident, flooding, slip, congestion] }
+        severity: { type: string, enum: [critical, warning, advisory] }
+        observation: { type: string, enum: [official, observed] }
+        location:
+          type: object
+          properties:
+            latitude: { type: number }
+            longitude: { type: number }
+        geometry:
+          type: array
+          items:
+            type: object
+            properties:
+              latitude: { type: number }
+              longitude: { type: number }
+        roadName: { type: string, nullable: true }
+        validFrom: { type: string, format: date-time, nullable: true, description: May be in the future for scheduled events }
+        validUntil: { type: string, format: date-time, nullable: true }
+        metadata: { type: object, additionalProperties: true }
     RouteWatch:
       type: object
       required: [id, label, destinationName, enabled, status, eventCount, events]
@@ -208,7 +485,11 @@ components:
         enabled: { type: boolean }
         status: { type: string, enum: [healthy, advisory, warning, disrupted, unknown] }
         eventCount: { type: integer }
-        lastCheckedAt: { type: string, format: date-time, nullable: true }
+        lastCheckedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Latest evaluation of this watch, including Cron runs that found no change
         updatedAt: { type: string, format: date-time }
         events:
           type: array

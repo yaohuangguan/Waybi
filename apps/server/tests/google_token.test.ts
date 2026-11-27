@@ -39,6 +39,9 @@ test('rejects expired, wrong audience and unverified email claims', async () => 
     { exp: Math.floor(now / 1000) - 1 },
     { aud: 'other.apps.googleusercontent.com' },
     { email_verified: false },
+    // Google sign-in must prove the mailbox: a missing or "false" claim is refused.
+    { email_verified: undefined },
+    { email_verified: 'false' },
   ]) {
     await assert.rejects(
       verifyGoogleIdToken(await token(claims), audience + ',' + iosClient, { fetchJwks, now })

@@ -99,7 +99,7 @@ Remote push delivery is a separate layer; the current implementation provides re
 
 Waybi maintains a validated snapshot of New Zealand fixed safety-camera data from the official NZTA source.
 
-The production Worker checks for camera updates every **6 hours** and writes validated snapshots to Workers KV. A new snapshot only replaces the current one when the source date and coordinates pass validation; otherwise Waybi keeps the last known-good dataset.
+The production Worker checks for camera updates once a day (Cron `0 3 * * *`, 03:00 UTC) and writes validated snapshots to Workers KV. A new snapshot only replaces the current one when the source date and coordinates pass validation; otherwise Waybi keeps the last known-good dataset.
 
 During navigation, cameras are projected against the active route rather than treated as simple nearby points. The matcher also uses route geometry and road context to reduce false positives from adjacent roads.
 
@@ -179,7 +179,7 @@ scripts/       data import and mobile development helpers
 
 ### Requirements
 
-- Node.js 20+
+- Node.js 24+ (matches `engines` in `package.json`)
 - pnpm 12.6+
 - Flutter SDK for mobile development
 - Xcode for iOS builds
@@ -265,7 +265,7 @@ Current production web endpoint:
 Scheduled jobs:
 
 - every **15 minutes** — Route Watch road-event evaluation
-- every **6 hours** — NZTA camera dataset refresh
+- daily at **03:00 UTC** (`0 3 * * *`) — NZTA camera dataset refresh
 
 ## API
 

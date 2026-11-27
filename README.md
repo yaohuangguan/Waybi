@@ -312,6 +312,8 @@ Waybi keeps provider-specific content rules explicit.
 
 Google Places and Routes content stays on Google Maps. Waybi Map uses independently sourced OSM data and its own navigation engine; switching maps does not relabel provider content.
 
+Mainland China is the exception to OSM-first search and routing, because OSM there is too sparse (near Shijiazhuang its only "盛世春天" was 494 km away). When a search's `near`, or every point of a route, is in mainland China and the Worker has the `AMAP_WEB_KEY` secret, the Worker uses the Amap (高德, AutoNavi) Web Service API for search, reverse geocoding and driving/walking/cycling routes with live traffic. Amap content is tagged `provider: "amap"` (routes: `routingEngine: "amap"`) and shown with the "高德地图 / AutoNavi" attribution; its GCJ-02 coordinates are converted to WGS-84 so they line up with the unchanged OpenFreeMap/OSM base map and GPS. The key never leaves the Worker, every call is bounded by a daily D1 budget, and OSM remains the fallback. Hong Kong, Macau and Taiwan keep the global stack. See [Mainland China: Amap search and routing](docs/china-amap.md).
+
 This separation is intentional: map switching is a UI choice, not a licence bypass.
 
 ## Privacy

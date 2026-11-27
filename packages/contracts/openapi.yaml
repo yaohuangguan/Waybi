@@ -115,7 +115,10 @@ paths:
       description: >-
         With provider=independent this is the independent typeahead stack (same
         as /suggest). Public Nominatim requests are serialized per Worker
-        isolate at one per second.
+        isolate at one per second. When `near` is in mainland China (and the
+        Worker has AMAP_WEB_KEY) a submitted search runs Amap keyword and
+        around search instead, with the same Place shape and OSM as a
+        deduplicated fallback; see /suggest.
       parameters:
         - in: query
           name: q
@@ -154,6 +157,18 @@ paths:
         Without provider=independent, Google Places Text Search is used while
         its daily server budget lasts; beyond it the independent (non-Google)
         providers answer instead.
+
+        Mainland China: when `near` is inside mainland China (Hong Kong, Macau
+        and Taiwan excluded) and the Worker has AMAP_WEB_KEY, every provider
+        value is answered by Amap (AutoNavi) input tips, then around search
+        (50 km) and keyword search only while fewer than three places were
+        found. Amap's GCJ-02 coordinates are converted to WGS-84. Results are
+        ranked by relevance and proximity, carry `distanceMeters`, and have
+        `provider: amap` with `attribution`. OpenStreetMap results are added
+        only when Amap returns fewer than three places, fails or is out of
+        its daily budget, and never duplicate an Amap place. Clients should
+        warn when even the nearest named result is far away (Waybi uses
+        50 km) instead of routing to it silently.
       parameters:
         - in: query
           name: q
@@ -169,6 +184,10 @@ paths:
         - in: query
           name: provider
           schema: { type: string, enum: [independent, geoapify] }
+        - in: query
+          name: mode
+          description: In mainland China, `search` runs Amap keyword + around search instead of typeahead input tips.
+          schema: { type: string, enum: [suggest, search], default: suggest }
       responses:
         '200':
           description: Ranked suggestions
@@ -185,6 +204,70 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+  /reverse:
+    get:
+      summary: Label for a coordinate (current location, long-press)
+      description: >-
+        OpenStreetMap Nominatim, or Amap reverse geocoding (regeo) for a
+        coordinate in mainland China, with Nominatim as its fallback.
+      parameters:
+        - in: query
+          name: at
+          required: true
+          description: longitude,latitude (WGS-84)
+          schema: { type: string }
+        - in: query
+          name: lang
+          schema: { type: string, enum: [en, zh] }
+      responses:
+        '200':
+          description: Place label
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [label]
+                properties:
+                  label: { type: string }
+                  countryCode: { type: string, nullable: true, example: CN }
+                  provider: { type: string, enum: [amap], description: Present when Amap answered }
+                  attribution: { type: string, example: 高德地图 / AutoNavi }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Upstream' }
+  /route-options:
+    get:
+      summary: Route options for drive, walk, bicycle and transit
+      description: >-
+        provider=independent is Waybi routing (owned Valhalla in New Zealand,
+        public routers elsewhere). When origin, stops and destination are all
+        in mainland China and the Worker has AMAP_WEB_KEY, driving uses Amap
+        driving v5 (live traffic, alternatives, up to 16 stops) and single-leg
+        walking/cycling use Amap; options keep `provider: independent` when
+        Waybi routing was requested, with `routingEngine: amap` and
+        `attribution`. Transit in China, more stops, trips that leave the
+        mainland, and any Amap failure or exhausted budget use the existing
+        engines. Reroutes use this endpoint.
+      parameters:
+        - { in: query, name: from, required: true, description: 'longitude,latitude', schema: { type: string } }
+        - { in: query, name: to, required: true, description: 'longitude,latitude', schema: { type: string } }
+        - { in: query, name: stops, description: "Up to 23 longitude,latitude pairs separated by ';'", schema: { type: string } }
+        - { in: query, name: mode, schema: { type: string, enum: [drive, transit, walk, bicycle] } }
+        - { in: query, name: provider, schema: { type: string, enum: [independent] } }
+        - { in: query, name: alternatives, schema: { type: string, enum: ['true', 'false'] } }
+        - { in: query, name: heading, description: Degrees; not used by Amap, schema: { type: number } }
+        - { in: query, name: avoid, description: "Up to 32 lon,lat,heading closures; Amap receives them as avoid polygons", schema: { type: string } }
+        - { in: query, name: lang, schema: { type: string, enum: [en, zh] } }
+      responses:
+        '200':
+          description: Route plan
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoutePlan' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { description: 'No land route (code NO_LAND_ROUTE)' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/Upstream' }
   /place-details:
     get:
       summary: Google place details (Google map mode only)
@@ -425,15 +508,23 @@ components:
           oneOf:
             - { type: string }
             - { type: integer }
-        provider: { type: string }
+        provider:
+          type: string
+          description: >-
+            google, amap (mainland China), osm, geoapify, tomtom, here,
+            regional:<source> or derived:<method>
+        sourceName: { type: string }
+        attribution:
+          type: string
+          description: Credit to show with the result; Amap results carry "高德地图 / AutoNavi"
         name: { type: string }
         address: { type: string }
         label: { type: string }
         isPoi: { type: boolean }
         resultType: { type: string }
         countryCode: { type: string }
-        latitude: { type: number }
-        longitude: { type: number }
+        latitude: { type: number, description: WGS-84 (Amap GCJ-02 is converted) }
+        longitude: { type: number, description: WGS-84 (Amap GCJ-02 is converted) }
         distanceMeters: { type: integer, description: From near, when given }
     RoadEvent:
       type: object
@@ -535,9 +626,93 @@ components:
         longitude: { type: number }
         source: { type: string, format: uri }
         updatedAt: { type: string, format: date }
+    RoutePlan:
+      type: object
+      required: [provider, trafficAvailable, stopsApplied, options]
+      properties:
+        provider: { type: string, enum: [google, independent, osm-fallback, amap] }
+        trafficAvailable: { type: boolean }
+        stopsApplied: { type: integer }
+        attribution: { type: string, description: Present when Amap planned the routes }
+        options:
+          type: array
+          items: { $ref: '#/components/schemas/RouteOption' }
+    RouteOption:
+      type: object
+      properties:
+        id: { type: string }
+        mode: { type: string, enum: [drive, transit, walk, bicycle] }
+        provider: { type: string, enum: [google, independent, osm-fallback, amap] }
+        routingEngine: { type: string, enum: [valhalla, public-valhalla, osrm, amap] }
+        attribution: { type: string, example: 高德地图 / AutoNavi }
+        durationSeconds: { type: number, description: Amap durations include live traffic }
+        staticDurationSeconds: { type: number, nullable: true }
+        trafficDelaySeconds: { type: number, nullable: true }
+        distanceMeters: { type: number }
+        coordinates:
+          type: array
+          description: WGS-84 [longitude, latitude] points
+          items: { type: array, minItems: 2, maxItems: 2, items: { type: number } }
+        encodedPolyline: { type: string, nullable: true }
+        description: { type: string }
+        warnings:
+          type: array
+          description: Human-readable, in the requested language (for example an unavoidable Amap traffic restriction)
+          items: { type: string }
+        tollsYuan: { type: number, description: Amap toll estimate in CNY }
+        traffic:
+          type: object
+          properties:
+            normal: { type: integer }
+            slow: { type: integer }
+            trafficJam: { type: integer }
+        trafficIntervals:
+          type: array
+          description: Point-index ranges of `coordinates`; Amap's tmcs map to normal, slow and trafficJam
+          items:
+            type: object
+            properties:
+              startPolylinePointIndex: { type: integer }
+              endPolylinePointIndex: { type: integer }
+              speed: { type: string, enum: [normal, slow, trafficJam] }
+        conditions:
+          type: object
+          description: Route traffic and road-event assessment (NZTA levels, or Amap tmcs in China)
+          properties:
+            trafficStatus: { type: string, enum: [live, stale, unavailable] }
+            coverage: { type: string, example: amap-tmcs }
+            coveredMeters: { type: integer }
+            heavyMeters: { type: integer }
+            moderateMeters: { type: integer }
+            expiresAt: { type: string, format: date-time }
+        steps:
+          type: array
+          description: >-
+            OSRM-style: the maneuver happens at `location`, at the step's start;
+            `along` is metres from the route start. Each stop ends with an
+            `arrive` step and the next leg starts with `depart`.
+          items:
+            type: object
+            properties:
+              distance: { type: number }
+              duration: { type: number }
+              along: { type: number }
+              name: { type: string }
+              maneuver:
+                type: string
+                description: depart, turn, continue, fork, merge, on ramp, off ramp, roundabout, exit roundabout, arrive
+              modifier:
+                type: string
+                description: left, right, slight left, slight right, sharp left, sharp right, straight or uturn
+              instruction: { type: string }
+              location: { type: array, minItems: 2, maxItems: 2, items: { type: number } }
+              lanes: { type: array, items: { type: object } }
+        transit: { type: array, items: { type: object } }
     Route:
       type: object
       properties:
+        provider: { type: string, enum: [amap], description: Present when Amap planned the route (mainland China) }
+        attribution: { type: string }
         coordinates:
           type: array
           description: Polyline points in [longitude, latitude] order

@@ -22,6 +22,9 @@
     "apps/mobile/lib/widgets/account_sign_in.dart": {
       "minimumLinePercent": 90
     },
+    "apps/mobile/lib/app/commute_controller.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/app/home_chrome.dart": {
       "minimumLinePercent": 90
     },

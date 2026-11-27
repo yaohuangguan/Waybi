@@ -21,7 +21,6 @@ import 'data/app_store_billing.dart';
 import 'data/explore_repository.dart';
 import 'data/place_details_repository.dart';
 import 'data/parking_repository.dart';
-import 'data/quick_location_store.dart';
 import 'data/usage_telemetry_repository.dart';
 import 'data/navigation_reward_repository.dart';
 import 'data/navigation_feedback_repository.dart';
@@ -88,6 +87,7 @@ import 'widgets/route_preview_sheet.dart';
 import 'widgets/transit_trip_overlay.dart';
 import 'widgets/trips_page.dart';
 import 'widgets/waybi_format.dart';
+import 'app/commute_controller.dart';
 import 'app/home_chrome.dart';
 import 'app/journey_store.dart';
 
@@ -252,9 +252,19 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     'Shopping',
     'Gas',
   ];
-  final Map<String, PlaceSummary> _quickLocations = {};
-  final Map<String, MapProvider> _quickLocationProviders = {};
-  bool _syncingQuickLocations = false;
+
+  /// Home/Work, their ETAs, Smart Commute and Route Watch.
+  late final _commute = CommuteController(
+    account: _account,
+    bestDriveRoute: _bestDriveRoute,
+    origin: () {
+      final point = _gpsLocation;
+      return point == null ? null : GeoPoint(point.latitude, point.longitude);
+    },
+    paused: () => _driveEngine.active,
+    language: () => _appLanguage,
+    routeWatchAlertsEnabled: () => _notifySavedRouteDisruptions,
+  );
 
   double _navigationTopInset = 125;
   double _navigationBottomInset = 215;
@@ -303,15 +313,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   DestinationSuggestion? _manualOrigin;
   final List<DestinationSuggestion> _guestRecent = [];
-  final Map<String, RouteOption> _quickCommuteRoutes = {};
-  final Map<String, RouteOption> _smartCommuteRoutes = {};
-  DateTime? _smartCommuteRefreshedAt;
-  bool _smartCommuteRefreshing = false;
-  DateTime? _quickCommuteRefreshedAt;
-  LatLng? _quickCommuteOrigin;
-  bool _quickCommuteRefreshing = false;
-  Future<void>? _quickCommutePending;
-  int _quickCommuteRequest = 0;
   RouteOption? _placeQuickRoute;
   bool _placeQuickRouteLoading = false;
   String? _placeQuickRouteIssue;
@@ -453,7 +454,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-  bool _checkingRouteWatchAlerts = false;
   String? _message;
   final Set<String> _notifiedRoadEventIds = <String>{};
   final Set<String> _pendingRoadNotifications = {};
@@ -485,6 +485,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
     _independentNavigation.addListener(_onIndependentNavigationChanged);
     _trip.addListener(_onTripChanged);
+    _commute.addListener(_onTripChanged);
     unawaited(WaybiNotificationService.instance.initialize());
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
@@ -733,160 +734,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   void _onAccountChanged() {
     _syncCustomVoiceEntitlement();
     if (mounted) setState(() {});
-    if (_settingsLoaded && _account.signedIn && _account.profile != null) {
-      unawaited(_syncQuickLocationsWithAccount());
-    } else if (_settingsLoaded && !_account.signedIn) {
-      unawaited(_restoreGuestQuickLocations());
-    }
-    if (_account.profile?.isPlus == true && _account.signedIn) {
-      unawaited(_deliverRouteWatchAlerts());
-    }
-  }
-
-  Future<void> _restoreGuestQuickLocations() async {
-    final shortcuts = await QuickLocationStore().load();
-    if (!mounted || _account.signedIn) return;
-    setState(() {
-      for (final label in const ['Home', 'Work']) {
-        _quickLocations.remove(label);
-        _quickLocationProviders.remove(label);
-      }
-      for (final entry in shortcuts.entries) {
-        _quickLocations[entry.key] = entry.value.place;
-        _quickLocationProviders[entry.key] = entry.value.provider;
-      }
-    });
-    unawaited(_refreshQuickCommutes(force: true));
-  }
-
-  static bool _sameQuickPlace(PlaceSummary? a, PlaceSummary b) =>
-      a != null &&
-      a.name == b.name &&
-      a.address == b.address &&
-      _samePlaceLocation(a, b);
-
-  bool _syncQuickLocationsAgain = false;
-
-  Future<void> _syncQuickLocationsWithAccount() async {
-    if (!_settingsLoaded || !_account.signedIn || _account.profile == null) {
-      return;
-    }
-    if (_syncingQuickLocations) {
-      // A different account may have signed in while the last sync ran.
-      _syncQuickLocationsAgain = true;
-      return;
-    }
-    _syncingQuickLocations = true;
-    try {
-      final profile = _account.profile!;
-      final userId = profile.id;
-      // Every await can outlive the account: never write A's shortcuts after
-      // A signed out (or B signed in).
-      bool current() =>
-          mounted && _account.signedIn && _account.profile?.id == userId;
-      final store = QuickLocationStore();
-      final cachedOwner = await store.ownerUserId();
-      final cached = await store.load(ownerUserId: userId);
-      if (!current()) return;
-      final remote = <String, ({PlaceSummary place, MapProvider provider})>{};
-      for (final item in profile.quickLocations) {
-        final label = item['label']?.toString();
-        final latitude = item['latitude'];
-        final longitude = item['longitude'];
-        if ((label != 'Home' && label != 'Work') ||
-            latitude is! num ||
-            longitude is! num) {
-          continue;
-        }
-        final point = GeoPoint(latitude.toDouble(), longitude.toDouble());
-        if (!point.isValid) continue;
-        const provider = MapProvider.independent;
-        remote[label!] = (
-          place: PlaceSummary(
-            name: item['name']?.toString() ?? label,
-            address: item['address']?.toString() ?? '',
-            location: point,
-          ),
-          provider: provider,
-        );
-      }
-
-      var changed = false;
-      if (cachedOwner != null && cachedOwner != userId) {
-        for (final label in const ['Home', 'Work']) {
-          changed = _quickLocations.remove(label) != null || changed;
-          _quickLocationProviders.remove(label);
-        }
-      }
-
-      for (final label in const ['Home', 'Work']) {
-        final remoteValue = remote[label];
-        if (remoteValue != null) {
-          // Account notifications repeat for every profile refresh; only an
-          // actual Home/Work change re-saves and re-routes the commutes.
-          final shownSame = _sameQuickPlace(
-            _quickLocations[label],
-            remoteValue.place,
-          );
-          final storedSame =
-              cachedOwner == userId &&
-              _sameQuickPlace(cached[label]?.place, remoteValue.place);
-          if (shownSame && storedSame) continue;
-          _quickLocations[label] = remoteValue.place;
-          _quickLocationProviders[label] = remoteValue.provider;
-          changed = changed || !shownSame;
-          if (!storedSame) {
-            await store.save(
-              label,
-              remoteValue.place,
-              remoteValue.provider,
-              ownerUserId: userId,
-            );
-            if (!current()) return;
-          }
-          continue;
-        }
-
-        final localValue = cached[label];
-        if (localValue == null) continue;
-        if (!_sameQuickPlace(_quickLocations[label], localValue.place)) {
-          _quickLocations[label] = localValue.place;
-          _quickLocationProviders[label] = localValue.provider;
-          changed = true;
-        }
-        try {
-          await _account.saveQuickLocation(
-            label: label,
-            name: localValue.place.name,
-            address: localValue.place.address,
-            latitude: localValue.place.location.latitude,
-            longitude: localValue.place.location.longitude,
-            provider: localValue.provider.name,
-          );
-          if (!current()) return;
-          await store.save(
-            label,
-            localValue.place,
-            localValue.provider,
-            ownerUserId: userId,
-          );
-          if (!current()) return;
-        } catch (_) {
-          // Keep local shortcuts usable offline; the next account refresh retries sync.
-          if (!current()) return;
-        }
-      }
-      if (changed && mounted) {
-        setState(() {});
-        unawaited(_refreshQuickCommutes(force: true));
-      }
-    } finally {
-      _syncingQuickLocations = false;
-      if (_syncQuickLocationsAgain && mounted) {
-        _syncQuickLocationsAgain = false;
-        unawaited(_syncQuickLocationsWithAccount());
-      }
-    }
+    _commute.onAccountChanged();
   }
 
   /// Resume work that costs network or battery runs at most this often;
@@ -931,8 +779,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (last != null && now.difference(last) < _resumeRefreshInterval) return;
     _lastResumeRefreshAt = now;
     unawaited(_friendsBackup.sync());
-    unawaited(_deliverRouteWatchAlerts());
-    unawaited(_refreshQuickCommutes(force: true));
+    unawaited(_commute.deliverRouteWatchAlerts());
+    unawaited(_commute.refreshQuick(force: true));
   }
 
   void _onIndependentNavigationChanged() {
@@ -1308,11 +1156,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
     _quickActions = prefs.getStringList('waybi.quick_actions') ?? _quickActions;
     _restoreGoogleRecent(prefs);
-    final shortcuts = await QuickLocationStore().load();
-    for (final entry in shortcuts.entries) {
-      _quickLocations[entry.key] = entry.value.place;
-      _quickLocationProviders[entry.key] = entry.value.provider;
-    }
+    await _commute.loadSaved();
     final parkedCarRecord = prefs.getString('waybi.plus.parked_car.v1');
     if (parkedCarRecord != null) {
       try {
@@ -1346,6 +1190,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     await _driveEngine.setKeepScreenAwake(_keepScreenAwake);
     await _applyNativeMapLanguage(_appLanguage);
     _settingsLoaded = true;
+    _commute.ready = true;
     _notifySafetyCameras =
         prefs.getBool('waybi.notifications.safety_cameras') ?? false;
     _notifyRoadIncidents =
@@ -1391,10 +1236,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     {}
     if (mounted) setState(() {});
     if (_account.signedIn && _account.profile != null) {
-      unawaited(_syncQuickLocationsWithAccount());
+      unawaited(_commute.syncWithAccount());
     }
-    unawaited(_refreshQuickCommutes(force: true));
-    unawaited(_deliverRouteWatchAlerts());
+    unawaited(_commute.refreshQuick(force: true));
+    unawaited(_commute.deliverRouteWatchAlerts());
   }
 
   List<DestinationSuggestion> get _recentDestinations {
@@ -1436,6 +1281,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _systemNavigation.dispose();
     _independentNavigation.dispose();
     _trip.dispose();
+    _commute.dispose();
     _exploreMarkerFocus.dispose();
     _workerSearch.dispose();
     _independentSearch.dispose();
@@ -1676,7 +1522,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     setState(() {});
     _queueMapRefresh();
-    unawaited(_refreshQuickCommutes());
+    unawaited(_commute.refreshQuick());
     final selected = _selectedPlace?.place;
     if (selected != null && _routePlan == null && !_driveEngine.active) {
       unawaited(_loadPlaceQuickRoute(selected));
@@ -1871,158 +1717,21 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     mode: mode ?? WaybiTravelMode.drive,
   );
 
-  Future<void> _refreshQuickCommutes({bool force = false}) {
-    if (!force && _quickCommutePending != null) return _quickCommutePending!;
-    late final Future<void> pending;
-    pending = _loadQuickCommutes(force: force).whenComplete(() {
-      if (identical(_quickCommutePending, pending)) _quickCommutePending = null;
-    });
-    return _quickCommutePending = pending;
-  }
-
-  Future<void> _loadQuickCommutes({bool force = false}) async {
-    if (!mounted || !_settingsLoaded || _driveEngine.active) return;
-    if (_quickCommuteRefreshing && !force) return;
-    final origin = _gpsLocation;
-    if (origin == null) return;
-
-    final targets = <String, PlaceSummary>{};
-    for (final action in const ['Home', 'Work']) {
-      final place = _quickLocations[action];
-      if (place != null) targets[action] = place;
-    }
-    if (targets.isEmpty) {
-      if (_quickCommuteRoutes.isNotEmpty && mounted) {
-        setState(_quickCommuteRoutes.clear);
-      }
-      return;
-    }
-
-    final now = DateTime.now();
-    final lastOrigin = _quickCommuteOrigin;
-    final movedMeters = lastOrigin == null
-        ? double.infinity
-        : distanceMeters(
-            origin.latitude,
-            origin.longitude,
-            lastOrigin.latitude,
-            lastOrigin.longitude,
-          );
-    final stillFresh =
-        _quickCommuteRefreshedAt != null &&
-        now.difference(_quickCommuteRefreshedAt!) < const Duration(minutes: 10);
-    if (!force && stillFresh && movedMeters < 800) return;
-
-    final request = ++_quickCommuteRequest;
-    _quickCommuteRefreshing = true;
-    final results = <String, RouteOption>{};
-    try {
-      await Future.wait(
-        targets.entries.map((entry) async {
-          try {
-            final plan = await _driveRoutePlan(
-              origin: origin,
-              destination: LatLng(
-                latitude: entry.value.location.latitude,
-                longitude: entry.value.location.longitude,
-              ),
-              mode: WaybiTravelMode.drive,
-            );
-            final driving = filterRoutes(
-              plan.forMode(WaybiTravelMode.drive).toList(),
-              RouteFilter.recommended,
-              const {},
-            );
-            if (driving.isNotEmpty) results[entry.key] = driving.first;
-          } catch (_) {
-            // Commute ETA is a progressive enhancement. Keep shortcuts usable
-            // even when routing or traffic data is temporarily unavailable.
-          }
-        }),
-      );
-      if (!mounted || request != _quickCommuteRequest) return;
-      setState(() {
-        _quickCommuteRoutes
-          ..clear()
-          ..addAll(results);
-        _quickCommuteRefreshedAt = now;
-        _quickCommuteOrigin = origin;
-      });
-    } finally {
-      if (request == _quickCommuteRequest) {
-        _quickCommuteRefreshing = false;
-      }
-    }
-  }
-
-  Future<void> _refreshSmartCommutes({bool force = false}) async {
-    if (!mounted || _driveEngine.active || _account.profile?.isPlus != true) {
-      if (_smartCommuteRoutes.isNotEmpty && mounted) {
-        setState(_smartCommuteRoutes.clear);
-      }
-      return;
-    }
-    if (_smartCommuteRefreshing) return;
-    final home = _quickLocations['Home'];
-    final work = _quickLocations['Work'];
-    if (home == null || work == null) {
-      if (_smartCommuteRoutes.isNotEmpty && mounted) {
-        setState(_smartCommuteRoutes.clear);
-      }
-      return;
-    }
-    final now = DateTime.now();
-    final fresh =
-        _smartCommuteRefreshedAt != null &&
-        now.difference(_smartCommuteRefreshedAt!) < const Duration(minutes: 10);
-    if (!force && fresh) return;
-
-    _smartCommuteRefreshing = true;
-    final results = <String, RouteOption>{};
-    Future<void> load(
-      String label,
-      PlaceSummary origin,
-      PlaceSummary destination,
-    ) async {
-      try {
-        final plan = await _driveRoutePlan(
-          origin: LatLng(
-            latitude: origin.location.latitude,
-            longitude: origin.location.longitude,
-          ),
-          destination: LatLng(
-            latitude: destination.location.latitude,
-            longitude: destination.location.longitude,
-          ),
-          mode: WaybiTravelMode.drive,
-        );
-        final driving = filterRoutes(
-          plan.forMode(WaybiTravelMode.drive).toList(),
-          RouteFilter.recommended,
-          const {},
-        );
-        if (driving.isNotEmpty) results[label] = driving.first;
-      } catch (_) {
-        // Smart Commute remains useful with the saved baseline if live routing
-        // is temporarily unavailable.
-      }
-    }
-
-    try {
-      await Future.wait([
-        load('home-work', home, work),
-        load('work-home', work, home),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _smartCommuteRoutes
-          ..clear()
-          ..addAll(results);
-        _smartCommuteRefreshedAt = now;
-      });
-    } finally {
-      _smartCommuteRefreshing = false;
-    }
+  Future<RouteOption?> _bestDriveRoute(
+    GeoPoint origin,
+    GeoPoint destination,
+  ) async {
+    final plan = await _independentRoutes.route(
+      origin: origin,
+      destination: destination,
+      language: _appLanguage,
+      mode: WaybiTravelMode.drive,
+    );
+    return filterRoutes(
+      plan.forMode(WaybiTravelMode.drive).toList(),
+      RouteFilter.recommended,
+      const {},
+    ).firstOrNull;
   }
 
   void _queueMapRefresh() {
@@ -4189,76 +3898,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _deliverRouteWatchAlerts() async {
-    if (_checkingRouteWatchAlerts ||
-        !_account.signedIn ||
-        _account.profile?.isPlus != true ||
-        !_notifySavedRouteDisruptions) {
-      return;
-    }
-    _checkingRouteWatchAlerts = true;
-    try {
-      final alerts = await _account.routeWatchAlerts();
-      if (alerts.isEmpty) return;
-
-      final latestByWatch = <String, Map<String, dynamic>>{};
-      for (final alert in alerts) {
-        final watchId = alert['routeWatchId']?.toString() ?? '';
-        if (watchId.isEmpty || latestByWatch.containsKey(watchId)) continue;
-        latestByWatch[watchId] = alert;
-      }
-
-      final selected = latestByWatch.values.take(4).toList(growable: false);
-      for (final alert in selected.reversed) {
-        final id = alert['id']?.toString() ?? '';
-        final label = alert['label']?.toString().trim();
-        final status = alert['status']?.toString() ?? 'warning';
-        final events = (alert['events'] as List<dynamic>? ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .toList(growable: false);
-        final first = events.isEmpty ? null : events.first;
-        final road = first?['roadName']?.toString().trim();
-        final impact = first?['impact']?.toString().trim();
-        final routeName = label == null || label.isEmpty
-            ? _text('Saved commute', '已保存通勤')
-            : label;
-        final title = status == 'disrupted'
-            ? _text('$routeName route disrupted', '$routeName 路线出现严重影响')
-            : _text('$routeName route changed', '$routeName 路线出现变化');
-        final body = road != null && road.isNotEmpty
-            ? _text(
-                impact != null && impact.isNotEmpty
-                    ? '$road · $impact'
-                    : 'Road event detected on $road',
-                '检测到 $road 上的道路事件',
-              )
-            : _text(
-                '${events.length} road event${events.length == 1 ? '' : 's'} may affect this route.',
-                '${events.length} 个道路事件可能影响这条路线。',
-              );
-        if (id.isNotEmpty) {
-          await WaybiNotificationService.instance.showPlusCommuteAlert(
-            id: id,
-            title: title,
-            body: body,
-          );
-        }
-      }
-
-      final ids = alerts
-          .map((alert) => alert['id']?.toString() ?? '')
-          .where((id) => id.isNotEmpty)
-          .toList(growable: false);
-      if (ids.isNotEmpty) {
-        await _account.markRouteWatchAlertsRead(ids);
-      }
-    } catch (_) {
-      // Route Watch is additive; map and navigation remain usable offline.
-    } finally {
-      _checkingRouteWatchAlerts = false;
-    }
-  }
-
   Future<void> _setNotificationPreference(String key, bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(key, value);
@@ -4279,7 +3918,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
     });
     if (value && key == 'waybi.notifications.saved_route_disruptions') {
-      unawaited(_deliverRouteWatchAlerts());
+      unawaited(_commute.deliverRouteWatchAlerts(force: true));
     }
   }
 
@@ -4480,110 +4119,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  List<Map<String, double>> _routeWatchPoints(List<GeoPoint> points) {
-    if (points.length < 2) return const [];
-    const maxPoints = 220;
-    final sampled = points.length <= maxPoints
-        ? points
-        : List<GeoPoint>.generate(
-            maxPoints,
-            (index) =>
-                points[(index * (points.length - 1) / (maxPoints - 1)).round()],
-            growable: false,
-          );
-    return sampled
-        .map(
-          (point) => <String, double>{
-            'latitude': point.latitude,
-            'longitude': point.longitude,
-          },
-        )
-        .toList(growable: false);
-  }
-
-  Future<void> _setRouteWatch(
-    String label,
-    RouteWatchItem? current,
-    bool enabled,
-  ) async {
-    if (!_account.signedIn) {
-      throw StateError(_text('Sign in to use Route Watch.', '请先登录后使用路线监控。'));
-    }
-    if (_account.profile?.isPlus != true) {
-      throw StateError(
-        _text('Smart Commute is a Waybi Plus feature.', '智能通勤是 Waybi Plus 功能。'),
-      );
-    }
-    if (!enabled) {
-      if (current != null) await _account.deleteRouteWatch(current.id);
-      return;
-    }
-
-    final pair = switch (label) {
-      'home-work' => ('Home', 'Work'),
-      'work-home' => ('Work', 'Home'),
-      _ => throw StateError(
-        _text('This Route Watch is not available.', '这条路线监控不可用。'),
-      ),
-    };
-    final origin = _quickLocations[pair.$1];
-    final destination = _quickLocations[pair.$2];
-    if (origin == null || destination == null) {
-      throw StateError(
-        _text(
-          'Set both Home and Work before enabling Route Watch.',
-          '请先同时设置“家”和“公司”，再开启路线监控。',
-        ),
-      );
-    }
-
-    final plan = await _driveRoutePlan(
-      origin: LatLng(
-        latitude: origin.location.latitude,
-        longitude: origin.location.longitude,
-      ),
-      destination: LatLng(
-        latitude: destination.location.latitude,
-        longitude: destination.location.longitude,
-      ),
-      mode: WaybiTravelMode.drive,
-    );
-    final driving = filterRoutes(
-      plan.forMode(WaybiTravelMode.drive).toList(),
-      RouteFilter.recommended,
-      const {},
-    );
-    if (driving.isEmpty || driving.first.points.length < 2) {
-      throw StateError(
-        _text(
-          'A live driving route is required before Route Watch can start.',
-          '需要先获取实时驾车路线，才能开启路线监控。',
-        ),
-      );
-    }
-    final route = driving.first;
-
-    await _account.saveRouteWatch(
-      label: label,
-      originName: origin.name,
-      originLatitude: origin.location.latitude,
-      originLongitude: origin.location.longitude,
-      destinationName: destination.name,
-      latitude: destination.location.latitude,
-      longitude: destination.location.longitude,
-      routeProvider: route.provider,
-      routePoints: _routeWatchPoints(route.points),
-      durationSeconds: route.durationSeconds,
-      distanceMeters: route.distanceMeters,
-    );
-  }
-
   Future<TripsSnapshot> _readTripsSnapshot({
     Map<String, RouteWatchItem> routeWatches = const {},
   }) async {
     final quickPlaces = <String, TripDestination>{};
     for (final label in const ['Home', 'Work']) {
-      final place = _quickLocations[label];
+      final place = _commute.places[label];
       if (place == null) continue;
       quickPlaces[label] = TripDestination(
         name: place.name,
@@ -4649,11 +4190,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       guestTripCount: prefs.getInt('${guestPrefix}trips') ?? 0,
       guestDurationSeconds: prefs.getInt('${guestPrefix}duration') ?? 0,
       quickPlaces: quickPlaces,
-      quickRoutes: Map<String, RouteOption>.from(_quickCommuteRoutes),
+      quickRoutes: _commute.quickRoutes,
       recent: recent,
       history: history,
       routeWatches: routeWatches,
-      smartCommuteRoutes: Map<String, RouteOption>.from(_smartCommuteRoutes),
+      smartCommuteRoutes: _commute.smartRoutes,
       signedIn: _account.signedIn,
       isPlus: _account.profile?.isPlus == true,
     );
@@ -4683,7 +4224,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             if (!mounted || _account.sessionToken != session) return;
             await _journeys.syncPendingAccountJourneys();
           },
-        (_) => _refreshQuickCommutes(),
+        (_) => _commute.refreshQuick(),
         if (_account.signedIn && _account.profile?.isPlus == true)
           (publish) async {
             for (final item in await _account.routeWatches()) {
@@ -4695,9 +4236,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             }
             publish();
             if (watches.isNotEmpty) {
-              await _refreshSmartCommutes();
-            } else if (_smartCommuteRoutes.isNotEmpty && mounted) {
-              setState(_smartCommuteRoutes.clear);
+              await _commute.refreshSmart();
+            } else {
+              _commute.clearSmart();
             }
           },
       ],
@@ -4713,7 +4254,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           language: _appLanguage,
           loader: _loadTripsSnapshot,
           progressiveLoader: _loadTripsProgressively,
-          onRouteWatchChanged: _setRouteWatch,
+          onRouteWatchChanged: _commute.setRouteWatch,
         ),
       ),
     );
@@ -4970,28 +4511,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             )
             .firstOrNull;
         if (independent != null && mounted) {
-          final independentPlace = independent.toPlace(independent.location!);
-          _quickLocations[saveAs] = independentPlace;
-          _quickLocationProviders[saveAs] = _mapProvider;
-          await QuickLocationStore().save(
+          await _commute.setPlace(
             saveAs,
-            independentPlace,
+            independent.toPlace(independent.location!),
             _mapProvider,
-            ownerUserId: _account.signedIn ? _account.profile?.id : null,
           );
-          if (_account.signedIn) {
-            try {
-              await _account.saveQuickLocation(
-                label: saveAs,
-                name: independentPlace.name,
-                address: independentPlace.address,
-                latitude: independentPlace.location.latitude,
-                longitude: independentPlace.location.longitude,
-                provider: _mapProvider.name,
-              );
-            } catch (_) {}
-          }
-          unawaited(_refreshQuickCommutes(force: true));
         } else {
           setState(
             () => _message = _text(
@@ -5005,29 +4529,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       return place;
     }
     if (saveAs != null) {
-      _quickLocations[saveAs] = place;
-      _quickLocationProviders[saveAs] = _mapProvider;
-      unawaited(_refreshQuickCommutes(force: true));
-      await QuickLocationStore().save(
-        saveAs,
-        place,
-        _mapProvider,
-        ownerUserId: _account.signedIn ? _account.profile?.id : null,
-      );
-      if (_account.signedIn) {
-        try {
-          await _account.saveQuickLocation(
-            label: saveAs,
-            name: place.name,
-            address: place.address,
-            latitude: place.location.latitude,
-            longitude: place.location.longitude,
-            provider: _mapProvider.name,
-          );
-        } catch (_) {
-          // Local shortcut remains available and will retry on the next account sync.
-        }
-      }
+      await _commute.setPlace(saveAs, place, _mapProvider);
     }
     _rememberDestination(
       DestinationSuggestion(
@@ -5050,15 +4552,15 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Widget _buildQuickActions() => QuickActionsBar(
     actions: _quickActions,
     language: _appLanguage,
-    commuteRoutes: _quickCommuteRoutes,
+    commuteRoutes: _commute.quickRoutes,
     onAction: _onQuickAction,
     onEdit: _editQuickActions,
   );
 
   void _onQuickAction(String action) {
     if (action == 'Home' || action == 'Work') {
-      final place = _quickLocations[action];
-      if (place != null && _quickLocationProviders[action] == _mapProvider) {
+      final place = _commute.places[action];
+      if (place != null && _commute.providerOf(action) == _mapProvider) {
         _selectPlace(
           place,
           action == 'Home' ? SelectionSource.home : SelectionSource.work,

@@ -29,13 +29,6 @@ const _accent = WaybiInk.accent;
 /// scales are capped here so the map stays visible.
 const _hudMaxTextScale = 1.6;
 
-String navigationDistanceLabel(num? metres) {
-  if (metres == null || !metres.isFinite) return '—';
-  final safe = metres < 0 ? 0 : metres;
-  if (safe >= 1000) return '${(safe / 1000).toStringAsFixed(1)} km';
-  return '${safe.round()} m';
-}
-
 @immutable
 class NavigationLane {
   const NavigationLane(this.directions, this.recommended);

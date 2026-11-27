@@ -309,9 +309,6 @@
     "apps/mobile/lib/widgets/explore_search.dart": {
       "minimumLinePercent": 45
     },
-    "apps/mobile/lib/widgets/explore_sheet.dart": {
-      "minimumLinePercent": 90
-    },
     "apps/mobile/lib/widgets/friendly_error.dart": {
       "minimumLinePercent": 95
     },
@@ -362,9 +359,6 @@
     },
     "apps/mobile/lib/widgets/profile_page.dart": {
       "minimumLinePercent": 65
-    },
-    "apps/mobile/lib/widgets/profile_sheet.dart": {
-      "minimumLinePercent": 40
     },
     "apps/mobile/lib/widgets/road_event_details_sheet.dart": {
       "minimumLinePercent": 100

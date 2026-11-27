@@ -8,10 +8,6 @@ import 'package:waybi_mobile/widgets/navigation_overlay.dart';
 import 'support/hold.dart';
 
 void main() {
-  test('navigation distances never show negative metres', () {
-    expect(navigationDistanceLabel(-25), '0 m');
-    expect(navigationDistanceLabel(1500), '1.5 km');
-  });
   testWidgets('compact navigation layout fits a small iPhone and expands', (
     tester,
   ) async {

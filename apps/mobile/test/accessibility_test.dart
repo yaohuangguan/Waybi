@@ -1,6 +1,8 @@
 import 'dart:ui' show Tristate;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waybi_mobile/domain/map_layer_settings.dart';
@@ -193,6 +195,55 @@ void main() {
       expect(dismissed, 0, reason: 'release restarts the full reading time');
       await t.pump(const Duration(milliseconds: 200));
       expect(dismissed, 1);
+    });
+
+    testWidgets('iOS announces the notice and a cancelled touch resumes', (
+      t,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final announced = <Object?>[];
+      t.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<Object?>(
+        SystemChannels.accessibility,
+        (message) async {
+          announced.add(message);
+          return null;
+        },
+      );
+      addTearDown(() {
+        t.binding.defaultBinaryMessenger.setMockDecodedMessageHandler<Object?>(
+          SystemChannels.accessibility,
+          null,
+        );
+      });
+      var dismissed = 0;
+      await t.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(supportsAnnounce: true),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: WaybiStatusBanner(
+              message: 'Route saved',
+              onDismiss: () => dismissed++,
+            ),
+          ),
+        ),
+      );
+      await t.pump();
+      expect(
+        announced.whereType<Map>().where(
+          (m) =>
+              m['type'] == 'announce' && m['data']['message'] == 'Route saved',
+        ),
+        isNotEmpty,
+      );
+      final press = await t.startGesture(t.getCenter(find.text('Route saved')));
+      await t.pump(const Duration(seconds: 5));
+      await press.cancel();
+      await t.pump(const Duration(seconds: 4));
+      expect(dismissed, 1);
+      debugDefaultTargetPlatformOverride = null;
     });
 
     testWidgets('screen-reader users dismiss notices themselves', (t) async {

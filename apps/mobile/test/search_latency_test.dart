@@ -11,8 +11,11 @@ final _address = {
   'provider': 'derived:address-interpolation',
   'name': '42 Verissimo Drive',
   'address': '42 Verissimo Drive, Auckland, New Zealand',
-  'latitude': -36.99, 'longitude': 174.789,
-  'isPoi': false, 'interpolated': true, 'approximate': true,
+  'latitude': -36.99,
+  'longitude': 174.789,
+  'isPoi': false,
+  'interpolated': true,
+  'approximate': true,
 };
 const _auckland = GeoPoint(-36.8576, 174.7633);
 
@@ -32,7 +35,11 @@ void main() {
       }),
     );
     addTearDown(provider.dispose);
-    final results = await provider.search('42 veri', proximity: _auckland, language: 'en');
+    final results = await provider.search(
+      '42 veri',
+      proximity: _auckland,
+      language: 'en',
+    );
     expect(calls, 1);
     expect(results.single.name, '42 Verissimo Drive');
     expect(results.single.category, 'approximate_address');
@@ -49,26 +56,67 @@ void main() {
       }),
     );
     addTearDown(provider.dispose);
-    await provider.search('42 verissimo drive', proximity: _auckland, language: 'en');
-    final cached = provider.cachedSuggestions('42 veri', proximity: _auckland, language: 'en');
+    await provider.search(
+      '42 verissimo drive',
+      proximity: _auckland,
+      language: 'en',
+    );
+    final cached = provider.cachedSuggestions(
+      '42 veri',
+      proximity: _auckland,
+      language: 'en',
+    );
     expect(cached.single.name, '42 Verissimo Drive');
     expect(calls, 1);
-    expect(provider.cachedSuggestions('43 veri', proximity: _auckland, language: 'en'), isEmpty);
-    expect(provider.cachedSuggestions('42 veri', proximity: _auckland, language: 'zh'), isEmpty);
-    expect(provider.cachedSuggestions('42 veri', proximity: const GeoPoint(-33.86, 151.21), language: 'en'), isEmpty);
+    expect(
+      provider.cachedSuggestions(
+        '43 veri',
+        proximity: _auckland,
+        language: 'en',
+      ),
+      isEmpty,
+    );
+    expect(
+      provider.cachedSuggestions(
+        '42 veri',
+        proximity: _auckland,
+        language: 'zh',
+      ),
+      isEmpty,
+    );
+    expect(
+      provider.cachedSuggestions(
+        '42 veri',
+        proximity: const GeoPoint(-33.86, 151.21),
+        language: 'en',
+      ),
+      isEmpty,
+    );
   });
 
   test('Worker fallback keeps the selected map provider and empty responses do not poison the cache', () async {
     final requests = <Uri>[];
-    final provider = WorkerSearchProvider(mapCompatible: true, client: MockClient((request) async {
-      requests.add(request.url);
-      expect(request.url.queryParameters['provider'], 'independent');
-      return http.Response(jsonEncode(requests.length <= 2 ? [] : [_address]), 200);
-    }));
+    final provider = WorkerSearchProvider(
+      mapCompatible: true,
+      client: MockClient((request) async {
+        requests.add(request.url);
+        expect(request.url.queryParameters['provider'], 'independent');
+        return http.Response(
+          jsonEncode(requests.length <= 2 ? [] : [_address]),
+          200,
+        );
+      }),
+    );
     addTearDown(provider.dispose);
-    expect(await provider.search('42 veri', proximity: _auckland, language: 'en'), isEmpty);
+    expect(
+      await provider.search('42 veri', proximity: _auckland, language: 'en'),
+      isEmpty,
+    );
     expect(requests.map((url) => url.path), ['/api/suggest', '/api/search']);
-    expect(await provider.search('42 veri', proximity: _auckland, language: 'en'), hasLength(1));
+    expect(
+      await provider.search('42 veri', proximity: _auckland, language: 'en'),
+      hasLength(1),
+    );
     expect(requests, hasLength(3));
   });
 }

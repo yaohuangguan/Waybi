@@ -28,7 +28,24 @@ class NavigationMotionEstimator {
     _consistent = 0;
   }
 
-  NavigationMotion update(NavigationLocationFix fix, {double? heading}) {
+  /// A platform course that can be trusted, or null.
+  ///
+  /// Android reports "no bearing" as heading 0 with accuracy 0, which would
+  /// otherwise read as due north; iOS reports an invalid course as -1.
+  static double? usableCourse(double? heading, double? accuracy) {
+    if (heading == null || !heading.isFinite || heading < 0) return null;
+    if (accuracy != null && accuracy.isFinite) {
+      if (accuracy > 35) return null;
+      if (accuracy == 0 && heading == 0) return null;
+    }
+    return heading % 360;
+  }
+
+  NavigationMotion update(
+    NavigationLocationFix fix, {
+    double? heading,
+    double? headingAccuracy,
+  }) {
     final reported = fix.speedMetresPerSecond;
     if (!fix.point.isValid ||
         !fix.accuracyMeters.isFinite ||
@@ -51,12 +68,7 @@ class NavigationMotionEstimator {
       _estimatedAt = null;
       _consistent = 0;
       _candidateHeading = null;
-      return NavigationMotion(
-        reported,
-        heading != null && heading.isFinite && heading >= 0
-            ? heading % 360
-            : null,
-      );
+      return NavigationMotion(reported, usableCourse(heading, headingAccuracy));
     }
     if (previous == null) {
       _previous = fix;

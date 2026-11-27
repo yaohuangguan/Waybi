@@ -22,20 +22,35 @@ class JourneySummary {
 
 /// Arrival uses the requested destination and fresh raw GPS, never the
 /// road-snapped endpoint or the SDK's more generous arrival radius.
+///
+/// The radius scales with GPS accuracy, and a car that has parked near a large
+/// venue (a mall, hospital or beach whose coordinate is 40–150 m from any
+/// parking) arrives once it has been stationary there for [stationaryArrival].
 class JourneyTracker {
   JourneyTracker({
     required this.target,
     required this.destination,
     DateTime? startedAt,
+    this.stationaryRadiusMeters = 150,
+    this.stationaryArrival = const Duration(seconds: 45),
   }) : startedAt = startedAt ?? DateTime.now();
   final GeoPoint target;
   final String destination;
   final DateTime startedAt;
+  final double stationaryRadiusMeters;
+  final Duration stationaryArrival;
   final List<GeoPoint> _points = [];
   final Set<String> _cameras = {};
   double _distance = 0;
-  DateTime? _lastFix, _withinRadiusAt;
+  DateTime? _lastFix, _withinRadiusAt, _stationarySince;
+  GeoPoint? _stationaryAnchor;
   bool _finished = false;
+
+  /// Distance from [target] that counts as arrived for a fix this accurate.
+  static double arrivalRadius(double accuracyMeters) =>
+      accuracyMeters.isFinite && accuracyMeters * 1.5 > 15
+      ? accuracyMeters * 1.5
+      : 15;
 
   void cameraPassed(String? id) {
     if (id != null) _cameras.add(id);
@@ -71,15 +86,29 @@ class JourneyTracker {
     }
     _lastFix = time;
     _points.add(point);
-    final near =
+    final toTarget = distanceMeters(
+      point.latitude,
+      point.longitude,
+      target.latitude,
+      target.longitude,
+    );
+    final anchor = _stationaryAnchor;
+    if (anchor == null ||
         distanceMeters(
-          point.latitude,
-          point.longitude,
-          target.latitude,
-          target.longitude,
-        ) <=
-        10;
-    if (!near) {
+              anchor.latitude,
+              anchor.longitude,
+              point.latitude,
+              point.longitude,
+            ) >
+            20) {
+      _stationaryAnchor = point;
+      _stationarySince = time;
+    }
+    if (toTarget <= stationaryRadiusMeters &&
+        time.difference(_stationarySince!) >= stationaryArrival) {
+      return true;
+    }
+    if (toTarget > arrivalRadius(accuracyMeters)) {
       _withinRadiusAt = null;
       return false;
     }

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../data/http_guard.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_geometry.dart';
@@ -13,6 +14,7 @@ import '../domain/route_road_events.dart';
 import '../domain/transit_lane.dart';
 import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
+import '../drive/reroute_scheduler.dart';
 import '../drive/route_camera_matcher.dart';
 import '../drive/route_display.dart';
 import 'provider_contracts.dart';
@@ -29,10 +31,27 @@ class IndependentNavigationEngine extends ChangeNotifier
     this.drive, {
     this.reroute,
     DateTime Function()? clock,
-  }) : _clock = clock ?? DateTime.now;
+    math.Random? random,
+  }) : _clock = clock ?? DateTime.now,
+       _scheduler = RerouteScheduler(random: random);
   final DriveEngine drive;
   final IndependentReroute? reroute;
   final DateTime Function() _clock;
+
+  /// How long navigation waits for a replacement route. The routing provider
+  /// aborts its HTTP request just before this, so requests never overlap.
+  static const rerouteTimeout = Duration(seconds: 12);
+
+  /// Off-route once the raw fix is this far from the route.
+  double get _offRouteMeters =>
+      math.max(40, drive.locationAccuracyMeters * 1.8);
+
+  /// A replacement must fit clearly inside the off-route corridor, or a car
+  /// 40–50 m from the road (a car park) would reroute forever.
+  static double acceptanceMeters(double accuracyMeters) =>
+      math.max(40, accuracyMeters * 1.8) * .75;
+
+  final RerouteScheduler _scheduler;
   final RouteCameraMatcher _matcher = const RouteCameraMatcher();
   RouteOption? _route;
   RouteStepInfo? _nextStep;
@@ -48,6 +67,7 @@ class IndependentNavigationEngine extends ChangeNotifier
   int _lastLocationRevision = -1;
   int _offRouteFixes = 0;
   int _arrivalFixes = 0;
+  ({GeoPoint point, DateTime since})? _stationary;
   DateTime? _offRouteSince;
   DateTime? _lastDeviationAt;
   final List<({GeoPoint point, DateTime time})> _directionHistory = [];
@@ -63,9 +83,7 @@ class IndependentNavigationEngine extends ChangeNotifier
         age <= const Duration(seconds: 10);
   }
 
-  DateTime? _lastReroute;
   DateTime? _lastClosureCheck;
-  String? _lastClosureAttempt;
   bool _closureWarning = false;
   bool transitRestrictionAhead = false;
 
@@ -104,7 +122,7 @@ class IndependentNavigationEngine extends ChangeNotifier
     );
     transitRestrictionAhead = restricted.isNotEmpty;
     if (matches.isEmpty && restricted.isEmpty) {
-      _lastClosureAttempt = null;
+      _scheduler.clearClosure();
       if (_closureWarning) {
         _closureWarning = false;
         error = null;
@@ -117,16 +135,12 @@ class IndependentNavigationEngine extends ChangeNotifier
         .map((event) => '${event.id}:${event.validFrom}:${event.validUntil}')
         .followedBy(restricted.map((m) => m.lane.id))
         .join('|');
-    if (_lastClosureAttempt == fingerprint &&
-        _lastReroute != null &&
-        now.difference(_lastReroute!).inSeconds < 60) {
-      return;
-    }
-    _lastClosureAttempt = fingerprint;
+    // Bounded retries with back-off while every alternative is also closed.
+    if (!_scheduler.canRerouteForClosure(now, fingerprint)) return;
     unawaited(
       _reroute(
         GeoPoint(location.latitude, location.longitude),
-        closureTriggered: true,
+        closureFingerprint: fingerprint,
         transitRestriction: restricted.isNotEmpty,
       ),
     );
@@ -196,6 +210,7 @@ class IndependentNavigationEngine extends ChangeNotifier
     _offRouteFixes = 0;
     _offRouteSince = null;
     _arrivalFixes = 0;
+    _stationary = null;
     _lastDeviationAt = null;
     _directionHistory.clear();
     offRoute = false;
@@ -224,9 +239,8 @@ class IndependentNavigationEngine extends ChangeNotifier
     ++_session;
     drive.removeListener(_onLocation);
     _lastLocationRevision = -1;
-    _lastReroute = null;
+    _scheduler.reset();
     _lastClosureCheck = null;
-    _lastClosureAttempt = null;
     _closureWarning = false;
     transitRestrictionAhead = false;
     rerouting = false;
@@ -279,6 +293,23 @@ class IndependentNavigationEngine extends ChangeNotifier
     final progress = drive.routeProgress;
     if (progress == null) return;
     final now = _clock();
+    _scheduler.anchorIfUnset(point);
+    final destination = route.points.last;
+    final toDestination = distanceMeters(
+      point.latitude,
+      point.longitude,
+      destination.latitude,
+      destination.longitude,
+    );
+    if (_stationaryNearEnd(point, now, toDestination)) {
+      _arrive();
+      notifyListeners();
+      return;
+    }
+    // In the last ~50 m (car parks, driveways, venue entrances) leaving the
+    // road is expected; never start a reroute loop there.
+    final finalApproach =
+        toDestination <= 50 || _geometryMeters - _alongMeters <= 50;
     _directionHistory.removeWhere(
       (sample) => now.difference(sample.time) > const Duration(seconds: 6),
     );
@@ -316,9 +347,8 @@ class IndependentNavigationEngine extends ChangeNotifier
             ) >
             135;
     offRoute =
-        progress.offsetMeters >
-            math.max(40, drive.locationAccuracyMeters * 1.8) ||
-        wrongDirection;
+        !finalApproach &&
+        (progress.offsetMeters > _offRouteMeters || wrongDirection);
     if (offRoute) {
       if (_lastDeviationAt != null &&
           now.difference(_lastDeviationAt!) > const Duration(seconds: 10)) {
@@ -332,8 +362,11 @@ class IndependentNavigationEngine extends ChangeNotifier
           now.difference(_offRouteSince!).inMilliseconds >= 4000 &&
           !rerouting &&
           reroute != null &&
-          (_lastReroute == null ||
-              now.difference(_lastReroute!).inSeconds >= 5)) {
+          _scheduler.canRerouteForDeviation(
+            now,
+            at: point,
+            speedKph: drive.speedKph,
+          )) {
         unawaited(_reroute(point));
       }
       notifyListeners();
@@ -343,7 +376,11 @@ class IndependentNavigationEngine extends ChangeNotifier
     _offRouteSince = null;
     _lastDeviationAt = null;
     if (!_closureWarning) error = null;
-    _alongMeters = progress.alongMeters;
+    if (progress.offsetMeters <= _offRouteMeters) {
+      _scheduler.confirmOnRoute(now);
+      // Off the road near the end the uncommitted projection is meaningless.
+      _alongMeters = math.max(_alongMeters, progress.alongMeters);
+    }
     final fraction = _geometryMeters > 0
         ? (_alongMeters / _geometryMeters).clamp(0.0, 1.0)
         : 0.0;
@@ -378,24 +415,12 @@ class IndependentNavigationEngine extends ChangeNotifier
     _distanceToStep = nextIndex >= 0
         ? math.max(0, _stepPositions[nextIndex] - _alongMeters)
         : _remainingMeters;
-    final destination = route.points.last;
-    final toDestination = distanceMeters(
-      point.latitude,
-      point.longitude,
-      destination.latitude,
-      destination.longitude,
-    );
-    if (_remainingMeters <= 15 && toDestination <= 10 && drive.speedKph < 15) {
+    // Within the routed end's accuracy circle, nearly done and slowing.
+    if (_remainingMeters <= 30 &&
+        toDestination <= math.max(25, drive.locationAccuracyMeters * 1.5) &&
+        drive.speedKph < 15) {
       _arrivalFixes++;
-      if (_arrivalFixes >= 2) {
-        arrived = true;
-        _remainingMeters = 0;
-        _remainingSeconds = 0;
-        _distanceToStep = 0;
-        drive.guidanceRunning = false;
-        // The host confirms arrival against the requested GPS coordinate
-        // before announcing completion and presenting the trip summary.
-      }
+      if (_arrivalFixes >= 2) _arrive();
     } else {
       _arrivalFixes = 0;
     }
@@ -436,25 +461,75 @@ class IndependentNavigationEngine extends ChangeNotifier
     notifyListeners();
   }
 
+  /// Parked near a large venue (or its car park) for 30 s counts as arrived,
+  /// even when the routed end point is on a road 40–120 m away.
+  bool _stationaryNearEnd(GeoPoint point, DateTime now, double toDestination) {
+    final previous = _stationary;
+    if (drive.speedKph >= 3 ||
+        previous == null ||
+        distanceMeters(
+              previous.point.latitude,
+              previous.point.longitude,
+              point.latitude,
+              point.longitude,
+            ) >
+            15) {
+      _stationary = (point: point, since: now);
+      return false;
+    }
+    final nearEnd =
+        toDestination <= 120 ||
+        (_geometryMeters - _alongMeters <= 120 && toDestination <= 250);
+    return nearEnd &&
+        now.difference(previous.since) >= const Duration(seconds: 30);
+  }
+
+  void _arrive() {
+    arrived = true;
+    offRoute = false;
+    _remainingMeters = 0;
+    _remainingSeconds = 0;
+    _distanceToStep = 0;
+    drive.guidanceRunning = false;
+    // The host confirms arrival against the requested GPS coordinate
+    // before announcing completion and presenting the trip summary.
+  }
+
   Future<void> _reroute(
     GeoPoint point, {
-    bool closureTriggered = false,
+    String? closureFingerprint,
     bool transitRestriction = false,
   }) async {
-    if (!_usableGps || rerouting || _route == null) return;
+    final closureTriggered = closureFingerprint != null;
+    final startedAt = _clock();
+    if (!_usableGps ||
+        rerouting ||
+        _route == null ||
+        _scheduler.inFlightAt(startedAt)) {
+      return;
+    }
     final session = _session;
     final previous = _route!;
     final stops = remainingStops;
     rerouting = true;
-    _lastReroute = _clock();
     error = null;
     notifyListeners();
+    final token = _scheduler.start(
+      startedAt,
+      point,
+      closureFingerprint: closureFingerprint,
+    );
+    Duration? retryAfter;
     try {
-      final replacement = await reroute!(
-        point,
-        previous,
-        stops,
-      ).timeout(const Duration(seconds: 12));
+      final request = reroute!(point, previous, stops);
+      // Only one request at a time, even after this attempt has timed out.
+      unawaited(
+        request.then<void>(
+          (_) => _scheduler.settled(token),
+          onError: (Object _) => _scheduler.settled(token),
+        ),
+      );
+      final replacement = await request.timeout(rerouteTimeout);
       if (session != _session ||
           !identical(_route, previous) ||
           (!offRoute && !closureTriggered) ||
@@ -489,7 +564,7 @@ class IndependentNavigationEngine extends ChangeNotifier
         replacement.points,
       );
       if (currentProjection == null ||
-          currentProjection.offsetMeters > math.max(50, current.accuracy * 2)) {
+          currentProjection.offsetMeters > acceptanceMeters(current.accuracy)) {
         throw StateError('Reroute no longer matches the current location');
       }
       _setRoute(replacement, preserveAlerts: true);
@@ -499,7 +574,8 @@ class IndependentNavigationEngine extends ChangeNotifier
       _lastLocationRevision = -1;
       rerouting = false;
       _onLocation();
-    } catch (_) {
+    } catch (failure) {
+      if (failure is RateLimitedException) retryAfter = failure.retryAfter;
       if (session == _session &&
           identical(_route, previous) &&
           (offRoute || closureTriggered) &&
@@ -518,6 +594,13 @@ class IndependentNavigationEngine extends ChangeNotifier
             : 'Could not update route. Retrying when connected.';
       }
     } finally {
+      if (session == _session) {
+        _scheduler.finish(
+          _clock(),
+          closure: closureTriggered,
+          retryAfter: retryAfter,
+        );
+      }
       if (session == _session && _route != null) {
         rerouting = false;
         notifyListeners();
@@ -538,7 +621,7 @@ class IndependentNavigationEngine extends ChangeNotifier
     _closureWarning = false;
     transitRestrictionAhead = false;
     _lastClosureCheck = null;
-    _lastClosureAttempt = null;
+    _scheduler.reset();
     _distanceToStep = 0;
     _remainingMeters = 0;
     _remainingSeconds = 0;

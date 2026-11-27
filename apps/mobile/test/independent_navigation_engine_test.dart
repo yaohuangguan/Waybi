@@ -1,3 +1,7 @@
+import 'package:waybi_mobile/data/http_guard.dart';
+import 'package:fake_async/fake_async.dart';
+
+import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +16,17 @@ import 'package:waybi_mobile/drive/navigation_language.dart';
 import 'package:waybi_mobile/drive/voice_engine.dart';
 import 'package:waybi_mobile/drive/route_progress_tracker.dart';
 import 'package:waybi_mobile/providers/independent_navigation_engine.dart';
+
+class FixedRandom implements math.Random {
+  FixedRandom(this.value);
+  final double value;
+  @override
+  double nextDouble() => value;
+  @override
+  bool nextBool() => false;
+  @override
+  int nextInt(int max) => 0;
+}
 
 class SilentVoice extends VoiceEngine {
   @override
@@ -256,7 +271,7 @@ void main() {
     now = now.add(const Duration(seconds: 16));
     nav.checkClosureUpdates();
     expect(requests, 1);
-    now = now.add(const Duration(seconds: 46));
+    now = now.add(const Duration(seconds: 60));
     drive.emit(origin, now);
     nav.checkClosureUpdates();
     await Future<void>.delayed(Duration.zero);
@@ -329,7 +344,7 @@ void main() {
     nav.checkClosureUpdates();
     expect(nav.error, contains('前方封路'));
     expect(requests, 1);
-    now = now.add(const Duration(seconds: 46));
+    now = now.add(const Duration(seconds: 60));
     drive.emit(origin, now);
     nav.checkClosureUpdates();
     await Future<void>.delayed(Duration.zero);
@@ -754,4 +769,244 @@ void main() {
       expect(nav.remainingDistanceMeters, closeTo(256, 25));
     },
   );
+
+  group('reroute pacing', () {
+    // Parked in a car park 45 m east of the road the route starts on.
+    const carPark = GeoPoint(-36.86, 174.760505);
+
+    test('a stationary car beside the road never reroutes', () async {
+      final drive = FakeDrive();
+      var now = DateTime(2026, 10, 8);
+      var requests = 0;
+      final nav = IndependentNavigationEngine(
+        drive,
+        clock: () => now,
+        random: FixedRandom(0),
+        reroute: (_, _, _) async {
+          requests++;
+          return makeRoute();
+        },
+      );
+      addTearDown(() {
+        nav.dispose();
+        drive.dispose();
+      });
+      await nav.start(makeRoute());
+      for (var i = 0; i < 60; i++) {
+        drive.emit(carPark, now, speed: 0);
+        now = now.add(const Duration(seconds: 2));
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(nav.offRoute, isTrue);
+      expect(requests, 0);
+    });
+
+    test(
+      'a route that still misses the car is rejected and backs off',
+      () async {
+        final drive = FakeDrive();
+        var now = DateTime(2026, 10, 8);
+        final requestTimes = <int>[];
+        final start = now;
+        final nav = IndependentNavigationEngine(
+          drive,
+          clock: () => now,
+          random: FixedRandom(0),
+          reroute: (_, _, _) async {
+            requestTimes.add(now.difference(start).inSeconds);
+            // Starts on the road, 45 m from the car: outside 0.75 x 40 m.
+            return makeRoute();
+          },
+        );
+        addTearDown(() {
+          nav.dispose();
+          drive.dispose();
+        });
+        final original = makeRoute();
+        await nav.start(original);
+        // Creeping along a service lane parallel to the road.
+        for (var i = 0; i < 120; i++) {
+          drive.emit(
+            GeoPoint(carPark.latitude + i * .00004, carPark.longitude),
+            now,
+            speed: 15,
+          );
+          now = now.add(const Duration(seconds: 1));
+          await Future<void>.delayed(Duration.zero);
+        }
+        expect(nav.route, same(original));
+        // 5, 10, 20, 40 s gaps; the old 5 s cadence from start made ~23 calls.
+        expect(requestTimes, hasLength(5));
+        final gaps = [
+          for (var i = 1; i < requestTimes.length; i++)
+            requestTimes[i] - requestTimes[i - 1],
+        ];
+        expect(gaps, everyElement(greaterThanOrEqualTo(5)));
+        expect(gaps.last, greaterThanOrEqualTo(40));
+        expect(IndependentNavigationEngine.acceptanceMeters(10), 30);
+        expect(
+          IndependentNavigationEngine.acceptanceMeters(30),
+          closeTo(40.5, .01),
+        );
+      },
+    );
+
+    test('a server rate limit holds rerouting for its Retry-After', () async {
+      final drive = FakeDrive();
+      var now = DateTime(2026, 10, 8);
+      var requests = 0;
+      final nav = IndependentNavigationEngine(
+        drive,
+        clock: () => now,
+        random: FixedRandom(0),
+        reroute: (_, _, _) async {
+          requests++;
+          throw RateLimitedException(const Duration(seconds: 90));
+        },
+      );
+      addTearDown(() {
+        nav.dispose();
+        drive.dispose();
+      });
+      await nav.start(makeRoute());
+      for (var i = 0; i < 100; i++) {
+        drive.emit(const GeoPoint(-36.859, 174.7615), now);
+        now = now.add(const Duration(seconds: 1));
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(requests, 2, reason: 'At ~4 s, then after 90 s');
+      expect(nav.error, contains('Could not update route'));
+    });
+
+    test(
+      'a request outliving the engine timeout blocks an overlapping one',
+      () {
+        fakeAsync((async) {
+          final drive = FakeDrive();
+          var now = DateTime(2026, 10, 8);
+          final pending = Completer<RouteOption>();
+          var requests = 0;
+          final nav = IndependentNavigationEngine(
+            drive,
+            clock: () => now,
+            random: FixedRandom(0),
+            reroute: (_, _, _) {
+              requests++;
+              return pending.future;
+            },
+          );
+          nav.start(makeRoute());
+          async.flushMicrotasks();
+          for (var i = 0; i < 30; i++) {
+            drive.emit(const GeoPoint(-36.859, 174.7615), now);
+            now = now.add(const Duration(seconds: 1));
+            async.elapse(const Duration(seconds: 1));
+          }
+          expect(requests, 1);
+          expect(nav.rerouting, isFalse, reason: 'The engine stopped waiting');
+          expect(nav.error, isNotNull);
+          pending.completeError(StateError('late failure'));
+          async.flushMicrotasks();
+          for (var i = 0; i < 10; i++) {
+            drive.emit(const GeoPoint(-36.859, 174.7615), now);
+            now = now.add(const Duration(seconds: 1));
+            async.elapse(const Duration(seconds: 1));
+          }
+          expect(requests, 2);
+          nav.dispose();
+          drive.dispose();
+        });
+      },
+    );
+  });
+
+  group('arrival', () {
+    test('arrives within the accuracy circle of the routed end', () async {
+      final drive = FakeDrive();
+      var now = DateTime(2026, 9, 30);
+      final nav = IndependentNavigationEngine(drive, clock: () => now);
+      addTearDown(() {
+        nav.dispose();
+        drive.dispose();
+      });
+      await nav.start(makeRoute());
+      drive.emit(origin, now, speed: 50);
+      now = now.add(const Duration(seconds: 60));
+      // 28 m short of the end with 20 m accuracy (radius 30 m).
+      drive.emit(const GeoPoint(-36.85025, 174.76), now, accuracy: 20);
+      now = now.add(const Duration(seconds: 1));
+      drive.emit(
+        const GeoPoint(-36.85025, 174.76),
+        now,
+        accuracy: 20,
+        speed: 5,
+      );
+      expect(nav.arrived, isFalse);
+      now = now.add(const Duration(seconds: 1));
+      drive.emit(
+        const GeoPoint(-36.85026, 174.76),
+        now,
+        accuracy: 20,
+        speed: 3,
+      );
+      expect(nav.arrived, isTrue);
+      expect(drive.guidanceRunning, isFalse);
+    });
+
+    test(
+      'parking off the road near a large venue arrives after 30 s',
+      () async {
+        final drive = FakeDrive();
+        var now = DateTime(2026, 9, 30);
+        final nav = IndependentNavigationEngine(drive, clock: () => now);
+        addTearDown(() {
+          nav.dispose();
+          drive.dispose();
+        });
+        await nav.start(makeRoute());
+        drive.emit(origin, now, speed: 50);
+        now = now.add(const Duration(seconds: 50));
+        drive.emit(const GeoPoint(-36.8506, 174.76), now, speed: 20);
+        // A car park 80 m east of the routed end point.
+        const bay = GeoPoint(-36.8505, 174.7609);
+        for (var i = 0; i < 31; i++) {
+          now = now.add(const Duration(seconds: 1));
+          drive.emit(bay, now, speed: 0);
+        }
+        expect(nav.arrived, isTrue);
+        expect(nav.offRoute, isFalse);
+        expect(nav.remainingDistanceMeters, 0);
+      },
+    );
+
+    test('leaving the road in the final 50 m never reroutes', () async {
+      final drive = FakeDrive();
+      var now = DateTime(2026, 9, 30);
+      var requests = 0;
+      final nav = IndependentNavigationEngine(
+        drive,
+        clock: () => now,
+        reroute: (_, _, _) async {
+          requests++;
+          return makeRoute();
+        },
+      );
+      addTearDown(() {
+        nav.dispose();
+        drive.dispose();
+      });
+      await nav.start(makeRoute());
+      drive.emit(origin, now, speed: 50);
+      now = now.add(const Duration(seconds: 60));
+      drive.emit(const GeoPoint(-36.8503, 174.76), now, speed: 20);
+      // Into a driveway 45 m east of the end, still rolling.
+      for (var i = 0; i < 8; i++) {
+        now = now.add(const Duration(seconds: 1));
+        drive.emit(const GeoPoint(-36.85, 174.7605), now, speed: 8);
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(nav.offRoute, isFalse);
+      expect(requests, 0);
+    });
+  });
 }

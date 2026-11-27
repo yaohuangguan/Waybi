@@ -1876,6 +1876,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         timestamp: position.timestamp,
       ),
       heading: position.heading,
+      headingAccuracy: position.headingAccuracy,
     );
     final speedMetresPerSecond = _driveEngine.active
         ? _driveEngine.speedKph / 3.6

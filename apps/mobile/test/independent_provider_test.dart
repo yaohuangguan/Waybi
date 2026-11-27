@@ -1,3 +1,5 @@
+import 'package:waybi_mobile/data/http_guard.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -664,4 +666,60 @@ void main() {
       GeoPoint(-36.86, 174.78),
     ]);
   });
+
+  test(
+    'reroutes abort before the engine gives up and surface rate limits',
+    () async {
+      http.BaseRequest? sent;
+      final stalled = IndependentRoutingProvider(
+        useWaybiProxy: true,
+        proxyBaseUrl: 'https://waybi.test',
+        client: MockClient.streaming((request, _) {
+          sent = request;
+          return Completer<http.StreamedResponse>().future;
+        }),
+      );
+      expect(
+        IndependentRoutingProvider.rerouteTimeout,
+        lessThan(const Duration(seconds: 12)),
+      );
+      await expectLater(
+        stalled.reroute(
+          origin: const GeoPoint(-36.85, 174.76),
+          destination: const GeoPoint(-36.86, 174.78),
+          mode: WaybiTravelMode.drive,
+          language: 'en',
+          timeout: const Duration(milliseconds: 20),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      await expectLater((sent! as http.Abortable).abortTrigger!, completes);
+      final limited = IndependentRoutingProvider(
+        useWaybiProxy: true,
+        proxyBaseUrl: 'https://waybi.test',
+        client: MockClient(
+          (_) async => http.Response(
+            '{"error":"slow down"}',
+            429,
+            headers: {'retry-after': '30'},
+          ),
+        ),
+      );
+      await expectLater(
+        limited.reroute(
+          origin: const GeoPoint(-36.85, 174.76),
+          destination: const GeoPoint(-36.86, 174.78),
+          mode: WaybiTravelMode.drive,
+          language: 'en',
+        ),
+        throwsA(
+          isA<RateLimitedException>().having(
+            (e) => e.retryAfter,
+            'retryAfter',
+            const Duration(seconds: 30),
+          ),
+        ),
+      );
+    },
+  );
 }

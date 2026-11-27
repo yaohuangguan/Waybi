@@ -218,4 +218,41 @@ void main() {
       expect(gps.settings, isEmpty);
     },
   );
+
+  test(
+    'a Drive session started while the previous one stops stays active',
+    () async {
+      final original = GeolocatorPlatform.instance;
+      final gps = PlatformGps();
+      GeolocatorPlatform.instance = gps;
+      final voice = QuietVoice();
+      final drive = engine(voice);
+      addTearDown(() async {
+        await drive.stop();
+        drive.dispose();
+        await gps.positions.close();
+        GeolocatorPlatform.instance = original;
+      });
+      await drive.startLocal(initialPosition: gps.current);
+      await flush();
+      final stopsBefore = voice.stops;
+      // Arrive, then tap Drive again before the old feed has finished stopping.
+      final stopping = drive.stop();
+      expect(drive.active, isFalse);
+      final restarted = drive.startLocal(initialPosition: gps.current);
+      await stopping;
+      await restarted;
+      await flush();
+      expect(drive.active, isTrue);
+      expect(
+        voice.stops,
+        stopsBefore,
+        reason: 'The new session keeps its voice',
+      );
+      gps.current = fix(longitude: 174.7601, speed: 5);
+      gps.positions.add(gps.current);
+      await flush();
+      expect(drive.latestPosition, isNotNull);
+    },
+  );
 }

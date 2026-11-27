@@ -596,10 +596,8 @@ class DriveEngine extends ChangeNotifier {
     );
     final motion = _localMotion.update(
       observation,
-      heading:
-          position.headingAccuracy.isFinite && position.headingAccuracy > 35
-          ? null
-          : position.heading,
+      heading: position.heading,
+      headingAccuracy: position.headingAccuracy,
     );
     final speed = motion.speedMetresPerSecond;
     final accepted = _localLocationFilter.accept(
@@ -1201,27 +1199,25 @@ class DriveEngine extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    // Capture the session and reset state before the first await: a new
+    // Drive session started while the old feed or voice is stopping must not
+    // be switched off by this call afterwards.
+    final session = ++_locationSession;
     final localFeed = _localLocationFeed;
     _localLocationFeed = null;
-    await localFeed?.stop();
+    final subscriptions = List.of(_subscriptions);
+    _subscriptions.clear();
     _driveTrail.clear();
     locationIssue = null;
     gpsIssue = null;
-    ++_locationSession;
     active = false;
     guidanceRunning = false;
-    await _voiceEngine.stop();
-    unawaited(WakelockPlus.disable().catchError((Object _) {}));
     _progressTracker = null;
     routeProgress = null;
     _roadIntelligenceRefreshTimer?.cancel();
     _roadIntelligenceRefreshTimer = null;
     stopTrafficFlowRefresh();
     _localLocationFilter.reset();
-    for (final subscription in _subscriptions) {
-      await subscription.cancel();
-    }
-    _subscriptions.clear();
     _spokenAlerts.clear();
     _pendingCameraAlerts.clear();
     _pendingTransitAlerts.clear();
@@ -1235,8 +1231,6 @@ class DriveEngine extends ChangeNotifier {
     _routeRoadEvents = const [];
     routeCameras = const [];
     upcomingRoadEvents = const [];
-    active = false;
-    guidanceRunning = false;
     upcomingCamera = null;
     upcomingCameraDistanceMeters = null;
     passedCamera = null;
@@ -1255,6 +1249,14 @@ class DriveEngine extends ChangeNotifier {
     _lastSpeedLimitLookup = null;
     _lastRoadEventEvaluationAt = null;
     _lastRoadEventEvaluationLocation = null;
+    await localFeed?.stop();
+    for (final subscription in subscriptions) {
+      await subscription.cancel();
+    }
+    if (session != _locationSession || _disposed) return;
+    await _voiceEngine.stop();
+    if (session != _locationSession || _disposed) return;
+    unawaited(WakelockPlus.disable().catchError((Object _) {}));
     notifyListeners();
   }
 

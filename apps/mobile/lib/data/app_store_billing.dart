@@ -179,8 +179,7 @@ class AppStoreBillingGateway extends PlusBillingGateway {
     _products.clear();
     final config = await _readConfiguration();
     _ready = config['ready'] == true;
-    final annual =
-        config['annual'] as String? ?? 'co.waybi.ios.plus.annual';
+    final annual = config['annual'] as String? ?? 'co.waybi.ios.plus.annual';
     if (!_supported || !_ready || !await _store.available()) {
       return PlusOffering(
         available: false,

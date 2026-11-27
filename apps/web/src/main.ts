@@ -811,59 +811,55 @@ function renderRoutePlanner() {
   renderRouteInfo(option);
 }
 
+function searchInput(target: 'origin' | 'destination' | 'stop') {
+  return $(target === 'origin' ? 'originInput' : target === 'stop' ? 'stopInput' : 'destinationInput') as HTMLInputElement;
+}
+
+/** Applies a place chosen from suggestions or full search results. */
+function selectPlace(target: 'origin' | 'destination' | 'stop', place: Place) {
+  const coordinate: Coordinate = [place.longitude, place.latitude];
+  const shortLabel = place.label.split(',').slice(0, 2).join(',');
+  if (target === 'origin') {
+    manualOrigin = coordinate;
+    ($('originInput') as HTMLInputElement).value = shortLabel;
+  } else if (target === 'stop') {
+    routeStops.push({ label: shortLabel, coordinate });
+    ($('stopInput') as HTMLInputElement).value = '';
+    renderStops();
+  } else {
+    setDestinationSelection(coordinate, shortLabel);
+    ($('destinationInput') as HTMLInputElement).value = destinationName;
+    $('clearDestinationButton').hidden = false;
+    void rememberDestination({ label: place.label, latitude: place.latitude, longitude: place.longitude });
+  }
+  if (destination && (manualOrigin || current)) void planRoute();
+  else if (destination) { requestGps(); toast(t(language, 'chooseOrigin')); }
+}
+
 async function search(target: 'origin' | 'destination' | 'stop') {
   searchTarget = target;
-  const input = target === 'origin'
-    ? $('originInput') as HTMLInputElement
-    : target === 'stop'
-      ? $('stopInput') as HTMLInputElement
-      : $('destinationInput') as HTMLInputElement;
+  const input = searchInput(target);
   const query = input.value.trim();
   if (query.length < 3) { toast(t(language, 'minQuery')); return; }
-  const results = $('searchResults');
-  results.hidden = false;
-  results.innerHTML = `<div class="search-message">${t(language, 'searching')}</div>`;
+  // Claiming the results panel cancels any pending suggestion debounce or
+  // request, so a late suggestion can never replace these results.
+  const token = autocomplete.begin(input);
+  autocomplete.showMessage(input, t(language, 'searching'));
   try {
     const near = manualOrigin || current;
     const params = new URLSearchParams({ q: query, lang: language, provider: 'independent' });
     if (near) params.set('near', near.join(','));
     const places = await api<Place[]>(`/api/search?${params}`);
-    results.replaceChildren();
-    if (!places.length) { results.innerHTML = `<div class="search-message">${t(language, 'noResults')}</div>`; return; }
-    for (const place of places) {
-      const displayLabel = placeLabel(place);
-      const button = document.createElement('button');
-      button.className = 'result-item';
-      button.type = 'button';
-      const pin = document.createElement('span');
-      pin.className = 'result-pin';
-      pin.textContent = '⌖';
-      const label = document.createElement('span');
-      label.textContent = displayLabel;
-      button.append(pin, label);
-      button.onclick = () => {
-        results.hidden = true;
-        const coordinate: Coordinate = [place.longitude, place.latitude];
-        if (target === 'origin') {
-          manualOrigin = coordinate;
-          ($('originInput') as HTMLInputElement).value = displayLabel.split(',').slice(0, 2).join(',');
-        } else if (target === 'stop') {
-          routeStops.push({ label: displayLabel.split(',').slice(0, 2).join(','), coordinate });
-          ($('stopInput') as HTMLInputElement).value = '';
-          renderStops();
-        } else {
-          setDestinationSelection(coordinate, displayLabel.split(',').slice(0, 2).join(','));
-          ($('destinationInput') as HTMLInputElement).value = destinationName;
-          $('clearDestinationButton').hidden = false;
-          void rememberDestination({ label: displayLabel, latitude: place.latitude, longitude: place.longitude });
-        }
-        if (destination && (manualOrigin || current)) void planRoute();
-        else if (destination) { requestGps(); toast(t(language, 'chooseOrigin')); }
-      };
-      results.append(button);
-    }
+    if (!autocomplete.isCurrent(token)) return;
+    if (!places.length) { autocomplete.showMessage(input, t(language, 'noResults')); return; }
+    autocomplete.renderPlaces(input, places, (place) => selectPlace(target, place));
   } catch (error) {
-    results.innerHTML = `<div class="search-message">${t(language, 'searchFailed')}: ${escapeHtml(String((error as Error).message))}</div>`;
+    if (isAbortError(error) || !autocomplete.isCurrent(token)) return;
+    const failure = describeError(error);
+    const retry = () => void search(target);
+    if (failure.offline) autocomplete.showMessage(input, t(language, 'searchOffline'), retry);
+    else if (failure.rateLimited) autocomplete.showMessage(input, t(language, 'searchBusy', { seconds: Math.ceil((failure.retryAfterMs || 30000) / 1000) }), retry);
+    else autocomplete.showMessage(input, `${t(language, 'searchFailed')}: ${failure.message}`, retry);
   }
 }
 
@@ -1013,7 +1009,8 @@ function clearDestination() {
   spokenCameras.clear();
 
   ($('destinationInput') as HTMLInputElement).value = '';
-  $('searchResults').hidden = true;
+  autocomplete.cancel();
+  autocomplete.close();
   $('stopEditor').hidden = true;
   $('travelModes').hidden = true;
   $('routeAlternatives').hidden = true;
@@ -1450,7 +1447,7 @@ function showPoiCard(place: PoiSelection) {
   renderPoiAccountState(place);
   $('poiCard').hidden = false;
   document.body.classList.add('poi-open');
-  $('searchResults').hidden = true;
+  autocomplete.close();
 }
 
 async function saveSelectedPlace(nextFavorite?: boolean) {
@@ -1562,33 +1559,24 @@ async function saveSelectedReview() {
 $('originInput').addEventListener('focus', () => { searchTarget = 'origin'; });
 $('destinationInput').addEventListener('focus', () => { searchTarget = 'destination'; });
 $('stopInput').addEventListener('focus', () => { searchTarget = 'stop'; $('stopEditor').hidden = false; });
-for (const [id, target] of [['originInput', 'origin'], ['destinationInput', 'destination'], ['stopInput', 'stop']] as const) {
-  $(id).addEventListener('keydown', (event) => { if ((event as KeyboardEvent).key === 'Enter') { (event.target as HTMLInputElement).blur(); void search(target); } });
-}
-$('searchButton').onclick = () => void search('destination');
-$('stopSearchButton').onclick = () => void search('stop');
-initAutocomplete({
+const autocomplete = initAutocomplete({
   origin: $('originInput') as HTMLInputElement,
   destination: $('destinationInput') as HTMLInputElement,
+  extraInputs: [$('stopInput') as HTMLInputElement],
   results: $('searchResults'),
   language: () => language,
   recent: recentDestinations,
   near: () => manualOrigin || current,
-  select: (target, place: SuggestedPlace) => {
-    const coordinate: Coordinate = [place.longitude, place.latitude];
-    if (target === 'origin') {
-      manualOrigin = coordinate;
-      ($('originInput') as HTMLInputElement).value = place.label.split(',').slice(0, 2).join(',');
-    } else {
-      setDestinationSelection(coordinate, place.label.split(',').slice(0, 2).join(','));
-      ($('destinationInput') as HTMLInputElement).value = destinationName;
-      $('clearDestinationButton').hidden = false;
-      void rememberDestination({ label: place.label, latitude: place.latitude, longitude: place.longitude });
-    }
-    if (destination && (manualOrigin || current)) void planRoute();
-    else if (destination) { requestGps(); toast(t(language, 'chooseOrigin')); }
-  }
+  select: (target, place: SuggestedPlace) => selectPlace(target, place)
 });
+for (const [id, target] of [['originInput', 'origin'], ['destinationInput', 'destination'], ['stopInput', 'stop']] as const) {
+  $(id).addEventListener('keydown', (event) => {
+    // Enter on a highlighted suggestion is handled by the combobox.
+    if ((event as KeyboardEvent).key === 'Enter' && !event.defaultPrevented) { event.preventDefault(); void search(target); }
+  });
+}
+$('searchButton').onclick = () => void search('destination');
+$('stopSearchButton').onclick = () => void search('stop');
 $('useGpsButton').onclick = () => {
   manualOrigin = null;
   ($('originInput') as HTMLInputElement).value = '';
@@ -1798,7 +1786,7 @@ async function initializeMap() {
       $('followButton').classList.remove('active');
     },
     onMapClick: () => {
-      $('searchResults').hidden = true;
+      autocomplete.close();
       hidePoiCard();
     },
     onPoiSelected: showPoiCard

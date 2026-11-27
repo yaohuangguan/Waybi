@@ -565,3 +565,12 @@ body[data-mode='navigation'] .toast { top: auto; bottom: calc(var(--nav-sheet-cl
 /* The journey summary's action is a real primary button. */
 .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 18px; border: 0; border-radius: 14px; background: var(--action-bg); color: var(--action-text); font-size: 15px; font-weight: 700; }
 .primary-button:hover { background: var(--action-bg-hover); }
+
+/* Search comboboxes: visible focus on the field, highlighted active option, retry inside the status line. */
+.search-field { border-radius: 10px; }
+.search-field:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+.search-field input:focus, .search-field input:focus-visible { outline: none; }
+.search-listbox:empty { display: none; }
+.result-item[aria-selected='true'] { background: var(--selected-bg); box-shadow: inset 3px 0 0 var(--selected-border); }
+.search-message { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.search-retry { min-height: 32px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--surface-muted); color: var(--text-primary); font-size: 12px; font-weight: 700; }

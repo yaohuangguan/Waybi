@@ -11,6 +11,7 @@ export const RETENTION = {
   quotaCountersDays: 7,
   roadReportsDays: 1,
   emailOtpDays: 1,
+  navigationFeedbackDays: 365,
 };
 
 export async function runDailyCleanup(env, now = Date.now()) {
@@ -27,6 +28,9 @@ export async function runDailyCleanup(env, now = Date.now()) {
     ['road_reports', db.prepare('DELETE FROM road_reports WHERE valid_until < ?').bind(now - RETENTION.roadReportsDays * DAY_MS)],
     ['email_otp_challenges', db.prepare('DELETE FROM email_otp_challenges WHERE expires_at < ?').bind(now - RETENTION.emailOtpDays * DAY_MS)],
     ['email_otp_limits', db.prepare('DELETE FROM email_otp_limits WHERE window_start < ?').bind(now - RETENTION.emailOtpDays * DAY_MS)],
+    // Anonymous thumbs-up/down votes only matter for recent guidance quality.
+    ['navigation_feedback', db.prepare('DELETE FROM navigation_feedback WHERE created_at < ?')
+      .bind(new Date(now - RETENTION.navigationFeedbackDays * DAY_MS).toISOString())],
     // Per-day quota counters (road reports, Google budgets, routing shares) are useless after their day.
     ['quota_counters', db.prepare("DELETE FROM api_usage_daily WHERE provider = '__waybi_quotas' AND day < ?").bind(day(RETENTION.quotaCountersDays))],
   ];

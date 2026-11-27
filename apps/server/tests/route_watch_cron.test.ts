@@ -199,8 +199,12 @@ test('Route Watch runs on its own Cron; the daily Cron also prunes expired data'
       .run(now - 181 * 86_400_000, now);
     sqlite.prepare('INSERT INTO billing_events(event_id,processed_at) VALUES(?,?),(?,?)').run('evt_old', now - 200 * 86_400_000, 'evt_new', now);
     sqlite.prepare("INSERT INTO api_usage_daily(day,provider,sku,calls,units,updated_at) VALUES('2020-01-01','__waybi_quotas','global',1,0,0),('2020-01-01','google','places_text_search',1,1,0)").run();
+    sqlite.prepare('INSERT INTO navigation_feedback(id,vote,created_at) VALUES(?,?,?),(?,?,?)')
+      .run('fb_old', 1, new Date(now - 400 * 86_400_000).toISOString(), 'fb_new', -1, new Date(now).toISOString());
     const deleted = await runDailyCleanup({ USER_DB: db }, now);
     assert.equal(deleted.sessions, 1);
+    assert.equal(deleted.navigation_feedback, 1);
+    assert.deepEqual(sqlite.prepare('SELECT id FROM navigation_feedback').all().map((row: any) => row.id), ['fb_new']);
     assert.deepEqual(sqlite.prepare('SELECT token_hash FROM sessions').all().map((row: any) => row.token_hash), ['live']);
     assert.equal(sqlite.prepare('SELECT count(*) AS c FROM login_attempts').get().c, 0);
     assert.deepEqual(sqlite.prepare('SELECT id FROM route_watch_alerts').all().map((row: any) => row.id), ['new']);

@@ -34,6 +34,9 @@
     "apps/mobile/lib/app/journey_store.dart": {
       "minimumLinePercent": 95
     },
+    "apps/mobile/lib/app/location_controller.dart": {
+      "minimumLinePercent": 90
+    },
     "apps/mobile/lib/app/request_generation.dart": {
       "minimumLinePercent": 95
     },

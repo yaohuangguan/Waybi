@@ -38,16 +38,11 @@ import 'domain/route_road_events.dart' as road_routes;
 import 'domain/safety_camera.dart';
 import 'domain/transit_lane.dart';
 import 'domain/transit_review_corridor.dart';
-import 'drive/device_heading.dart';
 import 'drive/journey_tracker.dart';
 import 'drive/navigation_language.dart';
 import 'drive/navigation_location_filter.dart';
-import 'drive/route_origin_location.dart';
-import 'drive/reliable_location_feed.dart';
-import 'drive/location_permission_gate.dart';
 import 'widgets/status_banner.dart';
 import 'drive/independent_navigation_camera.dart';
-import 'drive/navigation_motion.dart';
 import 'drive/route_progress_tracker.dart';
 import 'services/native_map_language.dart';
 import 'services/external_navigation_inbox.dart';
@@ -89,6 +84,7 @@ import 'widgets/trips_page.dart';
 import 'widgets/waybi_format.dart';
 import 'app/commute_controller.dart';
 import 'app/home_chrome.dart';
+import 'app/location_controller.dart';
 import 'app/journey_store.dart';
 
 Future<void> main() async {
@@ -173,8 +169,6 @@ class _WaybiAppState extends State<WaybiApp> {
     );
   }
 }
-
-enum _LocationNoticeAction { retry, appSettings, locationSettings }
 
 class MapHomePage extends StatefulWidget {
   const MapHomePage({
@@ -268,24 +262,29 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   double _navigationTopInset = 125;
   double _navigationBottomInset = 215;
-  ReliableLocationFeed? _browseLocationFeed;
-  final _locationPermission = LocationPermissionGate();
-  _LocationNoticeAction? _locationNoticeAction;
-  String? _browseLocationMessage;
-  Position? _lastReliableBrowsePosition;
+
+  /// Browse GPS, compass and fix filtering.
+  late final _location = LocationController(
+    driveActive: () => _driveEngine.active,
+    driveSpeedKph: () => _driveEngine.speedKph,
+    language: () => _appLanguage,
+  );
+
+  /// The location issue last mirrored into the banner.
+  String? _shownLocationIssue;
   final _independentCamera = IndependentNavigationCamera();
   final _driveCameraFollow = DriveCameraFollow();
-  final _browseMotion = NavigationMotionEstimator();
-  StreamSubscription<double>? _headingSubscription;
   Timer? _mapRefreshTimer;
-  LatLng? _gpsLocation;
-  final _routeOriginLocation = RouteOriginLocation();
-  LatLng? get _locationForRoute {
-    final point = _routeOriginLocation.point;
-    return point == null
-        ? null
-        : LatLng(latitude: point.latitude, longitude: point.longitude);
-  }
+
+  static LatLng? _latLng(GeoPoint? point) => point == null
+      ? null
+      : LatLng(latitude: point.latitude, longitude: point.longitude);
+  LatLng? get _gpsLocation => _latLng(_location.location);
+  LatLng? get _locationForRoute => _latLng(_location.routeOrigin);
+  Position? get _lastReliableBrowsePosition => _location.lastReliablePosition;
+  double? get _gpsAccuracy => _location.accuracy;
+  double? get _deviceHeading => _location.deviceHeading;
+  double? get _travelHeading => _location.travelHeading;
 
   // Use course only while actually moving on a recent, accurate GPS fix.
   // A phone compass or an old course can snap a parked origin backwards.
@@ -328,11 +327,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   NavigationCameraMode _cameraMode = NavigationCameraMode.northUpFlat;
   String _appLanguage = 'en';
   String _voiceLanguage = 'en-NZ';
-  double? _gpsAccuracy;
-  final NavigationLocationFilter _browseLocationFilter =
-      NavigationLocationFilter();
-  double? _deviceHeading;
-  double? _travelHeading;
 
   bool _following = true;
   bool _routeOverviewActive = false;
@@ -486,6 +480,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _independentNavigation.addListener(_onIndependentNavigationChanged);
     _trip.addListener(_onTripChanged);
     _commute.addListener(_onTripChanged);
+    _location
+      ..onFix = _onLocationFix
+      ..onIssue = _onLocationIssue
+      ..reportTransientIssues = () => _externalPreview != null;
+    _location.deviceHeadingListenable.addListener(_queueMapRefresh);
     unawaited(WaybiNotificationService.instance.initialize());
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
@@ -754,14 +753,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _mapRefreshTimer = null;
       _driveEngine.stopTrafficFlowRefresh();
       // Browsing needs no GPS in the background; Drive keeps its own feed.
-      unawaited(_browseLocationFeed?.pause());
+      unawaited(_location.pauseInBackground());
       return;
     }
     if (wasForeground) return;
     if (_driveEngine.active) {
       unawaited(_driveEngine.recoverLocalLocation());
     } else {
-      unawaited(_resumeBrowseTracking());
+      unawaited(_location.resume());
     }
     _scheduleExternalNavigation();
     _queueMapRefresh();
@@ -807,7 +806,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final position = _driveEngine.latestPosition;
     if (position != null && position.timestamp != _lastDrivePositionAt) {
       _lastDrivePositionAt = position.timestamp;
-      _onPosition(position);
+      _location.handlePosition(position);
     }
     if (_guidanceRunning) {
       unawaited(_systemNavigation.update(_systemNavigationState()));
@@ -1270,8 +1269,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _externalRetry?.cancel();
     ++_externalRequest;
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(_browseLocationFeed?.stop());
-    _headingSubscription?.cancel();
+    _location.deviceHeadingListenable.removeListener(_queueMapRefresh);
+    _location.dispose();
     _mapRefreshTimer?.cancel();
     _account.removeListener(_onAccountChanged);
     _driveEngine.customVoice = null;
@@ -1299,192 +1298,30 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  Future<bool> _ensureLocationPermission({
-    bool requestPermission = true,
-  }) async {
-    try {
-      final access = await _locationPermission.ensure(
-        requestPermission: requestPermission,
-      );
-      if (access.isGranted || access.isLimited) return true;
-      if (!mounted) return false;
-      final settings = access.isPermanentlyDenied || access.isRestricted;
-      _showLocationIssue(
-        settings
-            ? _text(
-                'Location is disabled for Waybi. Enable it in system settings.',
-                'Waybi 的定位权限已关闭，请在系统设置中开启。',
-              )
-            : _text(
-                'Allow location access to find your position and navigate.',
-                '允许定位权限后，即可获取当前位置并开始导航。',
-              ),
-        settings
-            ? _LocationNoticeAction.appSettings
-            : _LocationNoticeAction.retry,
-      );
-    } catch (_) {
-      if (mounted) {
-        _showLocationIssue(
-          _text(
-            'Location is temporarily unavailable. Try again.',
-            '定位暂不可用，请重试。',
-          ),
-          _LocationNoticeAction.retry,
-        );
-      }
-    }
-    return false;
-  }
-
-  void _showLocationIssue(String message, _LocationNoticeAction action) {
+  void _onLocationIssue(String? message) {
     if (!mounted) return;
-    setState(() {
-      _browseLocationMessage = message;
-      _locationNoticeAction = action;
-      _message = message;
-    });
-  }
-
-  Future<void> _resolveLocationIssue() async {
-    try {
-      switch (_locationNoticeAction) {
-        case _LocationNoticeAction.appSettings:
-          await openAppSettings();
-        case _LocationNoticeAction.locationSettings:
-          await Geolocator.openLocationSettings();
-        case _LocationNoticeAction.retry:
-        case null:
-          if (_driveEngine.active) {
-            await _driveEngine.recoverLocalLocation();
-          } else {
-            await _recoverRouteLocation();
-          }
-      }
-    } catch (_) {
-      if (mounted) {
-        _showLocationIssue(
-          _text(
-            'Could not recover location. Check system location settings.',
-            '暂时无法恢复定位，请检查系统定位设置。',
-          ),
-          _LocationNoticeAction.appSettings,
-        );
-      }
+    final shown = _shownLocationIssue;
+    _shownLocationIssue = message;
+    if (message != null) {
+      setState(() => _message = message);
+    } else if (_message == shown) {
+      setState(() => _message = null);
     }
   }
 
-  Future<void> _resumeBrowseTracking() async {
-    _browseLocationFeed?.resume();
-    await _startTracking();
-    await _browseLocationFeed?.recover(force: true);
-  }
+  Future<void> _resolveLocationIssue() => _location.resolveIssue(
+    recoverDrive: _driveEngine.recoverLocalLocation,
+    recoverBrowse: _recoverRouteLocation,
+  );
 
-  Future<void> _startTracking({bool requestPermission = false}) async {
-    if (_driveEngine.active ||
-        _browseLocationFeed?.running == true ||
-        !await _ensureLocationPermission(
-          requestPermission: requestPermission,
-        )) {
-      return;
-    }
-    if (!mounted ||
-        _driveEngine.active ||
-        _browseLocationFeed?.running == true) {
-      return;
-    }
-    _headingSubscription ??= DeviceHeading.readings.listen(
-      (heading) {
-        _deviceHeading = heading;
-        _queueMapRefresh();
-      },
-      onError: (_) {
-        /* iOS simulator and non-iOS use GPS course. */
-      },
-    );
-    _browseLocationFeed = ReliableLocationFeed.profile(
-      LocationFeedProfile.browse,
-      onPosition: _onPosition,
-      onIssue: _onBrowseLocationIssue,
-    )..start();
-  }
+  Future<void> _startTracking({bool requestPermission = false}) =>
+      _location.start(requestPermission: requestPermission);
 
-  void _onBrowseLocationIssue(Object? error) {
-    if (!mounted || _driveEngine.active) return;
-    if (error == null) {
-      if (_message == _browseLocationMessage) setState(() => _message = null);
-      _browseLocationMessage = null;
-      _locationNoticeAction = null;
-      return;
-    }
-    if (_externalPreview == null &&
-        _locationForRoute != null &&
-        error is! PermissionDeniedException &&
-        error is! LocationServiceDisabledException) {
-      return;
-    }
-    final message = error is LocationServiceDisabledException
-        ? _text(
-            'Location services are off. Enable them in Settings.',
-            '系统定位已关闭，请在系统设置中打开定位。',
-          )
-        : error is PermissionDeniedException
-        ? _text(
-            'Location access is disabled. Allow Waybi to use your location in Settings.',
-            '定位权限已关闭，请在系统设置中允许 Waybi 使用定位。',
-          )
-        : _text(
-            'Waiting for a reliable location. Retrying automatically…',
-            '暂时未获取到可靠定位，正在自动重试…',
-          );
-    _showLocationIssue(
-      message,
-      error is LocationServiceDisabledException
-          ? _LocationNoticeAction.locationSettings
-          : error is PermissionDeniedException
-          ? _LocationNoticeAction.appSettings
-          : _LocationNoticeAction.retry,
-    );
-  }
-
-  bool _onPosition(Position position) {
-    if (!mounted) return false;
-    _gpsAccuracy = position.accuracy.isFinite ? position.accuracy : null;
-    final motion = _browseMotion.update(
-      NavigationLocationFix(
-        point: GeoPoint(position.latitude, position.longitude),
-        accuracyMeters: position.accuracy,
-        speedMetresPerSecond: position.speed.isFinite && position.speed > 0
-            ? position.speed
-            : 0,
-        timestamp: position.timestamp,
-      ),
-      heading: position.heading,
-      headingAccuracy: position.headingAccuracy,
-    );
-    final speedMetresPerSecond = _driveEngine.active
-        ? _driveEngine.speedKph / 3.6
-        : motion.speedMetresPerSecond;
-    final accepted = _browseLocationFilter.accept(
-      NavigationLocationFix(
-        point: GeoPoint(position.latitude, position.longitude),
-        accuracyMeters: position.accuracy,
-        speedMetresPerSecond: speedMetresPerSecond,
-        timestamp: position.timestamp,
-      ),
-    );
-
-    _routeOriginLocation.update(
-      NavigationLocationFix(
-        point: GeoPoint(position.latitude, position.longitude),
-        accuracyMeters: position.accuracy,
-        speedMetresPerSecond: speedMetresPerSecond,
-        timestamp: position.timestamp,
-      ),
-      confirmed: accepted != null,
-    );
-    // Keep the last reliable browse fix instead of letting a single indoor
-    // GPS jump move route origins, arrival checks and the map by 50–100 m.
+  /// Decisions on every processed fix; the puck itself redraws from the
+  /// controller's listenable.
+  void _onLocationFix(NavigationLocationFix? accepted, Position position) {
+    if (!mounted) return;
+    // The filter held the last reliable fix (an indoor jump).
     if (accepted == null) {
       _retryExternalPreview();
       setState(() {});
@@ -1492,20 +1329,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       if (place != null && !_driveEngine.active && _routePlan == null) {
         unawaited(_loadPlaceQuickRoute(place));
       }
-      return _browseLocationFilter.accepted?.timestamp == position.timestamp &&
-          DateTime.now().difference(position.timestamp) <=
-              const Duration(seconds: 10);
-    }
-
-    _lastReliableBrowsePosition = position;
-    _gpsLocation = LatLng(
-      latitude: accepted.point.latitude,
-      longitude: accepted.point.longitude,
-    );
-    if (speedMetresPerSecond >= .8 && motion.heading != null) {
-      _travelHeading = motion.heading;
-    } else {
-      _travelHeading = null;
+      return;
     }
     _retryExternalPreview();
     if (_tripState is TripNavigating &&
@@ -1527,7 +1351,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (selected != null && _routePlan == null && !_driveEngine.active) {
       unawaited(_loadPlaceQuickRoute(selected));
     }
-    return true;
   }
 
   String _placeRouteKey(PlaceSummary place) {
@@ -2332,8 +2155,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _recoverRouteLocation() async {
     try {
-      await _startTracking(requestPermission: true);
-      await _browseLocationFeed?.recover(force: true);
+      await _location.recover();
       _retryExternalPreview();
     } catch (_) {
       if (mounted && _externalPreview != null) {
@@ -3167,21 +2989,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _pauseBrowseLocation() async {
-    final feed = _browseLocationFeed;
-    _browseLocationFeed = null;
-    await feed?.stop();
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
-      try {
-        if (await Geolocator.getLocationAccuracy() ==
-            LocationAccuracyStatus.reduced) {
-          await Geolocator.requestTemporaryFullAccuracy(
-            purposeKey: 'WaybiNavigation',
-          );
-        }
-      } catch (_) {
-        /* Navigation can still wait for a usable GPS fix. */
-      }
-    }
+    await _location.pauseForDrive();
     _lastDrivePositionAt = null;
   }
 
@@ -3281,7 +3089,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
       await _prepareRoadNotifications();
       if (cancelled()) return;
-      if (!await _ensureLocationPermission() || cancelled()) return;
+      if (!await _location.ensurePermission() || cancelled()) return;
       await _pauseBrowseLocation();
       if (cancelled()) return;
       _independentCamera.reset();
@@ -4991,17 +4799,17 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 key: ValueKey(_message),
                 message: _message!,
                 dismissLabel: _text('Dismiss', '关闭'),
-                actionLabel: switch (_locationNoticeAction) {
-                  _LocationNoticeAction.appSettings ||
-                  _LocationNoticeAction.locationSettings => _text(
+                actionLabel: switch (_location.issueAction) {
+                  LocationNoticeAction.appSettings ||
+                  LocationNoticeAction.locationSettings => _text(
                     'Open settings',
                     '打开设置',
                   ),
                   _ => _text('Retry location', '重试定位'),
                 },
                 onAction:
-                    _message == _browseLocationMessage &&
-                        _locationNoticeAction != null
+                    _message == _location.issueMessage &&
+                        _location.issueAction != null
                     ? () => unawaited(_resolveLocationIssue())
                     : null,
                 onDismiss: () {

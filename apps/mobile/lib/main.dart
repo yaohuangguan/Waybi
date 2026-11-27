@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -273,6 +274,23 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   /// The location issue last mirrored into the banner.
   String? _shownLocationIssue;
+
+  /// (has a location, has a route origin) when the page last rebuilt for it.
+  (bool, bool) _locationAvailability = (false, false);
+
+  /// GPS accuracy as the HUDs show it (whole metres): changes far less
+  /// often than fixes arrive.
+  final _gpsAccuracyShown = ValueNotifier<int?>(null);
+
+  /// What the map redraws for without rebuilding the page: location,
+  /// compass, drive ticks and route progress.
+  final _mapTicks = _FrameSafeNotifier();
+  late final Listenable _mapSources = Listenable.merge([
+    _location.locationListenable,
+    _location.deviceHeadingListenable,
+    _driveEngine,
+    _independentNavigation.displayPathsListenable,
+  ]);
   final _independentCamera = IndependentNavigationCamera();
   final _driveCameraFollow = DriveCameraFollow();
   Timer? _mapRefreshTimer;
@@ -486,6 +504,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ..onIssue = _onLocationIssue
       ..reportTransientIssues = () => _externalPreview != null;
     _location.deviceHeadingListenable.addListener(_queueMapRefresh);
+    _mapSources.addListener(_mapTicks.ping);
     unawaited(WaybiNotificationService.instance.initialize());
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
@@ -788,7 +807,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (_independentNavigation.route != null) {
       _activeNavigationRoute = _independentNavigation.route;
     }
-    setState(() {});
+    // The HUD, the arrival panel and the map listen to the engine themselves.
     if (_guidanceRunning) {
       unawaited(_systemNavigation.update(_systemNavigationState()));
     }
@@ -1051,7 +1070,34 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  List<RoadEvent> get _visibleRoadEvents => _layers.roadEvents
+  ({List<RoadEvent> source, bool shown, int minute, List<RoadEvent> value})?
+  _visibleRoadEventsMemo;
+
+  /// The road events the map draws. The same list instance is returned until
+  /// the engine's events, the layer or the minute change, so the renderer's
+  /// identity check skips re-syncing them on every rebuild.
+  List<RoadEvent> get _visibleRoadEvents {
+    final source = _driveEngine.roadEvents;
+    final shown = _layers.roadEvents;
+    final minute = DateTime.now().millisecondsSinceEpoch ~/ 60000;
+    final memo = _visibleRoadEventsMemo;
+    if (memo != null &&
+        identical(memo.source, source) &&
+        memo.shown == shown &&
+        memo.minute == minute) {
+      return memo.value;
+    }
+    final value = _computeVisibleRoadEvents();
+    _visibleRoadEventsMemo = (
+      source: source,
+      shown: shown,
+      minute: minute,
+      value: value,
+    );
+    return value;
+  }
+
+  List<RoadEvent> _computeVisibleRoadEvents() => _layers.roadEvents
       ? _driveEngine.roadEvents
             .where(
               (event) =>
@@ -1267,7 +1313,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     ++_externalRequest;
     WidgetsBinding.instance.removeObserver(this);
     _location.deviceHeadingListenable.removeListener(_queueMapRefresh);
+    _mapSources.removeListener(_mapTicks.ping);
+    _mapTicks.dispose();
     _location.dispose();
+    _gpsAccuracyShown.dispose();
     _mapRefreshTimer?.cancel();
     _account.removeListener(_onAccountChanged);
     _driveEngine.customVoice = null;
@@ -1318,10 +1367,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   /// controller's listenable.
   void _onLocationFix(NavigationLocationFix? accepted, Position position) {
     if (!mounted) return;
+    _gpsAccuracyShown.value = _gpsAccuracy?.round();
+    // The puck, heading and accuracy redraw through listenables. The page
+    // itself only rebuilds when having a location (or a route origin) at all
+    // changes what it shows.
+    final availability = (_gpsLocation != null, _locationForRoute != null);
+    if (availability != _locationAvailability) {
+      _locationAvailability = availability;
+      setState(() {});
+    }
     // The filter held the last reliable fix (an indoor jump).
     if (accepted == null) {
       _retryExternalPreview();
-      setState(() {});
       final place = _selectedPlace?.place;
       if (place != null && !_driveEngine.active && _routePlan == null) {
         unawaited(_loadPlaceQuickRoute(place));
@@ -1341,7 +1398,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           false;
       if (arrived) unawaited(_stopNavigation(arrived: true));
     }
-    setState(() {});
     _queueMapRefresh();
     unawaited(_commute.refreshQuick());
     final selected = _selectedPlace?.place;
@@ -2524,7 +2580,25 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     final plan = _routePlan;
     if (plan == null) return const [];
-    return _filteredPreviewRoutes
+    final key = (
+      plan,
+      _selectedMode,
+      _selectedRouteId,
+      _routeFilter,
+      _routeCameraDataReady,
+      _driveEngine.roadEvents,
+    );
+    final memo = _previewPathsMemo;
+    if (memo != null &&
+        identical(memo.key.$1, key.$1) &&
+        memo.key.$2 == key.$2 &&
+        memo.key.$3 == key.$3 &&
+        memo.key.$4 == key.$4 &&
+        memo.key.$5 == key.$5 &&
+        identical(memo.key.$6, key.$6)) {
+      return memo.value;
+    }
+    final value = _filteredPreviewRoutes
         .map(
           (route) => MapRoutePath(
             id: route.id,
@@ -2533,7 +2607,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           ),
         )
         .toList(growable: false);
+    _previewPathsMemo = (key: key, value: value);
+    return value;
   }
+
+  /// Preview paths are rebuilt only when the plan, mode, selection, filter
+  /// or closures change, so the map sees the same list between rebuilds.
+  ({
+    (RoutePlan, WaybiTravelMode, String?, RouteFilter, bool, List<RoadEvent>)
+    key,
+    List<MapRoutePath> value,
+  })?
+  _previewPathsMemo;
 
   List<MapRoutePath>? _transitTripPaths;
 
@@ -4481,23 +4566,27 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (!_settingsLoaded) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final arrivalRemaining = _navigationRemainingMeters;
     final arrivalPhotos = _arrivalPlaceDetails?.photos ?? const <PlacePhoto>[];
+    final arrivalDestination = _activeDestinationPlace;
+    // The remaining distance changes every tick: only the panel listens.
     final arrivalPanel =
         _arrivalMode &&
-            arrivalRemaining != null &&
-            _activeDestinationPlace != null
-        ? ArrivalExperiencePanel(
-            language: _appLanguage,
-            destinationTitle: _destinationTitle,
-            destinationAddress: _activeDestinationPlace!.address,
-            remainingMeters: arrivalRemaining,
-            photoUrl: arrivalPhotos.isEmpty ? null : arrivalPhotos.first.url,
-            selectedParkingTitle: _selectedParking?.name,
-            parkingPlaces: _arrivalParkingPlaces,
-            parkingLoading: _arrivalPrefetching,
-            onParkingSelected: (parking) =>
-                unawaited(_routeToArrivalParking(parking)),
+            _navigationRemainingMeters != null &&
+            arrivalDestination != null
+        ? ListenableBuilder(
+            listenable: _independentNavigation,
+            builder: (context, _) => ArrivalExperiencePanel(
+              language: _appLanguage,
+              destinationTitle: _destinationTitle,
+              destinationAddress: arrivalDestination.address,
+              remainingMeters: _navigationRemainingMeters ?? 0,
+              photoUrl: arrivalPhotos.isEmpty ? null : arrivalPhotos.first.url,
+              selectedParkingTitle: _selectedParking?.name,
+              parkingPlaces: _arrivalParkingPlaces,
+              parkingLoading: _arrivalPrefetching,
+              onParkingSelected: (parking) =>
+                  unawaited(_routeToArrivalParking(parking)),
+            ),
           )
         : null;
     return PopScope(
@@ -4509,78 +4598,85 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         body: Stack(
           children: [
             Positioned.fill(
-              child: IndependentMapRenderer(
-                key: const ValueKey('independent-browse-view'),
-                initialViewport: _viewport,
-                layers: _layers,
-                locationMarker: _locationMarker,
-                locationEnabled: _gpsLocation != null,
-                following: _following,
-                navigating: _independentNavigation.active,
-                driving: _driveEngine.active,
-                location: _displayLocation == null
-                    ? null
-                    : GeoPoint(
-                        _displayLocation!.latitude,
-                        _displayLocation!.longitude,
-                      ),
-                heading: navigationForwardBearing(
-                  speedKph: _driveEngine.active ? _driveEngine.speedKph : 0,
-                  course: _driveEngine.snappedHeadingDegrees ?? _travelHeading,
-                  compass: _deviceHeading,
-                  routeBearing: _routeInitialBearing,
+              // Location, compass, drive ticks and route progress redraw only
+              // the map; the rest of the page rebuilds on real changes.
+              child: ListenableBuilder(
+                listenable: _mapTicks,
+                builder: (context, _) => IndependentMapRenderer(
+                  key: const ValueKey('independent-browse-view'),
+                  initialViewport: _viewport,
+                  layers: _layers,
+                  locationMarker: _locationMarker,
+                  locationEnabled: _gpsLocation != null,
+                  following: _following,
+                  navigating: _independentNavigation.active,
+                  driving: _driveEngine.active,
+                  location: _displayLocation == null
+                      ? null
+                      : GeoPoint(
+                          _displayLocation!.latitude,
+                          _displayLocation!.longitude,
+                        ),
+                  heading: navigationForwardBearing(
+                    speedKph: _driveEngine.active ? _driveEngine.speedKph : 0,
+                    course:
+                        _driveEngine.snappedHeadingDegrees ?? _travelHeading,
+                    compass: _deviceHeading,
+                    routeBearing: _routeInitialBearing,
+                  ),
+                  contentPadding: _guidanceRunning
+                      ? _independentNavigationPadding
+                      : EdgeInsets.only(
+                          bottom: _selectedPlace == null
+                              ? 96
+                              : _placeDeckInset(expanded: false),
+                        ),
+                  moving: _travelHeading != null,
+                  language: _appLanguage,
+                  cameras: _driveEngine.cameras,
+                  onCamera: (camera) => unawaited(_showCameraDetails(camera)),
+                  roadEvents: _visibleRoadEvents,
+                  transitLanes: _driveEngine.transitSnapshot?.lanes ?? const [],
+                  transitReviewCorridors: _driveEngine.transitReviewCorridors,
+                  onTransitReviewCorridor: (corridor) =>
+                      unawaited(_showTransitReviewDetails(corridor)),
+                  onTransitLane: (lane) =>
+                      unawaited(_showTransitLaneDetails(lane)),
+                  onRoadEvent: (event) =>
+                      unawaited(_showRoadEventDetails(event)),
+                  trafficSegments: _driveEngine.trafficFlowSegments,
+                  trafficTileOverlay: _driveEngine.trafficTileOverlay,
+                  trafficFresh: _driveEngine.trafficFlowStatus == 'live',
+                  routePaths: _visibleIndependentRoutePaths,
+                  selectedPlace: _selectedPlace?.place,
+                  explorePlaces: _exploreResults,
+                  onExplorePlace: (place) => _exploreMarkerFocus.value = place,
+                  onReady: (renderer) {
+                    _browseRenderer = renderer;
+                    if (_journeyPhase == JourneyPhase.routePreview) {
+                      unawaited(_renderRoutePreview());
+                    } else {
+                      _queueMapRefresh();
+                    }
+                  },
+                  onViewportChanged: (viewport) => _viewport = viewport,
+                  onGestureChanged: (touching) =>
+                      _driveCameraFollow.touch(touching, DateTime.now()),
+                  onUserPan: () => _markMapManuallyMoved(searchArea: true),
+                  onMapPlace: (place) {
+                    _selectPlace(
+                      place,
+                      place.kind == PlaceKind.coordinate
+                          ? SelectionSource.longPress
+                          : SelectionSource.map,
+                    );
+                  },
+                  onBlankTap: () {
+                    if (_selectedPlace != null || _routePlan != null) {
+                      unawaited(_clearRoutePreview());
+                    }
+                  },
                 ),
-                contentPadding: _guidanceRunning
-                    ? _independentNavigationPadding
-                    : EdgeInsets.only(
-                        bottom: _selectedPlace == null
-                            ? 96
-                            : _placeDeckInset(expanded: false),
-                      ),
-                moving: _travelHeading != null,
-                language: _appLanguage,
-                cameras: _driveEngine.cameras,
-                onCamera: (camera) => unawaited(_showCameraDetails(camera)),
-                roadEvents: _visibleRoadEvents,
-                transitLanes: _driveEngine.transitSnapshot?.lanes ?? const [],
-                transitReviewCorridors: _driveEngine.transitReviewCorridors,
-                onTransitReviewCorridor: (corridor) =>
-                    unawaited(_showTransitReviewDetails(corridor)),
-                onTransitLane: (lane) =>
-                    unawaited(_showTransitLaneDetails(lane)),
-                onRoadEvent: (event) => unawaited(_showRoadEventDetails(event)),
-                trafficSegments: _driveEngine.trafficFlowSegments,
-                trafficTileOverlay: _driveEngine.trafficTileOverlay,
-                trafficFresh: _driveEngine.trafficFlowStatus == 'live',
-                routePaths: _visibleIndependentRoutePaths,
-                selectedPlace: _selectedPlace?.place,
-                explorePlaces: _exploreResults,
-                onExplorePlace: (place) => _exploreMarkerFocus.value = place,
-                onReady: (renderer) {
-                  _browseRenderer = renderer;
-                  if (_journeyPhase == JourneyPhase.routePreview) {
-                    unawaited(_renderRoutePreview());
-                  } else {
-                    _queueMapRefresh();
-                  }
-                },
-                onViewportChanged: (viewport) => _viewport = viewport,
-                onGestureChanged: (touching) =>
-                    _driveCameraFollow.touch(touching, DateTime.now()),
-                onUserPan: () => _markMapManuallyMoved(searchArea: true),
-                onMapPlace: (place) {
-                  _selectPlace(
-                    place,
-                    place.kind == PlaceKind.coordinate
-                        ? SelectionSource.longPress
-                        : SelectionSource.map,
-                  );
-                },
-                onBlankTap: () {
-                  if (_selectedPlace != null || _routePlan != null) {
-                    unawaited(_clearRoutePreview());
-                  }
-                },
               ),
             ),
             if (!_driveEngine.active && !_transitTripRunning)
@@ -4677,20 +4773,19 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      CompanionSearchPrompt(
-                        marker: _locationMarker,
-                        language: _appLanguage,
-                        currentLocation: _gpsLocation == null
-                            ? _viewport.center
-                            : GeoPoint(
-                                _gpsLocation!.latitude,
-                                _gpsLocation!.longitude,
-                              ),
-                        loadSuggestions: _loadMapSearchSuggestions,
-                        cachedSuggestions: _cachedMapSearchSuggestions,
-                        onSuggestionSelected: _selectMapSearchSuggestion,
-                        onSearch: (query) =>
-                            unawaited(_openSearch(query: query)),
+                      ValueListenableBuilder<GeoPoint?>(
+                        valueListenable: _location.locationListenable,
+                        builder: (context, location, _) =>
+                            CompanionSearchPrompt(
+                              marker: _locationMarker,
+                              language: _appLanguage,
+                              currentLocation: location ?? _viewport.center,
+                              loadSuggestions: _loadMapSearchSuggestions,
+                              cachedSuggestions: _cachedMapSearchSuggestions,
+                              onSuggestionSelected: _selectMapSearchSuggestion,
+                              onSearch: (query) =>
+                                  unawaited(_openSearch(query: query)),
+                            ),
                       ),
                       const SizedBox(height: 9),
                       _buildQuickActions(),
@@ -4709,40 +4804,45 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               ),
             if (_independentNavigation.active)
               Positioned.fill(
-                child: IndependentNavigationOverlay(
-                  systemStatus: SystemNavigationStatus(
-                    navigation: _systemNavigation,
-                    language: _appLanguage,
-                  ),
-                  onTopInsetChanged: _updateNavigationTopInset,
-                  onBottomInsetChanged: _updateNavigationBottomInset,
-                  engine: _independentNavigation,
-                  drive: _driveEngine,
-                  destination: _destinationTitle,
-                  language: _appLanguage,
-                  onEnd: () => unawaited(_stopNavigation()),
-                  onRecenter: _recenter,
-                  onOverview: _showRouteOverview,
-                  following: _following,
-                  overviewMode: _routeOverviewActive,
-                  gpsAccuracy: _gpsAccuracy,
-                  voiceEnabled: _voiceEnabled,
-                  lanesEnabled: _lanesEnabled,
-                  northUp: _cameraMode.northUp,
-                  perspectiveTilted: _cameraMode.tilted,
-                  onCompassToggle: _toggleCompass,
-                  onReport: () => unawaited(_showRoadReport()),
-                  onSearchAlongRoute: _showAlongRouteSearch,
-                  onDirections: _showDirections,
-                  onShare: _shareTripSnapshot,
-                  onSettings: _showNavigationSettings,
-                  onLayers: _showMapLayers,
-                  onVoiceToggle: _toggleVoice,
-                  onLanesToggle: () => _setLanesEnabled(!_lanesEnabled),
-                  arrivalPanel: arrivalPanel,
-                  offlineReady:
-                      _account.profile?.isPlus == true && _offlineCorridorReady,
-                  offlineCachedAt: _lastCorridorCacheAt,
+                child: ValueListenableBuilder<int?>(
+                  valueListenable: _gpsAccuracyShown,
+                  builder: (context, accuracy, _) =>
+                      IndependentNavigationOverlay(
+                        systemStatus: SystemNavigationStatus(
+                          navigation: _systemNavigation,
+                          language: _appLanguage,
+                        ),
+                        onTopInsetChanged: _updateNavigationTopInset,
+                        onBottomInsetChanged: _updateNavigationBottomInset,
+                        engine: _independentNavigation,
+                        drive: _driveEngine,
+                        destination: _destinationTitle,
+                        language: _appLanguage,
+                        onEnd: () => unawaited(_stopNavigation()),
+                        onRecenter: _recenter,
+                        onOverview: _showRouteOverview,
+                        following: _following,
+                        overviewMode: _routeOverviewActive,
+                        gpsAccuracy: accuracy?.toDouble(),
+                        voiceEnabled: _voiceEnabled,
+                        lanesEnabled: _lanesEnabled,
+                        northUp: _cameraMode.northUp,
+                        perspectiveTilted: _cameraMode.tilted,
+                        onCompassToggle: _toggleCompass,
+                        onReport: () => unawaited(_showRoadReport()),
+                        onSearchAlongRoute: _showAlongRouteSearch,
+                        onDirections: _showDirections,
+                        onShare: _shareTripSnapshot,
+                        onSettings: _showNavigationSettings,
+                        onLayers: _showMapLayers,
+                        onVoiceToggle: _toggleVoice,
+                        onLanesToggle: () => _setLanesEnabled(!_lanesEnabled),
+                        arrivalPanel: arrivalPanel,
+                        offlineReady:
+                            _account.profile?.isPlus == true &&
+                            _offlineCorridorReady,
+                        offlineCachedAt: _lastCorridorCacheAt,
+                      ),
                 ),
               ),
             if ((_driveEngine.active) && !_guidanceRunning)
@@ -4845,13 +4945,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               ),
             if (_transitTripRunning && _activeTransitRoute != null)
               Positioned.fill(
-                child: TransitTripOverlay(
-                  language: _appLanguage,
-                  destinationTitle: _destinationTitle,
-                  route: _activeTransitRoute!,
-                  gpsAccuracy: _gpsAccuracy,
-                  onEnd: () => unawaited(_stopTransitTrip()),
-                  onRecenter: _recenter,
+                child: ValueListenableBuilder<int?>(
+                  valueListenable: _gpsAccuracyShown,
+                  builder: (context, accuracy, _) => TransitTripOverlay(
+                    language: _appLanguage,
+                    destinationTitle: _destinationTitle,
+                    route: _activeTransitRoute!,
+                    gpsAccuracy: accuracy?.toDouble(),
+                    onEnd: () => unawaited(_stopTransitTrip()),
+                    onRecenter: _recenter,
+                  ),
                 ),
               ),
             if (_selectedPoi != null &&
@@ -4966,6 +5069,27 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+}
+
+/// Notifies listeners, but never while widgets are building: a source that
+/// changes during a build (the drive engine starting a camera reload from a
+/// page's initState) is passed on after that frame instead.
+class _FrameSafeNotifier extends ChangeNotifier {
+  bool _scheduled = false;
+
+  void ping() {
+    final binding = SchedulerBinding.instance;
+    if (binding.schedulerPhase != SchedulerPhase.persistentCallbacks) {
+      notifyListeners();
+      return;
+    }
+    if (_scheduled) return;
+    _scheduled = true;
+    binding.addPostFrameCallback((_) {
+      _scheduled = false;
+      if (hasListeners) notifyListeners();
+    });
   }
 }
 

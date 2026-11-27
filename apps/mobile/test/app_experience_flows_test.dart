@@ -134,6 +134,12 @@ void main() {
         reason: 'Confirmed destination replacement should stop the previous guidance',
       );
       expect(h.map.navigating, isFalse);
+      // The map now redraws as soon as the engine stops; the replacement
+      // preview still needs its route request.
+      await h.until(
+        () => find.byType(RoutePreviewSheet).evaluate().isNotEmpty,
+        reason: 'The replacement destination should open its preview',
+      );
       expect(preview(t).destinationTitle, 'Next');
       expect(h.calls.where((c) => c.method == 'stop'), isNotEmpty);
     },

@@ -2,6 +2,7 @@ import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
 import 'http_guard.dart';
+import 'place_details_repository.dart';
 
 class ExplorePlace {
   const ExplorePlace({
@@ -38,9 +39,13 @@ class ExplorePlace {
   final String? thumbnailUrl;
   final Map<String, dynamic>? photoCredit;
 
+  /// Only a Google result may be sent to Google Place Details. Past the
+  /// daily Google budget, Explore answers with OpenStreetMap places.
+  bool get isGoogle => isGooglePlaceId(placeId, provider: provider);
+
   String? get photoUrl =>
       thumbnailUrl ??
-      (photoName.isEmpty
+      (photoName.isEmpty || !photoName.startsWith('places/')
           ? null
           : Uri.parse('$workerBaseUrl/api/place-photo')
                 .replace(queryParameters: {'name': photoName})

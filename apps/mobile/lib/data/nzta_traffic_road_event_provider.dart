@@ -10,6 +10,12 @@ import '../domain/road_intelligence.dart';
 import 'api_config.dart';
 
 /// The feed combines regional official events and worldwide Waybi reports.
+///
+/// Scheduled events that start within [scheduledWindow] are kept, with their
+/// `validFrom`/`validUntil`, so routing can avoid a closure that begins
+/// before the car reaches it. Consumers that show or announce events as
+/// active must check [RoadEvent.isCurrent]. Both the older server (current
+/// events only) and the newer one (`scheduledWindowHours`) are accepted.
 class NztaTrafficRoadEventProvider implements RoadEventProvider {
   NztaTrafficRoadEventProvider({
     http.Client? client,
@@ -22,6 +28,7 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
   DateTime? lastCheckedAt;
   GeoPoint? regionCenter;
   List<String> officialCoverage = const [];
+  static const scheduledWindow = Duration(hours: 12);
 
   @override
   bool supports(CountryProfile country) => country.roadIntelligenceAvailable;
@@ -92,13 +99,22 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
             DateTime.now().difference(retrievedAt) >
                 const Duration(minutes: 15));
     if (expiredSnapshot) lastSyncStatus = 'unavailable';
+    final serverWindow = body['scheduledWindowHours'];
+    final window = serverWindow is num && serverWindow >= 0
+        ? Duration(
+            minutes: (serverWindow * 60)
+                .clamp(0, scheduledWindow.inMinutes)
+                .round(),
+          )
+        : scheduledWindow;
+    final now = DateTime.now();
     return (body['events'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(_fromJson)
         .whereType<RoadEvent>()
         .where(
           (event) =>
-              event.isCurrent(DateTime.now()) &&
+              event.isCurrentOrUpcoming(now, window: window) &&
               (!expiredSnapshot || event.metadata['userReported'] == true),
         )
         .toList(growable: false);

@@ -179,8 +179,11 @@ class ParkingRepository {
     final nearby = places
         .map((place) {
           final location = GeoPoint(place.latitude, place.longitude);
+          // Past the daily Google budget Explore returns OpenStreetMap car
+          // parks; never label those Google or send their ids to Google.
+          final google = place.isGoogle;
           return ParkingPlace(
-            id: 'google-${place.placeId}',
+            id: google ? 'google-${place.placeId}' : place.placeId,
             name: place.name,
             address: place.address,
             location: location,
@@ -190,8 +193,8 @@ class ParkingRepository {
               location.latitude,
               location.longitude,
             ),
-            source: 'Google',
-            googlePlaceId: place.placeId,
+            source: google ? 'Google' : 'OpenStreetMap',
+            googlePlaceId: google ? place.placeId : null,
           );
         })
         .where((place) => place.distanceMeters <= 1500)

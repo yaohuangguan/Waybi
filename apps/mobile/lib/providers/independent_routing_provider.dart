@@ -23,6 +23,10 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
   final _lastRequest = <String, DateTime>{};
   final _pending = <Uri, Future<http.Response>>{};
   final http.Client _client;
+
+  /// The Worker's routing back-off (HTTP 429). Previews, place-card quick
+  /// routes and reroutes all fail fast until its Retry-After has passed.
+  final RateLimitGate _waybiGate = RateLimitGate();
   final bool useWaybiProxy;
   final String proxyBaseUrl;
 
@@ -334,13 +338,14 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
           'heading': '${headingDegrees % 360}',
       },
     );
+    _waybiGate.check();
     final response = await abortableGet(
       _client,
       uri,
       headers: const {'Accept': 'application/json'},
       timeout: timeout,
     );
-    throwIfRateLimited(response);
+    _waybiGate.observe(response);
     if (response.statusCode != 200) {
       throw StateError('Waybi directions unavailable: ${response.statusCode}');
     }

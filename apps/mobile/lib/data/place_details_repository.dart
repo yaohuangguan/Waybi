@@ -4,6 +4,21 @@ import 'api_config.dart';
 import 'http_guard.dart';
 import '../domain/map_provider.dart';
 
+/// Whether [id] can be sent to the Google `/api/place-details` endpoint.
+///
+/// Once the daily Google budget is spent, suggest and explore answer from
+/// independent providers (`osm:node:1`, `wikipedia:en:2`, Geoapify hex ids).
+/// Those ids must not be sent to Google Place Details.
+bool isGooglePlaceId(String id, {String? provider}) {
+  if (id.isEmpty || id.length > 512 || id.contains(':')) return false;
+  if (provider != null) {
+    return provider == 'google' || provider == 'google-ui-kit';
+  }
+  // Untagged: Google ids are long mixed-case base64url; Geoapify's are hex.
+  return RegExp(r'^[A-Za-z0-9_-]{16,}$').hasMatch(id) &&
+      !RegExp(r'^[0-9a-f]+$').hasMatch(id);
+}
+
 class PlacePhoto {
   const PlacePhoto({
     required this.name,
@@ -18,6 +33,10 @@ class PlacePhoto {
   final String? directUrl;
   final String sourceUrl;
   final String licenseUrl;
+
+  /// Served by `/api/place-photo`, which answers 503 once the daily Google
+  /// budget is spent: show a placeholder image rather than an error.
+  bool get viaGoogleProxy => directUrl == null;
 
   String get url =>
       directUrl ??
@@ -132,10 +151,14 @@ class PlaceDetails {
 }
 
 class PlaceDetailsRepository {
-  PlaceDetailsRepository({http.Client? client})
-    : _client = client ?? http.Client();
+  PlaceDetailsRepository({http.Client? client, RateLimitGate? googleGate})
+    : _client = client ?? http.Client(),
+      _googleGate = googleGate ?? RateLimitGate();
 
   final http.Client _client;
+
+  /// Holds Google lookups back after a 429 or `GOOGLE_BUDGET_EXHAUSTED`.
+  final RateLimitGate _googleGate;
 
   Future<PlaceDetails> fetchIndependent(PlaceSummary place) async {
     final uri = Uri.parse('$workerBaseUrl/api/independent-place-details')
@@ -161,13 +184,31 @@ class PlaceDetailsRepository {
     return PlaceDetails.fromJson(decoded);
   }
 
-  Future<PlaceDetails> fetch(String placeId, {String language = 'en'}) async {
-    final uri = Uri.parse('$workerBaseUrl/api/place-details')
-        .replace(queryParameters: {'placeId': placeId, 'lang': language});
-    // Check the status before decoding: a Cloudflare 502 is an HTML page.
-    final response = await _client
-        .get(uri)
-        .timeout(const Duration(seconds: 15));
+  /// Google place details. With [fallback], an id that is not a Google
+  /// place id, a rate limit or an exhausted daily Google budget answers from
+  /// `/api/independent-place-details` instead of failing.
+  Future<PlaceDetails> fetch(
+    String placeId, {
+    String language = 'en',
+    String? provider,
+    PlaceSummary? fallback,
+  }) async {
+    if (!isGooglePlaceId(placeId, provider: provider)) {
+      if (fallback != null) return fetchIndependent(fallback);
+      throw ApiException('Place details unavailable');
+    }
+    final http.Response response;
+    try {
+      _googleGate.check();
+      final uri = Uri.parse('$workerBaseUrl/api/place-details')
+          .replace(queryParameters: {'placeId': placeId, 'lang': language});
+      // Check the status before decoding: a Cloudflare 502 is an HTML page.
+      response = await _client.get(uri).timeout(const Duration(seconds: 15));
+      _googleGate.observe(response);
+    } on RateLimitedException {
+      if (fallback != null) return fetchIndependent(fallback);
+      rethrow;
+    }
     final decoded = decodeJsonResponse(
       response,
       unavailable: 'Place details unavailable',

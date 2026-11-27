@@ -74,3 +74,50 @@ List<GeoPoint> trafficGeometryOnRoute(
   points.add(match.end.point!);
   return points.length >= 2 ? List.unmodifiable(points) : const [];
 }
+
+/// One official traffic section matched onto a route, by along-route metres.
+class RouteTrafficSpan {
+  const RouteTrafficSpan(this.segment, this.startMeters, this.endMeters);
+  final TrafficFlowSegment segment;
+  final double startMeters, endMeters;
+}
+
+/// Matches every traffic section to [route] once, skipping sections outside
+/// the route's bounding box. Renderers then only clip the spans at the car
+/// instead of re-projecting all traffic onto the whole route on each update.
+List<RouteTrafficSpan> routeTrafficSpans(
+  List<TrafficFlowSegment> segments,
+  List<GeoPoint> route, {
+  double maxOffsetMeters = 90,
+}) {
+  if (route.length < 2 || segments.isEmpty) return const [];
+  var south = 90.0, north = -90.0, west = 180.0, east = -180.0;
+  for (final p in route) {
+    if (p.latitude < south) south = p.latitude;
+    if (p.latitude > north) north = p.latitude;
+    if (p.longitude < west) west = p.longitude;
+    if (p.longitude > east) east = p.longitude;
+  }
+  const margin = .0015;
+  bool inside(GeoPoint p) =>
+      p.latitude >= south - margin &&
+      p.latitude <= north + margin &&
+      p.longitude >= west - margin * 1.3 &&
+      p.longitude <= east + margin * 1.3;
+  final path = MapRoutePath(id: 'route', points: route);
+  final spans = <RouteTrafficSpan>[];
+  for (final segment in segments) {
+    if (!inside(segment.start) || !inside(segment.end)) continue;
+    final match = _matchProjections(
+      segment,
+      path,
+      maxOffsetMeters: maxOffsetMeters,
+    );
+    if (match == null) continue;
+    spans.add(
+      RouteTrafficSpan(segment, match.start.alongMeters, match.end.alongMeters),
+    );
+  }
+  spans.sort((a, b) => a.startMeters.compareTo(b.startMeters));
+  return List.unmodifiable(spans);
+}

@@ -30,7 +30,10 @@ class TrafficFlowSegment {
   final GeoPoint end;
   final List<GeoPoint> geometry;
   final String geometryQuality;
-  bool get hasRoadGeometry => geometryQuality == 'road-matched' && geometry.length >= 2 && geometry.every((p) => p.isValid);
+  bool get hasRoadGeometry =>
+      geometryQuality == 'road-matched' &&
+      geometry.length >= 2 &&
+      geometry.every((p) => p.isValid);
 
   factory TrafficFlowSegment.fromJson(Map<String, dynamic> json) {
     final start = json['start'] as Map<String, dynamic>? ?? const {};
@@ -43,9 +46,19 @@ class TrafficFlowSegment {
     };
     return TrafficFlowSegment(
       geometryQuality: json['geometryQuality']?.toString() ?? 'unmatched',
-      geometry: ((json['geometry'] as Map<String, dynamic>?)?['coordinates'] as List? ?? const [])
-          .whereType<List>().where((p) => p.length >= 2 && p[0] is num && p[1] is num)
-          .map((p) => GeoPoint((p[1] as num).toDouble(), (p[0] as num).toDouble())).toList(growable: false),
+      geometry:
+          ((json['geometry'] as Map<String, dynamic>?)?['coordinates']
+                      as List? ??
+                  const [])
+              .whereType<List>()
+              .where((p) => p.length >= 2 && p[0] is num && p[1] is num)
+              .map(
+                (p) => GeoPoint(
+                  (p[1] as num).toDouble(),
+                  (p[0] as num).toDouble(),
+                ),
+              )
+              .toList(growable: false),
       id: json['id']?.toString() ?? '',
       motorway: json['motorway']?.toString() ?? '',
       name: json['name']?.toString() ?? '',
@@ -84,6 +97,10 @@ class TrafficFlowSnapshot {
 
 /// Provider-neutral raster traffic capability; keys never reach the client.
 class TrafficTileOverlay {
-  const TrafficTileOverlay({required this.provider, required this.tileTemplate, required this.attribution});
+  const TrafficTileOverlay({
+    required this.provider,
+    required this.tileTemplate,
+    required this.attribution,
+  });
   final String provider, tileTemplate, attribution;
 }

@@ -255,4 +255,62 @@ void main() {
       expect(drive.latestPosition, isNotNull);
     },
   );
+
+  test('a long route matches cameras off the UI isolate', () async {
+    SharedPreferences.setMockInitialValues({});
+    final points = [
+      for (var i = 0; i < 4000; i++) GeoPoint(-36.85 - i * .0009, 174.76),
+    ];
+    final drive = DriveEngine(
+      voiceEngine: QuietVoice(),
+      cameraRepository: CameraRepository(
+        client: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'syncStatus': 'live',
+              'cameras': [
+                for (var i = 0; i < 30; i++)
+                  {
+                    'id': 'cam-$i',
+                    'name': 'SH1 camera $i',
+                    'type': 'Fixed speed camera',
+                    'location': 'SH1',
+                    'latitude': points[i * 100 + 50].latitude,
+                    'longitude': 174.76,
+                  },
+              ],
+            }),
+            200,
+          ),
+        ),
+      ),
+      speedLimitRepository: SpeedLimitRepository(
+        client: MockClient((_) async => http.Response('{}', 200)),
+      ),
+      trafficFlowRepository: TrafficFlowRepository(
+        client: MockClient((_) async => http.Response('{}', 503)),
+      ),
+    )..voiceEnabled = false;
+    addTearDown(drive.dispose);
+    await drive.loadCameras(force: true);
+    expect(drive.cameras, hasLength(30));
+    drive.setRoute(
+      RouteOption(
+        id: 'long',
+        mode: WaybiTravelMode.drive,
+        durationSeconds: 14400,
+        distanceMeters: 400000,
+        points: points,
+        provider: 'independent',
+        traffic: const TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
+        trafficIntervals: const [],
+      ),
+    );
+    expect(drive.routeCameras, isEmpty, reason: 'Matched in the background');
+    for (var i = 0; i < 200 && drive.routeCameras.isEmpty; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+    }
+    expect(drive.routeCameras, hasLength(30));
+    expect(drive.routeCameraCount, 30);
+  });
 }

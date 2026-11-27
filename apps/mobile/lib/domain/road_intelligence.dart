@@ -87,18 +87,22 @@ class RoadIntelligenceEngine {
     return events;
   }
 
+  /// [progress] is the navigation tracker's position on [route]. Without it
+  /// a whole-route search can place the car on the other pass of a road the
+  /// route uses twice, and report the wrong events as ahead.
   List<RoadEvent> relevant({
     required GeoPoint driver,
     required List<RoadEvent> events,
     double? headingDegrees,
     RouteOption? route,
+    RouteProjection? progress,
     DateTime? now,
   }) {
     if (events.isEmpty) return const [];
     final at = now ?? DateTime.now();
-    final progress = route == null
+    final position = route == null
         ? null
-        : _routeMatcher.project(driver, route.points);
+        : progress ?? _routeMatcher.project(driver, route.points);
     final output = <RoadEvent>[];
     final seen = <String>{};
 
@@ -132,15 +136,22 @@ class RoadIntelligenceEngine {
       double? fromDriver;
       double? along;
 
-      if (route != null && progress != null && progress.offsetMeters <= 100) {
+      if (route != null && position != null && position.offsetMeters <= 100) {
         double bestOffset = double.infinity;
         for (final entry in nearby) {
-          final projected = _routeMatcher.project(entry.point, route.points);
+          // Only the stretch ahead of the car (shared cumulative distances).
+          final projected = _routeMatcher.project(
+            entry.point,
+            route.points,
+            minAlongMeters: math.max(0, position.alongMeters - 15),
+            maxAlongMeters:
+                position.alongMeters + maxDistanceMeters + routeCorridorMeters,
+          );
           if (projected == null ||
               projected.offsetMeters > routeCorridorMeters) {
             continue;
           }
-          final candidateAlong = projected.alongMeters - progress.alongMeters;
+          final candidateAlong = projected.alongMeters - position.alongMeters;
           if (candidateAlong < -15 || candidateAlong > maxDistanceMeters) {
             continue;
           }

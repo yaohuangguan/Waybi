@@ -16,7 +16,6 @@ import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
 import '../drive/reroute_scheduler.dart';
 import '../drive/route_camera_matcher.dart';
-import '../drive/route_display.dart';
 import 'provider_contracts.dart';
 
 typedef IndependentReroute = Future<RouteOption> Function(
@@ -153,9 +152,55 @@ class IndependentNavigationEngine extends ChangeNotifier
   String? error;
 
   RouteOption? get route => _route;
-  List<MapRoutePath> get displayPaths => _route == null
-      ? const []
-      : navigationRoutePaths(_route!.id, _route!.points, _alongMeters);
+
+  /// The route as the map should draw it: one path with its driven prefix
+  /// as [MapRoutePath.progressMeters]. The list is cached and replaced only
+  /// when the route changes or progress moves [displayStepMeters], so a
+  /// renderer's identity/revision check works across rebuilds.
+  List<MapRoutePath> get displayPaths => _display.value;
+
+  /// The same paths as a listenable, for widgets that should repaint only
+  /// when the drawn route changes.
+  ValueListenable<List<MapRoutePath>> get displayPathsListenable => _display;
+
+  /// Increases whenever [displayPaths] changes.
+  int get displayRevision => _displayRevision;
+  static const displayStepMeters = 25.0;
+  final ValueNotifier<List<MapRoutePath>> _display = ValueNotifier(const []);
+  int _displayRevision = 0, _routeRevision = 0;
+  double? _displayedProgress;
+
+  void _updateDisplay({bool force = false}) {
+    final route = _route;
+    if (route == null) {
+      if (_display.value.isEmpty) return;
+      _displayedProgress = null;
+      _displayRevision++;
+      _display.value = const [];
+      return;
+    }
+    final shown = _displayedProgress;
+    final atEnd =
+        _alongMeters >= _geometryMeters && (shown ?? 0) < _geometryMeters;
+    if (!force &&
+        shown != null &&
+        (_alongMeters - shown).abs() < displayStepMeters &&
+        !atEnd) {
+      return;
+    }
+    _displayedProgress = _alongMeters;
+    _displayRevision++;
+    _display.value = List.unmodifiable([
+      MapRoutePath(
+        id: route.id,
+        points: route.points,
+        active: true,
+        revision: _routeRevision,
+        progressMeters: _alongMeters,
+      ),
+    ]);
+  }
+
   RouteStepInfo? get nextStep => _nextStep;
   RouteStepInfo? get followingStep {
     final route = _route;
@@ -216,6 +261,8 @@ class IndependentNavigationEngine extends ChangeNotifier
     _directionHistory.clear();
     offRoute = false;
     arrived = false;
+    _routeRevision++;
+    _updateDisplay(force: true);
     drive.setRoute(route, preserveAlerts: preserveAlerts);
   }
 
@@ -266,6 +313,7 @@ class IndependentNavigationEngine extends ChangeNotifier
       _onLocation();
     } catch (_) {
       _route = null;
+      _updateDisplay();
       drive.setRoute(null);
       rethrow;
     }
@@ -381,6 +429,7 @@ class IndependentNavigationEngine extends ChangeNotifier
       _scheduler.confirmOnRoute(now);
       // Off the road near the end the uncommitted projection is meaningless.
       _alongMeters = math.max(_alongMeters, progress.alongMeters);
+      _updateDisplay();
     }
     final fraction = _geometryMeters > 0
         ? (_alongMeters / _geometryMeters).clamp(0.0, 1.0)
@@ -647,6 +696,7 @@ class IndependentNavigationEngine extends ChangeNotifier
     _distanceToStep = 0;
     _remainingMeters = 0;
     _remainingSeconds = 0;
+    _updateDisplay();
     await drive.stop();
     if (session == _session) notifyListeners();
   }
@@ -655,6 +705,7 @@ class IndependentNavigationEngine extends ChangeNotifier
   void dispose() {
     ++_session;
     drive.removeListener(_onLocation);
+    _display.dispose();
     super.dispose();
   }
 }

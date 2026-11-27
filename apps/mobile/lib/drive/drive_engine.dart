@@ -44,6 +44,10 @@ enum NavigationGpsIssue {
   permissionDenied,
 }
 
+List<RouteCameraMatch> _matchCamerasInBackground(
+  (RouteOption, List<SafetyCamera>) input,
+) => const RouteCameraMatcher().match(input.$1, input.$2);
+
 List<TransitLaneMatch> _matchTransitInBackground(
   (RouteOption, List<TransitLane>) input,
 ) => matchTransitLanes(input.$1, input.$2);
@@ -846,13 +850,43 @@ class DriveEngine extends ChangeNotifier {
     notifyListeners();
   }
 
+  int _cameraMatchJob = 0;
+
+  /// Small routes match synchronously; a long route (Auckland–Wellington is
+  /// ~4k points against ~130 cameras) is matched on a background isolate so
+  /// a reroute or camera refresh does not stall the UI thread.
   void _recomputeRouteCameras() {
-    routeCameras = _route == null
-        ? const []
-        : _routeMatcher.match(
-            _route!,
-            _cameras.where(_cameraAlertFilter).toList(growable: false),
-          );
+    final job = ++_cameraMatchJob;
+    final route = _route;
+    final cameras = route == null
+        ? const <SafetyCamera>[]
+        : _cameras.where(_cameraAlertFilter).toList(growable: false);
+    if (route == null || route.points.length * cameras.length <= 100000) {
+      _applyRouteCameras(
+        route == null ? const [] : _routeMatcher.match(route, cameras),
+      );
+      return;
+    }
+    unawaited(
+      compute(_matchCamerasInBackground, (route, cameras)).then(
+        (matches) {
+          if (_disposed ||
+              job != _cameraMatchJob ||
+              !identical(route, _route)) {
+            return;
+          }
+          _applyRouteCameras(matches);
+          notifyListeners();
+        },
+        onError: (Object error) {
+          debugPrint('Route camera matching failed: $error');
+        },
+      ),
+    );
+  }
+
+  void _applyRouteCameras(List<RouteCameraMatch> matches) {
+    routeCameras = matches;
     _highConfidenceCameraIds = routeCameras
         .where((match) => match.highConfidence)
         .map((match) => match.camera.id)
@@ -1005,6 +1039,7 @@ class DriveEngine extends ChangeNotifier {
                   .toList(growable: false),
         headingDegrees: _headingDegrees,
         route: route,
+        progress: routeProgress,
         now: now,
       );
       _lastRoadEventEvaluationAt = now;

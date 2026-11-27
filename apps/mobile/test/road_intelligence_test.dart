@@ -4,6 +4,7 @@ import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/road_event.dart';
 import 'package:waybi_mobile/domain/road_intelligence.dart';
 import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/drive/route_camera_matcher.dart';
 
 RoadEvent camera(String id, GeoPoint point, {DateTime? until}) => RoadEvent(
   id: id,
@@ -168,5 +169,41 @@ void main() {
     );
     expect(results.map((item) => item.id), ['works']);
     expect(results.single.distanceFromDriver, lessThan(600));
+  });
+
+  test('events ahead follow tracker progress on a road used twice', () {
+    // Out 556 m north and back on the same road.
+    const route = RouteOption(
+      id: 'out-and-back',
+      mode: WaybiTravelMode.drive,
+      durationSeconds: 120,
+      distanceMeters: 1112,
+      points: [
+        GeoPoint(-36.86, 174.76),
+        GeoPoint(-36.855, 174.76),
+        GeoPoint(-36.86, 174.76001),
+      ],
+      provider: 'independent',
+      traffic: TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
+      trafficIntervals: [],
+    );
+    const event = RoadEvent(
+      id: 'works',
+      type: RoadEventType.roadworks,
+      location: GeoPoint(-36.8573, 174.760005),
+      source: RoadEventSource(provider: 'NZTA', country: 'NZ', sourceId: 'w'),
+    );
+    // On the return leg, 650 m along: the works are 162 m ahead.
+    final ahead = const RoadIntelligenceEngine().relevant(
+      driver: const GeoPoint(-36.8559, 174.760009),
+      events: const [event],
+      route: route,
+      progress: const RouteProjection(
+        alongMeters: 650,
+        offsetMeters: 1,
+        bearingDegrees: 180,
+      ),
+    );
+    expect(ahead.single.distanceAlongRoute, closeTo(162, 15));
   });
 }

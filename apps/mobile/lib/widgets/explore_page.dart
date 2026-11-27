@@ -6,6 +6,7 @@ import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import '../data/explore_repository.dart';
 import '../domain/geo_math.dart';
 import '../theme/waybi_theme.dart';
+import 'load_error.dart';
 import 'waybi_bird.dart';
 import 'place_sources_sheet.dart';
 
@@ -33,6 +34,11 @@ class _ExplorePageState extends State<ExplorePage> {
   final TextEditingController _search = TextEditingController();
   Timer? _debounce;
   List<ExplorePlace> _places = const [];
+  // Which category/query [_places] belong to, so a failed request for a
+  // different one never leaves the previous category's places on screen.
+  String? _placesKey;
+  bool _stale = false;
+  bool _waitingForLocation = false;
   String _category = 'for-you';
   bool _loading = false;
   String? _error;
@@ -89,15 +95,19 @@ class _ExplorePageState extends State<ExplorePage> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = _text('Waiting for your location…', '正在获取你的位置…');
+          _error = null;
+          _waitingForLocation = true;
         });
       }
       return;
     }
     final request = ++_request;
+    final text = (query ?? _search.text).trim();
+    final key = '$_category|$text';
     setState(() {
       _loading = true;
       _error = null;
+      _waitingForLocation = false;
     });
     try {
       final places = await _repository.fetch(
@@ -105,22 +115,36 @@ class _ExplorePageState extends State<ExplorePage> {
         longitude: location.longitude,
         category: _category,
         language: widget.language,
-        query: query ?? _search.text,
+        query: text,
         mapCompatible: widget.mapCompatible,
       );
       if (!mounted || request != _request) return;
       setState(() {
         _places = places;
+        _placesKey = key;
+        _stale = false;
         _loading = false;
       });
     } catch (_) {
       if (!mounted || request != _request) return;
       setState(() {
         _loading = false;
-        _error = _text(
-          'Could not load nearby places. Pull to retry.',
-          '附近地点加载失败，下拉重试。',
-        );
+        if (_placesKey == key && _places.isNotEmpty) {
+          // A failed refresh of the same list keeps it, clearly marked.
+          _stale = true;
+          _error = _text(
+            'Couldn’t refresh — these places may be out of date.',
+            '刷新失败，以下地点可能不是最新的。',
+          );
+        } else {
+          _places = const [];
+          _placesKey = null;
+          _stale = false;
+          _error = _text(
+            'Couldn’t load nearby places. Check your connection and try again.',
+            '附近地点加载失败，请检查网络后重试。',
+          );
+        }
       });
     }
   }
@@ -283,20 +307,43 @@ class _ExplorePageState extends State<ExplorePage> {
                   child: LinearProgressIndicator(),
                 ),
               ),
-            if (_error != null)
+            if (_waitingForLocation)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Center(
                     child: Text(
-                      _error!,
+                      _text('Waiting for your location…', '正在获取你的位置…'),
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: scheme.error),
+                      style: TextStyle(color: scheme.onSurfaceVariant),
                     ),
                   ),
                 ),
               ),
-            if (!_loading && _error == null && _places.isEmpty)
+            if (_error != null)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: _stale
+                      ? WaybiInlineError(
+                          key: const ValueKey('explore-stale'),
+                          message: _error!,
+                          retryLabel: _text('Retry', '重试'),
+                          onRetry: _loading ? null : () => _load(),
+                        )
+                      : WaybiLoadError(
+                          key: const ValueKey('explore-load-error'),
+                          title: _text('Nothing to show yet', '暂时没有可显示的地点'),
+                          message: _error!,
+                          retryLabel: _text('Try again', '重试'),
+                          onRetry: _loading ? null : () => _load(),
+                        ),
+                ),
+              ),
+            if (!_loading &&
+                _error == null &&
+                !_waitingForLocation &&
+                _places.isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(28),

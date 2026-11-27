@@ -228,11 +228,13 @@ void main() {
         ),
       );
       await t.pumpAndSettle();
-      expect(find.text('Could not refresh trips right now.'), findsOneWidget);
+      // A first load that fails shows the full error state, not content.
+      expect(find.text('Trips couldn’t load'), findsOneWidget);
+      expect(find.text('Smart Commute'), findsNothing);
       fail = false;
       await t.tap(find.byTooltip('Refresh'));
       await t.pumpAndSettle();
-      expect(find.text('Could not refresh trips right now.'), findsNothing);
+      expect(find.text('Trips couldn’t load'), findsNothing);
       expect(find.text('Smart Commute'), findsOneWidget);
       expect(t.takeException(), isNull);
     },

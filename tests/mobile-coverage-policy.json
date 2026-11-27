@@ -321,6 +321,9 @@
     "apps/mobile/lib/widgets/lane_arrow.dart": {
       "minimumLinePercent": 85
     },
+    "apps/mobile/lib/widgets/load_error.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/widgets/map_layer_sheet.dart": {
       "minimumLinePercent": 75
     },

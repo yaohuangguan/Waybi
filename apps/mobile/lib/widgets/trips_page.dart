@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../theme/waybi_theme.dart';
+import 'load_error.dart';
 
 class TripDestination {
   const TripDestination({
@@ -291,10 +292,15 @@ class _TripsPageState extends State<TripsPage> {
       onError: (Object error, StackTrace stack) {
         if (!mounted || request != _request) return;
         setState(
-          () => _error = _text(
-            'Could not refresh trips right now.',
-            '暂时无法刷新行程信息。',
-          ),
+          () => _error = _snapshot == null
+              ? _text(
+                  'Your saved places and trips are safe. Check your connection and try again.',
+                  '已保存的地点和行程不会丢失。请检查网络后重试。',
+                )
+              : _text(
+                  'Couldn’t refresh — showing your last loaded trips.',
+                  '刷新失败，正在显示上次加载的行程。',
+                ),
         );
       },
       onDone: () {
@@ -1183,6 +1189,21 @@ class _TripsPageState extends State<TripsPage> {
                 padding: EdgeInsets.symmetric(vertical: 30),
                 child: Center(child: CircularProgressIndicator()),
               )
+            else if (snapshot == null)
+              // Nothing loaded: never fall back to "Set location", a Plus
+              // upsell or empty sections that would misdescribe the account.
+              WaybiLoadError(
+                key: const ValueKey('trips-load-error'),
+                title: _text('Trips couldn’t load', '行程暂时无法加载'),
+                message:
+                    _error ??
+                    _text(
+                      'Your saved places and trips are safe. Check your connection and try again.',
+                      '已保存的地点和行程不会丢失。请检查网络后重试。',
+                    ),
+                retryLabel: _text('Try again', '重试'),
+                onRetry: _loading ? null : _refresh,
+              )
             else ...[
               IntrinsicHeight(
                 child: Row(
@@ -1191,15 +1212,15 @@ class _TripsPageState extends State<TripsPage> {
                     _quickCard(
                       context,
                       'Home',
-                      snapshot?.quickPlaces['Home'],
-                      snapshot?.quickRoutes['Home'],
+                      snapshot.quickPlaces['Home'],
+                      snapshot.quickRoutes['Home'],
                     ),
                     const SizedBox(width: 10),
                     _quickCard(
                       context,
                       'Work',
-                      snapshot?.quickPlaces['Work'],
-                      snapshot?.quickRoutes['Work'],
+                      snapshot.quickPlaces['Work'],
+                      snapshot.quickRoutes['Work'],
                     ),
                   ],
                 ),
@@ -1210,15 +1231,17 @@ class _TripsPageState extends State<TripsPage> {
               ],
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: TextStyle(color: scheme.error, fontSize: 12),
+                WaybiInlineError(
+                  key: const ValueKey('trips-refresh-error'),
+                  message: _error!,
+                  retryLabel: _text('Retry', '重试'),
+                  onRetry: _loading ? null : _refresh,
                 ),
               ],
               const SizedBox(height: 24),
               _SectionTitle(
                 title: _text('Smart Commute', '智能通勤'),
-                subtitle: snapshot?.isPlus == true
+                subtitle: snapshot.isPlus == true
                     ? 'Plus'
                     : _text('Plus locked', 'Plus 专属'),
               ),
@@ -1235,7 +1258,7 @@ class _TripsPageState extends State<TripsPage> {
                 ),
               ),
               const SizedBox(height: 11),
-              if (!(snapshot?.isPlus ?? false))
+              if (!snapshot.isPlus)
                 _EmptyCard(
                   icon: Icons.workspace_premium_rounded,
                   text: _text(
@@ -1243,7 +1266,7 @@ class _TripsPageState extends State<TripsPage> {
                     'Plus 可解锁“当前 vs 平时”通勤对比、提前出发建议和后台路线监控。',
                   ),
                 )
-              else if (!(snapshot?.signedIn ?? false))
+              else if (!snapshot.signedIn)
                 _EmptyCard(
                   icon: Icons.lock_outline_rounded,
                   text: _text(
@@ -1251,7 +1274,7 @@ class _TripsPageState extends State<TripsPage> {
                     '请先在“我的 Waybi”登录，再把智能通勤保存到账号。',
                   ),
                 )
-              else if (!(snapshot!.quickPlaces.containsKey('Home') &&
+              else if (!(snapshot.quickPlaces.containsKey('Home') &&
                   snapshot.quickPlaces.containsKey('Work')))
                 _commuteSetup(snapshot)
               else ...[
@@ -1266,19 +1289,19 @@ class _TripsPageState extends State<TripsPage> {
               const SizedBox(height: 24),
               _SectionTitle(
                 title: _text('Trip Intelligence', '行程洞察'),
-                subtitle: snapshot?.isPlus == true
+                subtitle: snapshot.isPlus == true
                     ? 'Plus · 30 days'
                     : _text('Plus locked', 'Plus 专属'),
               ),
               const SizedBox(height: 10),
-              if (snapshot != null) _tripIntelligenceCard(snapshot),
+              _tripIntelligenceCard(snapshot),
               const SizedBox(height: 24),
               _SectionTitle(
                 title: _text('Recent destinations', '最近目的地'),
                 subtitle: _text('Continue with one tap', '一键继续出发'),
               ),
               const SizedBox(height: 10),
-              if (snapshot?.recent.isEmpty ?? true)
+              if (snapshot.recent.isEmpty)
                 _EmptyCard(
                   icon: Icons.history_rounded,
                   text: _text(
@@ -1287,7 +1310,7 @@ class _TripsPageState extends State<TripsPage> {
                   ),
                 )
               else
-                for (final place in snapshot!.recent.take(6))
+                for (final place in snapshot.recent.take(6))
                   _DestinationTile(
                     place: place,
                     onTap: () =>
@@ -1299,7 +1322,7 @@ class _TripsPageState extends State<TripsPage> {
                 subtitle: _text('Your latest completed routes', '最近完成的路线'),
               ),
               const SizedBox(height: 10),
-              if (snapshot?.history.isEmpty ?? true)
+              if (snapshot.history.isEmpty)
                 _EmptyCard(
                   icon: Icons.route_rounded,
                   text: _text(

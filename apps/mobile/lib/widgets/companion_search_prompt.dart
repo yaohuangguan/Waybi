@@ -3,9 +3,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../domain/far_match.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import '../theme/waybi_theme.dart';
+import 'far_match_notice.dart';
 import 'waybi_bird.dart';
 import 'waybi_format.dart';
 
@@ -135,6 +137,19 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
       point.longitude,
     );
     return formatDistance(metres, widget.language);
+  }
+
+  /// Enter picks the first suggestion only when it is plausibly the place
+  /// meant. A namesake hundreds of kilometres away opens the full search,
+  /// with its warning, instead of silently starting a long route.
+  void _submit(String value) {
+    final query = value.trim();
+    if (_suggestions.isNotEmpty &&
+        farMatchDistance(_suggestions, widget.currentLocation) == null) {
+      _select(_suggestions.first);
+    } else if (query.isNotEmpty) {
+      widget.onSearch(query);
+    }
   }
 
   void _select(PlaceCandidate candidate) {
@@ -274,13 +289,7 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
                           focusedBorder: InputBorder.none,
                         ),
                         onChanged: _onChanged,
-                        onSubmitted: (value) {
-                          if (_suggestions.isNotEmpty) {
-                            _select(_suggestions.first);
-                          } else if (value.trim().isNotEmpty) {
-                            widget.onSearch(value.trim());
-                          }
-                        },
+                        onSubmitted: _submit,
                       ),
                     ],
                   ),
@@ -289,11 +298,10 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
                   key: const Key('companionSearchSubmit'),
                   tooltip: chinese ? '搜索' : 'Search',
                   onPressed: () {
-                    final query = _controller.text.trim();
-                    if (_suggestions.isNotEmpty) {
-                      _select(_suggestions.first);
+                    if (_suggestions.isEmpty) {
+                      widget.onSearch(_controller.text.trim());
                     } else {
-                      widget.onSearch(query);
+                      _submit(_controller.text);
                     }
                   },
                   style: IconButton.styleFrom(
@@ -308,6 +316,13 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
             if (_loading) const LinearProgressIndicator(minHeight: 2),
             if (_suggestions.isNotEmpty) ...[
               const Divider(height: 8),
+              if (farMatchDistance(_suggestions, widget.currentLocation)
+                  case final far?)
+                FarMatchNotice(
+                  title: farMatchTitle(far, widget.language),
+                  detail: farMatchDetail(widget.language),
+                  margin: const EdgeInsets.fromLTRB(0, 4, 4, 4),
+                ),
               ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: suggestionHeight),
                 child: Scrollbar(
@@ -386,6 +401,13 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
                   ),
                 ),
               ),
+              if (_suggestions.any(
+                (suggestion) => suggestion.reference?.provider == 'amap',
+              ))
+                AmapAttributionLabel(
+                  language: widget.language,
+                  padding: const EdgeInsets.fromLTRB(2, 4, 4, 0),
+                ),
             ],
           ],
         ),

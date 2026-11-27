@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../domain/china_region.dart';
 import '../providers/regional_place_sources.dart';
 
 void showPlaceSources(
@@ -15,6 +16,7 @@ void showPlaceSources(
   final regionalCredits = regionalCreditsForProviders(providerIds);
   final hasGeoapify = providerSet.contains('geoapify');
   final hasTomTom = providerSet.contains('tomtom');
+  final hasAmap = providerSet.contains('amap');
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -42,6 +44,19 @@ void showPlaceSources(
                           ? '地点信息与照片由 Google Maps 和摄影者提供。'
                           : 'Places and photos are provided by Google Maps and photographers.'),
               ),
+              if (hasAmap) ...[
+                const SizedBox(height: 8),
+                Text(
+                  zh ? '中国大陆的地点、路线与路况由高德地图提供，坐标已换算到本地图。' : 'Places, routes and traffic in mainland China are provided by AutoNavi (Amap), with coordinates converted for this map.',
+                ),
+                TextButton(
+                  onPressed: () => launchUrl(
+                    Uri.parse('https://www.amap.com/'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: const Text('© $amapAttribution'),
+                ),
+              ],
               TextButton(
                 onPressed: () => launchUrl(
                   Uri.parse(

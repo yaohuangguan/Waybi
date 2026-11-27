@@ -485,6 +485,13 @@
       "tests": [
         "apps/mobile/test/place_sources_interactions_test.dart"
       ]
+    },
+    {
+      "id": "mainland-china-amap",
+      "label": "Mainland China search and routing through the Worker's Amap stack: no direct Photon/OSRM, distances, far-match warnings and AutoNavi attribution",
+      "tests": [
+        "apps/mobile/test/china_amap_test.dart"
+      ]
     }
   ]
 }

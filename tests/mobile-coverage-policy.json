@@ -99,10 +99,16 @@
     "apps/mobile/lib/domain/coordinate_formatter.dart": {
       "minimumLinePercent": 100
     },
+    "apps/mobile/lib/domain/china_region.dart": {
+      "minimumLinePercent": 100
+    },
     "apps/mobile/lib/domain/country_profile.dart": {
       "minimumLinePercent": 100
     },
     "apps/mobile/lib/domain/geo_math.dart": {
+      "minimumLinePercent": 100
+    },
+    "apps/mobile/lib/domain/far_match.dart": {
       "minimumLinePercent": 100
     },
     "apps/mobile/lib/domain/map_layer_settings.dart": {
@@ -332,6 +338,9 @@
     },
     "apps/mobile/lib/widgets/explore_search.dart": {
       "minimumLinePercent": 45
+    },
+    "apps/mobile/lib/widgets/far_match_notice.dart": {
+      "minimumLinePercent": 100
     },
     "apps/mobile/lib/widgets/friendly_error.dart": {
       "minimumLinePercent": 95

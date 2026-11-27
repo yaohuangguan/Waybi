@@ -83,6 +83,9 @@ class ProviderPolicy {
       reference.provider == 'here' ||
       reference.provider == 'osm' ||
       reference.provider == 'tomtom' ||
+      // Mainland China places from the Waybi Worker's Amap search, already
+      // converted from GCJ-02 to WGS-84 for this map.
+      reference.provider == 'amap' ||
       reference.provider == 'at' ||
       reference.provider == 'google-ui-kit' ||
       reference.provider.startsWith('regional:') ||

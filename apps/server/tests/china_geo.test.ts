@@ -1,10 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
-  allInMainlandChina, gcj02ToWgs84, gcjParameter, isMainlandChina, outsideGcjExtent,
-  parseGcjPoint, parseGcjPolyline, wgs84ToGcj02,
+  allInMainlandChina, gcj02ToWgs84, gcjParameter, isMainlandChina, MAINLAND_CHINA_EXCLUSIONS,
+  MAINLAND_CHINA_OUTLINE, outsideGcjExtent, parseGcjPoint, parseGcjPolyline, wgs84ToGcj02,
 } from '../src/china_geo.ts';
 import { distanceMeters } from '../src/geo.ts';
+
+test('the app mirrors the exact same mainland outline and exclusions', () => {
+  const dart = readFileSync(new URL('../../mobile/lib/domain/china_region.dart', import.meta.url), 'utf8');
+  const block = dart.slice(dart.indexOf('// BEGIN MAINLAND_CHINA_POLYGON'), dart.indexOf('// END MAINLAND_CHINA_POLYGON'));
+  const pairs = (text: string) => [...text.matchAll(/\((-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)\)/g)]
+    .map(match => [Number(match[1]), Number(match[2])]);
+  const [outline, exclusions] = block.split('mainlandChinaExclusions');
+  assert.deepEqual(pairs(outline), MAINLAND_CHINA_OUTLINE.map(point => [...point]));
+  for (const [name, ring] of Object.entries(MAINLAND_CHINA_EXCLUSIONS)) {
+    const start = exclusions.indexOf(`'${name}'`);
+    assert.ok(start > 0, name);
+    assert.deepEqual(pairs(exclusions.slice(start, exclusions.indexOf(']', start))), ring.map(point => [...point]), name);
+  }
+});
 
 const MAINLAND: Record<string, [number, number]> = {
   Beijing: [116.4074, 39.9042], Shanghai: [121.4737, 31.2304], Shijiazhuang: [114.51, 38.04],

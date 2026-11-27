@@ -305,3 +305,17 @@ test('worker /api/route-options and the legacy /api/route use Amap in mainland C
     assert.ok(calls.every(url => url.hostname !== 'routing.openstreetmap.de'));
   });
 });
+
+test('the app contract fixture is exactly what the Worker produces today', async () => {
+  const mobile = JSON.parse(readFileSync(new URL('../../mobile/test/support/amap_route_options.json', import.meta.url), 'utf8'));
+  await withRoutes({ '/v5/direction/driving': () => fixture('driving_waypoint') }, async () => {
+    const plan = await routeOptions(ORIGIN, DESTINATION, { AMAP_WEB_KEY: KEY }, [STOP], ['DRIVE'], () => {},
+      { forceIndependent: true, language: 'zh' });
+    for (const option of plan.options) {
+      option.conditions.expiresAt = mobile.options[0].conditions.expiresAt;
+      option.conditions.trafficSourceUpdatedAt = mobile.options[0].conditions.trafficSourceUpdatedAt;
+    }
+    assert.deepEqual(JSON.parse(JSON.stringify(plan)), mobile,
+      'regenerate apps/mobile/test/support/amap_route_options.json when the normalised shape changes');
+  });
+});

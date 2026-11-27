@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -16,7 +15,6 @@ import 'package:flutter/services.dart';
 
 import 'data/account_repository.dart';
 import 'data/friends_backup_service.dart';
-import 'data/http_guard.dart' show RateLimitedException;
 import 'data/brand_migration.dart';
 import 'data/app_store_billing.dart';
 import 'data/explore_repository.dart';
@@ -90,6 +88,7 @@ import 'app/location_controller.dart';
 import 'app/road_alerts.dart';
 import 'app/journey_store.dart';
 import 'app/offline_corridor.dart';
+import 'app/place_selection_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -333,14 +332,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   DestinationSuggestion? _manualOrigin;
   final List<DestinationSuggestion> _guestRecent = [];
-  RouteOption? _placeQuickRoute;
-  bool _placeQuickRouteLoading = false;
-  String? _placeQuickRouteIssue;
-  String? _placeQuickRouteLoadingKey;
-  int _placeQuickRouteRequest = 0;
-  final Map<String, RouteOption> _placeQuickRouteCache = {};
-  final Map<String, DateTime> _placeQuickRouteCachedAt = {};
-  final Map<String, LatLng> _placeQuickRouteOrigins = {};
 
   String _markerSignature = '';
 
@@ -430,7 +421,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   DateTime? _lastCorridorCacheAt;
   bool _offlineCorridorReady = false;
 
-  SelectedPlace? _selectedPlace;
   PointOfInterest? get _selectedPoi {
     final place = _selectedPlace?.place;
     if (place == null) return null;
@@ -446,10 +436,31 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
-  PlaceDetails? _placeDetails;
-  bool _placeDetailsLoading = false;
-  String? _placeDetailsError;
-  int _placeDetailsRequest = 0;
+  /// The place card: selection, details and drive ETA.
+  late final _places = PlaceSelectionController(
+    fetchDetails: _placeDetailsRepository.fetchIndependent,
+    reverse: (point, preferredName) => _independentSearch.reverseNear(
+      point,
+      language: _appLanguage,
+      preferredName: preferredName,
+    ),
+    route: (origin, destination) async {
+      final route = await _bestDriveRoute(origin, destination);
+      if (route == null) throw StateError('No routes available');
+      return route;
+    },
+    language: () => _appLanguage,
+    quickRouteSuppressed: () => _driveEngine.active || _routePlan != null,
+  );
+  SelectedPlace? get _selectedPlace => _places.selected;
+
+  GeoPoint? get _quickRouteOrigin {
+    final origin = _manualOrigin?.location ?? _locationForRoute;
+    return origin == null ? null : GeoPoint(origin.latitude, origin.longitude);
+  }
+
+  void _loadPlaceQuickRoute() =>
+      unawaited(_places.loadQuickRoute(_quickRouteOrigin));
 
   /// The one trip state; the getters below are views of it.
   final _trip = TripMachine();
@@ -507,6 +518,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _independentNavigation.addListener(_onIndependentNavigationChanged);
     _trip.addListener(_onTripChanged);
     _commute.addListener(_onTripChanged);
+    _places.addListener(_onTripChanged);
     _location
       ..onFix = _onLocationFix
       ..onIssue = _onLocationIssue
@@ -958,10 +970,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() {
       _parkingOriginalPlace = destination;
       _selectedParking = parking;
-      _selectedPlace = SelectedPlace(
-        parking.toPlaceSummary(),
-        SelectionSource.map,
-        originMap: _mapProvider,
+      _places.replace(
+        SelectedPlace(
+          parking.toPlaceSummary(),
+          SelectionSource.map,
+          originMap: _mapProvider,
+        ),
       );
       _routeStops.clear();
     });
@@ -1213,6 +1227,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _independentNavigation.dispose();
     _trip.dispose();
     _commute.dispose();
+    _places.dispose();
     _exploreMarkerFocus.dispose();
     _workerSearch.dispose();
     _independentSearch.dispose();
@@ -1267,7 +1282,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _retryExternalPreview();
       final place = _selectedPlace?.place;
       if (place != null && !_driveEngine.active && _routePlan == null) {
-        unawaited(_loadPlaceQuickRoute(place));
+        _loadPlaceQuickRoute();
       }
       return;
     }
@@ -1288,14 +1303,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     unawaited(_commute.refreshQuick());
     final selected = _selectedPlace?.place;
     if (selected != null && _routePlan == null && !_driveEngine.active) {
-      unawaited(_loadPlaceQuickRoute(selected));
+      _loadPlaceQuickRoute();
     }
-  }
-
-  String _placeRouteKey(PlaceSummary place) {
-    final reference = place.reference;
-    if (reference != null) return '${reference.provider}:${reference.id}';
-    return '${place.location.latitude.toStringAsFixed(5)},${place.location.longitude.toStringAsFixed(5)}';
   }
 
   bool get _selectedPlaceHasCrossTasmanDrive {
@@ -1307,177 +1316,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       destination,
     ]);
   }
-
-  /// A failed place ETA is retried with backoff (15 s doubling to 5 min, or
-  /// the server's Retry-After), not on every GPS fix.
-  final Map<String, ({DateTime retryAt, int failures, String message})>
-  _placeQuickRouteFailures = {};
-
-  static Duration _quickRouteBackoff(int failures, Object error) {
-    final base = Duration(
-      seconds: (15 * math.pow(2, (failures - 1).clamp(0, 5))).round().clamp(
-        15,
-        300,
-      ),
-    );
-    if (error is RateLimitedException && error.retryAfter > base) {
-      return error.retryAfter;
-    }
-    return base;
-  }
-
-  bool _isSelectedPlaceKey(String key) {
-    final selected = _selectedPlace?.place;
-    return selected != null && _placeRouteKey(selected) == key;
-  }
-
-  Future<void> _loadPlaceQuickRoute(PlaceSummary place) async {
-    if (!mounted || _driveEngine.active || _routePlan != null) return;
-    if (!place.location.isValid) return;
-    final origin = _manualOrigin?.location ?? _locationForRoute;
-    if (origin == null) return;
-    final key = _placeRouteKey(place);
-    if (!_isSelectedPlaceKey(key)) return;
-    final crossTasman = isCrossTasmanSurfaceRoute([
-      GeoPoint(origin.latitude, origin.longitude),
-      place.location,
-    ]);
-    if (crossTasman) {
-      ++_placeQuickRouteRequest;
-      setState(() {
-        _placeQuickRoute = null;
-        _placeQuickRouteLoading = false;
-        _placeQuickRouteLoadingKey = null;
-        _placeQuickRouteIssue = const NoSurfaceRouteException().localized(
-          _appLanguage,
-        );
-      });
-      return;
-    }
-    final cached = _placeQuickRouteCache[key];
-    final cachedAt = _placeQuickRouteCachedAt[key];
-    final cachedOrigin = _placeQuickRouteOrigins[key];
-    final movedMeters = cachedOrigin == null
-        ? double.infinity
-        : distanceMeters(
-            origin.latitude,
-            origin.longitude,
-            cachedOrigin.latitude,
-            cachedOrigin.longitude,
-          );
-    final fresh =
-        cached != null &&
-        cachedAt != null &&
-        DateTime.now().difference(cachedAt) < const Duration(minutes: 5) &&
-        movedMeters < 300;
-    if (fresh) {
-      if (!identical(_placeQuickRoute, cached) ||
-          _placeQuickRouteIssue != null ||
-          _placeQuickRouteLoading) {
-        setState(() {
-          _placeQuickRoute = cached;
-          _placeQuickRouteIssue = null;
-          _placeQuickRouteLoading = false;
-          _placeQuickRouteLoadingKey = null;
-        });
-      }
-      return;
-    }
-    final failure = _placeQuickRouteFailures[key];
-    if (failure != null && DateTime.now().isBefore(failure.retryAt)) {
-      if (_placeQuickRouteIssue != failure.message || _placeQuickRouteLoading) {
-        setState(() {
-          _placeQuickRoute = null;
-          _placeQuickRouteIssue = failure.message;
-          _placeQuickRouteLoading = false;
-          _placeQuickRouteLoadingKey = null;
-        });
-      }
-      return;
-    }
-    if (_placeQuickRouteLoading && _placeQuickRouteLoadingKey == key) return;
-
-    final request = ++_placeQuickRouteRequest;
-    // Keep a previous failure visible until the retry answers; clearing it
-    // first makes the card flash on every attempt.
-    setState(() {
-      _placeQuickRoute = null;
-      _placeQuickRouteLoading = true;
-      _placeQuickRouteLoadingKey = key;
-    });
-    // Only this request, for the place still selected, may change the card.
-    bool current() =>
-        mounted &&
-        request == _placeQuickRouteRequest &&
-        _routePlan == null &&
-        _isSelectedPlaceKey(key);
-    try {
-      final plan = await _driveRoutePlan(
-        origin: origin,
-        destination: LatLng(
-          latitude: place.location.latitude,
-          longitude: place.location.longitude,
-        ),
-        mode: WaybiTravelMode.drive,
-      );
-      final driving = filterRoutes(
-        plan.forMode(WaybiTravelMode.drive).toList(),
-        RouteFilter.recommended,
-        const {},
-      );
-      if (driving.isEmpty) throw StateError('No routes available');
-      _placeQuickRouteFailures.remove(key);
-      final route = driving.first;
-      if (_placeQuickRouteCache.length >= 20 &&
-          !_placeQuickRouteCache.containsKey(key)) {
-        final oldestKey = _placeQuickRouteCachedAt.entries
-            .reduce((a, b) => a.value.isBefore(b.value) ? a : b)
-            .key;
-        _placeQuickRouteCache.remove(oldestKey);
-        _placeQuickRouteCachedAt.remove(oldestKey);
-        _placeQuickRouteOrigins.remove(oldestKey);
-      }
-      _placeQuickRouteCache[key] = route;
-      _placeQuickRouteCachedAt[key] = DateTime.now();
-      _placeQuickRouteOrigins[key] = origin;
-      if (!current()) return;
-      setState(() {
-        _placeQuickRoute = route;
-        _placeQuickRouteIssue = null;
-        _placeQuickRouteLoading = false;
-        _placeQuickRouteLoadingKey = null;
-      });
-    } catch (error) {
-      final failures = (_placeQuickRouteFailures[key]?.failures ?? 0) + 1;
-      final message = routeFailureMessage(error, _appLanguage);
-      _placeQuickRouteFailures[key] = (
-        retryAt: DateTime.now().add(_quickRouteBackoff(failures, error)),
-        failures: failures,
-        message: message,
-      );
-      if (_placeQuickRouteFailures.length > 20) {
-        _placeQuickRouteFailures.remove(_placeQuickRouteFailures.keys.first);
-      }
-      if (!current()) return;
-      setState(() {
-        _placeQuickRoute = null;
-        _placeQuickRouteIssue = message;
-        _placeQuickRouteLoading = false;
-        _placeQuickRouteLoadingKey = null;
-      });
-    }
-  }
-
-  Future<RoutePlan> _driveRoutePlan({
-    required LatLng origin,
-    required LatLng destination,
-    WaybiTravelMode? mode,
-  }) => _independentRoutes.route(
-    origin: GeoPoint(origin.latitude, origin.longitude),
-    destination: GeoPoint(destination.latitude, destination.longitude),
-    language: _appLanguage,
-    mode: mode ?? WaybiTravelMode.drive,
-  );
 
   Future<RouteOption?> _bestDriveRoute(
     GeoPoint origin,
@@ -1800,7 +1638,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _clearRoutePreview() async {
     ++_routeRequest;
     ++_parkingRequest;
-    ++_placeQuickRouteRequest;
     // A navigation that is starting owns the drive route: it notices the
     // cancelled request and stops the engine itself. Clearing the route under
     // it would leave guidance frozen on its first step.
@@ -1815,15 +1652,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _selectedMode = WaybiTravelMode.drive;
       _routeRecoveryMessage = null;
       _routeFilter = RouteFilter.recommended;
-      _selectedPlace = null;
-      _placeDetails = null;
-      _placeDetailsLoading = false;
-      _placeDetailsError = null;
-      _placeDetailsRequest++;
-      _placeQuickRoute = null;
-      _placeQuickRouteIssue = null;
-      _placeQuickRouteLoading = false;
-      _placeQuickRouteLoadingKey = null;
+      _places.clear();
       _routeStops.clear();
       _parkingPlaces = const [];
       _parkingOriginalPlace = null;
@@ -1871,7 +1700,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _message = null;
     });
     _focusSelectedPlace();
-    unawaited(_loadPlaceQuickRoute(selected.place));
+    _loadPlaceQuickRoute();
   }
 
   /// Android back: unwind one layer (preview, place card, Drive Mode) and
@@ -2034,10 +1863,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _parkingOriginalPlace = original;
       _selectedParking = parking;
       _parkingLoading = false;
-      _selectedPlace = SelectedPlace(
-        parking.toPlaceSummary(),
-        SelectionSource.map,
-        originMap: _mapProvider,
+      _places.replace(
+        SelectedPlace(
+          parking.toPlaceSummary(),
+          SelectionSource.map,
+          originMap: _mapProvider,
+        ),
       );
       _routeStops.clear();
     });
@@ -2051,10 +1882,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() {
       _parkingOriginalPlace = null;
       _selectedParking = null;
-      _selectedPlace = SelectedPlace(
-        original,
-        SelectionSource.map,
-        originMap: _mapProvider,
+      _places.replace(
+        SelectedPlace(original, SelectionSource.map, originMap: _mapProvider),
       );
     });
     final poi = _selectedPoi;
@@ -2071,10 +1900,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _parkingPlaces = const [];
       _manualOrigin = null;
       _routeStops.clear();
-      _selectedPlace = SelectedPlace(
-        original,
-        SelectionSource.map,
-        originMap: _mapProvider,
+      _places.replace(
+        SelectedPlace(original, SelectionSource.map, originMap: _mapProvider),
       );
     });
     final poi = _selectedPoi;
@@ -2902,7 +2729,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _activeTransitRoute = route;
       _transitTripPaths = null;
       _destinationTitle = poi.name;
-      _selectedPlace = null;
+      _places.clear();
       _routePlan = null;
       _selectedRouteId = null;
       _routeStops.clear();
@@ -3007,7 +2834,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _activeNavigationRoute = selectedRoute;
         _routePlan = null;
         _selectedRouteId = null;
-        _selectedPlace = null;
+        _places.clear();
         _routeStops.clear();
         _following = true;
         _routeOverviewActive = false;
@@ -3322,43 +3149,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _loadIndependentPlaceDetails(PlaceSummary place) async {
-    final request = ++_placeDetailsRequest;
-    setState(() {
-      _placeDetails = null;
-      _placeDetailsLoading = true;
-      _placeDetailsError = null;
-    });
-    try {
-      final details = await _placeDetailsRepository.fetchIndependent(place);
-      if ((!mounted || request != _placeDetailsRequest)) {
-        return;
-      }
-      setState(() {
-        _placeDetails = details;
-        _placeDetailsLoading = false;
-      });
-    } catch (error) {
-      if (!mounted || request != _placeDetailsRequest) return;
-      setState(() {
-        _placeDetailsLoading = false;
-        _placeDetailsError = friendlyErrorMessage(
-          error,
-          _appLanguage,
-          fallback: _text(
-            'Place details are unavailable right now.',
-            '暂时无法加载地点详情。',
-          ),
-        );
-      });
-    }
-  }
-
-  void _retryPlaceDetails() {
-    final place = _selectedPlace?.place;
-    if (place != null) unawaited(_loadIndependentPlaceDetails(place));
-  }
-
   void _selectPlace(
     PlaceSummary place,
     SelectionSource source, {
@@ -3379,10 +3169,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() {
       // A new place supersedes the last place's preview, ETA and start.
       ++_routeRequest;
-      ++_placeQuickRouteRequest;
       _trip.dispatch(const PlaceChosen());
       _routeRecoveryMessage = null;
-      _selectedPlace = SelectedPlace(place, source, originMap: _mapProvider);
+      _places.select(
+        place,
+        source,
+        originMap: _mapProvider,
+        seedDetails: seedDetails,
+      );
       ++_parkingRequest;
       _parkingPlaces = const [];
       _parkingOriginalPlace = null;
@@ -3390,79 +3184,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _parkingLoading = false;
       _routePlan = null;
       _selectedRouteId = null;
-      _placeQuickRoute = null;
-      _placeQuickRouteIssue = null;
-      _placeQuickRouteLoading = false;
-      _placeQuickRouteLoadingKey = null;
       _message = null;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _focusSelectedPlace();
-      unawaited(_loadPlaceQuickRoute(place));
+      _loadPlaceQuickRoute();
     });
-    if (seedDetails == null) {
-      unawaited(_loadIndependentPlaceDetails(place));
-    } else {
-      _placeDetailsRequest++;
-      _placeDetails = seedDetails;
-      _placeDetailsLoading = false;
-      _placeDetailsError = null;
-    }
-    if (((source == SelectionSource.map ||
-            source == SelectionSource.longPress)) &&
-        place.address.isEmpty) {
-      unawaited(_enrichIndependentSelection(place, source));
-    }
-  }
-
-  Future<void> _enrichIndependentSelection(
-    PlaceSummary original,
-    SelectionSource source,
-  ) async {
-    try {
-      final resolved = await _independentSearch.reverseNear(
-        original.location,
-        language: _appLanguage,
-        preferredName:
-            original.kind == PlaceKind.coordinate &&
-                source != SelectionSource.longPress
-            ? ''
-            : original.name,
-      );
-      if ((!mounted || resolved == null) ||
-          !identical(_selectedPlace?.place, original)) {
-        return;
-      }
-      setState(
-        () => _selectedPlace = SelectedPlace(
-          PlaceSummary(
-            name:
-                original.kind == PlaceKind.coordinate &&
-                    source != SelectionSource.longPress
-                ? resolved.name
-                : original.name,
-            location: original.location,
-            address: resolved.address,
-            category: original.category.isEmpty
-                ? resolved.category
-                : original.category,
-            kind:
-                original.kind == PlaceKind.coordinate &&
-                    source != SelectionSource.longPress
-                ? resolved.kind
-                : original.kind,
-            reference: source == SelectionSource.longPress
-                ? null
-                : resolved.reference,
-          ),
-          source,
-          originMap: _mapProvider,
-        ),
-      );
-    } catch (_) {
-      // A map feature remains selectable if reverse lookup is unavailable.
-    }
   }
 
   void _rememberDestination(DestinationSuggestion suggestion) {
@@ -4743,14 +4471,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   child: PointerInterceptor(
                     child: _PlaceCard(
                       selectedPlace: _selectedPlace!.place,
-                      details: _placeDetails,
-                      detailsLoading: _placeDetailsLoading,
-                      detailsError: _placeDetailsError,
-                      onRetryDetails: _retryPlaceDetails,
+                      details: _places.details,
+                      detailsLoading: _places.detailsLoading,
+                      detailsError: _places.detailsError,
+                      onRetryDetails: _places.retryDetails,
                       busy: _routePreviewLoading,
-                      quickRoute: _placeQuickRoute,
-                      quickRouteLoading: _placeQuickRouteLoading,
-                      quickRouteIssue: _placeQuickRouteIssue,
+                      quickRoute: _places.quickRoute,
+                      quickRouteLoading: _places.quickRouteLoading,
+                      quickRouteIssue: _places.quickRouteIssue,
                       navigationAvailable:
                           _selectedPlace!.place.location.isValid &&
                           !_selectedPlaceHasCrossTasmanDrive,

@@ -40,6 +40,9 @@
     "apps/mobile/lib/app/offline_corridor.dart": {
       "minimumLinePercent": 95
     },
+    "apps/mobile/lib/app/place_selection_controller.dart": {
+      "minimumLinePercent": 90
+    },
     "apps/mobile/lib/app/request_generation.dart": {
       "minimumLinePercent": 95
     },

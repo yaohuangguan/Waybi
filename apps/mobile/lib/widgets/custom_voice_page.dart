@@ -230,8 +230,11 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
 
   String _groupTitle(VoicePhraseGroup group) => switch (group) {
     VoicePhraseGroup.distance => _t('Distances', '距离'),
-    VoicePhraseGroup.maneuver => _t('Turns and lanes', '转弯与车道'),
-    VoicePhraseGroup.camera => _t('Camera alerts', '摄像头提醒'),
+    VoicePhraseGroup.maneuver => _t('Turns', '转弯与车道'),
+    VoicePhraseGroup.connector => _t('Connecting words', '连接词'),
+    VoicePhraseGroup.camera => _t('Cameras', '摄像头提醒'),
+    VoicePhraseGroup.roadAlert => _t('Road alerts', '道路提醒'),
+    VoicePhraseGroup.trip => _t('Trip messages', '行程消息'),
     VoicePhraseGroup.arrival => _t('Arrival', '到达'),
   };
 
@@ -345,8 +348,8 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
           const SizedBox(height: 8),
           Text(
             _t(
-              '${recorded.length} of ${customVoicePhrases.length} phrases recorded',
-              '已录 ${recorded.length} / ${customVoicePhrases.length} 条短语',
+              '${recorded.length} of ${voicePhrasesFor(_pack).length} phrases recorded',
+              '已录 ${recorded.length} / ${voicePhrasesFor(_pack).length} 条短语',
             ),
             style: Theme.of(context).textTheme.bodySmall,
           ),
@@ -361,9 +364,7 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
                 ),
               ),
             ),
-            for (final phrase in customVoicePhrases.where(
-              (phrase) => phrase.group == group,
-            ))
+            for (final phrase in voicePhrasesFor(_pack, group))
               _phraseRow(phrase, recorded.contains(phrase.id), plus),
           ],
         ],

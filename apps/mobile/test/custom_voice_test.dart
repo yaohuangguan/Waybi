@@ -69,8 +69,10 @@ class FakeClipPlayer implements VoiceClipPlayer {
 }
 
 class FakeClips implements CustomVoiceClips {
-  FakeClips(this.ids);
+  FakeClips(this.ids, {this.omitRoadNames = false});
   Set<String> ids;
+  @override
+  bool omitRoadNames;
   final broken = <String>[];
   @override
   Set<String> playable(String language) => ids;
@@ -244,9 +246,11 @@ void main() {
       );
     });
 
-    test('every phrase prompt plans to its own clip', () {
-      for (final phrase in customVoicePhrases) {
-        for (final language in CustomVoiceController.languages) {
+    test('every standalone phrase prompt plans to its own clip', () {
+      for (final phrase in customVoicePhrases.where((p) => p.standalone)) {
+        for (final language in CustomVoiceController.languages.where(
+          phrase.availableIn,
+        )) {
           expect(
             describe(
               planCustomVoice(phrase.prompt(language), language, {phrase.id}),
@@ -418,6 +422,17 @@ void main() {
       voice.setPlus(false);
       expect(voice.playable('en'), isEmpty, reason: 'Plus lapsed');
       expect(voice.recorded('en'), {'turn_left'}, reason: 'Files are kept');
+    });
+
+    test('the road-name choice is remembered', () async {
+      expect(voice.omitRoadNames, isFalse);
+      await voice.setOmitRoadNames(true);
+      expect(voice.omitRoadNames, isTrue);
+      final restored = CustomVoiceController(rootDirectory: () async => root);
+      addTearDown(restored.dispose);
+      await restored.load();
+      expect(restored.omitRoadNames, isTrue);
+      expect(restored.loaded, isTrue);
     });
 
     test('tiny or unknown recordings are rejected', () async {

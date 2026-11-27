@@ -241,6 +241,15 @@
     "apps/mobile/lib/drive/voice_clip_player.dart": {
       "minimumLinePercent": 90
     },
+    "apps/mobile/lib/drive/voice_phrases.dart": {
+      "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/drive/voice_prompts.dart": {
+      "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/drive/voice_utterance.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/drive/voice_engine.dart": {
       "minimumLinePercent": 95
     },

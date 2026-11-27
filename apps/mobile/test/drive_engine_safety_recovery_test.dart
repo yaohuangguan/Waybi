@@ -16,6 +16,7 @@ import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/route_option.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/drive/voice_engine.dart';
+import 'package:waybi_mobile/drive/voice_prompts.dart';
 
 class SafetyGps extends GeolocatorPlatform {
   final stream = StreamController<Position>.broadcast();
@@ -419,6 +420,28 @@ void main() {
       f.drive.voiceEnabled = false;
       await f.drive.speakTurn(() => 'Muted');
       expect(f.speech, isNot(contains('Muted')));
+    }, () => f.client);
+  });
+
+  test('structured prompts reach the speaker in their own language', () async {
+    final f = SafetyFixture()..withLane = false;
+    await http.runWithClient(() async {
+      await f.boot(TargetPlatform.android, routed: false);
+      await f.drive.speakUtterance(VoicePrompts.arrival('zh'));
+      await f.drive.speakTurnUtterance(
+        () => VoicePrompts.routeStep(null, 'en'),
+        urgent: true,
+      );
+      await f.drive.speakTurnUtterance(
+        () => VoicePrompts.transitTripStarted('en'),
+        stillRelevant: () => false,
+      );
+      expect(f.speech, containsAll(['已到达目的地，这段旅程辛苦啦！', 'Continue on route']));
+      expect(f.speech, isNot(contains(startsWith('Transit trip'))));
+      f.drive.voiceEnabled = false;
+      await f.drive.speakUtterance(VoicePrompts.arrival('en'));
+      await f.drive.speakTurnUtterance(() => VoicePrompts.arrival('en'));
+      expect(f.speech, isNot(contains('You have arrived. Well done!')));
     }, () => f.client);
   });
 }

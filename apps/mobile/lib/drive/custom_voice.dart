@@ -4,244 +4,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// One recordable phrase in the custom voice pack.
-///
-/// [en] / [zh] list every spelling the guidance code produces for the
-/// phrase; the first entry is the prompt the user reads aloud when recording.
-@immutable
-class VoicePhrase {
-  const VoicePhrase(this.id, this.group, this.en, this.zh, {this.metres});
-  final String id;
-  final VoicePhraseGroup group;
-  final List<String> en;
-  final List<String> zh;
+import 'voice_phrases.dart';
+import 'voice_utterance.dart';
 
-  /// Distance phrases only: the distance this clip announces.
-  final int? metres;
-
-  List<String> texts(String language) => language == 'zh' ? zh : en;
-  String prompt(String language) => texts(language).first;
-}
-
-enum VoicePhraseGroup { distance, maneuver, camera, arrival }
-
-const _distances = [50, 100, 200, 300, 400, 500, 800, 1000, 1500, 2000];
-
-String _enDistance(int metres) =>
-    metres >= 1000 ? 'In ${_km(metres)} kilometres' : 'In $metres metres';
-String _zhDistance(int metres) =>
-    metres >= 1000 ? '${_km(metres)} 公里后' : '$metres 米后';
-String _km(int metres) => metres % 1000 == 0
-    ? '${metres ~/ 1000}'
-    : (metres / 1000).toStringAsFixed(1);
-
-/// Fixed phrases, matched against the sentences produced by
-/// `navigation_language.dart`, `VoiceEngine.cameraAlert` and arrival speech.
-final List<VoicePhrase> customVoicePhrases = List.unmodifiable([
-  for (final metres in _distances)
-    VoicePhrase(
-      'in_$metres',
-      VoicePhraseGroup.distance,
-      [_enDistance(metres)],
-      [_zhDistance(metres)],
-      metres: metres,
-    ),
-  const VoicePhrase(
-    'turn_left',
-    VoicePhraseGroup.maneuver,
-    ['Turn left'],
-    ['左转'],
-  ),
-  const VoicePhrase(
-    'turn_right',
-    VoicePhraseGroup.maneuver,
-    ['Turn right'],
-    ['右转'],
-  ),
-  const VoicePhrase(
-    'bear_left',
-    VoicePhraseGroup.maneuver,
-    ['Bear left', 'Turn slight left', 'Slight left'],
-    ['向左前方行驶'],
-  ),
-  const VoicePhrase(
-    'bear_right',
-    VoicePhraseGroup.maneuver,
-    ['Bear right', 'Turn slight right', 'Slight right'],
-    ['向右前方行驶'],
-  ),
-  const VoicePhrase(
-    'sharp_left',
-    VoicePhraseGroup.maneuver,
-    ['Turn sharp left', 'Sharp left'],
-    ['向左急转'],
-  ),
-  const VoicePhrase(
-    'sharp_right',
-    VoicePhraseGroup.maneuver,
-    ['Turn sharp right', 'Sharp right'],
-    ['向右急转'],
-  ),
-  const VoicePhrase(
-    'keep_left',
-    VoicePhraseGroup.maneuver,
-    ['Keep left'],
-    ['靠左行驶'],
-  ),
-  const VoicePhrase(
-    'keep_right',
-    VoicePhraseGroup.maneuver,
-    ['Keep right'],
-    ['靠右行驶'],
-  ),
-  const VoicePhrase(
-    'continue_straight',
-    VoicePhraseGroup.maneuver,
-    ['Continue straight'],
-    ['继续直行'],
-  ),
-  const VoicePhrase(
-    'continue_route',
-    VoicePhraseGroup.maneuver,
-    ['Continue on route'],
-    ['沿路线继续行驶'],
-  ),
-  const VoicePhrase(
-    'uturn',
-    VoicePhraseGroup.maneuver,
-    ['Make a U-turn'],
-    ['掉头'],
-  ),
-  for (var exit = 1; exit <= 4; exit++)
-    VoicePhrase(
-      'roundabout_exit_$exit',
-      VoicePhraseGroup.maneuver,
-      ['At the roundabout, take exit $exit'],
-      ['进入环岛，从第 $exit 个出口驶出'],
-    ),
-  const VoicePhrase(
-    'roundabout',
-    VoicePhraseGroup.maneuver,
-    ['Enter the roundabout'],
-    ['驶入环岛'],
-  ),
-  const VoicePhrase(
-    'exit_left',
-    VoicePhraseGroup.maneuver,
-    ['Take the left exit'],
-    ['从左侧出口驶出'],
-  ),
-  const VoicePhrase(
-    'exit_right',
-    VoicePhraseGroup.maneuver,
-    ['Take the right exit'],
-    ['从右侧出口驶出'],
-  ),
-  const VoicePhrase(
-    'exit',
-    VoicePhraseGroup.maneuver,
-    ['Take the exit'],
-    ['从出口驶出'],
-  ),
-  const VoicePhrase(
-    'ramp',
-    VoicePhraseGroup.maneuver,
-    ['Take the ramp'],
-    ['驶入匝道'],
-  ),
-  const VoicePhrase(
-    'merge',
-    VoicePhraseGroup.maneuver,
-    ['Merge ahead'],
-    ['汇入前方道路'],
-  ),
-  const VoicePhrase(
-    'ferry',
-    VoicePhraseGroup.maneuver,
-    ['Take the ferry'],
-    ['搭乘渡轮'],
-  ),
-  const VoicePhrase(
-    'camera_speed',
-    VoicePhraseGroup.camera,
-    ['Speed camera', 'Fixed speed camera'],
-    ['定点测速摄像头'],
-  ),
-  const VoicePhrase(
-    'camera_average',
-    VoicePhraseGroup.camera,
-    ['Average-speed camera'],
-    ['区间测速摄像头'],
-  ),
-  const VoicePhrase(
-    'camera_red_light_speed',
-    VoicePhraseGroup.camera,
-    ['Red-light + speed camera'],
-    ['红灯及测速摄像头'],
-  ),
-  const VoicePhrase(
-    'camera_red_light',
-    VoicePhraseGroup.camera,
-    ['Red-light camera'],
-    ['红灯摄像头'],
-  ),
-  const VoicePhrase(
-    'camera_bus_lane',
-    VoicePhraseGroup.camera,
-    ['Bus-lane camera'],
-    ['专用车道摄像头'],
-  ),
-  const VoicePhrase(
-    'camera_safety',
-    VoicePhraseGroup.camera,
-    ['Safety camera'],
-    ['安全摄像头'],
-  ),
-  const VoicePhrase(
-    'arrived',
-    VoicePhraseGroup.arrival,
-    ['You have arrived', 'Arrive at destination'],
-    ['已到达目的地', '到达目的地'],
-  ),
-]);
-
-VoicePhrase? customVoicePhrase(String id) {
-  for (final phrase in customVoicePhrases) {
-    if (phrase.id == id) return phrase;
-  }
-  return null;
-}
-
-/// A piece of one guidance sentence: a recorded clip, or text for system TTS.
-@immutable
-sealed class VoiceSegment {
-  const VoiceSegment(this.text);
-
-  /// The words this segment stands for, used if a clip cannot be played.
-  final String text;
-}
-
-class ClipSegment extends VoiceSegment {
-  const ClipSegment(this.phraseId, super.text);
-  final String phraseId;
-  @override
-  bool operator ==(Object other) =>
-      other is ClipSegment && other.phraseId == phraseId && other.text == text;
-  @override
-  int get hashCode => Object.hash(phraseId, text);
-  @override
-  String toString() => 'Clip($phraseId)';
-}
-
-class TtsSegment extends VoiceSegment {
-  const TtsSegment(super.text);
-  @override
-  bool operator ==(Object other) => other is TtsSegment && other.text == text;
-  @override
-  int get hashCode => text.hashCode;
-  @override
-  String toString() => 'Tts($text)';
-}
+export 'voice_phrases.dart';
+export 'voice_utterance.dart';
 
 final _boundaryPunctuation = RegExp(r'[,.;:!?，。；：！？、]');
 final _onlyPunctuation = RegExp(r'^[\s,.;:!?，。；：！？、]*$');
@@ -251,8 +18,9 @@ final _enDistancePattern = RegExp(
 );
 final _zhDistancePattern = RegExp(r'^(\d+(?:\.\d+)?) ?(米|公里)后');
 
-/// Splits a guidance sentence into recorded clips and TTS text.
+/// Splits a free-form sentence into recorded clips and TTS text.
 ///
+/// Only for messages that were not built from parts (see [planUtterance]).
 /// Phrases are only matched at the start of a clause (start of text, after a
 /// clip, or after punctuation), so words inside road names never trigger a
 /// clip. Distances use a clip only when the spoken distance is close to the
@@ -270,6 +38,7 @@ List<VoiceSegment> planCustomVoice(
   final candidates = <(String, String)>[
     for (final phrase in customVoicePhrases)
       if (phrase.group != VoicePhraseGroup.distance &&
+          phrase.standalone &&
           recorded.contains(phrase.id))
         for (final spelling in phrase.texts(language)) (phrase.id, spelling),
   ]..sort((a, b) => b.$2.length.compareTo(a.$2.length));
@@ -349,8 +118,8 @@ List<VoiceSegment> planCustomVoice(
   final metres = unit.startsWith('k') || unit == '公里' ? value * 1000 : value;
   String? best;
   var bestError = double.infinity;
-  for (final distance in _distances) {
-    final id = 'in_$distance';
+  for (final distance in voiceDistances) {
+    final id = VoicePhraseId.distance(distance);
     if (!recorded.contains(id)) continue;
     final error = (metres - distance).abs();
     final tolerance = distance * 0.08 < 15 ? 15 : distance * 0.08;
@@ -377,6 +146,10 @@ abstract class CustomVoiceClips {
 
   /// Called when a clip failed to play; it is skipped until re-recorded.
   void reportBroken(String language, String phraseId);
+
+  /// Leave road names (and the words introducing them) out of prompts, so
+  /// a fully recorded pack speaks only in the recorded voice.
+  bool get omitRoadNames;
 }
 
 /// On-device custom voice pack, gated on Waybi Plus.
@@ -388,6 +161,7 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   CustomVoiceController({required this._rootDirectory});
 
   static const enabledKey = 'waybi.plus.custom_voice.enabled.v1';
+  static const omitRoadNamesKey = 'waybi.custom_voice.omit_road_names.v1';
   static const languages = ['en', 'zh'];
 
   /// Files smaller than this are treated as failed recordings.
@@ -399,11 +173,14 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   Directory? _root;
   bool _plus = false;
   bool _enabled = false;
+  bool _omitRoadNames = false;
   bool _loaded = false;
 
   bool get plus => _plus;
   bool get enabled => _enabled;
   bool get loaded => _loaded;
+  @override
+  bool get omitRoadNames => _omitRoadNames;
 
   /// True when guidance should use the recorded clips.
   bool get active => _plus && _enabled;
@@ -417,6 +194,7 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
     try {
       final prefs = await SharedPreferences.getInstance();
       _enabled = prefs.getBool(enabledKey) ?? false;
+      _omitRoadNames = prefs.getBool(omitRoadNamesKey) ?? false;
       final root = await _voiceRoot();
       for (final language in languages) {
         final set = _recorded[language]!..clear();
@@ -456,6 +234,17 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
       await prefs.setBool(enabledKey, enabled);
     } catch (_) {
       /* The toggle still applies for this session. */
+    }
+  }
+
+  Future<void> setOmitRoadNames(bool omit) async {
+    _omitRoadNames = omit;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(omitRoadNamesKey, omit);
+    } catch (_) {
+      /* The choice still applies for this session. */
     }
   }
 

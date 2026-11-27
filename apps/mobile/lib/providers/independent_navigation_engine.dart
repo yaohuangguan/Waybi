@@ -13,7 +13,7 @@ import '../domain/road_event.dart';
 import '../domain/route_road_events.dart';
 import '../domain/transit_lane.dart';
 import '../drive/drive_engine.dart';
-import '../drive/navigation_language.dart';
+import '../drive/voice_prompts.dart';
 import '../drive/reroute_scheduler.dart';
 import '../drive/route_camera_matcher.dart';
 import 'provider_contracts.dart';
@@ -302,13 +302,11 @@ class IndependentNavigationEngine extends ChangeNotifier
       await drive.startLocal(initialPosition: initialPosition);
       drive.addListener(_onLocation);
       if (drive.voiceEnabled) {
-        final opening = routeStepInstruction(
+        final opening = VoicePrompts.routeStep(
           route.steps.firstOrNull,
           drive.navigationLanguage,
         );
-        if (opening.trim().isNotEmpty) {
-          unawaited(drive.speakMessage(opening));
-        }
+        if (!opening.isEmpty) unawaited(drive.speakUtterance(opening));
       }
       _onLocation();
     } catch (_) {
@@ -493,17 +491,13 @@ class IndependentNavigationEngine extends ChangeNotifier
         final session = _session;
         final step = _nextStep!;
         unawaited(
-          drive.speakTurn(
-            () {
-              final language = drive.navigationLanguage;
-              final instruction = routeStepInstruction(step, language);
-              if (stage == 'turn') return instruction;
-              // The distance when spoken, not when queued.
-              final metres = navigationMetres(_distanceToStep, language);
-              return language == 'zh'
-                  ? '$metres后，$instruction'
-                  : 'In $metres, $instruction';
-            },
+          drive.speakTurnUtterance(
+            // The distance when spoken, not when queued.
+            () => VoicePrompts.turn(
+              step,
+              drive.navigationLanguage,
+              metres: stage == 'turn' ? null : _distanceToStep,
+            ),
             urgent: stage != 'far',
             // Passed, rerouted, or superseded by a nearer prompt.
             stillRelevant: () =>

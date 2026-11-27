@@ -83,12 +83,15 @@ class RouteStepInfo {
   final String roadName;
   final List<RouteLane> lanes;
 
-  factory RouteStepInfo.fromJson(Map<String, dynamic> json) {
+  /// [along] is the step's provider distance from the route start. Without
+  /// it, a route that reuses a road cannot place its maneuvers in order.
+  factory RouteStepInfo.fromJson(Map<String, dynamic> json, {double? along}) {
     final pair = json['location'] as List<dynamic>? ?? const [];
     return RouteStepInfo(
       instruction: json['instruction'] as String? ?? '',
       distanceMeters: (json['distance'] as num?)?.round() ?? 0,
       durationSeconds: (json['duration'] as num?)?.toDouble() ?? 0,
+      alongRouteMeters: (json['along'] as num?)?.toDouble() ?? along,
       maneuverType: json['maneuver']?.toString() ?? '',
       maneuverModifier: json['modifier']?.toString() ?? '',
       roadName: json['name']?.toString() ?? '',
@@ -269,10 +272,7 @@ class RouteOption {
           .whereType<Map<String, dynamic>>()
           .map(TransitLeg.fromJson)
           .toList(growable: false),
-      steps: (json['steps'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .map(RouteStepInfo.fromJson)
-          .toList(growable: false),
+      steps: _stepsFromJson(json['steps']),
       traffic: TrafficSummary.fromJson(
         json['traffic'] as Map<String, dynamic>?,
       ),
@@ -287,6 +287,21 @@ class RouteOption {
       routingEngine: json['routingEngine'] as String?,
     );
   }
+}
+
+/// Steps arrive in route order; their cumulative provider distances are the
+/// authoritative along-route positions (each OSRM leg ends with `arrive`).
+List<RouteStepInfo> _stepsFromJson(Object? raw) {
+  var along = 0.0;
+  final steps = <RouteStepInfo>[];
+  for (final json
+      in (raw as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()) {
+    steps.add(RouteStepInfo.fromJson(json, along: along));
+    final distance = (json['distance'] as num?)?.toDouble() ?? 0;
+    if (distance.isFinite && distance > 0) along += distance;
+  }
+  return List.unmodifiable(steps);
 }
 
 class RoutePlan {

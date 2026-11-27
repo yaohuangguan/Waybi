@@ -132,6 +132,9 @@
     "apps/mobile/lib/domain/route_conditions.dart": {
       "minimumLinePercent": 100
     },
+    "apps/mobile/lib/domain/route_geometry.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/domain/route_option.dart": {
       "minimumLinePercent": 80
     },

@@ -93,4 +93,49 @@ void main() {
       isNull,
     );
   });
+
+  test('an out-and-back route matches both passes of one camera', () {
+    const loop = RouteOption(
+      id: 'out-and-back',
+      mode: WaybiTravelMode.drive,
+      durationSeconds: 300,
+      distanceMeters: 2224,
+      points: [
+        GeoPoint(-36.85, 174.76),
+        GeoPoint(-36.84, 174.76),
+        GeoPoint(-36.84, 174.76006),
+        GeoPoint(-36.85, 174.76006),
+      ],
+      provider: 'test',
+      traffic: TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
+      trafficIntervals: [],
+    );
+    const camera = SafetyCamera(
+      id: 'both-ways',
+      name: 'Two-way camera',
+      region: 'Auckland',
+      suburb: 'City',
+      location: 'Queen Street',
+      type: 'Spot speed',
+      latitude: -36.845,
+      longitude: 174.76003,
+    );
+    const far = SafetyCamera(
+      id: 'far',
+      name: 'Elsewhere',
+      region: 'Wellington',
+      suburb: 'City',
+      location: 'Lambton Quay',
+      type: 'Spot speed',
+      latitude: -41.28,
+      longitude: 174.77,
+    );
+    final matches = matcher.match(loop, [camera, far]);
+    expect(matches, hasLength(2));
+    expect(matches.first.alongMeters, closeTo(556, 10));
+    expect(matches.last.alongMeters, closeTo(1667, 10));
+    expect(matches.map((m) => m.pass), [0, 1]);
+    expect(matches.map((m) => m.alertKey), ['both-ways', 'both-ways#2']);
+    expect(matches.first.withPass(0), same(matches.first));
+  });
 }

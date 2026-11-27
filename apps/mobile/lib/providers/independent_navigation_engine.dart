@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
+import '../domain/route_geometry.dart';
 import '../domain/route_option.dart';
 import '../domain/road_event.dart';
 import '../domain/route_road_events.dart';
@@ -13,7 +14,6 @@ import '../domain/transit_lane.dart';
 import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
 import '../drive/route_camera_matcher.dart';
-import '../drive/route_progress_tracker.dart';
 import '../drive/route_display.dart';
 import 'provider_contracts.dart';
 
@@ -173,22 +173,19 @@ class IndependentNavigationEngine extends ChangeNotifier
 
   void _setRoute(RouteOption route, {bool preserveAlerts = false}) {
     _route = route;
-    _geometryMeters = RouteProgressTracker.geometryLength(route.points);
-    final scale = route.distanceMeters > 0
-        ? _geometryMeters / route.distanceMeters
-        : 1.0;
-    _stepPositions = [
-      for (final step in route.steps)
-        step.alongRouteMeters != null
-            ? step.alongRouteMeters! * scale
-            : _matcher.project(step.location, route.points)?.alongMeters ?? 0,
-    ];
+    final geometry = RouteGeometry.of(route.points);
+    _geometryMeters = geometry.totalMeters;
+    // In route order: a road used twice keeps both maneuvers, and a stop is
+    // never "visited" because the route passed near it earlier.
+    _stepPositions = routeStepPositions(route, geometry);
+    final stopPositions = routeStopPositions(
+      route,
+      geometry: geometry,
+      stepPositions: _stepPositions,
+    );
     _stops = [
-      for (final point
-          in route.waypoints
-              .skip(1)
-              .take(math.max(0, route.waypoints.length - 2)))
-        (point, _matcher.project(point, route.points)?.alongMeters ?? 0),
+      for (var i = 0; i < stopPositions.length; i++)
+        (route.waypoints[i + 1], stopPositions[i]),
     ];
     _spokenSteps.clear();
     _nextStep = route.steps.firstOrNull;

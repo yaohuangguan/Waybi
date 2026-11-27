@@ -364,12 +364,13 @@ void main() {
     });
     await nav.start(makeRoute());
     final now = DateTime(2026, 9, 30);
+    drive.emit(origin, now.subtract(const Duration(seconds: 1)));
     drive.emit(const GeoPoint(-36.8552, 174.76), now);
     expect(nav.nextStep?.instruction, 'Turn right');
     expect(nav.distanceToStepMeters, lessThan(55));
-    expect(drive.spoken, ['Head north', 'Turn right']);
+    expect(drive.spoken, ['Head north', 'In 556 m, Turn right', 'Turn right']);
     drive.notifyListeners();
-    expect(drive.spoken, ['Head north', 'Turn right']);
+    expect(drive.spoken, ['Head north', 'In 556 m, Turn right', 'Turn right']);
     drive.emit(middle, now.add(const Duration(seconds: 1)));
     expect(nav.remainingDistanceMeters, closeTo(500, 1));
     expect(nav.remainingSeconds, closeTo(990, 1));
@@ -387,6 +388,7 @@ void main() {
     });
     await nav.start(makeRoute());
     final now = DateTime(2026, 9, 30);
+    drive.emit(origin, now.subtract(const Duration(seconds: 1)), speed: 50);
     drive.emit(destination, now, speed: 50);
     expect(nav.arrived, isFalse);
     drive.emit(destination, now.add(const Duration(seconds: 1)), speed: 0);
@@ -668,6 +670,88 @@ void main() {
       expect(nav.offRoute, isTrue);
       expect(nav.error, isNotNull);
       expect(drive.active, isTrue);
+    },
+  );
+
+  test(
+    'an out-and-back route keeps the return-leg turn and its stop',
+    () async {
+      const a = GeoPoint(-36.86, 174.76);
+      const tip = GeoPoint(-36.855, 174.76);
+      const back = GeoPoint(-36.858, 174.76001);
+      const end = GeoPoint(-36.858, 174.759);
+      final route = RouteOption(
+        id: 'out-and-back',
+        mode: WaybiTravelMode.drive,
+        durationSeconds: 120,
+        distanceMeters: 979,
+        points: const [a, GeoPoint(-36.858, 174.76), tip, back, end],
+        provider: 'independent',
+        traffic: const TrafficSummary(normal: 0, slow: 0, trafficJam: 0),
+        trafficIntervals: const [],
+        waypoints: const [a, tip, back, end],
+        steps: const [
+          RouteStepInfo(
+            instruction: 'Head north',
+            distanceMeters: 556,
+            location: a,
+            maneuverType: 'depart',
+          ),
+          RouteStepInfo(
+            instruction: 'Arrive at the lookout',
+            distanceMeters: 0,
+            location: tip,
+            maneuverType: 'arrive',
+          ),
+          RouteStepInfo(
+            instruction: 'Make a U-turn',
+            distanceMeters: 334,
+            location: tip,
+            maneuverType: 'continue',
+            maneuverModifier: 'uturn',
+          ),
+          RouteStepInfo(
+            instruction: 'Arrive at the cafe',
+            distanceMeters: 0,
+            location: back,
+            maneuverType: 'arrive',
+          ),
+          RouteStepInfo(
+            instruction: 'Turn left',
+            distanceMeters: 89,
+            location: back,
+            maneuverType: 'turn',
+            maneuverModifier: 'left',
+          ),
+          RouteStepInfo(
+            instruction: 'Arrive',
+            distanceMeters: 0,
+            location: end,
+            maneuverType: 'arrive',
+          ),
+        ],
+      );
+      final drive = FakeDrive();
+      var now = DateTime(2026, 9, 30);
+      final nav = IndependentNavigationEngine(drive, clock: () => now);
+      addTearDown(() {
+        nav.dispose();
+        drive.dispose();
+      });
+      await nav.start(route);
+      drive.emit(a, now);
+      now = now.add(const Duration(seconds: 25));
+      // Outward leg, past the place the return leg will turn left.
+      drive.emit(const GeoPoint(-36.8575, 174.76), now);
+      expect(nav.nextStep?.instruction, 'Arrive at the lookout');
+      expect(nav.remainingStops, [tip, back]);
+      now = now.add(const Duration(seconds: 30));
+      // Return leg, after the U-turn.
+      drive.emit(const GeoPoint(-36.8565, 174.76001), now);
+      expect(nav.nextStep?.instruction, 'Arrive at the cafe');
+      expect(nav.distanceToStepMeters, closeTo(167, 20));
+      expect(nav.remainingStops, [back]);
+      expect(nav.remainingDistanceMeters, closeTo(256, 25));
     },
   );
 }

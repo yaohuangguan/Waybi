@@ -104,10 +104,15 @@ void main() {
       GeoPoint(-36.85, 174.76),
     ]);
     final now = DateTime(2026);
-    final first = tracker.update(const GeoPoint(-36.855, 174.76), time: now)!;
+    // Progress starts at the route origin, then follows the car along it.
+    tracker.update(const GeoPoint(-36.86, 174.76), time: now);
+    final first = tracker.update(
+      const GeoPoint(-36.855, 174.76),
+      time: now.add(const Duration(seconds: 1)),
+    )!;
     final jitter = tracker.update(
       const GeoPoint(-36.8551, 174.76),
-      time: now.add(const Duration(seconds: 1)),
+      time: now.add(const Duration(seconds: 2)),
     )!;
     expect(jitter.alongMeters, first.alongMeters);
   });
@@ -117,11 +122,70 @@ void main() {
       GeoPoint(-36.85, 174.76),
     ]);
     final now = DateTime(2026);
-    tracker.update(const GeoPoint(-36.855, 174.76), time: now);
+    tracker.update(const GeoPoint(-36.86, 174.76), time: now);
+    tracker.update(
+      const GeoPoint(-36.855, 174.76),
+      time: now.add(const Duration(seconds: 1)),
+    );
     final reversed = tracker.update(
       const GeoPoint(-36.856, 174.76),
-      time: now.add(const Duration(seconds: 2)),
+      time: now.add(const Duration(seconds: 3)),
     )!;
     expect(reversed.offsetMeters, greaterThan(35));
+  });
+
+  test(
+    'the first fix of a new out-and-back route cannot snap to the return leg',
+    () {
+      // Out 500 m north on one carriageway, U-turn, and back 5 m to the east.
+      final tracker = RouteProgressTracker(const [
+        GeoPoint(-36.86, 174.76),
+        GeoPoint(-36.8555, 174.76),
+        GeoPoint(-36.8555, 174.76006),
+        GeoPoint(-36.86, 174.76006),
+      ]);
+      final now = DateTime(2026);
+      // Noise puts the first fix nearer the return carriageway.
+      final first = tracker.update(
+        const GeoPoint(-36.8598, 174.76005),
+        time: now,
+        accuracyMeters: 10,
+      )!;
+      expect(first.alongMeters, lessThan(150));
+      expect(first.offsetMeters, lessThan(10));
+      final next = tracker.update(
+        const GeoPoint(-36.8594, 174.76001),
+        time: now.add(const Duration(seconds: 2)),
+        speedKph: 40,
+      )!;
+      expect(next.alongMeters, lessThan(150), reason: 'U-turn still ahead');
+    },
+  );
+
+  test('the first-fix window widens with elapsed time and speed', () {
+    final tracker = RouteProgressTracker(const [
+      GeoPoint(-36.86, 174.76),
+      GeoPoint(-36.85, 174.76),
+    ]);
+    final now = DateTime(2026);
+    // 550 m along: outside the 170 m window for a fresh route.
+    final early = tracker.update(
+      const GeoPoint(-36.855, 174.76),
+      time: now,
+      speedKph: 50,
+    )!;
+    expect(early.offsetMeters, greaterThan(35));
+    expect(tracker.committed, isNull);
+    final later = tracker.update(
+      const GeoPoint(-36.8549, 174.76),
+      time: now.add(const Duration(seconds: 30)),
+      speedKph: 50,
+    )!;
+    expect(later.offsetMeters, lessThan(5));
+    expect(tracker.committed, isNotNull);
+    expect(
+      RouteProgressTracker.geometryLength(tracker.points),
+      tracker.totalMeters,
+    );
   });
 }

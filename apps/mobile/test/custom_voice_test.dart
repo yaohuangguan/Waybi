@@ -69,8 +69,10 @@ class FakeClipPlayer implements VoiceClipPlayer {
 }
 
 class FakeClips implements CustomVoiceClips {
-  FakeClips(this.ids);
+  FakeClips(this.ids, {this.omitRoadNames = false});
   Set<String> ids;
+  @override
+  bool omitRoadNames;
   final broken = <String>[];
   @override
   Set<String> playable(String language) => ids;
@@ -119,6 +121,14 @@ List<String> describe(List<VoiceSegment> segments) => [
       TtsSegment(:final text) => 'tts:$text',
     },
 ];
+
+/// A tall test screen, so the first phrase rows are on screen below the
+/// settings and progress card.
+void tallView(WidgetTester tester) {
+  tester.view.physicalSize = const Size(900, 2400);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
 
 Future<String> writeDraft(Directory dir, String name, int bytes) async {
   final file = File('${dir.path}/$name');
@@ -244,9 +254,11 @@ void main() {
       );
     });
 
-    test('every phrase prompt plans to its own clip', () {
-      for (final phrase in customVoicePhrases) {
-        for (final language in CustomVoiceController.languages) {
+    test('every standalone phrase prompt plans to its own clip', () {
+      for (final phrase in customVoicePhrases.where((p) => p.standalone)) {
+        for (final language in CustomVoiceController.languages.where(
+          phrase.availableIn,
+        )) {
           expect(
             describe(
               planCustomVoice(phrase.prompt(language), language, {phrase.id}),
@@ -420,6 +432,17 @@ void main() {
       expect(voice.recorded('en'), {'turn_left'}, reason: 'Files are kept');
     });
 
+    test('the road-name choice is remembered', () async {
+      expect(voice.omitRoadNames, isFalse);
+      await voice.setOmitRoadNames(true);
+      expect(voice.omitRoadNames, isTrue);
+      final restored = CustomVoiceController(rootDirectory: () async => root);
+      addTearDown(restored.dispose);
+      await restored.load();
+      expect(restored.omitRoadNames, isTrue);
+      expect(restored.loaded, isTrue);
+    });
+
     test('tiny or unknown recordings are rejected', () async {
       final tiny = await writeDraft(root, 'tiny.m4a', 10);
       expect(await voice.saveClip('en', 'turn_left', tiny), isFalse);
@@ -506,6 +529,7 @@ void main() {
     });
 
     testWidgets('free users see the upsell and cannot record', (tester) async {
+      tallView(tester);
       var openedPlus = false;
       await tester.pumpWidget(
         MaterialApp(
@@ -518,10 +542,10 @@ void main() {
         ),
       );
       expect(find.byKey(const ValueKey('custom-voice-upsell')), findsOneWidget);
-      final toggle = tester.widget<SwitchListTile>(
-        find.byKey(const ValueKey('custom-voice-enabled')),
+      final own = tester.widget<RadioListTile<String>>(
+        find.byKey(const ValueKey('custom-voice-use-own')),
       );
-      expect(toggle.onChanged, isNull);
+      expect(own.enabled, isFalse);
       final record = tester.widget<IconButton>(
         find.byKey(const ValueKey('custom-voice-record-in_50')),
       );
@@ -533,6 +557,7 @@ void main() {
     testWidgets('Plus members record, keep, re-record and delete a phrase', (
       tester,
     ) async {
+      tallView(tester);
       voice.setPlus(true);
       final recorder = FakeRecorder();
       await tester.pumpWidget(
@@ -549,40 +574,45 @@ void main() {
       final recordButton = find.byKey(
         const ValueKey('custom-voice-record-in_50'),
       );
-      await tester.runAsync(() async {
-        await tester.tap(recordButton);
+      // Recording, keeping and deleting do real file I/O; wait for each step
+      // to finish instead of a fixed delay so a busy machine can't flake it.
+      Future<void> tapAndAwait(Finder target, bool Function() done) async {
+        await tester.runAsync(() async {
+          await tester.tap(target);
+          await tester.pump();
+          for (var i = 0; i < 250 && !done(); i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            await tester.pump();
+          }
+        });
         await tester.pump();
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-      await tester.pump();
+      }
+
+      await tapAndAwait(recordButton, () => recorder.path != null);
       expect(find.text('Recording… tap stop when done'), findsOneWidget);
-      await tester.runAsync(() async {
-        await tester.tap(recordButton);
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-      await tester.pump();
+      await tapAndAwait(
+        recordButton,
+        () => find.text('New take — keep it?').evaluate().isNotEmpty,
+      );
       expect(find.text('New take — keep it?'), findsOneWidget);
-      await tester.runAsync(() async {
-        await tester.tap(find.byKey(const ValueKey('custom-voice-keep-in_50')));
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-      await tester.pump();
+      await tapAndAwait(
+        find.byKey(const ValueKey('custom-voice-keep-in_50')),
+        () => voice.recorded('en').contains('in_50'),
+      );
       expect(voice.recorded('en'), {'in_50'});
       expect(find.byTooltip('Re-record'), findsOneWidget);
 
-      await tester.runAsync(() async {
-        await tester.tap(
-          find.byKey(const ValueKey('custom-voice-delete-in_50')),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      });
-      await tester.pump();
+      await tapAndAwait(
+        find.byKey(const ValueKey('custom-voice-delete-in_50')),
+        () => voice.recorded('en').isEmpty,
+      );
       expect(voice.recorded('en'), isEmpty);
     });
 
     testWidgets('declined microphone permission explains how to allow it', (
       tester,
     ) async {
+      tallView(tester);
       voice.setPlus(true);
       final recorder = FakeRecorder()..permission = false;
       await tester.pumpWidget(

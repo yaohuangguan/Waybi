@@ -8,6 +8,7 @@ import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/route_option.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/drive/voice_engine.dart';
+import 'package:waybi_mobile/drive/voice_utterance.dart';
 import 'package:waybi_mobile/providers/independent_navigation_engine.dart';
 import 'package:waybi_mobile/providers/independent_routing_provider.dart';
 
@@ -27,8 +28,10 @@ class _FakeDrive extends DriveEngine {
   @override
   Future<void> speakMessage(String message) async {}
   @override
-  Future<void> speakTurn(
-    String Function() message, {
+  Future<void> speakUtterance(VoiceUtterance prompt) async {}
+  @override
+  Future<void> speakTurnUtterance(
+    VoiceUtterance Function() prompt, {
     bool Function()? stillRelevant,
     bool urgent = false,
   }) async {}

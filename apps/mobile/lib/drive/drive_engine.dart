@@ -28,6 +28,7 @@ import 'route_camera_matcher.dart';
 import 'route_progress_tracker.dart';
 import 'custom_voice.dart';
 import 'voice_engine.dart';
+import 'voice_prompts.dart';
 import 'navigation_location_filter.dart';
 import 'reliable_location_feed.dart';
 import 'speed_limit_pacer.dart';
@@ -218,9 +219,13 @@ class DriveEngine extends ChangeNotifier {
         revision = _turnRevision;
     _pendingTransitAlerts[key] = token;
     try {
-      final spoken = await _voiceEngine.roadAlert(
-        () => upcomingTransitLane?.speech(navigationLanguage) ?? '',
-        language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
+      final spoken = await _voiceEngine.roadAlertUtterance(
+        () {
+          final lane = upcomingTransitLane;
+          return lane == null
+              ? VoiceUtterance.freeform('', navigationLanguage)
+              : VoicePrompts.transitLane(lane, navigationLanguage);
+        },
         stillRelevant: () =>
             active &&
             voiceEnabled &&
@@ -980,6 +985,8 @@ class DriveEngine extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// A free-form message. Prefer [speakUtterance] with a [VoicePrompts]
+  /// builder, so a custom voice can play every fixed word.
   Future<void> speakMessage(String message) async {
     if (!voiceEnabled) return;
     try {
@@ -987,6 +994,17 @@ class DriveEngine extends ChangeNotifier {
         message,
         language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
       );
+    } catch (_) {
+      debugPrint('Navigation audio unavailable');
+    }
+  }
+
+  /// A prompt built from parts (for example [VoicePrompts.arrival]), spoken
+  /// in its own language.
+  Future<void> speakUtterance(VoiceUtterance prompt) async {
+    if (!voiceEnabled) return;
+    try {
+      await _voiceEngine.say(prompt);
     } catch (_) {
       debugPrint('Navigation audio unavailable');
     }
@@ -1007,6 +1025,29 @@ class DriveEngine extends ChangeNotifier {
       await _voiceEngine.turnPrompt(
         message,
         language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
+        urgent: urgent,
+        stillRelevant: () =>
+            active &&
+            voiceEnabled &&
+            session == _locationSession &&
+            (stillRelevant?.call() ?? true),
+      );
+    } catch (_) {
+      debugPrint('Navigation audio unavailable');
+    }
+  }
+
+  /// [speakTurn] for a prompt built from parts ([VoicePrompts.turn]).
+  Future<void> speakTurnUtterance(
+    VoiceUtterance Function() prompt, {
+    bool Function()? stillRelevant,
+    bool urgent = false,
+  }) async {
+    if (!voiceEnabled) return;
+    final session = _locationSession;
+    try {
+      await _voiceEngine.turnUtterance(
+        prompt,
         urgent: urgent,
         stillRelevant: () =>
             active &&

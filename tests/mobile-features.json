@@ -212,10 +212,21 @@
     },
     {
       "id": "custom-voice",
-      "label": "Plus custom voice phrase pack: planning, clip fallback, Plus gating, on-device recording and deletion",
+      "label": "Plus custom voice phrase pack: structured prompts, planning, clip fallback, Plus gating, on-device recording with progress and guided missing-phrase recording, and deletion",
       "tests": [
+        "apps/mobile/test/voice_prompts_test.dart",
         "apps/mobile/test/custom_voice_test.dart",
         "apps/mobile/test/custom_voice_flows_test.dart",
+        "apps/mobile/test/custom_voice_recording_ux_test.dart",
+        "apps/mobile/test/custom_voice_profile_entry_test.dart"
+      ]
+    },
+    {
+      "id": "voice-sharing",
+      "label": "Share a recorded voice by code (Plus), look up, preview, verify and install a shared voice (free), choose the guidance voice, revoke",
+      "tests": [
+        "apps/mobile/test/voice_pack_repository_test.dart",
+        "apps/mobile/test/custom_voice_sharing_test.dart",
         "apps/mobile/test/custom_voice_profile_entry_test.dart"
       ]
     },

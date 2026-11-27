@@ -11,6 +11,7 @@ import '../data/account_repository.dart';
 import '../data/friends_backup_service.dart';
 import '../data/app_store_billing.dart';
 import '../data/plus_billing.dart';
+import '../data/voice_pack_repository.dart';
 import '../drive/custom_voice.dart';
 import 'custom_voice_page.dart';
 import 'plus_page.dart';
@@ -30,6 +31,7 @@ class ProfilePage extends StatefulWidget {
     this.friendsBackup,
     this.plusBilling,
     this.customVoice,
+    this.voicePacks,
     required this.voiceEnabled,
     required this.lanesEnabled,
     this.keepScreenAwake = true,
@@ -65,6 +67,10 @@ class ProfilePage extends StatefulWidget {
   final FriendsBackupService? friendsBackup;
   final PlusBillingGateway? plusBilling;
   final CustomVoiceController? customVoice;
+
+  /// Voice sharing for the custom voice page; a fresh client per visit when
+  /// null.
+  final VoicePackRepository? voicePacks;
   final bool voiceEnabled;
   final bool lanesEnabled;
   final bool keepScreenAwake;
@@ -134,6 +140,9 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _openCustomVoice(CustomVoiceController customVoice) async {
+    final sharing =
+        widget.voicePacks ??
+        VoicePackRepository(session: () => widget.account.sessionToken);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => CustomVoicePage(
@@ -141,9 +150,12 @@ class _ProfilePageState extends State<ProfilePage> {
           language: _appLanguage,
           initialPack: _language == 'zh-CN' ? 'zh' : 'en',
           onOpenPlus: _openPlus,
+          sharing: sharing,
+          signedIn: widget.account.signedIn,
         ),
       ),
     );
+    if (widget.voicePacks == null) sharing.dispose();
     if (mounted) setState(() {});
   }
 
@@ -459,8 +471,8 @@ class _ProfilePageState extends State<ProfilePage> {
               children: [
                 Text(
                   _text(
-                    'Permanently deletes your Waybi account, saved routes, places, reviews and synced companion memories. This cannot be undone.',
-                    '将永久删除 Waybi 账号、路线记录、收藏、评价和已同步的旅行伙伴回忆，无法撤销。',
+                    'Permanently deletes your Waybi account, saved routes, places, reviews, synced companion memories and any voices you shared. This cannot be undone.',
+                    '将永久删除 Waybi 账号、路线记录、收藏、评价、已同步的旅行伙伴回忆和你分享过的语音，无法撤销。',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1384,32 +1396,28 @@ class _ProfilePageState extends State<ProfilePage> {
                 ListTile(
                   key: const ValueKey('custom-voice-entry'),
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    customVoice.plus
-                        ? Icons.record_voice_over_rounded
-                        : Icons.lock_rounded,
-                  ),
+                  leading: const Icon(Icons.record_voice_over_rounded),
                   title: Text(_text('My navigation voice', '我的导航语音')),
-                  subtitle: Text(
-                    customVoice.plus
-                        ? (customVoice.enabled
-                              ? _text(
-                                  'On · guidance uses your recordings',
-                                  '已开启 · 导航使用你的录音',
-                                )
-                              : _text(
-                                  'Record phrases in your own voice',
-                                  '用你自己的声音录制播报短语',
-                                ))
-                        : _text(
-                            'Plus · guidance in your own voice',
-                            'Plus · 用你自己的声音导航',
-                          ),
-                  ),
+                  subtitle: Text(switch (customVoice.choice) {
+                    VoiceChoice.shared => _text(
+                      'On · ${customVoice.installedPack(customVoice.activePackCode!)!.name}',
+                      '已开启 · ${customVoice.installedPack(customVoice.activePackCode!)!.name}',
+                    ),
+                    VoiceChoice.own when customVoice.plus => _text(
+                      'On · guidance uses your recordings',
+                      '已开启 · 导航使用你的录音',
+                    ),
+                    _ when customVoice.plus => _text(
+                      'Record phrases in your own voice',
+                      '用你自己的声音录制播报短语',
+                    ),
+                    _ => _text(
+                      'Use a shared voice · record your own with Plus',
+                      '使用分享的语音 · Plus 可录制自己的声音',
+                    ),
+                  }),
                   trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => customVoice.plus
-                      ? _openCustomVoice(customVoice)
-                      : _openPlus(),
+                  onTap: () => _openCustomVoice(customVoice),
                 ),
               ListTile(
                 contentPadding: EdgeInsets.zero,

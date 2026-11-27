@@ -54,6 +54,7 @@ import 'app/home_sheets.dart';
 import 'app/trip_state.dart';
 import 'drive/custom_voice.dart';
 import 'drive/drive_engine.dart';
+import 'drive/voice_prompts.dart';
 import 'drive/system_navigation.dart';
 import 'widgets/system_navigation_status.dart';
 import 'drive/route_camera_matcher.dart';
@@ -2994,8 +2995,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _following = true;
     });
     _queueMapRefresh();
-    await _driveEngine.speakMessage(
-      _text('Transit trip started. Follow the itinerary.', '公共交通行程已开始，请按行程乘车。'),
+    await _driveEngine.speakUtterance(
+      VoicePrompts.transitTripStarted(_driveEngine.navigationLanguage),
     );
   }
 
@@ -3308,8 +3309,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     if (arrived) {
       unawaited(
-        _driveEngine.speakMessage(
-          _text('You have arrived. Well done!', '已到达目的地，这段旅程辛苦啦！'),
+        _driveEngine.speakUtterance(
+          VoicePrompts.arrival(_driveEngine.navigationLanguage),
         ),
       );
     }

@@ -205,7 +205,7 @@ void main() {
         .where((c) => c.method == 'speak')
         .map((c) => c.arguments.toString())
         .join(' | ');
-    expect(spoken, contains('公共交通行程已开始'));
+    expect(spoken, contains('公交行程已开始'));
     expect(spoken, isNot(contains('Transit trip started')));
   });
 }

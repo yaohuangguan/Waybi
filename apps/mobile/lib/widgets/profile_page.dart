@@ -16,6 +16,9 @@ import 'account_sign_in.dart';
 import '../data/camera_repository.dart';
 import '../domain/map_provider.dart';
 
+/// Secondary text on the always-dark brand gradient (≥4.5:1 on both stops).
+const _inkSecondary = Color(0xE6FFFFFF);
+
 class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
@@ -463,8 +466,8 @@ class _ProfilePageState extends State<ProfilePage> {
     final isPlus = widget.account.profile?.isPlus == true;
     final status = snapshot?.syncStatus ?? 'unknown';
     final statusColor = switch (status) {
-      'live' => WaybiColors.success,
-      'stale' => WaybiColors.warning,
+      'live' => context.status.success,
+      'stale' => context.status.warning,
       'seed' => scheme.primary,
       _ => scheme.onSurfaceVariant,
     };
@@ -530,7 +533,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                       style: TextStyle(
                         color: scheme.onSurfaceVariant,
-                        fontSize: 11.5,
+                        fontSize: WaybiTextSize.caption,
                       ),
                     ),
                   ],
@@ -546,7 +549,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   statusLabel,
                   style: TextStyle(
                     color: statusColor,
-                    fontSize: 10.5,
+                    fontSize: WaybiTextSize.caption,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -575,7 +578,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
-                fontSize: 11.5,
+                fontSize: WaybiTextSize.caption,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -593,14 +596,17 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
-                  fontSize: 11.5,
+                  fontSize: WaybiTextSize.caption,
                 ),
               ),
             ],
             const SizedBox(height: 3),
             Text(
               _cameraFetchMode(snapshot.fetchMode),
-              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10.5),
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: WaybiTextSize.caption,
+              ),
             ),
             if (snapshot.changeAdded > 0 || snapshot.changeRemoved > 0) ...[
               const SizedBox(height: 3),
@@ -611,7 +617,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 style: TextStyle(
                   color: scheme.primary,
-                  fontSize: 10.5,
+                  fontSize: WaybiTextSize.caption,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -625,7 +631,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             style: TextStyle(
               color: scheme.onSurfaceVariant,
-              fontSize: 10.5,
+              fontSize: WaybiTextSize.caption,
               height: 1.35,
             ),
           ),
@@ -657,7 +663,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
-                      fontSize: 10.5,
+                      fontSize: WaybiTextSize.caption,
                       height: 1.35,
                     ),
                   ),
@@ -702,8 +708,8 @@ class _ProfilePageState extends State<ProfilePage> {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          backgroundColor: WaybiColors.darkOcean,
-          foregroundColor: Colors.white,
+          backgroundColor: WaybiInk.surface,
+          foregroundColor: WaybiInk.text,
           title: Text(
             _text('My Waybi', '我的 Waybi'),
             style: const TextStyle(fontWeight: FontWeight.w700),
@@ -760,7 +766,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: WaybiInk.text,
                                 fontSize: 17,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -770,8 +776,8 @@ class _ProfilePageState extends State<ProfilePage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
+                                color: _inkSecondary,
+                                fontSize: WaybiTextSize.caption,
                               ),
                             ),
                           ],
@@ -925,7 +931,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             .toSet()
                             .join(' · '),
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: WaybiTextSize.caption,
                           fontWeight: FontWeight.w600,
                           color: Theme.of(context).colorScheme.primary,
                         ),
@@ -1424,7 +1430,7 @@ class _CameraDataPill extends StatelessWidget {
         '$label $value',
         style: TextStyle(
           color: scheme.onSurface,
-          fontSize: 10.5,
+          fontSize: WaybiTextSize.caption,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -1465,7 +1471,7 @@ class _Stat extends StatelessWidget {
             value,
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
           ),
-          Text(label, style: const TextStyle(fontSize: 11)),
+          Text(label, style: const TextStyle(fontSize: WaybiTextSize.caption)),
         ],
       ),
     ),
@@ -1553,10 +1559,10 @@ class _PlusCard extends StatelessWidget {
       child: ExpansionTile(
         key: const PageStorageKey('waybi-plus-card'),
         initiallyExpanded: false,
-        collapsedIconColor: Colors.white70,
-        iconColor: WaybiColors.sky,
-        collapsedTextColor: Colors.white,
-        textColor: Colors.white,
+        collapsedIconColor: _inkSecondary,
+        iconColor: WaybiInk.accent,
+        collapsedTextColor: WaybiInk.text,
+        textColor: WaybiInk.text,
         leading: const Icon(Icons.radar_rounded, color: WaybiColors.sky),
         title: const Text(
           'Waybi Plus',
@@ -1566,7 +1572,10 @@ class _PlusCard extends StatelessWidget {
           isPlus
               ? t('Plus is active', 'Plus 已启用')
               : t('More help for your everyday trips', '给日常出行多一点帮助'),
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
+          style: const TextStyle(
+            color: _inkSecondary,
+            fontSize: WaybiTextSize.caption,
+          ),
         ),
         childrenPadding: const EdgeInsets.fromLTRB(17, 0, 17, 17),
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
@@ -1578,7 +1587,7 @@ class _PlusCard extends StatelessWidget {
               '地图、搜索和逐向导航保持免费。Plus 增加主动通勤情报、到达辅助、弱网保障和更深入的行程洞察。',
             ),
             style: const TextStyle(
-              color: Colors.white,
+              color: WaybiInk.text,
               height: 1.35,
               fontSize: 13,
             ),
@@ -1623,8 +1632,8 @@ class _PlusCard extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onOpen,
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xffd0f58a),
-                foregroundColor: const Color(0xff152510),
+                backgroundColor: WaybiInk.accent,
+                foregroundColor: WaybiColors.midnightOcean,
               ),
               icon: const Icon(Icons.auto_awesome_rounded, size: 18),
               label: Text(
@@ -1657,9 +1666,9 @@ class _PlusChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .1),
+          color: WaybiInk.text.withValues(alpha: .1),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white12),
+          border: Border.all(color: WaybiInk.text.withValues(alpha: .12)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1672,8 +1681,8 @@ class _PlusChip extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11.5,
+                  color: WaybiInk.text,
+                  fontSize: WaybiTextSize.caption,
                   fontWeight: FontWeight.w600,
                 ),
               ),

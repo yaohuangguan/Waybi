@@ -252,15 +252,15 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 contentPadding: EdgeInsets.zero,
                 leading: CircleAvatar(
                   backgroundColor: event.type == RoadEventType.roadClosure
-                      ? const Color(0xffffe7e5)
-                      : const Color(0xfffff0d7),
+                      ? context.status.dangerContainer
+                      : context.status.warningContainer,
                   child: Icon(
                     event.type == RoadEventType.roadClosure
                         ? Icons.block_rounded
                         : Icons.construction_rounded,
                     color: event.type == RoadEventType.roadClosure
-                        ? const Color(0xffb52e35)
-                        : const Color(0xff946214),
+                        ? context.status.danger
+                        : context.status.warning,
                   ),
                 ),
                 title: Text(
@@ -459,8 +459,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: theme.brightness == Brightness.dark
-                      ? [const Color(0xff183a32), const Color(0xff294735)]
-                      : [const Color(0xffedf4dd), const Color(0xfffaf4df)],
+                      ? const [WaybiColors.darkOcean, WaybiColors.darkSurface]
+                      : const [WaybiColors.ice, WaybiColors.lightBackground],
                 ),
                 borderRadius: BorderRadius.circular(28),
               ),
@@ -638,11 +638,11 @@ class _DiscoverPageState extends State<DiscoverPage> {
                       horizontal: 16,
                       vertical: 8,
                     ),
-                    leading: const CircleAvatar(
-                      backgroundColor: WaybiColors.ice,
+                    leading: CircleAvatar(
+                      backgroundColor: theme.colorScheme.primaryContainer,
                       child: Icon(
                         Icons.landscape_rounded,
-                        color: WaybiColors.deepTeal,
+                        color: theme.colorScheme.onPrimaryContainer,
                       ),
                     ),
                     title: Text(

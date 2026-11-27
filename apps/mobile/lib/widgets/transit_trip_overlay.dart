@@ -5,8 +5,8 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/route_option.dart';
 
-const _ink = WaybiColors.darkOcean;
-const _accent = WaybiColors.sky;
+const _ink = WaybiInk.surface;
+const _accent = WaybiInk.accent;
 
 String _duration(int seconds) {
   final duration = Duration(seconds: seconds);
@@ -41,6 +41,7 @@ class TransitTripOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final arrival = TimeOfDay.fromDateTime(
       DateTime.now().add(Duration(seconds: route.durationSeconds)),
     ).format(context);
@@ -76,7 +77,7 @@ class TransitTripOverlay extends StatelessWidget {
                               'TRANSIT TRIP',
                               style: TextStyle(
                                 color: _accent,
-                                fontSize: 11,
+                                fontSize: WaybiTextSize.caption,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -85,7 +86,7 @@ class TransitTripOverlay extends StatelessWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: WaybiInk.text,
                                 fontSize: 17,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -98,7 +99,7 @@ class TransitTripOverlay extends StatelessWidget {
                         tooltip: 'Recenter',
                         icon: const Icon(
                           Icons.my_location_rounded,
-                          color: Colors.white,
+                          color: WaybiInk.text,
                         ),
                       ),
                     ],
@@ -113,7 +114,7 @@ class TransitTripOverlay extends StatelessWidget {
             bottom: 0,
             child: PointerInterceptor(
               child: Material(
-                color: Colors.white,
+                color: scheme.surface,
                 elevation: 18,
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(27),
@@ -140,9 +141,9 @@ class TransitTripOverlay extends StatelessWidget {
                                   ),
                                   Text(
                                     '${_distance(route.distanceMeters)} · arrive $arrival · GPS ${gpsAccuracy == null ? '—' : '±${gpsAccuracy!.round()} m'}',
-                                    style: const TextStyle(
-                                      color: Color(0xFF6D7A73),
-                                      fontSize: 11,
+                                    style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      fontSize: WaybiTextSize.caption,
                                     ),
                                   ),
                                 ],
@@ -174,7 +175,7 @@ class TransitTripOverlay extends StatelessWidget {
                                   width: 190,
                                   padding: const EdgeInsets.all(11),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFF2F4F8),
+                                    color: scheme.surfaceContainerHigh,
                                     borderRadius: BorderRadius.circular(14),
                                   ),
                                   child: Column(
@@ -196,9 +197,9 @@ class TransitTripOverlay extends StatelessWidget {
                                         '${leg.departureStop} → ${leg.arrivalStop}',
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Color(0xFF67736D),
+                                        style: TextStyle(
+                                          fontSize: WaybiTextSize.caption,
+                                          color: scheme.onSurfaceVariant,
                                         ),
                                       ),
                                     ],

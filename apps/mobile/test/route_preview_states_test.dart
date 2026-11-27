@@ -327,10 +327,15 @@ void main() {
           findsOneWidget,
         );
         final horizontal = find
-            .byWidgetPredicate(
-              (w) => w is ListView && w.scrollDirection == Axis.horizontal,
+            .ancestor(
+              of: near,
+              matching: find.byWidgetPredicate(
+                (w) =>
+                    w is SingleChildScrollView &&
+                    w.scrollDirection == Axis.horizontal,
+              ),
             )
-            .last;
+            .first;
         await t.drag(horizontal, const Offset(-300, 0));
         await t.pumpAndSettle();
         expect(find.text('Further park'), findsOneWidget);

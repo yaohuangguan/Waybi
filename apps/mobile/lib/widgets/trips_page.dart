@@ -345,22 +345,23 @@ class _TripsPageState extends State<TripsPage> {
   };
 
   Color _trafficColor(RouteOption route) {
+    final status = context.status;
     final delay = route.trafficDelaySeconds ?? 0;
     if (delay >= 600 || route.traffic.trafficJam > 0) {
-      return WaybiColors.danger;
+      return status.danger;
     }
     if (delay >= 180 || route.traffic.slow > 0) {
-      return WaybiColors.warning;
+      return status.warning;
     }
-    return WaybiColors.success;
+    return status.success;
   }
 
   Color _watchColor(RouteWatchItem? watch) => switch (watch?.status) {
-    'disrupted' => WaybiColors.danger,
-    'warning' => WaybiColors.warning,
-    'advisory' => WaybiColors.ocean,
-    'healthy' => WaybiColors.success,
-    _ => Theme.of(context).colorScheme.outline,
+    'disrupted' => context.status.danger,
+    'warning' => context.status.warning,
+    'advisory' => context.status.info,
+    'healthy' => context.status.success,
+    _ => Theme.of(context).colorScheme.onSurfaceVariant,
   };
 
   String _watchRouteLabel(String label) => switch (label) {
@@ -625,7 +626,7 @@ class _TripsPageState extends State<TripsPage> {
                       _watchStatus(watch),
                       style: TextStyle(
                         color: color,
-                        fontSize: 10.5,
+                        fontSize: WaybiTextSize.caption,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -638,7 +639,7 @@ class _TripsPageState extends State<TripsPage> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: scheme.onSurfaceVariant,
-                    fontSize: 11.5,
+                    fontSize: WaybiTextSize.caption,
                     height: 1.25,
                   ),
                 ),
@@ -772,7 +773,7 @@ class _TripsPageState extends State<TripsPage> {
                     _distance(route.distanceMeters),
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
-                      fontSize: 11,
+                      fontSize: WaybiTextSize.caption,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -933,7 +934,7 @@ class _TripsPageState extends State<TripsPage> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: scheme.onSurface,
-                        fontSize: 11.5,
+                        fontSize: WaybiTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1213,7 +1214,7 @@ class _TripsPageState extends State<TripsPage> {
                 ),
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
-                  fontSize: 11.5,
+                  fontSize: WaybiTextSize.caption,
                   height: 1.35,
                 ),
               ),
@@ -1299,7 +1300,7 @@ class _TripsPageState extends State<TripsPage> {
                     '${filteredHistory.length} 段行程',
                   ),
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: WaybiTextSize.caption,
                     color: scheme.onSurfaceVariant,
                   ),
                 ),
@@ -1356,7 +1357,7 @@ class _TripInsightStat extends StatelessWidget {
             label,
             style: TextStyle(
               color: scheme.onSurfaceVariant,
-              fontSize: 10.5,
+              fontSize: WaybiTextSize.caption,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -1395,7 +1396,7 @@ class _TripPatternChip extends StatelessWidget {
             '$label · $value',
             style: TextStyle(
               color: scheme.onSurface,
-              fontSize: 10.5,
+              fontSize: WaybiTextSize.caption,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1425,7 +1426,10 @@ class _SectionTitle extends StatelessWidget {
         ),
         Text(
           subtitle,
-          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10.5),
+          style: TextStyle(
+            color: scheme.onSurfaceVariant,
+            fontSize: WaybiTextSize.caption,
+          ),
         ),
       ],
     );

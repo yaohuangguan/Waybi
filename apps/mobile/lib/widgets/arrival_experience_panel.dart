@@ -122,7 +122,7 @@ class ArrivalExperiencePanel extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: scheme.onSurfaceVariant,
-                              fontSize: 10.5,
+                              fontSize: WaybiTextSize.caption,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -150,7 +150,7 @@ class ArrivalExperiencePanel extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: scheme.onSurfaceVariant,
-                              fontSize: 10.5,
+                              fontSize: WaybiTextSize.caption,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -173,7 +173,7 @@ class ArrivalExperiencePanel extends StatelessWidget {
                           ),
                           style: TextStyle(
                             color: scheme.onSurfaceVariant,
-                            fontSize: 10.5,
+                            fontSize: WaybiTextSize.caption,
                           ),
                         ),
                       ],
@@ -186,7 +186,7 @@ class ArrivalExperiencePanel extends StatelessWidget {
                       ),
                       style: TextStyle(
                         color: scheme.onSurfaceVariant,
-                        fontSize: 10.5,
+                        fontSize: WaybiTextSize.caption,
                       ),
                     )
                   else
@@ -238,7 +238,7 @@ class ArrivalExperiencePanel extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               color: scheme.onSurfaceVariant,
-                              fontSize: 9.8,
+                              fontSize: WaybiTextSize.caption,
                               fontWeight: FontWeight.w600,
                             ),
                           ),

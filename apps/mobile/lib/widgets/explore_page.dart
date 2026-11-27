@@ -391,7 +391,7 @@ class _ExploreCard extends StatelessWidget {
                 child: TextButton.icon(
                   style: TextButton.styleFrom(
                     visualDensity: VisualDensity.compact,
-                    textStyle: const TextStyle(fontSize: 10),
+                    textStyle: const TextStyle(fontSize: WaybiTextSize.caption),
                   ),
                   onPressed: () => showPlaceSources(
                     context,
@@ -445,7 +445,7 @@ class _ExploreCard extends StatelessWidget {
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             color: place.openNow!
-                                ? WaybiColors.success
+                                ? context.status.success
                                 : scheme.error,
                           ),
                         ),

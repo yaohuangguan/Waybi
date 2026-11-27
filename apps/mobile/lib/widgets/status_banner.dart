@@ -67,7 +67,7 @@ class _WaybiStatusBannerState extends State<WaybiStatusBanner> {
           child: Semantics(
             liveRegion: true,
             child: Material(
-              color: WaybiColors.darkOcean.withValues(alpha: .96),
+              color: WaybiInk.surface.withValues(alpha: .96),
               elevation: 8,
               borderRadius: BorderRadius.circular(15),
               child: Padding(
@@ -79,7 +79,7 @@ class _WaybiStatusBannerState extends State<WaybiStatusBanner> {
                       children: [
                         const Icon(
                           Icons.info_outline_rounded,
-                          color: WaybiColors.sky,
+                          color: WaybiInk.accent,
                           size: 19,
                         ),
                         const SizedBox(width: 9),
@@ -87,7 +87,7 @@ class _WaybiStatusBannerState extends State<WaybiStatusBanner> {
                           child: Text(
                             widget.message,
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: WaybiInk.text,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -97,7 +97,7 @@ class _WaybiStatusBannerState extends State<WaybiStatusBanner> {
                           onPressed: widget.onDismiss,
                           icon: const Icon(
                             Icons.close_rounded,
-                            color: Colors.white70,
+                            color: WaybiInk.muted,
                             size: 18,
                           ),
                         ),
@@ -109,7 +109,7 @@ class _WaybiStatusBannerState extends State<WaybiStatusBanner> {
                         child: TextButton(
                           onPressed: widget.onAction,
                           style: TextButton.styleFrom(
-                            foregroundColor: WaybiColors.sky,
+                            foregroundColor: WaybiInk.accent,
                           ),
                           child: Text(widget.actionLabel ?? 'Retry'),
                         ),

@@ -706,7 +706,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               tooltip: _text('Re-center', '回正导航'),
                               onPressed: widget.onRecenter,
                               icon: const Icon(Icons.my_location_rounded),
-                              color: WaybiColors.ocean,
+                              color: scheme.primary,
                             )
                           : TextButton.icon(
                               onPressed: widget.onRecenter,
@@ -716,7 +716,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                               ),
                               label: Text(_text('Re-center', '回到当前位置')),
                               style: TextButton.styleFrom(
-                                foregroundColor: WaybiColors.ocean,
+                                foregroundColor: scheme.primary,
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 12,
@@ -851,8 +851,10 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                           onPressed: widget.onEnd,
                                           style: FilledButton.styleFrom(
                                             minimumSize: const Size(0, 48),
-                                            backgroundColor: WaybiColors.danger,
-                                            foregroundColor: Colors.white,
+                                            backgroundColor:
+                                                context.status.danger,
+                                            foregroundColor:
+                                                context.status.onDanger,
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 10,
                                               vertical: 9,
@@ -881,10 +883,10 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                           ),
                                           child: Row(
                                             children: [
-                                              const Icon(
+                                              Icon(
                                                 Icons.flag_rounded,
                                                 size: 19,
-                                                color: WaybiColors.ocean,
+                                                color: scheme.primary,
                                               ),
                                               const SizedBox(width: 8),
                                               Expanded(
@@ -970,9 +972,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                       ),
                                       decoration: BoxDecoration(
                                         color: widget.usingOfflineGuidance
-                                            ? WaybiColors.warning.withValues(
-                                                alpha: .12,
-                                              )
+                                            ? context.status.warningContainer
                                             : scheme.surfaceContainerLow,
                                         borderRadius: BorderRadius.circular(11),
                                         border: Border.all(
@@ -988,7 +988,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                                 : Icons.offline_pin_rounded,
                                             size: 16,
                                             color: widget.usingOfflineGuidance
-                                                ? WaybiColors.warning
+                                                ? context.status.warning
                                                 : scheme.primary,
                                           ),
                                           const SizedBox(width: 7),
@@ -1241,8 +1241,12 @@ class _NavigationControlRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = context.isDark;
+    final status = context.status;
+    // Night variant: a dark rail does not glare over the dark map style.
     return Material(
-      color: Colors.white.withValues(alpha: .97),
+      color: (dark ? WaybiColors.darkSurface : WaybiColors.lightSurface)
+          .withValues(alpha: .97),
       elevation: 6,
       borderRadius: BorderRadius.circular(19),
       clipBehavior: Clip.antiAlias,
@@ -1291,8 +1295,8 @@ class _NavigationControlRail extends StatelessWidget {
             icon: Icons.add_alert_rounded,
             tooltip: _text('Report road issue', '报告路况'),
             onTap: onReport,
-            iconColor: WaybiColors.danger,
-            backgroundColor: Color(0xFFFFF3F1),
+            iconColor: status.danger,
+            backgroundColor: status.dangerContainer,
           ),
         ],
       ),
@@ -1305,7 +1309,7 @@ class _RailDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Container(width: 1, height: 28, color: WaybiColors.lightBorder);
+      Container(width: 1, height: 28, color: Theme.of(context).dividerColor);
 }
 
 class _RailButton extends StatelessWidget {
@@ -1335,7 +1339,7 @@ class _RailButton extends StatelessWidget {
           onPressed: onTap,
           tooltip: tooltip,
           iconSize: 21,
-          icon: Icon(icon, color: iconColor ?? WaybiColors.darkOcean),
+          icon: Icon(icon, color: iconColor ?? context.colors.onSurface),
         ),
       ),
     );

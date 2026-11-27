@@ -8,6 +8,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/account_repository.dart';
+import '../theme/waybi_theme.dart';
 
 /// One account entry for My Waybi, saved places and Plus checkout.
 class AccountSignIn extends StatefulWidget {
@@ -501,7 +502,7 @@ class _AccountSignInState extends State<AccountSignIn> {
                     '首次使用？验证邮箱即自动创建账号。继续即表示你同意',
                   ),
                   textAlign: TextAlign.center,
-                  style: muted.copyWith(fontSize: 11.5),
+                  style: muted.copyWith(fontSize: WaybiTextSize.caption),
                 ),
                 Wrap(
                   alignment: WrapAlignment.center,

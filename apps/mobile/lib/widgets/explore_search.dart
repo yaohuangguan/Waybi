@@ -331,12 +331,13 @@ class _ExploreSearchState extends State<ExploreSearch> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final location = widget.currentLocation;
     final locationText = location == null
         ? _text('Locating current position…', '正在定位当前位置…')
         : _locationLabel;
     return Material(
-      color: Colors.white,
+      color: scheme.surface,
       elevation: 11,
       borderRadius: BorderRadius.circular(21),
       clipBehavior: Clip.antiAlias,
@@ -350,10 +351,10 @@ class _ExploreSearchState extends State<ExploreSearch> {
                 if (!widget.destinationOnly)
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.my_location_rounded,
                         size: 19,
-                        color: WaybiColors.deepOcean,
+                        color: scheme.primary,
                       ),
                       const SizedBox(width: 11),
                       Expanded(
@@ -369,11 +370,14 @@ class _ExploreSearchState extends State<ExploreSearch> {
                               },
                               decoration: InputDecoration(
                                 isDense: true,
+                                filled: false,
                                 border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
                                 hintText: widget.origin?.label ?? locationText,
-                                hintStyle: const TextStyle(
-                                  color: Color(0xFF788780),
-                                  fontSize: 12,
+                                hintStyle: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontSize: WaybiTextSize.caption,
                                 ),
                                 suffixIconConstraints: const BoxConstraints(
                                   minWidth: 34,
@@ -414,7 +418,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                           color: WaybiColors.sky,
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                            color: const Color(0xFF477B36),
+                            color: WaybiColors.ocean,
                             width: 1.5,
                           ),
                         ),
@@ -442,17 +446,20 @@ class _ExploreSearchState extends State<ExploreSearch> {
                         },
                         decoration: InputDecoration(
                           isDense: true,
+                          filled: false,
                           border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
                           hintText: _text('Where to?', '想去哪？'),
-                          hintStyle: const TextStyle(color: Color(0xFF8A968E)),
+                          hintStyle: TextStyle(color: scheme.onSurfaceVariant),
                           suffixIconConstraints: const BoxConstraints(
                             minWidth: 36,
                             minHeight: 36,
                           ),
                           suffixIcon: _controller.text.isEmpty
-                              ? const Icon(
+                              ? Icon(
                                   Icons.search_rounded,
-                                  color: Color(0xFF285747),
+                                  color: scheme.primary,
                                 )
                               : IconButton(
                                   key: const Key('destinationClearButton'),
@@ -477,7 +484,10 @@ class _ExploreSearchState extends State<ExploreSearch> {
               padding: const EdgeInsets.all(12),
               child: Text(
                 _error!,
-                style: const TextStyle(color: Color(0xFFB64B3A), fontSize: 12),
+                style: TextStyle(
+                  color: scheme.error,
+                  fontSize: WaybiTextSize.caption,
+                ),
               ),
             ),
           if (_results.isNotEmpty ||
@@ -505,10 +515,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                       horizontal: 14,
                       vertical: 4,
                     ),
-                    leading: const Icon(
-                      Icons.place_outlined,
-                      color: Color(0xFF527C60),
-                    ),
+                    leading: Icon(Icons.place_outlined, color: scheme.primary),
                     title: Text(
                       title,
                       maxLines: 2,
@@ -534,8 +541,8 @@ class _ExploreSearchState extends State<ExploreSearch> {
                                   padding: const EdgeInsets.only(top: 2),
                                   child: Text(
                                     distance,
-                                    style: const TextStyle(
-                                      color: Color(0xFF477B36),
+                                    style: TextStyle(
+                                      color: scheme.primary,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),

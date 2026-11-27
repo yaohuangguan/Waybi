@@ -136,7 +136,7 @@ class JourneySummarySheet extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
         ),
         const SizedBox(height: 4),
-        Text(label, style: const TextStyle(fontSize: 11)),
+        Text(label, style: const TextStyle(fontSize: WaybiTextSize.caption)),
       ],
     ),
   );

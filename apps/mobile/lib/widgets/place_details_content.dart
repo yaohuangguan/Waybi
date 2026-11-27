@@ -172,7 +172,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
               _text('Checking drive time…', '正在获取驾车时间…'),
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
-                fontSize: 11,
+                fontSize: WaybiTextSize.caption,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -188,10 +188,10 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
     final trafficColor = !route.hasTrafficData
         ? scheme.onSurfaceVariant
         : trafficHeavy
-        ? WaybiColors.danger
+        ? context.status.danger
         : trafficModerate
-        ? WaybiColors.warning
-        : WaybiColors.success;
+        ? context.status.warning
+        : context.status.success;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 7, 16, 0),
@@ -235,7 +235,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
-                      fontSize: 11.5,
+                      fontSize: WaybiTextSize.caption,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -271,7 +271,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: trafficColor,
-                        fontSize: 10.5,
+                        fontSize: WaybiTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -472,7 +472,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     color: scheme.primary,
-                                    fontSize: 11,
+                                    fontSize: WaybiTextSize.caption,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -526,9 +526,9 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.star_rounded,
-                              color: WaybiColors.warning,
+                              color: context.status.warning,
                               size: 17,
                             ),
                             const SizedBox(width: 4),
@@ -547,7 +547,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                               ),
                               style: TextStyle(
                                 color: scheme.onSurfaceVariant,
-                                fontSize: 11,
+                                fontSize: WaybiTextSize.caption,
                               ),
                             ),
                           ],
@@ -574,9 +574,9 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                                       ),
                                 style: TextStyle(
                                   color: place.businessStatus == 'OPERATIONAL'
-                                      ? WaybiColors.success
+                                      ? context.status.success
                                       : scheme.onSurfaceVariant,
-                                  fontSize: 11,
+                                  fontSize: WaybiTextSize.caption,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -672,7 +672,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                       widget.detailsError!,
                       style: TextStyle(
                         color: scheme.error,
-                        fontSize: 11,
+                        fontSize: WaybiTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -695,7 +695,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                             _text('Swipe up for details', '上拉查看更多'),
                             style: TextStyle(
                               color: scheme.primary,
-                              fontSize: 10.5,
+                              fontSize: WaybiTextSize.caption,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -773,7 +773,7 @@ class _PlaceAction extends StatelessWidget {
               maxLines: 1,
               style: TextStyle(
                 color: foreground,
-                fontSize: 10.5,
+                fontSize: WaybiTextSize.caption,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -859,7 +859,7 @@ class _PhotoStrip extends StatelessWidget {
                       maxLines: 2,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 9,
+                        fontSize: WaybiTextSize.caption,
                         shadows: [Shadow(blurRadius: 5, color: Colors.black87)],
                       ),
                     ),
@@ -911,7 +911,7 @@ class _DetailsBody extends StatelessWidget {
                   child: Text(
                     chip,
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: WaybiTextSize.caption,
                       color: scheme.onSurfaceVariant,
                     ),
                   ),
@@ -951,7 +951,7 @@ class _DetailsBody extends StatelessWidget {
                       line,
                       style: TextStyle(
                         color: scheme.onSurfaceVariant,
-                        fontSize: 11,
+                        fontSize: WaybiTextSize.caption,
                       ),
                     ),
                   ),
@@ -976,7 +976,10 @@ class _DetailsBody extends StatelessWidget {
                   '${place.reviews.length} shown',
                   '显示 ${place.reviews.length} 条',
                 ),
-                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: WaybiTextSize.caption,
+                ),
               ),
             ],
           ),
@@ -1042,9 +1045,9 @@ class _ReviewTile extends StatelessWidget {
                     if (review.rating != null)
                       Text(
                         '${review.rating!.toStringAsFixed(1)} ★',
-                        style: const TextStyle(
-                          color: WaybiColors.warning,
-                          fontSize: 10,
+                        style: TextStyle(
+                          color: context.status.warning,
+                          fontSize: WaybiTextSize.caption,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1055,7 +1058,7 @@ class _ReviewTile extends StatelessWidget {
                     review.relativeTime,
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
-                      fontSize: 9,
+                      fontSize: WaybiTextSize.caption,
                     ),
                   ),
                 if (review.text.isNotEmpty) ...[
@@ -1064,7 +1067,7 @@ class _ReviewTile extends StatelessWidget {
                     review.text,
                     style: TextStyle(
                       color: scheme.onSurface,
-                      fontSize: 11,
+                      fontSize: WaybiTextSize.caption,
                       height: 1.4,
                     ),
                   ),

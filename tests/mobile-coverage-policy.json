@@ -49,6 +49,9 @@
     "apps/mobile/lib/app/road_alerts.dart": {
       "minimumLinePercent": 95
     },
+    "apps/mobile/lib/app/route_preview_controller.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/app/trip_state.dart": {
       "minimumLinePercent": 95
     },

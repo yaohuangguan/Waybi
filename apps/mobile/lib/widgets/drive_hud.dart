@@ -7,12 +7,9 @@ import '../drive/camera_alert_lifecycle.dart';
 import '../drive/drive_engine.dart';
 import '../drive/navigation_language.dart';
 import '../domain/map_layer_settings.dart';
-import '../domain/navigation_lanes.dart';
 import '../theme/waybi_theme.dart';
 import 'hold_to_end_button.dart';
 import 'road_event_timeline.dart';
-import 'lane_arrow.dart';
-import 'navigation_maneuver_icon.dart';
 import 'speed_readout.dart';
 import 'waybi_format.dart';
 
@@ -50,8 +47,6 @@ class DriveHud extends StatelessWidget {
     final dark = theme.brightness == Brightness.dark;
     final type = context.driveType;
     final status = context.status;
-    final nav = engine.navInfo;
-    final step = nav?.currentStep;
     final camera = engine.upcomingCamera;
     final cameraDistance = engine.upcomingCameraDistanceMeters;
     final passedCamera = engine.passedCamera;
@@ -93,148 +88,58 @@ class DriveHud extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
           child: Column(
             children: [
-              if (step == null)
-                PointerInterceptor(
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-                    decoration: BoxDecoration(
-                      color: WaybiInk.surface.withValues(alpha: .96),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.directions_car_filled_rounded,
-                          color: WaybiInk.accent,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                engine.routed
-                                    ? text('Navigation', '导航')
-                                    : text('Just Drive', '自由驾驶'),
-                                style: type.secondary.copyWith(
-                                  color: WaybiInk.text,
-                                  fontWeight: FontWeight.w700,
-                                ),
+              PointerInterceptor(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+                  decoration: BoxDecoration(
+                    color: WaybiInk.surface.withValues(alpha: .96),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.directions_car_filled_rounded,
+                        color: WaybiInk.accent,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              engine.routed
+                                  ? text('Navigation', '导航')
+                                  : text('Just Drive', '自由驾驶'),
+                              style: type.secondary.copyWith(
+                                color: WaybiInk.text,
+                                fontWeight: FontWeight.w700,
                               ),
-                              Text(
-                                intelligenceLabel,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: WaybiInk.muted,
-                                  fontSize: WaybiTextSize.caption,
-                                ),
+                            ),
+                            Text(
+                              intelligenceLabel,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: WaybiInk.muted,
+                                fontSize: WaybiTextSize.caption,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                        if (!following && onRecenter != null)
-                          IconButton(
-                            tooltip: text('Return to my location', '回到当前位置'),
-                            onPressed: onRecenter,
-                            icon: const Icon(Icons.my_location_rounded),
-                            color: WaybiInk.text,
-                          ),
-                        endButton,
-                      ],
-                    ),
+                      ),
+                      if (!following && onRecenter != null)
+                        IconButton(
+                          tooltip: text('Return to my location', '回到当前位置'),
+                          onPressed: onRecenter,
+                          icon: const Icon(Icons.my_location_rounded),
+                          color: WaybiInk.text,
+                        ),
+                      endButton,
+                    ],
                   ),
                 ),
-              if (step != null)
-                PointerInterceptor(
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-                    decoration: BoxDecoration(
-                      color: WaybiInk.surface.withValues(alpha: .96),
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          navigationManeuverIcon(step.maneuver.name),
-                          color: WaybiInk.accent,
-                          size: 38,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _formatDistance(
-                                  nav?.distanceToCurrentStepMeters?.toDouble(),
-                                  lang,
-                                ),
-                                style: type.distance.copyWith(
-                                  color: WaybiInk.accent,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                step.fullInstructions ??
-                                    step.fullRoadName ??
-                                    text('Continue', '继续行驶'),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: type.instruction.copyWith(
-                                  color: WaybiInk.text,
-                                ),
-                              ),
-                              if (step.lanes?.isNotEmpty ?? false) ...[
-                                const SizedBox(height: 9),
-                                Wrap(
-                                  spacing: 5,
-                                  runSpacing: 5,
-                                  children: step.lanes!.map((lane) {
-                                    final recommended = lane.laneDirections.any(
-                                      (direction) => direction.isRecommended,
-                                    );
-                                    final directions = laneDirections(
-                                      lane.laneDirections.map(
-                                        (d) => d.laneShape.name,
-                                      ),
-                                    );
-                                    return Container(
-                                      constraints: const BoxConstraints(
-                                        minWidth: 34,
-                                      ),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 7,
-                                        vertical: 5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: recommended
-                                            ? WaybiInk.accent
-                                            : WaybiInk.raised,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: LaneArrow(
-                                        directions: directions,
-                                        size: 30,
-                                        language: lang,
-                                        color: recommended
-                                            ? WaybiColors.midnightOcean
-                                            : WaybiInk.muted,
-                                      ),
-                                    );
-                                  }).toList(),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        endButton,
-                      ],
-                    ),
-                  ),
-                ),
+              ),
               if (passedCamera != null &&
                   engine.cameraAlertState.phase == CameraAlertPhase.passed)
                 PointerInterceptor(
@@ -372,16 +277,6 @@ class DriveHud extends StatelessWidget {
                               ? '—'
                               : _formatDistance(cameraDistance, lang),
                         ),
-                        if (nav?.distanceToFinalDestinationMeters != null) ...[
-                          const _MetricDivider(),
-                          _Metric(
-                            label: text('Remaining', '剩余'),
-                            value: _formatDistance(
-                              nav!.distanceToFinalDestinationMeters!.toDouble(),
-                              lang,
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                   ),

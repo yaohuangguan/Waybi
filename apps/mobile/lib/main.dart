@@ -832,11 +832,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         );
       }
 
-      {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() {});
-        });
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() {});
+      });
     }
     _updateArrivalExperience();
     unawaited(_cacheNavigationCorridor());
@@ -861,8 +859,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (_independentNavigation.active) {
       return _independentNavigation.remainingDistanceMeters;
     }
-    final native = _driveEngine.navInfo?.distanceToFinalDestinationMeters;
-    if (native != null && native.isFinite) return native.toDouble();
     final route = _activeNavigationRoute;
     final progress = _driveEngine.routeProgress;
     if (route == null || progress == null || route.points.length < 2) {
@@ -907,7 +903,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           allowGoogleFallback: false,
           language: _appLanguage,
         );
-      } catch (_) {}
+      } catch (_) {
+        // Arrival guidance works without parking suggestions.
+      }
     }
     try {
       details = await _placeDetailsRepository.fetchIndependent(destination);
@@ -1231,8 +1229,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     } catch (_) {
       // The default voice remains available.
     }
-
-    {}
     if (mounted) setState(() {});
     if (_account.signedIn && _account.profile != null) {
       unawaited(_commute.syncWithAccount());
@@ -1567,63 +1563,60 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _refreshMap() async {
-    {
-      final location = _driveEngine.active
-          ? _driveEngine.snappedLocation ?? _gpsLocation
-          : _gpsLocation;
-      final routePreviewOwnsCamera =
-          !_driveEngine.active &&
-          _journeyPhase == JourneyPhase.routePreview &&
-          _routePlan != null;
-      final placeDeckOwnsCamera =
-          !_driveEngine.active && _selectedPlace != null && _routePlan == null;
-      if (_following &&
-          !routePreviewOwnsCamera &&
-          !placeDeckOwnsCamera &&
-          location != null &&
-          _browseRenderer != null) {
-        final navigating = _independentNavigation.active;
-        final heading = navigationForwardBearing(
-          speedKph: _driveEngine.active ? _driveEngine.speedKph : 0,
-          course: _driveEngine.snappedHeadingDegrees ?? _travelHeading,
-          compass: _deviceHeading,
-          routeBearing: _routeInitialBearing,
-        );
-        final point = GeoPoint(location.latitude, location.longitude);
-        final viewport = _driveEngine.active
-            ? _independentCamera.update(
-                location: point,
-                heading: heading,
-                speedKph: _driveEngine.speedKph,
-                mode: navigating
-                    ? _activeNavigationRoute?.mode ?? _selectedMode
-                    : WaybiTravelMode.drive,
-                visibleHeight:
-                    MediaQuery.sizeOf(context).height -
-                    _navigationTopInset -
-                    _navigationBottomInset,
-                distanceToStep: navigating
-                    ? _independentNavigation.distanceToStepMeters
-                    : double.infinity,
-                nextStep: navigating ? _independentNavigation.nextStep : null,
-                northUp: _cameraMode.northUp,
-                tilted: _cameraMode.tilted,
-                now: DateTime.now(),
-                offRoute: _independentNavigation.offRoute,
-              )
-            : _viewport.copyWith(
-                center: GeoPoint(location.latitude, location.longitude),
-                bearing: _cameraMode.northUp ? 0 : heading,
-                pitch: _cameraMode.tilted ? 48 : 0,
-              );
-        // A north-up map that is standing still produces the same viewport
-        // for every compass reading; do not animate the camera to where it
-        // already is.
-        if (_sameViewport(viewport, _lastCameraTarget)) return;
-        _lastCameraTarget = viewport;
-        await _browseRenderer!.moveTo(viewport);
-      }
-      return;
+    final location = _driveEngine.active
+        ? _driveEngine.snappedLocation ?? _gpsLocation
+        : _gpsLocation;
+    final routePreviewOwnsCamera =
+        !_driveEngine.active &&
+        _journeyPhase == JourneyPhase.routePreview &&
+        _routePlan != null;
+    final placeDeckOwnsCamera =
+        !_driveEngine.active && _selectedPlace != null && _routePlan == null;
+    if (_following &&
+        !routePreviewOwnsCamera &&
+        !placeDeckOwnsCamera &&
+        location != null &&
+        _browseRenderer != null) {
+      final navigating = _independentNavigation.active;
+      final heading = navigationForwardBearing(
+        speedKph: _driveEngine.active ? _driveEngine.speedKph : 0,
+        course: _driveEngine.snappedHeadingDegrees ?? _travelHeading,
+        compass: _deviceHeading,
+        routeBearing: _routeInitialBearing,
+      );
+      final point = GeoPoint(location.latitude, location.longitude);
+      final viewport = _driveEngine.active
+          ? _independentCamera.update(
+              location: point,
+              heading: heading,
+              speedKph: _driveEngine.speedKph,
+              mode: navigating
+                  ? _activeNavigationRoute?.mode ?? _selectedMode
+                  : WaybiTravelMode.drive,
+              visibleHeight:
+                  MediaQuery.sizeOf(context).height -
+                  _navigationTopInset -
+                  _navigationBottomInset,
+              distanceToStep: navigating
+                  ? _independentNavigation.distanceToStepMeters
+                  : double.infinity,
+              nextStep: navigating ? _independentNavigation.nextStep : null,
+              northUp: _cameraMode.northUp,
+              tilted: _cameraMode.tilted,
+              now: DateTime.now(),
+              offRoute: _independentNavigation.offRoute,
+            )
+          : _viewport.copyWith(
+              center: GeoPoint(location.latitude, location.longitude),
+              bearing: _cameraMode.northUp ? 0 : heading,
+              pitch: _cameraMode.tilted ? 48 : 0,
+            );
+      // A north-up map that is standing still produces the same viewport
+      // for every compass reading; do not animate the camera to where it
+      // already is.
+      if (_sameViewport(viewport, _lastCameraTarget)) return;
+      _lastCameraTarget = viewport;
+      await _browseRenderer!.moveTo(viewport);
     }
   }
 
@@ -1667,10 +1660,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _following = true;
       _routeOverviewActive = false;
     });
-    {
-      _queueMapRefresh();
-      return;
-    }
+    _queueMapRefresh();
   }
 
   IconData get _locationControlIcon {
@@ -1747,7 +1737,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   void _markMapManuallyMoved({bool searchArea = false}) {
     _lastCameraTarget = null;
     _driveCameraFollow.pause(DateTime.now());
-    {}
     if (mounted && (_following || _routeOverviewActive)) {
       setState(() {
         _following = false;
@@ -1832,8 +1821,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       );
       return;
     }
-
-    {}
   }
 
   void _toggleCompass() {
@@ -2727,19 +2714,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _renderRoutePreview() async {
     _following = false;
-    {
-      final renderer = _takeCamera();
-      final route = _selectedRoute;
-      if (renderer is RouteMapRenderer && route != null) {
-        await renderer.fitRoute(
-          route.points,
-          bottomInset: (MediaQuery.sizeOf(context).height * .44).clamp(
-            330,
-            420,
-          ),
-        );
-      }
-      return;
+    final renderer = _takeCamera();
+    final route = _selectedRoute;
+    if (renderer is RouteMapRenderer && route != null) {
+      await renderer.fitRoute(
+        route.points,
+        bottomInset: (MediaQuery.sizeOf(context).height * .44).clamp(330, 420),
+      );
     }
   }
 
@@ -2974,9 +2955,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         (prefs) => prefs.setBool('waybi.voice.enabled', value),
       ),
     );
-    {
-      return;
-    }
   }
 
   void _setLanesEnabled(bool value) {
@@ -3132,7 +3110,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         // A half-started engine must not keep the drive route or GPS feed.
         try {
           await _independentNavigation.stop();
-        } catch (_) {}
+        } catch (_) {
+          // The page is leaving navigation regardless.
+        }
       }
       if (!mounted || cancelled()) return;
       setState(
@@ -3159,30 +3139,23 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Map<String, Object?> _systemNavigationState() {
     final independent = _independentNavigation.active;
     final step = independent ? _independentNavigation.nextStep : null;
-    final native = _driveEngine.navInfo;
-    final instruction = independent
-        ? routeStepInstruction(step, _appLanguage)
-        : navigationInstruction(native?.currentStep, _appLanguage);
-    final type = independent
-        ? '${step?.maneuverType} ${step?.maneuverModifier}'
-        : native?.currentStep?.maneuver.name.toLowerCase() ?? '';
-    final offRoute = independent
-        ? _independentNavigation.offRoute || _independentNavigation.rerouting
-        : native?.navState == NavState.rerouting;
+    final instruction = routeStepInstruction(step, _appLanguage);
+    final type = '${step?.maneuverType} ${step?.maneuverModifier}';
+    final offRoute =
+        independent &&
+        (_independentNavigation.offRoute || _independentNavigation.rerouting);
     final distance = independent
         ? _independentNavigation.distanceToStepMeters
-        : native?.distanceToCurrentStepMeters;
+        : null;
     final remaining = _navigationRemainingMeters;
     final gpsReliable = !independent || _driveEngine.hasReliableLocation;
     final seconds = independent
         ? _independentNavigation.remainingSeconds
-        : native?.timeToFinalDestinationSeconds ??
-              _activeNavigationRoute?.durationSeconds ??
-              0;
+        : _activeNavigationRoute?.durationSeconds ?? 0;
     return {
       'destination': _destinationTitle,
       'language': _appLanguage,
-      'provider': independent ? 'independent' : 'google',
+      'provider': 'independent',
       'gpsReliable': gpsReliable,
       'instruction': !gpsReliable
           ? _text('Waiting for accurate GPS', '正在等待准确定位')
@@ -3632,7 +3605,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _setCarMarker(bool value) async {
-    {}
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('waybi.map.car_marker', value);
     _queueMapRefresh();
@@ -3678,8 +3650,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     } else if (!value.traffic && !_driveEngine.active) {
       _driveEngine.stopTrafficFlowRefresh();
     }
-
-    {}
   }
 
   void _showMapLayers() {
@@ -3804,7 +3774,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         bottomInset: bottomInset,
       );
     }
-    {}
 
     if (!mounted) return;
     await showDirectionsSheet(
@@ -3816,13 +3785,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _shareTripSnapshot() async {
-    final nav = _driveEngine.navInfo;
-    final remaining = _independentNavigation.active
+    final active = _independentNavigation.active;
+    final remaining = active
         ? _independentNavigation.remainingDistanceMeters
-        : nav?.distanceToFinalDestinationMeters;
-    final arrival = _independentNavigation.active
-        ? _independentNavigation.remainingSeconds
-        : nav?.timeToFinalDestinationSeconds;
+        : null;
+    final arrival = active ? _independentNavigation.remainingSeconds : null;
     final unknown = _text('unknown', '未知');
     final distance = remaining == null
         ? unknown
@@ -4201,8 +4168,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
     );
     _selectPlace(place, SelectionSource.search);
-
-    {}
   }
 
   void _showGoSearch() => unawaited(_openSearch());
@@ -4351,8 +4316,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
     );
     _selectPlace(place, SelectionSource.search);
-
-    {}
     await _takeCamera()?.moveTo(_viewport.copyWith(center: place.location));
     return place;
   }
@@ -4510,8 +4473,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       setState(() {});
       if (_following) _queueMapRefresh();
     }
-
-    {}
   }
 
   @override
@@ -4745,7 +4706,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-            ...const [],
             if (_independentNavigation.active)
               Positioned.fill(
                 child: IndependentNavigationOverlay(

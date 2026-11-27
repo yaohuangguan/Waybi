@@ -471,8 +471,8 @@ class _ProfilePageState extends State<ProfilePage> {
               children: [
                 Text(
                   _text(
-                    'Permanently deletes your Waybi account, saved routes, places, reviews and synced companion memories. This cannot be undone.',
-                    '将永久删除 Waybi 账号、路线记录、收藏、评价和已同步的旅行伙伴回忆，无法撤销。',
+                    'Permanently deletes your Waybi account, saved routes, places, reviews, synced companion memories and any voices you shared. This cannot be undone.',
+                    '将永久删除 Waybi 账号、路线记录、收藏、评价、已同步的旅行伙伴回忆和你分享过的语音，无法撤销。',
                   ),
                 ),
                 const SizedBox(height: 12),

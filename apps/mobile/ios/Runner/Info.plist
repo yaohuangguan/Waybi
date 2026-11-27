@@ -52,6 +52,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
 	<dict><key>WaybiNavigation</key><string>Precise location keeps your navigation position on the correct road.</string></dict>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

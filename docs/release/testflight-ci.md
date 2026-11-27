@@ -29,12 +29,20 @@ in secrets.
 
    `ASC_KEY_P8_BASE64` accepts either the raw `.p8` text, as above, or its base64.
    Keep the `.p8` file out of the repo, and delete or vault it once it is uploaded.
-3. **Register the identifiers.** Run the workflow once with *upload* unticked.
-   That signed build registers `co.waybi.ios`, with Sign in with Apple, and
-   `co.waybi.ios.navigation` in the developer portal if they do not exist yet.
+3. **Register the identifiers.** Both are already registered for team
+   `U94L2UMT25`. For a new team, register them in the developer portal under
+   *Identifiers → +*: `co.waybi.ios`, with Sign in with Apple, and
+   `co.waybi.ios.navigation`, the Live Activity extension, as an explicit App ID
+   with no extra capabilities. With the API key, xcodebuild registered the app
+   ID itself but failed on the extension with "Automatic signing cannot register
+   bundle identifier".
 4. **Create the app record.** In App Store Connect, go to *Apps → + → New App*:
    iOS, bundle ID `co.waybi.ios`, SKU of your choice. An upload fails until this
-   record exists.
+   record exists. The current record is Waybi, Apple ID `6839138309`, SKU
+   `waybi-ios`.
+5. **Internal testers.** Under *TestFlight → Internal Testing*, the
+   `Waybi Internal` group has automatic distribution on, so every processed
+   build reaches its testers without any manual step.
 
 ## Each TestFlight build
 
@@ -94,10 +102,14 @@ built-in defaults, which is what local `pnpm mobile:ios:ipa` builds do when no
 
 ## Notes and troubleshooting
 
-- **Export compliance.** `Info.plist` has no `ITSAppUsesNonExemptEncryption`
-  key, so App Store Connect asks the encryption question for every build. If the
-  answer is "standard HTTPS only / exempt", the owner can add
-  `<key>ITSAppUsesNonExemptEncryption</key><false/>` to skip the prompt.
+- **Export compliance.** `Info.plist` declares
+  `ITSAppUsesNonExemptEncryption = false`, matching the owner's answer for build
+  49: no algorithms beyond the OS's HTTPS and a SHA-256 nonce for Sign in with
+  Apple. Builds therefore skip the encryption question. If the app ever adds its
+  own encryption, such as OpenSSL or libsodium, remove the key and answer the
+  question again.
+- **"Automatic signing cannot register bundle identifier".** Register that
+  identifier by hand (step 3), then rerun.
 - **"No Accounts" / "No profiles for 'co.waybi.ios'".** The key is not Admin,
   or the Apple Developer Program agreements in App Store Connect still need
   accepting.

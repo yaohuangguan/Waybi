@@ -1,4 +1,4 @@
-import { t, type Language } from './i18n';
+import { plural, t, type Language } from './i18n';
 import type { RecentDestination } from './account';
 import { apiFetch, describeError, isAbortError } from './api';
 
@@ -172,7 +172,7 @@ export function initAutocomplete(options: {
     if (heading) { status.textContent = heading; status.hidden = false; }
     else if (places.length) {
       // Announce the count without showing an extra line.
-      status.textContent = t(options.language(), 'suggestionsCount', { count: places.length });
+      status.textContent = plural(options.language(), places.length, 'suggestionsCountOne', 'suggestionsCount');
       status.hidden = true;
     } else status.hidden = true;
     panel.hidden = !places.length && status.hidden;

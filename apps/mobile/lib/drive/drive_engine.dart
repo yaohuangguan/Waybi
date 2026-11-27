@@ -380,10 +380,6 @@ class DriveEngine extends ChangeNotifier {
   CameraAlertState cameraAlertState = const CameraAlertState.idle();
   bool get routed => _route != null;
 
-  /// Turn-by-turn data from the Google Navigation SDK session, which Waybi
-  /// no longer starts: always null. Kept for the HUD widgets that still read
-  /// it; the independent engine provides guidance instead.
-  NavInfo? get navInfo => null;
   String? error;
 
   /// Local location feed for a non-Google map renderer. Camera alerts keep

@@ -138,9 +138,33 @@ class AppHarness {
       },
   };
   Completer<http.Response>? delayedRoute;
+
+  /// Requests to these paths wait for their completer before answering.
+  final holds = <String, Completer<void>>{};
+
+  /// Each request to a gated path waits on its own gate. Completing a gate
+  /// with a response answers with it; completing it with null answers
+  /// normally. Lets a test release overlapping requests out of order.
+  final gatedPaths = <String>{};
+  final gates = <({http.Request request, Completer<http.Response?> gate})>[];
+
+  /// Platform method calls that throw a [PlatformException], by channel.
+  final channelErrors = <String, Set<String>>{};
+
+  /// A live traffic snapshot for /api/traffic-flow; unavailable when null.
+  bool trafficAvailable = false;
+  Map<String, dynamic>? detailsResponse = const {};
   late final client = MockClient((request) async {
     requests.add(request);
     final path = request.url.path;
+    final hold = holds[path];
+    if (hold != null) await hold.future;
+    if (gatedPaths.contains(path)) {
+      final gate = Completer<http.Response?>();
+      gates.add((request: request, gate: gate));
+      final override = await gate.future;
+      if (override != null) return override;
+    }
     Object body = {};
     int status = 200;
     if (endpointFailures.containsKey(path)) {
@@ -229,6 +253,28 @@ class AppHarness {
       body = transitResponse!;
     } else if (path == '/api/explore') {
       body = explorePlaces;
+    } else if (path == '/api/independent-place-details' &&
+        detailsResponse != null) {
+      body = {
+        'placeId': request.url.queryParameters['id'] ?? '',
+        'name': request.url.queryParameters['name'] ?? '',
+        'address': request.url.queryParameters['address'] ?? '',
+        ...detailsResponse!,
+      };
+    } else if (path == '/api/traffic-flow' && trafficAvailable) {
+      body = {
+        'syncStatus': 'live',
+        'checkedAt': DateTime.now().toUtc().toIso8601String(),
+        'segments': [
+          {
+            'id': 'sh1',
+            'name': 'Test motorway',
+            'level': 'free',
+            'start': {'latitude': -37.2, 'longitude': 174.9},
+            'end': {'latitude': -37.2, 'longitude': 174.91},
+          },
+        ],
+      };
     } else if (path == '/api/route-options') {
       if (delayedRoute != null) return delayedRoute!.future;
       if (routeFailure) return http.Response('{"error":"offline"}', 503);
@@ -391,6 +437,9 @@ class AppHarness {
     Map<String, Object> preferences = const {},
     bool signedIn = false,
     bool plus = false,
+    DriveEngine Function(TransitLaneRepository lanes)? engine,
+    bool initialFix = true,
+    ThemeData? theme,
   }) async {
     this.signedIn = signedIn;
     this.plus = plus;
@@ -405,17 +454,16 @@ class AppHarness {
     FlutterSecureStorage.setMockInitialValues({
       if (signedIn) 'waybi_session': 'f' * 64,
     });
-    drive = DriveEngine(
-      transitLaneRepository: TransitLaneRepository(
-        client: client,
-        seedLoader: () async => jsonEncode({
-          'lanes': [],
-          'checkedAt': DateTime.now().toUtc().toIso8601String(),
-          'source': 'Controlled app-flow fixture',
-          'syncStatus': 'live',
-        }),
-      ),
+    final lanes = TransitLaneRepository(
+      client: client,
+      seedLoader: () async => jsonEncode({
+        'lanes': [],
+        'checkedAt': DateTime.now().toUtc().toIso8601String(),
+        'source': 'Controlled app-flow fixture',
+        'syncStatus': 'live',
+      }),
     );
+    drive = engine?.call(lanes) ?? DriveEngine(transitLaneRepository: lanes);
     final originalGps = GeolocatorPlatform.instance;
     GeolocatorPlatform.instance = gps;
     final originalMap = ml.MapLibrePlatform.createInstance;
@@ -445,6 +493,9 @@ class AppHarness {
     for (final channel in channels) {
       messenger.setMockMethodCallHandler(channel, (call) async {
         calls.add(call);
+        if (channelErrors[channel.name]?.contains(call.method) ?? false) {
+          throw PlatformException(code: 'failed', message: call.method);
+        }
         if (call.method == 'checkPermissionStatus') return permission;
         if (call.method == 'requestPermissions') {
           return <int, int>{3: permission, 5: permission};
@@ -510,10 +561,44 @@ class AppHarness {
         messenger.setMockMessageHandler(name, null);
       }
     });
-    await tester.pumpWidget(MaterialApp(home: MapHomePage(driveEngine: drive)));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: MapHomePage(driveEngine: drive),
+      ),
+    );
     await frames();
+    if (!initialFix) return;
     gps.emit(longitude: 174.9, speed: 0);
     await frames(2);
+  }
+
+  /// A compass reading from the native heading stream.
+  Future<void> heading(double degrees) async {
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .handlePlatformMessage(
+          'waybi/device_heading',
+          const StandardMethodCodec().encodeSuccessEnvelope({
+            'heading': degrees,
+          }),
+          (_) {},
+        );
+  }
+
+  /// Answers the oldest held request to [path] (normally, or with [response]).
+  Future<void> release(String path, [http.Response? response]) async {
+    final index = gates.indexWhere(
+      (entry) => entry.request.url.path == path && !entry.gate.isCompleted,
+    );
+    expect(index, isNonNegative, reason: 'No held request for $path');
+    gates[index].gate.complete(response);
+    await frames();
+  }
+
+  /// Sends the Android system back gesture to the app.
+  Future<void> back() async {
+    await tester.binding.handlePopRoute();
+    await frames();
   }
 
   Future<void> select({

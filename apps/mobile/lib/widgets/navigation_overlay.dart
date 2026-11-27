@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:google_navigation_flutter/google_navigation_flutter.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/navigation_lanes.dart';
@@ -69,7 +68,6 @@ class NavigationGuidance {
     this.remainingMeters,
     this.remainingSeconds,
     this.lanes = const [],
-    this.lanesImage,
     this.thenInstruction,
   });
   final String instruction;
@@ -78,7 +76,6 @@ class NavigationGuidance {
   final num? remainingMeters;
   final int? remainingSeconds;
   final List<NavigationLane> lanes;
-  final ImageDescriptor? lanesImage;
   final String? thenInstruction;
 
   @override
@@ -90,7 +87,6 @@ class NavigationGuidance {
       other.remainingMeters == remainingMeters &&
       other.remainingSeconds == remainingSeconds &&
       listEquals(other.lanes, lanes) &&
-      identical(other.lanesImage, lanesImage) &&
       other.thenInstruction == thenInstruction;
 
   @override
@@ -101,7 +97,6 @@ class NavigationGuidance {
     remainingMeters,
     remainingSeconds,
     Object.hashAll(lanes),
-    lanesImage,
     thenInstruction,
   );
 }
@@ -209,8 +204,6 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
   late final ValueNotifier<bool> _moving = ValueNotifier(
     DrivingMotion.next(false, widget.engine.speedKph),
   );
-  ImageDescriptor? _laneDescriptor;
-  Future<Image?>? _laneImage;
 
   String _text(String en, String zh) => widget.language == 'zh' ? zh : en;
 
@@ -331,39 +324,14 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
       ? '—'
       : navigationMetres(metres, widget.language);
 
-  NavigationGuidance _nativeGuidance() {
-    final nav = widget.engine.navInfo;
-    final step = nav?.currentStep;
-    return NavigationGuidance(
-      instruction: nav?.navState == NavState.rerouting
-          ? _text('Updating route…', '正在重新规划路线…')
-          : navigationInstruction(step, widget.language),
-      lanesImage: step?.lanesImage,
-      maneuverIcon: navigationManeuverIcon(step?.maneuver.name ?? ''),
-      stepMeters: nav?.distanceToCurrentStepMeters,
-      remainingMeters: nav?.distanceToFinalDestinationMeters,
-      remainingSeconds: nav?.timeToFinalDestinationSeconds,
-      lanes: [
-        for (final lane in step?.lanes ?? <Lane>[])
-          NavigationLane(
-            laneDirections(lane.laneDirections.map((d) => d.laneShape.name)),
-            lane.laneDirections.any(
-              (direction) =>
-                  direction.isRecommended &&
-                  (laneDirections(
-                        lane.laneDirections.map((d) => d.laneShape.name),
-                      ).isEmpty ||
-                      laneSupportsManeuver([
-                        direction.laneShape.name,
-                      ], step!.maneuver.name)),
-            ),
-          ),
-      ],
-    );
-  }
+  /// What the HUD shows before an engine supplies guidance.
+  NavigationGuidance _idleGuidance() => NavigationGuidance(
+    instruction: widget.language == 'zh' ? '沿路线继续行驶' : 'Continue on route',
+    maneuverIcon: navigationManeuverIcon(''),
+  );
 
   NavigationGuidance _currentGuidance() =>
-      widget.guidanceListenable?.value ?? widget.guidance ?? _nativeGuidance();
+      widget.guidanceListenable?.value ?? widget.guidance ?? _idleGuidance();
 
   /// The listenables guidance depends on: its notifier, or the engine for
   /// native guidance.
@@ -386,14 +354,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
         widget.lanesEnabled &&
         guidance.stepMeters != null &&
         guidance.stepMeters! <= 300 &&
-        (guidance.lanes.any((lane) => lane.recommended) ||
-            guidance.lanesImage != null);
-    if (guidance.lanesImage != _laneDescriptor) {
-      _laneDescriptor = guidance.lanesImage;
-      _laneImage = _laneDescriptor == null
-          ? null
-          : getRegisteredImage(_laneDescriptor!).catchError((Object _) => null);
-    }
+        guidance.lanes.any((lane) => lane.recommended);
     return Container(
       key: const ValueKey('navigationGuidanceHeader'),
       padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
@@ -532,18 +493,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                             ],
                           ),
                         )
-                      : SizedBox(
-                          height: 43,
-                          child: FutureBuilder<Image?>(
-                            future: _laneImage,
-                            builder: (_, snapshot) => snapshot.data == null
-                                ? const SizedBox.shrink()
-                                : FittedBox(
-                                    fit: BoxFit.contain,
-                                    child: snapshot.data!,
-                                  ),
-                          ),
-                        ),
+                      : const SizedBox(height: 43),
                 ),
               ],
             ),
@@ -1203,7 +1153,7 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
     }
     return ListenableBuilder(
       listenable: widget.engine,
-      builder: (context, _) => builder(context, _nativeGuidance()),
+      builder: (context, _) => builder(context, _idleGuidance()),
     );
   }
 }

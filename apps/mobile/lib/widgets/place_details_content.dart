@@ -9,6 +9,7 @@ import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../theme/waybi_theme.dart';
 import 'far_match_notice.dart';
+import 'load_error.dart';
 
 class PlaceDetailsContent extends StatefulWidget {
   const PlaceDetailsContent({
@@ -17,6 +18,7 @@ class PlaceDetailsContent extends StatefulWidget {
     required this.details,
     required this.detailsLoading,
     required this.detailsError,
+    this.onRetryDetails,
     required this.routeBusy,
     this.quickRoute,
     this.quickRouteLoading = false,
@@ -36,6 +38,9 @@ class PlaceDetailsContent extends StatefulWidget {
   final PlaceDetails? details;
   final bool detailsLoading;
   final String? detailsError;
+
+  /// Retries loading [details] after [detailsError]; shows a Retry action.
+  final VoidCallback? onRetryDetails;
   final bool routeBusy;
   final RouteOption? quickRoute;
   final bool quickRouteLoading;
@@ -713,14 +718,20 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                 if (widget.detailsError != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 6, 16, 4),
-                    child: Text(
-                      widget.detailsError!,
-                      style: TextStyle(
-                        color: scheme.error,
-                        fontSize: WaybiTextSize.caption,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    child: widget.onRetryDetails == null
+                        ? Text(
+                            widget.detailsError!,
+                            style: TextStyle(
+                              color: scheme.error,
+                              fontSize: WaybiTextSize.caption,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          )
+                        : WaybiInlineError(
+                            message: widget.detailsError!,
+                            retryLabel: _text('Retry', '重试'),
+                            onRetry: widget.onRetryDetails,
+                          ),
                   ),
                 if (!_expanded && place != null)
                   InkWell(

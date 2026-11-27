@@ -63,7 +63,12 @@ void main() {
       h.endpointFailures['/api/profile/places'] = 503;
       await h.act(place(t).onFavorite);
       expect(place(t).isFavorite, isFalse);
-      expect(find.textContaining('Temporarily unavailable'), findsWidgets);
+      // A friendly explanation, never the server's raw error text.
+      expect(
+        find.textContaining('Could not update your saved places'),
+        findsWidgets,
+      );
+      expect(find.textContaining('Temporarily unavailable'), findsNothing);
       expect(place(t).selectedPlace.name, 'Test destination');
     },
   );
@@ -121,7 +126,9 @@ void main() {
       h.endpointFailures['/api/profile/reviews'] = 503;
       await h.tapText('Save');
       expect(h.reviews.single['comment'], 'Easy access');
-      expect(find.textContaining('Temporarily unavailable'), findsWidgets);
+      // A friendly explanation, never the server's raw error text.
+      expect(find.textContaining('Could not save your review'), findsWidgets);
+      expect(find.textContaining('Temporarily unavailable'), findsNothing);
     },
   );
   appTest(

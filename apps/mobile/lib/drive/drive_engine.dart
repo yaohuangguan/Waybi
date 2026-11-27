@@ -27,7 +27,6 @@ import 'camera_matcher.dart';
 import 'route_camera_matcher.dart';
 import 'route_progress_tracker.dart';
 import 'voice_engine.dart';
-import 'navigation_language.dart';
 import 'navigation_location_filter.dart';
 import 'reliable_location_feed.dart';
 import 'speed_limit_pacer.dart';
@@ -246,7 +245,6 @@ class DriveEngine extends ChangeNotifier {
   late final NztaTrafficRoadEventProvider _trafficProvider;
   late final RoadEventProviderRegistry _providerRegistry;
 
-  final List<StreamSubscription<dynamic>> _subscriptions = [];
   bool _disposed = false;
   int _locationSession = 0;
 
@@ -323,7 +321,6 @@ class DriveEngine extends ChangeNotifier {
   DateTime? _lastRoadEventEvaluationAt;
   LatLng? _lastRoadEventEvaluationLocation;
   double? _headingDegrees;
-  Completer<void>? _roadSnappedFixCompleter;
 
   bool active = false;
   bool guidanceRunning = false;
@@ -335,7 +332,6 @@ class DriveEngine extends ChangeNotifier {
   bool _voiceEnabled = true;
   bool _keepScreenAwake = true;
   String navigationLanguage = 'en';
-  String? _spokenTurn;
   int _turnRevision = 0;
   Future<void> setKeepScreenAwake(bool value) async {
     _keepScreenAwake = value;
@@ -374,90 +370,12 @@ class DriveEngine extends ChangeNotifier {
   SafetyCamera? passedCamera;
   CameraAlertState cameraAlertState = const CameraAlertState.idle();
   bool get routed => _route != null;
-  NavInfo? navInfo;
-  DateTime? navInfoUpdatedAt;
-  bool get nativeGuidanceStale =>
-      guidanceRunning &&
-      (navInfoUpdatedAt == null ||
-          DateTime.now().difference(navInfoUpdatedAt!).inSeconds >= 8);
+
+  /// Turn-by-turn data from the Google Navigation SDK session, which Waybi
+  /// no longer starts: always null. Kept for the HUD widgets that still read
+  /// it; the independent engine provides guidance instead.
+  NavInfo? get navInfo => null;
   String? error;
-
-  Future<void> start() async {
-    if (active || _disposed) return;
-    ++_locationSession;
-    _roadSnappedFixCompleter = Completer<void>();
-    error = null;
-
-    await _voiceEngine.initialize();
-    unawaited(loadCameras(force: true));
-
-    final snapped =
-        await GoogleMapsNavigator.setRoadSnappedLocationUpdatedListener(
-          _onRoadSnappedLocation,
-        );
-    _subscriptions.add(snapped);
-
-    _subscriptions.add(
-      GoogleMapsNavigator.setSpeedingUpdatedListener((event) {
-        speedSeverity = event.severity;
-        percentageAboveLimit = event.percentageAboveLimit;
-        notifyListeners();
-      }),
-    );
-
-    _subscriptions.add(
-      GoogleMapsNavigator.setNavInfoListener(
-        (event) {
-          navInfo = event.navInfo;
-          navInfoUpdatedAt = DateTime.now();
-          guidanceRunning =
-              event.navInfo.navState == NavState.enroute ||
-              event.navInfo.navState == NavState.rerouting;
-          _speakNativeTurn(event.navInfo);
-          notifyListeners();
-        },
-        numNextStepsToPreview: 3,
-        stepImageGenerationOptions: const StepImageGenerationOptions(
-          generateLaneImages: true,
-        ),
-      ),
-    );
-
-    _subscriptions.add(
-      Geolocator.getPositionStream(
-        locationSettings: defaultTargetPlatform == TargetPlatform.iOS
-            ? AppleSettings(
-                accuracy: LocationAccuracy.bestForNavigation,
-                distanceFilter: 0,
-                activityType: ActivityType.automotiveNavigation,
-                pauseLocationUpdatesAutomatically: false,
-                showBackgroundLocationIndicator: true,
-                allowBackgroundLocationUpdates: true,
-              )
-            : const LocationSettings(
-                accuracy: LocationAccuracy.bestForNavigation,
-                distanceFilter: 0,
-              ),
-      ).listen((position) {
-        latestPosition = position;
-        final metresPerSecond = position.speed.isFinite && position.speed > 0
-            ? position.speed
-            : 0;
-        speedKph = metresPerSecond * 3.6;
-        if (_lastSnappedLocation == null) {
-          _onLocation(
-            LatLng(latitude: position.latitude, longitude: position.longitude),
-          );
-        } else {
-          notifyListeners();
-        }
-      }),
-    );
-    active = true;
-    await _updateWakeLock();
-    _startRoadIntelligenceRefreshTimer();
-    notifyListeners();
-  }
 
   /// Local location feed for a non-Google map renderer. Camera alerts keep
   /// using the same matching and voice logic, without starting Google SDK.
@@ -470,7 +388,6 @@ class DriveEngine extends ChangeNotifier {
     if (!await Geolocator.isLocationServiceEnabled()) {
       throw StateError('Turn on location services to start driving');
     }
-    _roadSnappedFixCompleter = Completer<void>();
     error = null;
     await _voiceEngine.initialize();
     if (_disposed || session != _locationSession) return;
@@ -823,7 +740,6 @@ class DriveEngine extends ChangeNotifier {
   }
 
   void setRoute(RouteOption? route, {bool preserveAlerts = false}) {
-    _spokenTurn = null;
     ++_turnRevision;
     unawaited(_voiceEngine.stop());
     _route = route;
@@ -833,7 +749,6 @@ class DriveEngine extends ChangeNotifier {
     _pendingTransitAlerts.clear();
     unawaited(_recomputeTransitLanes());
     _routeRoadEvents = RoadIntelligenceEngine.routeEvents(route);
-    navInfoUpdatedAt = null;
     _progressTracker = route != null && route.points.length >= 2
         ? RouteProgressTracker(route.points)
         : null;
@@ -893,14 +808,8 @@ class DriveEngine extends ChangeNotifier {
         .toSet();
   }
 
-  void _onRoadSnappedLocation(RoadSnappedLocationUpdatedEvent event) {
-    _onLocation(event.location);
-  }
-
   void _onLocation(LatLng current) {
     if (!active || _disposed) return;
-    final fix = _roadSnappedFixCompleter;
-    if (fix != null && !fix.isCompleted) fix.complete();
     final previous = _lastRawLocation;
     _lastRawLocation = current;
 
@@ -1071,19 +980,6 @@ class DriveEngine extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> waitForRoadSnappedLocation({
-    Duration timeout = const Duration(seconds: 8),
-  }) async {
-    if (_lastSnappedLocation != null) return true;
-    final fix = _roadSnappedFixCompleter ??= Completer<void>();
-    try {
-      await fix.future.timeout(timeout);
-      return _lastSnappedLocation != null;
-    } on TimeoutException {
-      return false;
-    }
-  }
-
   Future<void> speakMessage(String message) async {
     if (!voiceEnabled) return;
     try {
@@ -1121,50 +1017,6 @@ class DriveEngine extends ChangeNotifier {
     } catch (_) {
       debugPrint('Navigation audio unavailable');
     }
-  }
-
-  void _speakNativeTurn(NavInfo info) {
-    if (!_voiceEnabled || _route == null || info.navState != NavState.enroute) {
-      return;
-    }
-    final step = info.currentStep;
-    final distance = info.distanceToCurrentStepMeters;
-    if (step == null || distance == null || distance > 800) return;
-    if (info.routeChanged) {
-      _spokenTurn = null;
-      ++_turnRevision;
-    }
-    final bucket = distance <= 60
-        ? 0
-        : distance <= 300
-        ? 300
-        : 800;
-    final identity =
-        '${step.stepNumber}:${step.maneuver.name}:${step.fullRoadName}';
-    final key = '$identity:$bucket:$navigationLanguage';
-    if (_spokenTurn == key) return;
-    _spokenTurn = key;
-    final revision = _turnRevision;
-    final instruction = navigationInstruction(step, navigationLanguage);
-    final message = bucket == 0
-        ? instruction
-        : navigationLanguage == 'zh'
-        ? '${navigationMetres(distance, navigationLanguage)}后，$instruction'
-        : 'In ${navigationMetres(distance, navigationLanguage)}, $instruction';
-    unawaited(
-      _voiceEngine
-          .guidance(
-            message,
-            language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
-            stillRelevant: () =>
-                active &&
-                _voiceEnabled &&
-                _route != null &&
-                revision == _turnRevision &&
-                _spokenTurn == key,
-          )
-          .catchError((Object _) {}),
-    );
   }
 
   Future<void> _refreshSpeedLimit(LatLng current) async {
@@ -1271,8 +1123,6 @@ class DriveEngine extends ChangeNotifier {
     final session = ++_locationSession;
     final localFeed = _localLocationFeed;
     _localLocationFeed = null;
-    final subscriptions = List.of(_subscriptions);
-    _subscriptions.clear();
     _driveTrail.clear();
     locationIssue = null;
     gpsIssue = null;
@@ -1301,7 +1151,6 @@ class DriveEngine extends ChangeNotifier {
     upcomingCameraDistanceMeters = null;
     passedCamera = null;
     cameraAlertState = const CameraAlertState.idle();
-    navInfo = null;
     speedKph = 0;
     speedLimitKph = null;
     speedLimitZoneName = null;
@@ -1311,13 +1160,9 @@ class DriveEngine extends ChangeNotifier {
     latestPosition = null;
     _rawHeadingDegrees = null;
     _localNavigation = false;
-    _roadSnappedFixCompleter = null;
     _lastRoadEventEvaluationAt = null;
     _lastRoadEventEvaluationLocation = null;
     await localFeed?.stop();
-    for (final subscription in subscriptions) {
-      await subscription.cancel();
-    }
     if (session != _locationSession || _disposed) return;
     await _voiceEngine.stop();
     if (session != _locationSession || _disposed) return;
@@ -1335,9 +1180,6 @@ class DriveEngine extends ChangeNotifier {
     _roadIntelligenceRefreshTimer?.cancel();
     _trafficFlowRefreshTimer?.cancel();
     _trafficFlowRepository.dispose();
-    for (final subscription in _subscriptions) {
-      unawaited(subscription.cancel());
-    }
     unawaited(_voiceEngine.dispose());
     super.dispose();
   }

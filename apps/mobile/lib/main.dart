@@ -87,7 +87,9 @@ import 'widgets/waybi_format.dart';
 import 'app/commute_controller.dart';
 import 'app/home_chrome.dart';
 import 'app/location_controller.dart';
+import 'app/road_alerts.dart';
 import 'app/journey_store.dart';
+import 'app/offline_corridor.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -468,10 +470,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   String? _message;
-  final Set<String> _notifiedRoadEventIds = <String>{};
-  final Set<String> _pendingRoadNotifications = {};
-  final Map<String, DateTime> _roadNotificationRetryAfter = {};
-  int _roadNotificationSession = 0;
+
+  /// Background notifications for cameras and road events ahead.
+  late final _roadAlerts = RoadAlerts(
+    settings: () => (
+      cameras: _notifySafetyCameras,
+      incidents: _notifyRoadIncidents,
+      community: _notifyCommunityReports,
+    ),
+    language: () => _appLanguage,
+  );
 
   @override
   void initState() {
@@ -832,7 +840,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       unawaited(_systemNavigation.update(_systemNavigationState()));
     }
     _journey?.cameraPassed(_driveEngine.passedCamera?.id);
-    unawaited(_notifyRoadIntelligence());
+    unawaited(_roadAlerts.check(_driveEngine));
     final reportIds = _visibleRoadEvents.map((event) => event.id).join(',');
     // Everything the page itself draws from the engine (the HUDs listen to it
     // directly). Rebuild only when one of these changed, not on every tick.
@@ -980,86 +988,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         now.difference(_lastCorridorCacheAt!) < const Duration(seconds: 30)) {
       return;
     }
-    final start = _driveEngine.routeProgress?.alongMeters ?? 0.0;
-    final end = start + 6000;
-    final corridor = <GeoPoint>[];
-    var travelled = 0.0;
-    for (var index = 0; index < route.points.length - 1; index++) {
-      final a = route.points[index];
-      final b = route.points[index + 1];
-      final segment = distanceMeters(
-        a.latitude,
-        a.longitude,
-        b.latitude,
-        b.longitude,
-      );
-      final segmentEnd = travelled + segment;
-      if (segmentEnd >= start - 100 && travelled <= end + 100) {
-        if (corridor.isEmpty) corridor.add(a);
-        corridor.add(b);
-      }
-      travelled = segmentEnd;
-      if (travelled > end + 100) break;
-    }
-    final matcher = const RouteCameraMatcher();
-    final steps = <Map<String, Object?>>[];
-    for (final step in route.steps) {
-      final along = matcher.project(step.location, route.points)?.alongMeters;
-      if (along == null || along < start - 50 || along > end) continue;
-      steps.add({
-        'instruction': routeStepInstruction(step, _appLanguage),
-        'roadName': step.roadName,
-        'maneuverType': step.maneuverType,
-        'maneuverModifier': step.maneuverModifier,
-        'distanceMeters': step.distanceMeters,
-        'alongMeters': along,
-        'latitude': step.location.latitude,
-        'longitude': step.location.longitude,
-      });
-    }
-    final cameras = [
-      for (final match in _driveEngine.routeCameras)
-        if (match.alongMeters >= start - 50 && match.alongMeters <= end)
-          {
-            'id': match.camera.id,
-            'type': match.camera.type,
-            'location': match.camera.location,
-            'latitude': match.camera.latitude,
-            'longitude': match.camera.longitude,
-            'alongMeters': match.alongMeters,
-          },
-    ];
-    final events = [
-      for (final event in _driveEngine.upcomingRoadEvents)
-        if ((event.distanceFromDriver ?? double.infinity) <= 6000)
-          {
-            'id': event.id,
-            'type': event.type.name,
-            'roadName': event.roadName,
-            'latitude': event.location.latitude,
-            'longitude': event.location.longitude,
-            'distanceFromDriver': event.distanceFromDriver,
-            'distanceAlongRoute': event.distanceAlongRoute,
-            'severity': event.severity.name,
-          },
-    ];
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        'waybi.navigation.offline_corridor.v1',
-        jsonEncode({
-          'cachedAt': now.toIso8601String(),
-          'destination': _destinationTitle,
-          'routeId': route.id,
-          'fromAlongMeters': start,
-          'aheadMeters': 6000,
-          'geometry': [
-            for (final point in corridor) [point.latitude, point.longitude],
-          ],
-          'steps': steps,
-          'cameras': cameras,
-          'roadEvents': events,
-        }),
+      await saveOfflineCorridor(
+        route: route,
+        drive: _driveEngine,
+        destination: _destinationTitle,
+        language: _appLanguage,
+        now: now,
       );
       _lastCorridorCacheAt = now;
       if (mounted && !_offlineCorridorReady) {
@@ -1114,55 +1049,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             )
             .toList(growable: false)
       : const [];
-
-  String _roadEventLabel(RoadEventType type) =>
-      roadEventLabel(type, _appLanguage);
-
-  Future<void> _notifyRoadIntelligence() async {
-    if (!_driveEngine.active) return;
-    final camera = _driveEngine.upcomingCamera;
-    final cameraDistance = _driveEngine.upcomingCameraDistanceMeters;
-    if (_notifySafetyCameras &&
-        camera != null &&
-        cameraDistance != null &&
-        cameraDistance > 0 &&
-        cameraDistance <= 800) {
-      final cameraType = CameraKindLabel.fromCamera(camera)
-          .cameraLabel(_appLanguage);
-      await _showNavigationNotification(
-        id: 'camera:${camera.id}',
-        title: _text('$cameraType ahead', '前方$cameraType'),
-        body: _text(
-          '${cameraDistance.round()} m · ${camera.location}',
-          '${cameraDistance.round()} 米 · ${camera.location}',
-        ),
-      );
-    }
-
-    for (final event in _driveEngine.upcomingRoadEvents) {
-      final distance = event.distanceAlongRoute ?? event.distanceFromDriver;
-      if (distance == null || distance > 1500) continue;
-      final community = event.metadata['userReported'] == true;
-      final importantOfficial =
-          event.severity == RoadEventSeverity.warning ||
-          event.severity == RoadEventSeverity.critical;
-      final enabled = community
-          ? _notifyCommunityReports
-          : _notifyRoadIncidents && importantOfficial;
-      if (!enabled || event.type == RoadEventType.safetyCamera) continue;
-      final reporter = event.metadata['reporterName']?.toString();
-      await _showNavigationNotification(
-        id: event.id,
-        title: _roadEventLabel(event.type),
-        body: reporter == null
-            ? _text('${distance.round()} m ahead', '前方 ${distance.round()} 米')
-            : _text(
-                '${distance.round()} m ahead · reported by $reporter',
-                '前方 ${distance.round()} 米 · $reporter 报告',
-              ),
-      );
-    }
-  }
 
   Future<void> _showCameraDetails(SafetyCamera camera) =>
       showCameraDetailsSheet(context, camera, _appLanguage);
@@ -2213,58 +2099,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _showNavigationNotification({
-    required String id,
-    required String title,
-    required String body,
-  }) async {
-    if (_notifiedRoadEventIds.contains(id) ||
-        _pendingRoadNotifications.contains(id) ||
-        (_roadNotificationRetryAfter[id]?.isAfter(DateTime.now()) ?? false)) {
-      return;
-    }
-    _pendingRoadNotifications.add(id);
-    final session = _roadNotificationSession;
-    try {
-      final shown = await WaybiNotificationService.instance.showRoadAlert(
-        id: id,
-        title: title,
-        body: body,
-      );
-      if (session != _roadNotificationSession) return;
-      if (shown) {
-        _notifiedRoadEventIds.add(id);
-      } else {
-        _roadNotificationRetryAfter[id] = DateTime.now().add(
-          const Duration(seconds: 20),
-        );
-      }
-    } catch (_) {
-      if (session == _roadNotificationSession) {
-        _roadNotificationRetryAfter[id] = DateTime.now().add(
-          const Duration(seconds: 20),
-        );
-      }
-    } finally {
-      if (session == _roadNotificationSession) {
-        _pendingRoadNotifications.remove(id);
-      }
-    }
-  }
-
-  Future<void> _prepareRoadNotifications() async {
-    if (!_notifySafetyCameras &&
-        !_notifyRoadIncidents &&
-        !_notifyCommunityReports) {
-      return;
-    }
-    try {
-      await WaybiNotificationService.instance.requestPermission();
-    } catch (_) {
-      // OS notifications are optional; navigation and spoken guidance continue.
-    }
-  }
-
   Future<void> _loadRoutePreview(
     PointOfInterest poi, {
     WaybiTravelMode preferredMode = WaybiTravelMode.drive,
@@ -3151,7 +2985,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         return;
       }
 
-      await _prepareRoadNotifications();
+      await _roadAlerts.prepare();
       if (cancelled()) return;
       if (!await _location.ensurePermission() || cancelled()) return;
       await _pauseBrowseLocation();
@@ -3361,10 +3195,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           _selectedMode == WaybiTravelMode.drive;
       _trip.dispatch(NavigationEnded(parkingLeg: parkingLeg));
       ++_arrivalRequest;
-      ++_roadNotificationSession;
-      _notifiedRoadEventIds.clear();
-      _pendingRoadNotifications.clear();
-      _roadNotificationRetryAfter.clear();
+      _roadAlerts.newTrip();
       if (mounted) {
         setState(() {
           _activeNavigationRoute = null;
@@ -3425,7 +3256,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (_busy || _guidanceRunning || _transitTripRunning) return;
     setState(() => _message = null);
     try {
-      await _prepareRoadNotifications();
+      await _roadAlerts.prepare();
       if (_gpsLocation == null) {
         await _startTracking();
       }

@@ -1,9 +1,6 @@
-import * as maplibregl from 'maplibre-gl';
+import type * as MapLibre from 'maplibre-gl';
 import type { GeoJSONSource, StyleSpecification } from 'maplibre-gl';
 import type * as GeoJSON from 'geojson';
-import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
-import { Protocol } from 'pmtiles';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import baseStyle from '../../mobile/assets/maps/positron_base.json?raw';
 import { cameraLabel, distanceMeters, type Camera, type Coordinate, type Route } from '@waybi/core';
 import type { ParkingPlace } from './parking';
@@ -13,9 +10,27 @@ import { apiFetch } from './api';
 // Share the native app's NZ archive, global fallback, style and legal credits.
 export const NZ_TILES = 'pmtiles://https://maps.waybi.co/regions/nz.pmtiles';
 export const GLOBAL_TILES = 'https://tiles.openfreemap.org/planet';
-const protocol = new Protocol();
-maplibregl.addProtocol('pmtiles', protocol.tile);
-maplibregl.setWorkerUrl(workerUrl);
+
+type MapLibreModule = typeof MapLibre;
+let mapLibre: Promise<MapLibreModule> | null = null;
+/**
+ * MapLibre (~300 kB gzip), its worker, CSS and PMTiles are loaded on demand,
+ * so the map's search panel and sheet paint before the map engine arrives.
+ */
+export function loadMapLibre(): Promise<MapLibreModule> {
+  return mapLibre ??= Promise.all([
+    import('maplibre-gl'),
+    import('pmtiles'),
+    import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'),
+    import('maplibre-gl/dist/maplibre-gl.css'),
+  ]).then(([module, pmtiles, worker]) => {
+    const maplibregl = ((module as unknown as { default?: MapLibreModule }).default ?? module) as MapLibreModule;
+    const protocol = new pmtiles.Protocol();
+    maplibregl.addProtocol('pmtiles', protocol.tile);
+    maplibregl.setWorkerUrl(worker.default);
+    return maplibregl;
+  });
+}
 
 export function inNewZealand([lon, lat]: Coordinate) {
   return lon >= 166 && lon <= 179 && lat >= -48 && lat <= -34;
@@ -77,7 +92,7 @@ export type PoiSelection = {
 };
 type InitOptions = { language: 'zh' | 'en'; onDragStart: () => void; onMapClick: () => void; onPoiSelected: (place: PoiSelection) => void };
 type TrafficRoute = { route: Route; trafficIntervals: TrafficInterval[] };
-type CameraMarker = { marker: maplibregl.Marker; element: HTMLButtonElement; camera: Camera };
+type CameraMarker = { marker: MapLibre.Marker; element: HTMLButtonElement; camera: Camera };
 const empty = (): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features: [] });
 const OWN_PREFIX = 'waybi-';
 
@@ -91,16 +106,17 @@ export function keepOwnLayers(previous: StyleSpecification | undefined, next: St
 }
 
 export class WaybiMapAdapter {
-  private map?: maplibregl.Map;
+  private ml?: MapLibreModule;
+  private map?: MapLibre.Map;
   private language: 'zh' | 'en' = 'en';
   private hosted = true;
   private readonly failover = new TileFailover();
   private cameraMarkers = new Map<string, CameraMarker>();
-  private parkingMarkers: maplibregl.Marker[] = [];
-  private positionMarker?: maplibregl.Marker;
+  private parkingMarkers: MapLibre.Marker[] = [];
+  private positionMarker?: MapLibre.Marker;
   private positionElement?: HTMLElement;
-  private destinationMarker?: maplibregl.Marker;
-  private attribution?: maplibregl.AttributionControl;
+  private destinationMarker?: MapLibre.Marker;
+  private attribution?: MapLibre.AttributionControl;
   private attributionPosition?: 'bottom-left' | 'bottom-right';
   private pendingPosition?: { coordinate: Coordinate; heading: number | null };
   private pendingCameras?: { cameras: Camera[]; onRoute: Set<string> };
@@ -113,6 +129,7 @@ export class WaybiMapAdapter {
 
   async init(options: InitOptions) {
     this.language = options.language;
+    const maplibregl = this.ml = await loadMapLibre();
     this.map = new maplibregl.Map({
       container: 'map', style: waybiStyle(this.language, this.hosted),
       center: [174.7633, -36.8485], zoom: 12, attributionControl: false,
@@ -166,7 +183,7 @@ export class WaybiMapAdapter {
     const position = window.innerWidth < 760 ? 'bottom-left' : 'bottom-right';
     if (position === this.attributionPosition) return;
     if (this.attribution) this.map.removeControl(this.attribution);
-    this.attribution = new maplibregl.AttributionControl({ compact: true });
+    this.attribution = new this.ml!.AttributionControl({ compact: true });
     this.map.addControl(this.attribution, position);
     this.attributionPosition = position;
   }
@@ -200,7 +217,7 @@ export class WaybiMapAdapter {
   }
 
   private cameraPopup(camera: Camera) {
-    const popup = new maplibregl.Popup({ offset: 20 });
+    const popup = new this.ml!.Popup({ offset: 20 });
     // Built when opened so it always uses the current language.
     popup.on('open', () => {
       const content = document.createElement('div');
@@ -232,7 +249,7 @@ export class WaybiMapAdapter {
         element.tabIndex = -1;
         element.textContent = '◉';
         element.setAttribute('aria-label', camera.location);
-        const marker = new maplibregl.Marker({ element }).setLngLat([camera.longitude, camera.latitude])
+        const marker = new this.ml!.Marker({ element }).setLngLat([camera.longitude, camera.latitude])
           .setPopup(this.cameraPopup(camera)).addTo(this.map);
         entry = { marker, element, camera };
         this.cameraMarkers.set(camera.id, entry);
@@ -282,7 +299,7 @@ export class WaybiMapAdapter {
       button.className = `parking-pin${place.id === selectedId ? ' selected' : ''}`;
       button.textContent = 'P'; button.setAttribute('aria-label', place.name);
       button.onclick = (event) => { event.stopPropagation(); onSelect(place); };
-      return new maplibregl.Marker({ element: button }).setLngLat(place.coordinate).addTo(this.map!);
+      return new this.ml!.Marker({ element: button }).setLngLat(place.coordinate).addTo(this.map!);
     });
   }
 
@@ -299,7 +316,7 @@ export class WaybiMapAdapter {
       const arrow = document.createElement('span'); arrow.className = 'position-heading';
       element.append(arrow);
       this.positionElement = element;
-      this.positionMarker = new maplibregl.Marker({ element, rotationAlignment: 'map', pitchAlignment: 'viewport' })
+      this.positionMarker = new this.ml!.Marker({ element, rotationAlignment: 'map', pitchAlignment: 'viewport' })
         .setLngLat(coordinate).addTo(this.map);
     } else this.positionMarker.setLngLat(coordinate);
     this.positionElement?.classList.toggle('has-heading', heading !== null);
@@ -363,7 +380,7 @@ export class WaybiMapAdapter {
     if (!this.destinationMarker) {
       const element = document.createElement('span'); element.className = 'camera-pin route destination-pin'; element.textContent = '◆';
       element.setAttribute('aria-hidden', 'true');
-      this.destinationMarker = new maplibregl.Marker({ element }).setLngLat(destination).addTo(this.map);
+      this.destinationMarker = new this.ml!.Marker({ element }).setLngLat(destination).addTo(this.map);
     } else this.destinationMarker.setLngLat(destination).addTo(this.map);
     if (!navigating) this.fitRoute(route);
   }
@@ -378,7 +395,7 @@ export class WaybiMapAdapter {
   }
   fitRoute(route: Route) {
     if (!this.map || route.coordinates.length < 2) return;
-    const bounds = new maplibregl.LngLatBounds(); route.coordinates.forEach(point => bounds.extend(point));
+    const bounds = new this.ml!.LngLatBounds(); route.coordinates.forEach(point => bounds.extend(point));
     const desktop = window.innerWidth >= 760;
     const top = document.getElementById('searchPanel')?.getBoundingClientRect().bottom || 0;
     const height = this.map.getContainer().clientHeight;

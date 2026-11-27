@@ -13,6 +13,12 @@ class SplashGate extends StatefulWidget {
   /// `en` or `zh`; defaults to the app locale.
   final String? language;
 
+  /// The splash backgrounds, matching the native launch screens: keep in
+  /// sync with android/.../values(-night)/colors.xml and the iOS
+  /// LaunchBackground color set (test/startup_handoff_test.dart checks).
+  static const lightBackground = WaybiColors.lightBackground;
+  static const darkBackground = WaybiColors.midnightOcean;
+
   @override
   State<SplashGate> createState() => _SplashGateState();
 }
@@ -38,18 +44,21 @@ class _SplashGateState extends State<SplashGate> {
   @override
   Widget build(BuildContext context) {
     final zh = waybiLanguageOf(context, widget.language) == 'zh';
+    // The native launch screens follow the system appearance (iOS
+    // LaunchBackground color set, Android values-night), not the app's own
+    // theme setting, so the splash does too: one splash, no flash.
+    final dark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     return AnimatedSwitcher(
       duration: MediaQuery.disableAnimationsOf(context)
           ? Duration.zero
           : const Duration(milliseconds: 360),
       child: _ready
           ? KeyedSubtree(key: const ValueKey('waybi-map'), child: widget.child)
-          // Matches the native launch screens (light in both themes on iOS
-          // and Android), so there is a single splash rather than a
-          // light-to-dark flash. A dark splash needs night launch resources.
           : Scaffold(
               key: const ValueKey('waybi-splash'),
-              backgroundColor: WaybiColors.lightBackground,
+              backgroundColor: dark
+                  ? SplashGate.darkBackground
+                  : SplashGate.lightBackground,
               body: SafeArea(
                 child: Center(
                   child: Column(
@@ -57,10 +66,12 @@ class _SplashGateState extends State<SplashGate> {
                     children: [
                       const WaybiBird(size: 136),
                       const SizedBox(height: 22),
-                      const Text(
+                      Text(
                         'Waybi',
                         style: TextStyle(
-                          color: WaybiColors.deepOcean,
+                          color: dark
+                              ? WaybiColors.darkText
+                              : WaybiColors.deepOcean,
                           fontSize: 36,
                           fontWeight: FontWeight.w700,
                         ),
@@ -68,8 +79,10 @@ class _SplashGateState extends State<SplashGate> {
                       const SizedBox(height: 8),
                       Text(
                         zh ? '遇见 Waybi，找到你的路。' : 'Meet Waybi. Find your way.',
-                        style: const TextStyle(
-                          color: WaybiColors.lightTextSecondary,
+                        style: TextStyle(
+                          color: dark
+                              ? WaybiColors.darkTextSecondary
+                              : WaybiColors.lightTextSecondary,
                         ),
                       ),
                     ],

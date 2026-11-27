@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark-mode launch window: SplashGate's dark splash
+         (WaybiColors.midnightOcean) and the iOS LaunchBackground dark
+         appearance, so a dark-mode start has no light flash. -->
+    <color name="waybi_launch_background">#152510</color>
+</resources>

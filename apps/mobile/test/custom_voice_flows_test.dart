@@ -257,8 +257,14 @@ void main() {
         findsOneWidget,
       );
 
-      await act(tester, () async => tester.tap(key('custom-voice-enabled')));
+      await act(tester, () async => tester.tap(key('custom-voice-use-own')));
       expect(voice.enabled, isTrue);
+      await act(
+        tester,
+        () async => tester.tap(key('custom-voice-use-standard')),
+      );
+      expect(voice.enabled, isFalse);
+      await act(tester, () async => tester.tap(key('custom-voice-use-own')));
 
       await act(tester, () async => tester.tap(record));
       await act(tester, () async => tester.tap(find.text('中文')));

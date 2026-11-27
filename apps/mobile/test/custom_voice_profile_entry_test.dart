@@ -88,15 +88,23 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('free users get the Plus upsell from the voice entry', (
+  testWidgets('free users can use shared voices and see the Plus upsell', (
     tester,
   ) async {
     await tester.pumpWidget(_page(account, voice));
     await reveal(tester);
-    expect(find.text('Plus · guidance in your own voice'), findsOneWidget);
+    expect(
+      find.text('Use a shared voice · record your own with Plus'),
+      findsOneWidget,
+    );
     await openEntry(tester);
+    expect(find.byType(CustomVoicePage), findsOneWidget);
+    expect(find.byKey(const ValueKey('custom-voice-upsell')), findsOneWidget);
+    expect(find.byKey(const ValueKey('custom-voice-import')), findsOneWidget);
+    expect(find.byKey(const ValueKey('custom-voice-share')), findsNothing);
+    await tester.tap(find.text('See Waybi Plus'));
+    await tester.pumpAndSettle();
     expect(find.byType(PlusPage), findsOneWidget);
-    expect(find.byType(CustomVoicePage), findsNothing);
   });
 
   testWidgets('Plus members open the recording page', (tester) async {

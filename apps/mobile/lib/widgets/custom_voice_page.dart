@@ -2,14 +2,20 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../data/voice_pack_repository.dart';
 import '../drive/custom_voice.dart';
 import '../drive/voice_clip_player.dart';
 import '../drive/voice_recorder.dart';
 import '../drive/voice_take_session.dart';
 import '../theme/waybi_theme.dart';
 import 'custom_voice_guided_page.dart';
+import 'friendly_error.dart';
+import 'voice_pack_import_page.dart';
+import 'voice_pack_share_page.dart';
 
-/// Waybi Plus: record, preview, re-record and delete custom guidance clips.
+/// The navigation voice: choose the standard voice, your own recordings
+/// (Waybi Plus: record, preview, re-record, delete, share) or a voice
+/// someone shared with you (free).
 class CustomVoicePage extends StatefulWidget {
   const CustomVoicePage({
     super.key,
@@ -19,6 +25,8 @@ class CustomVoicePage extends StatefulWidget {
     this.onOpenPlus,
     this.recorder,
     this.player,
+    this.sharing,
+    this.signedIn = false,
   });
 
   final CustomVoiceController controller;
@@ -31,6 +39,12 @@ class CustomVoicePage extends StatefulWidget {
   final VoidCallback? onOpenPlus;
   final VoiceRecorder Function()? recorder;
   final VoiceClipPlayer Function()? player;
+
+  /// Voice sharing; without it the sharing section is hidden.
+  final VoicePackRepository? sharing;
+
+  /// Signed in: the member's shared codes can be listed and revoked.
+  final bool signedIn;
 
   static const maxRecording = Duration(seconds: 6);
 
@@ -91,11 +105,149 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
   bool get _zh => widget.language == 'zh';
   String _t(String en, String zh) => _zh ? zh : en;
 
+  List<SharedVoicePack>? _shared;
+  bool _loadingShared = false;
+  String? _sharedError;
+
   @override
   void initState() {
     super.initState();
     _voice.addListener(_changed);
     _takes.addListener(_changed);
+    if (widget.sharing != null && widget.signedIn) unawaited(_loadShared());
+  }
+
+  Future<void> _loadShared() async {
+    final sharing = widget.sharing;
+    if (sharing == null || !widget.signedIn) return;
+    setState(() {
+      _loadingShared = true;
+      _sharedError = null;
+    });
+    try {
+      final packs = await sharing.mine();
+      if (mounted) setState(() => _shared = packs);
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _sharedError = friendlyErrorMessage(
+            error,
+            widget.language,
+            fallback: _t(
+              'Your shared voices couldn’t be loaded.',
+              '暂时无法加载你分享的语音。',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingShared = false);
+    }
+  }
+
+  Future<void> _openShare() async {
+    final sharing = widget.sharing;
+    if (sharing == null || !_voice.plus) return;
+    await _takes.reset();
+    if (!mounted) return;
+    final shared = await Navigator.of(context).push<SharedVoicePack>(
+      MaterialPageRoute(
+        builder: (_) => VoicePackSharePage(
+          controller: _voice,
+          repository: sharing,
+          language: widget.language,
+        ),
+      ),
+    );
+    if (shared != null) await _loadShared();
+  }
+
+  Future<void> _openImport() async {
+    final sharing = widget.sharing;
+    if (sharing == null) return;
+    await _takes.reset();
+    if (!mounted) return;
+    final name = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => VoicePackImportPage(
+          controller: _voice,
+          repository: sharing,
+          language: widget.language,
+          player: widget.player,
+        ),
+      ),
+    );
+    if (name != null) _message(_t('Guidance now uses “$name”', '导航已改用“$name”'));
+  }
+
+  Future<void> _revoke(SharedVoicePack pack) async {
+    final sharing = widget.sharing;
+    if (sharing == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_t('Stop sharing “${pack.name}”?', '停止分享“${pack.name}”？')),
+        content: Text(
+          _t(
+            'The code stops working and the recordings are deleted from Waybi. People who already installed this voice keep their copy.',
+            '代码将失效，录音会从 Waybi 删除。已经安装的人会保留他们的副本。',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(_t('Cancel', '取消')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(_t('Stop sharing', '停止分享')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await sharing.revoke(pack.code);
+      _message(_t('“${pack.name}” is no longer shared', '已停止分享“${pack.name}”'));
+    } catch (error) {
+      _message(
+        friendlyErrorMessage(
+          error,
+          widget.language,
+          fallback: _t(
+            'The code couldn’t be revoked. Please try again.',
+            '暂时无法撤销代码，请稍后重试。',
+          ),
+        ),
+      );
+    }
+    await _loadShared();
+  }
+
+  Future<void> _removePack(InstalledVoicePack pack) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_t('Remove “${pack.name}”?', '移除“${pack.name}”？')),
+        content: Text(
+          _t(
+            'Its recordings are deleted from this device. You can install it again with its code while it is still shared.',
+            '它的录音会从本机删除。只要对方仍在分享，你可以用代码重新安装。',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(_t('Cancel', '取消')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(_t('Remove', '移除')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await _voice.removePack(pack.code);
   }
 
   void _changed() {
@@ -201,19 +353,7 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           if (!plus) _upsell(context),
-          SwitchListTile(
-            key: const ValueKey('custom-voice-enabled'),
-            contentPadding: EdgeInsets.zero,
-            title: Text(_t('Use my voice for guidance', '导航使用我的声音')),
-            subtitle: Text(
-              _t(
-                'Phrases you haven’t recorded, road names and other numbers use the standard voice.',
-                '没录的短语、路名和其他数字仍由标准语音播报。',
-              ),
-            ),
-            value: plus && _voice.enabled,
-            onChanged: plus ? (value) => _voice.setEnabled(value) : null,
-          ),
+          _voiceChoice(context, plus),
           SwitchListTile(
             key: const ValueKey('custom-voice-omit-roads'),
             contentPadding: EdgeInsets.zero,
@@ -225,11 +365,25 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
               ),
             ),
             value: _voice.omitRoadNames,
-            onChanged: plus ? (value) => _voice.setOmitRoadNames(value) : null,
+            onChanged: plus || _voice.installedPacks.isNotEmpty
+                ? (value) => _voice.setOmitRoadNames(value)
+                : null,
           ),
           const SizedBox(height: 4),
           _privacyNote(context),
-          const SizedBox(height: 12),
+          if (widget.sharing != null) ...[
+            const SizedBox(height: 16),
+            _sharingCard(context, plus),
+          ],
+          const SizedBox(height: 20),
+          Semantics(
+            header: true,
+            child: Text(
+              _t('My recordings', '我的录音'),
+              style: context.textStyles.titleLarge,
+            ),
+          ),
+          const SizedBox(height: 8),
           SegmentedButton<String>(
             segments: const [
               ButtonSegment(value: 'en', label: Text('English')),
@@ -275,8 +429,8 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
               Expanded(
                 child: Text(
                   _t(
-                    'Custom navigation voice is part of Waybi Plus',
-                    '自定义导航语音是 Waybi Plus 功能',
+                    'Recording your own voice is part of Waybi Plus',
+                    '录制自己的声音是 Waybi Plus 功能',
                   ),
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
@@ -286,8 +440,8 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
           const SizedBox(height: 8),
           Text(
             _t(
-              'Guidance uses the standard voice. Any recordings you made earlier stay on this device and can be deleted here.',
-              '目前使用标准语音播报。之前的录音仍保存在本机，可以在这里删除。',
+              'Anyone can use a voice someone shared with them. Recordings you made earlier stay on this device and can be deleted here.',
+              '任何人都可以使用别人分享的语音。之前的录音仍保存在本机，可以在这里删除。',
             ),
           ),
           if (widget.onOpenPlus != null) ...[
@@ -309,14 +463,199 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
       Expanded(
         child: Text(
           _t(
-            'Recordings stay on this device. Waybi never uploads them.',
-            '录音只保存在本机，Waybi 不会上传。',
+            'Recordings stay on this device unless you choose to share your voice.',
+            '除非你选择分享，录音只保存在本机。',
           ),
           style: context.textStyles.bodySmall,
         ),
       ),
     ],
   );
+
+  Widget _voiceChoice(BuildContext context, bool plus) {
+    final packCode = _voice.activePackCode;
+    final selected = packCode != null
+        ? 'pack:$packCode'
+        : _voice.enabled && plus
+        ? 'own'
+        : 'standard';
+    final ownCount = CustomVoiceController.languages.fold<int>(
+      0,
+      (sum, language) => sum + _voice.recorded(language).length,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Semantics(
+          header: true,
+          child: Text(
+            _t('Guidance voice', '导航语音'),
+            style: context.textStyles.titleLarge,
+          ),
+        ),
+        const SizedBox(height: 4),
+        RadioGroup<String>(
+          groupValue: selected,
+          onChanged: (value) {
+            if (value == null) return;
+            if (value == 'standard') {
+              unawaited(_voice.useStandardVoice());
+            } else if (value == 'own') {
+              unawaited(_voice.useOwnVoice());
+            } else {
+              unawaited(_voice.usePack(value.substring(5)));
+            }
+          },
+          child: Column(
+            children: [
+              RadioListTile<String>(
+                key: const ValueKey('custom-voice-use-standard'),
+                contentPadding: EdgeInsets.zero,
+                value: 'standard',
+                title: Text(_t('Standard voice', '标准语音')),
+              ),
+              RadioListTile<String>(
+                key: const ValueKey('custom-voice-use-own'),
+                contentPadding: EdgeInsets.zero,
+                value: 'own',
+                enabled: plus,
+                title: Text(_t('My recordings', '我的录音')),
+                subtitle: Text(
+                  plus
+                      ? _t(
+                          '$ownCount phrases recorded · the rest uses the standard voice',
+                          '已录 $ownCount 条 · 其余使用标准语音',
+                        )
+                      : _t('Waybi Plus', 'Waybi Plus'),
+                ),
+              ),
+              for (final pack in _voice.installedPacks)
+                RadioListTile<String>(
+                  key: ValueKey('custom-voice-use-pack-${pack.code}'),
+                  contentPadding: EdgeInsets.zero,
+                  value: 'pack:${pack.code}',
+                  title: Text(pack.name),
+                  subtitle: Text(
+                    _t(
+                      'Shared voice · ${pack.clipCount} phrases · ${VoicePackRepository.formatCode(pack.code)}',
+                      '分享的语音 · ${pack.clipCount} 条短语 · ${VoicePackRepository.formatCode(pack.code)}',
+                    ),
+                  ),
+                  secondary: IconButton(
+                    key: ValueKey('custom-voice-remove-pack-${pack.code}'),
+                    tooltip: _t('Remove from this device', '从本机移除'),
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    onPressed: () => _removePack(pack),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _sharingCard(BuildContext context, bool plus) {
+    final hasRecordings = _voice.shareableRecordings().isNotEmpty;
+    final shared = _shared ?? const <SharedVoicePack>[];
+    return Card(
+      key: const ValueKey('custom-voice-sharing'),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              _t('Shared voices', '分享语音'),
+              style: context.textStyles.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _t(
+                'Share your recordings with a code, or use a voice someone sent you. There is no public list of voices.',
+                '用代码分享你的录音，或使用别人发给你的语音。语音不会公开展示。',
+              ),
+              style: context.textStyles.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              key: const ValueKey('custom-voice-import'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(WaybiTouch.minTarget),
+              ),
+              onPressed: _openImport,
+              icon: const Icon(Icons.download_rounded),
+              label: Text(_t('Use a shared voice', '使用分享的语音')),
+            ),
+            if (plus) ...[
+              const SizedBox(height: 8),
+              FilledButton.tonalIcon(
+                key: const ValueKey('custom-voice-share'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(WaybiTouch.minTarget),
+                ),
+                onPressed: hasRecordings ? _openShare : null,
+                icon: const Icon(Icons.ios_share_rounded),
+                label: Text(_t('Share my voice', '分享我的声音')),
+              ),
+              if (!hasRecordings)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _t('Record some phrases first.', '请先录制一些短语。'),
+                    style: context.textStyles.bodySmall,
+                  ),
+                ),
+            ],
+            if (_loadingShared) ...[
+              const SizedBox(height: 12),
+              const LinearProgressIndicator(),
+            ],
+            if (_sharedError case final error?) ...[
+              const SizedBox(height: 12),
+              Text(error, style: TextStyle(color: context.status.danger)),
+              TextButton(
+                key: const ValueKey('custom-voice-shared-retry'),
+                onPressed: _loadShared,
+                child: Text(_t('Try again', '重试')),
+              ),
+            ],
+            if (shared.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                _t('Your share codes', '你的分享代码'),
+                style: context.textStyles.labelLarge,
+              ),
+              for (final pack in shared)
+                ListTile(
+                  key: ValueKey('custom-voice-shared-${pack.code}'),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(pack.name),
+                  subtitle: Text(
+                    _t(
+                      '${pack.displayCode} · installed ${pack.importCount} times',
+                      '${pack.displayCode} · 已安装 ${pack.importCount} 次',
+                    ),
+                  ),
+                  trailing: TextButton(
+                    key: ValueKey('custom-voice-revoke-${pack.code}'),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(
+                        WaybiTouch.minTarget,
+                        WaybiTouch.minTarget,
+                      ),
+                    ),
+                    onPressed: () => _revoke(pack),
+                    child: Text(_t('Revoke', '撤销')),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _completeness(BuildContext context, bool plus) {
     final total = voicePhrasesFor(_pack).length;

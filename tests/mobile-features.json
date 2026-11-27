@@ -222,6 +222,15 @@
       ]
     },
     {
+      "id": "voice-sharing",
+      "label": "Share a recorded voice by code (Plus), look up, preview, verify and install a shared voice (free), choose the guidance voice, revoke",
+      "tests": [
+        "apps/mobile/test/voice_pack_repository_test.dart",
+        "apps/mobile/test/custom_voice_sharing_test.dart",
+        "apps/mobile/test/custom_voice_profile_entry_test.dart"
+      ]
+    },
+    {
       "id": "system-navigation",
       "label": "Lockscreen status, retry, native serialization and stop",
       "tests": [

@@ -542,10 +542,10 @@ void main() {
         ),
       );
       expect(find.byKey(const ValueKey('custom-voice-upsell')), findsOneWidget);
-      final toggle = tester.widget<SwitchListTile>(
-        find.byKey(const ValueKey('custom-voice-enabled')),
+      final own = tester.widget<RadioListTile<String>>(
+        find.byKey(const ValueKey('custom-voice-use-own')),
       );
-      expect(toggle.onChanged, isNull);
+      expect(own.enabled, isFalse);
       final record = tester.widget<IconButton>(
         find.byKey(const ValueKey('custom-voice-record-in_50')),
       );

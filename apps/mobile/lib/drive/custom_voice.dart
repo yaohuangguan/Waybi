@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -152,16 +153,50 @@ abstract class CustomVoiceClips {
   bool get omitRoadNames;
 }
 
-/// On-device custom voice pack, gated on Waybi Plus.
+/// A voice someone shared, installed on this device.
+@immutable
+class InstalledVoicePack {
+  const InstalledVoicePack({
+    required this.code,
+    required this.name,
+    required this.clips,
+    required this.installedAt,
+  });
+
+  final String code;
+  final String name;
+
+  /// language → phrase ids with an installed clip.
+  final Map<String, Set<String>> clips;
+  final DateTime installedAt;
+
+  int get clipCount => clips.values.fold(0, (sum, ids) => sum + ids.length);
+  List<String> get languages => [
+    for (final language in CustomVoiceController.languages)
+      if (clips[language]?.isNotEmpty ?? false) language,
+  ];
+}
+
+/// Which voice guidance uses.
+enum VoiceChoice { standard, own, shared }
+
+/// The custom navigation voice: the member's own recordings (Waybi Plus)
+/// and voices other people shared (free to use).
 ///
-/// Recordings live only in the app's documents directory and are never
-/// uploaded. If Plus lapses, the files are kept but not played; the member
-/// can still delete them.
+/// Own recordings live in the app's documents directory and are only
+/// uploaded when the member chooses to share them. If Plus lapses, the files
+/// are kept but not played; the member can still delete them. An installed
+/// shared voice is a separate folder per share code and keeps working even
+/// if its owner later revokes the code.
 class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   CustomVoiceController({required this._rootDirectory});
 
   static const enabledKey = 'waybi.plus.custom_voice.enabled.v1';
   static const omitRoadNamesKey = 'waybi.custom_voice.omit_road_names.v1';
+  static const activeVoiceKey = 'waybi.custom_voice.active.v1';
+
+  /// Shared clips are checked by size and SHA-256 before installing.
+  static const minimumPackClipBytes = 512;
   static const languages = ['en', 'zh'];
 
   /// Files smaller than this are treated as failed recordings.
@@ -171,19 +206,47 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   final Map<String, Set<String>> _recorded = {for (final l in languages) l: {}};
   final Map<String, Set<String>> _broken = {for (final l in languages) l: {}};
   Directory? _root;
+  Directory? _packsRoot;
   bool _plus = false;
-  bool _enabled = false;
+
+  /// 'standard', 'own' or 'pack:<code>'.
+  String _choice = 'standard';
   bool _omitRoadNames = false;
   bool _loaded = false;
+  final Map<String, InstalledVoicePack> _packs = {};
+  final Map<String, Map<String, Set<String>>> _packBroken = {};
 
   bool get plus => _plus;
-  bool get enabled => _enabled;
+
+  /// The member's own recordings are the chosen voice.
+  bool get enabled => _choice == 'own';
   bool get loaded => _loaded;
   @override
   bool get omitRoadNames => _omitRoadNames;
 
-  /// True when guidance should use the recorded clips.
-  bool get active => _plus && _enabled;
+  /// The installed shared voice guidance uses, if one is chosen.
+  String? get activePackCode {
+    if (!_choice.startsWith('pack:')) return null;
+    final code = _choice.substring(5);
+    return _packs.containsKey(code) ? code : null;
+  }
+
+  VoiceChoice get choice => activePackCode != null
+      ? VoiceChoice.shared
+      : enabled
+      ? VoiceChoice.own
+      : VoiceChoice.standard;
+
+  /// Installed shared voices, newest first.
+  List<InstalledVoicePack> get installedPacks => List.unmodifiable(
+    _packs.values.toList()
+      ..sort((a, b) => b.installedAt.compareTo(a.installedAt)),
+  );
+  InstalledVoicePack? installedPack(String code) => _packs[code];
+
+  /// True when guidance should use recorded clips: the member's own (with
+  /// Plus) or an installed shared voice (free).
+  bool get active => (enabled && _plus) || activePackCode != null;
 
   Set<String> recorded(String language) =>
       Set.unmodifiable(_recorded[language] ?? const <String>{});
@@ -193,8 +256,14 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _enabled = prefs.getBool(enabledKey) ?? false;
+      _choice =
+          prefs.getString(activeVoiceKey) ??
+          ((prefs.getBool(enabledKey) ?? false) ? 'own' : 'standard');
       _omitRoadNames = prefs.getBool(omitRoadNamesKey) ?? false;
+      await _loadPacks();
+      if (_choice.startsWith('pack:') && activePackCode == null) {
+        _choice = 'standard';
+      }
       final root = await _voiceRoot();
       for (final language in languages) {
         final set = _recorded[language]!..clear();
@@ -225,15 +294,32 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
     notifyListeners();
   }
 
+  /// Turns the member's own recordings on (Plus only) or off.
   Future<void> setEnabled(bool enabled) async {
-    if (enabled && !_plus) return;
-    _enabled = enabled;
+    if (enabled) return useOwnVoice();
+    if (this.enabled) await useStandardVoice();
+  }
+
+  Future<void> useStandardVoice() => _choose('standard');
+
+  Future<void> useOwnVoice() async {
+    if (_plus) await _choose('own');
+  }
+
+  /// Uses an installed shared voice; anyone can.
+  Future<void> usePack(String code) async {
+    if (_packs.containsKey(code)) await _choose('pack:$code');
+  }
+
+  Future<void> _choose(String choice) async {
+    _choice = choice;
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(enabledKey, enabled);
+      await prefs.setString(activeVoiceKey, choice);
+      await prefs.setBool(enabledKey, choice == 'own');
     } catch (_) {
-      /* The toggle still applies for this session. */
+      /* The choice still applies for this session. */
     }
   }
 
@@ -321,14 +407,27 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   @override
   Set<String> playable(String language) {
     if (!active) return const {};
+    final code = activePackCode;
+    if (code != null) {
+      final clips = _packs[code]!.clips[language] ?? const <String>{};
+      return clips.difference(_packBroken[code]?[language] ?? const {});
+    }
     final recorded = _recorded[language];
     if (recorded == null || recorded.isEmpty) return const {};
     return recorded.difference(_broken[language]!);
   }
 
   @override
-  String? clipPath(String language, String phraseId) =>
-      recordingPath(language, phraseId);
+  String? clipPath(String language, String phraseId) {
+    final code = activePackCode;
+    if (code == null) return recordingPath(language, phraseId);
+    final root = _packsRoot;
+    if (root == null ||
+        !(_packs[code]!.clips[language]?.contains(phraseId) ?? false)) {
+      return null;
+    }
+    return '${root.path}/$code/$language/$phraseId.m4a';
+  }
 
   /// The member's own recording of [phraseId], for previews.
   String? recordingPath(String language, String phraseId) {
@@ -341,6 +440,181 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
 
   @override
   void reportBroken(String language, String phraseId) {
-    if (_broken[language]?.add(phraseId) ?? false) notifyListeners();
+    final code = activePackCode;
+    final broken = code == null
+        ? _broken[language]
+        : ((_packBroken[code] ??= {})[language] ??= {});
+    if (broken?.add(phraseId) ?? false) notifyListeners();
+  }
+
+  /// The member's playable recordings, for sharing.
+  List<({String language, String phraseId, String path})>
+  shareableRecordings() {
+    final root = _root;
+    if (root == null) return const [];
+    return [
+      for (final language in languages)
+        for (final phrase in voicePhrasesFor(language))
+          if (_recorded[language]!.contains(phrase.id) &&
+              !_broken[language]!.contains(phrase.id))
+            (
+              language: language,
+              phraseId: phrase.id,
+              path: _finalPath(root, language, phrase.id),
+            ),
+    ];
+  }
+
+  Future<Directory> _sharedRoot() async {
+    final cached = _packsRoot;
+    if (cached != null) return cached;
+    final base = await _rootDirectory();
+    return _packsRoot = Directory('${base.path}/custom_voice_packs');
+  }
+
+  static final _packCode = RegExp(r'^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{10}$');
+
+  Future<void> _loadPacks() async {
+    _packs.clear();
+    final root = await _sharedRoot();
+    if (!await root.exists()) return;
+    await for (final entry in root.list()) {
+      if (entry is! Directory) continue;
+      final name = entry.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (name.startsWith('.')) {
+        // Unfinished installs and previews.
+        await _deleteDirectory(entry);
+        continue;
+      }
+      if (!_packCode.hasMatch(name)) continue;
+      try {
+        final info = jsonDecode(
+          await File('${entry.path}/pack.json').readAsString(),
+        );
+        final clips = <String, Set<String>>{};
+        for (final language in languages) {
+          final ids = (info['clips']?[language] as List? ?? const [])
+              .whereType<String>();
+          for (final id in ids) {
+            final file = File('${entry.path}/$language/$id.m4a');
+            if (!(customVoicePhrase(id)?.availableIn(language) ?? false) ||
+                !await file.exists() ||
+                await file.length() < minimumPackClipBytes) {
+              continue;
+            }
+            (clips[language] ??= {}).add(id);
+          }
+        }
+        if (clips.isEmpty) continue;
+        _packs[name] = InstalledVoicePack(
+          code: name,
+          name: info['name'] as String? ?? name,
+          clips: clips,
+          installedAt: DateTime.fromMillisecondsSinceEpoch(
+            (info['installedAt'] as num?)?.toInt() ?? 0,
+          ),
+        );
+      } catch (error) {
+        debugPrint('Shared voice $name unreadable: $error');
+      }
+    }
+  }
+
+  /// Installs a shared voice from verified clip bytes (language → phrase id
+  /// → audio), replacing an earlier install of the same code. Phrases this
+  /// app version does not know are left out.
+  Future<InstalledVoicePack> installPack({
+    required String code,
+    required String name,
+    required Map<String, Map<String, Uint8List>> clips,
+    DateTime? now,
+  }) async {
+    if (!_packCode.hasMatch(code)) throw ArgumentError.value(code, 'code');
+    final root = await _sharedRoot();
+    final staging = Directory(
+      '${root.path}/.install-$code-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    final installed = <String, Set<String>>{};
+    try {
+      for (final MapEntry(key: language, value: byId) in clips.entries) {
+        if (!languages.contains(language)) continue;
+        for (final MapEntry(key: id, value: bytes) in byId.entries) {
+          if (!(customVoicePhrase(id)?.availableIn(language) ?? false) ||
+              bytes.length < minimumPackClipBytes) {
+            continue;
+          }
+          final file = File('${staging.path}/$language/$id.m4a');
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes, flush: true);
+          (installed[language] ??= {}).add(id);
+        }
+      }
+      if (installed.isEmpty) {
+        throw StateError('The shared voice has no usable recordings');
+      }
+      final installedAt = now ?? DateTime.now();
+      await File('${staging.path}/pack.json').writeAsString(
+        jsonEncode({
+          'code': code,
+          'name': name,
+          'installedAt': installedAt.millisecondsSinceEpoch,
+          'clips': {
+            for (final MapEntry(:key, :value) in installed.entries)
+              key: value.toList()..sort(),
+          },
+        }),
+      );
+      final target = Directory('${root.path}/$code');
+      if (await target.exists()) await target.delete(recursive: true);
+      await staging.rename(target.path);
+      final pack = InstalledVoicePack(
+        code: code,
+        name: name,
+        clips: installed,
+        installedAt: installedAt,
+      );
+      _packs[code] = pack;
+      _packBroken.remove(code);
+      notifyListeners();
+      return pack;
+    } catch (_) {
+      await _deleteDirectory(staging);
+      rethrow;
+    }
+  }
+
+  /// Deletes an installed shared voice and its files.
+  Future<void> removePack(String code) async {
+    final root = await _sharedRoot();
+    await _deleteDirectory(Directory('${root.path}/$code'));
+    _packs.remove(code);
+    _packBroken.remove(code);
+    if (_choice == 'pack:$code') {
+      await _choose('standard');
+    } else {
+      notifyListeners();
+    }
+  }
+
+  /// Saves a downloaded clip to play as a preview before installing.
+  Future<String> writePreview(
+    String code,
+    String language,
+    String phraseId,
+    Uint8List bytes,
+  ) async {
+    final root = await _sharedRoot();
+    final file = File('${root.path}/.preview/$code-$language-$phraseId.m4a');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
+  }
+
+  Future<void> _deleteDirectory(Directory directory) async {
+    try {
+      if (await directory.exists()) await directory.delete(recursive: true);
+    } catch (error) {
+      debugPrint('Custom voice cleanup failed: $error');
+    }
   }
 }

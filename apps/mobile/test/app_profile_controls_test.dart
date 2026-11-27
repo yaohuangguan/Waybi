@@ -205,13 +205,18 @@ void main() {
       await reveal(t, h, signIn);
       await t.tap(signIn);
       await h.frames();
+      // A 5xx never surfaces server text; the localized service message does.
       await reveal(
         t,
         h,
-        find.textContaining('Fixture unavailable'),
+        find.textContaining('Waybi is having trouble right now'),
         delta: -250,
       );
-      expect(find.textContaining('Fixture unavailable'), findsOneWidget);
+      expect(
+        find.textContaining('Waybi is having trouble right now'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Fixture unavailable'), findsNothing);
       expect(find.byType(ProfilePage), findsOneWidget);
       final create = find.text('Use an email code instead');
       await reveal(t, h, create);

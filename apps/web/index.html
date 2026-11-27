@@ -266,7 +266,8 @@
           <span id="sheetLane">车道 ✓</span>
           <span id="sheetAccount">访客模式</span>
         </div>
-        <div class="data-status"><div><span class="data-dot"></span><span id="dataStatus">正在加载 NZTA 摄像头…</span></div><button id="dataButton">数据详情 ↗</button></div>
+        <div class="data-status"><div><span class="data-dot"></span><span id="dataStatus">正在加载 NZTA 摄像头…</span></div><div class="data-actions"><button id="cameraListButton" type="button" aria-expanded="false" aria-controls="cameraList">Camera list</button><button id="dataButton">数据详情 ↗</button></div></div>
+        <div id="cameraList" class="camera-list" hidden></div>
       </section>
 
       <section id="navSheet" class="nav-sheet" hidden aria-label="Navigation trip">

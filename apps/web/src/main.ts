@@ -50,7 +50,6 @@ let journeyDistance = 0;
 let journeyPoints: Coordinate[] = [];
 let arrivalWithinRadiusAt = 0;
 let latestGpsFixAt = 0;
-let mapLanguage: Language | null = null;
 let laneGuidanceEnabled = localStorage.getItem('kiwi-lane-guidance') !== 'off';
 let searchTarget: 'origin' | 'destination' | 'stop' = 'destination';
 const routeRequests = new RouteRequestCoordinator();
@@ -404,9 +403,53 @@ async function refreshSpeedLimit(coordinate: Coordinate) {
 
 function renderCameras() {
   const onRoute = new Set(routeCameras.map((item) => item.camera.id));
-  map.renderCameras(cameras, onRoute, language);
+  map.renderCameras(cameras, onRoute);
   $('cameraRouteCount').textContent = route ? String(routeCameras.length) : '—';
   $('navCameraCount').textContent = route ? String(routeCameras.length) : '—';
+  if (!$('cameraList').hidden) renderCameraList();
+}
+
+/**
+ * Keyboard and screen-reader route to the camera markers (which are kept out
+ * of the Tab order): cameras on the current route, or the closest ones to the
+ * map centre.
+ */
+function renderCameraList() {
+  const root = $('cameraList');
+  root.replaceChildren();
+  const heading = document.createElement('p');
+  heading.className = 'camera-list-heading';
+  const items: { camera: Camera; distance: number }[] = route && routeCameras.length
+    ? routeCameras.map((item) => ({ camera: item.camera, distance: Math.max(0, item.alongMeters) }))
+    : (() => {
+      const center = map.getCenter() || current || [174.7633, -36.8485] as Coordinate;
+      return cameras.map((camera) => ({ camera, distance: distanceMeters(center, [camera.longitude, camera.latitude]) }))
+        .sort((a, b) => a.distance - b.distance).slice(0, 12);
+    })();
+  heading.textContent = `${t(language, route && routeCameras.length ? 'cameraListRoute' : 'cameraListNearby')} · ${t(language, 'cameraListHint')}`;
+  root.append(heading);
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'camera-list-empty';
+    empty.textContent = t(language, 'cameraListEmpty');
+    root.append(empty);
+    return;
+  }
+  const list = document.createElement('ul');
+  for (const { camera, distance } of items) {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = t(language, 'cameraListItem', { label: cameraLabel(camera.type, language), location: camera.location, distance: formatDistance(distance, language) });
+    button.onclick = () => {
+      following = false;
+      $('followButton').classList.remove('active');
+      map.showCamera(camera.id);
+    };
+    item.append(button);
+    list.append(item);
+  }
+  root.append(list);
 }
 
 async function loadCameras() {
@@ -704,7 +747,6 @@ function applyDrivingRoute(index: number) {
   routeCameras = matchCamerasToRoute(cameras, route);
   renderCameras();
   map.renderRoute(route, destination, navigating);
-  mapLanguage = language;
   map.setTrafficEnabled(trafficLayerEnabled);
   map.renderTrafficRoutes(trafficVisuals(), selectedDrivingRoute, (chosen) => {
     if (chosen === selectedDrivingRoute || navigating) return;
@@ -1682,6 +1724,12 @@ $('settingsButton').onclick = () => showOverlay('settingsOverlay');
 $('profileButton').onclick = () => { window.location.href = '/dashboard'; };
 $('closeSettings').onclick = () => hideOverlay('settingsOverlay');
 $('dataButton').onclick = () => showOverlay('dataOverlay');
+$('cameraListButton').onclick = () => {
+  const list = $('cameraList');
+  list.hidden = !list.hidden;
+  $('cameraListButton').setAttribute('aria-expanded', String(!list.hidden));
+  if (!list.hidden) renderCameraList();
+};
 $('closeData').onclick = () => hideOverlay('dataOverlay');
 for (const id of ['settingsOverlay', 'dataOverlay']) $(id).addEventListener('click', (event) => { if (event.target === $(id)) hideOverlay(id); });
 function applyLanguage() {
@@ -1791,7 +1839,6 @@ async function initializeMap() {
     },
     onPoiSelected: showPoiCard
   });
-  mapLanguage = language;
   map.setTrafficEnabled(trafficLayerEnabled);
   renderParking();
   if (destination && !parkingDestination && !parkingPlaces.length) void loadParking();
@@ -1845,10 +1892,8 @@ function changeLanguage(next: Language) {
   applyLanguage();
   updateGuidance();
   void rememberPreferences(language, voiceEnabled);
-  if (mapLanguage && mapLanguage !== next) {
-    if (!navigating) window.location.reload();
-    else toast(next === 'zh' ? '导航文字已更新。地图标签将在重新打开时更新。' : 'Navigation text updated. Map labels update when reopened.');
-  }
+  // Map labels switch in place: destination, route, stops and navigation stay.
+  map.setLanguage(next);
 }
 
 function showJourneySummary(arrived: boolean) {

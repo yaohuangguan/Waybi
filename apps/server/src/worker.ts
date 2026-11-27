@@ -39,6 +39,7 @@ import { clientFingerprint, clientIp, guardApiRequest } from './abuse_guard.ts';
 import { reserveGoogleUnits } from './google_budget.ts';
 import { nominatimArray } from './nominatim.ts';
 import { nzRoutingEndpoint } from './nz_routing.ts';
+import { handleVoicePacks, voicePackLandingPage } from './voice_packs.ts';
 
 const CAMERA_KEY = 'cameras/current';
 // Camera locations are slow-changing metadata, not live traffic frames.
@@ -604,6 +605,8 @@ export default {
       return Response.redirect(requestUrl.toString(), 301);
     }
     if (!pathname.startsWith('/api/')) {
+      const voiceLanding = voicePackLandingPage(request);
+      if (voiceLanding) return voiceLanding;
       const productSurface =
         pathname === '/app' || pathname.startsWith('/app/') ||
         pathname === '/dashboard' || pathname.startsWith('/dashboard/');
@@ -637,6 +640,7 @@ export default {
         await handleRoadIntelligence(request, env, ctx, readCameraState) ||
         await handleBilling(request, env) ||
         await handleAccount(request, env, ctx) ||
+        await handleVoicePacks(request, env) ||
         await handleRouteWatchAlerts(request, env) ||
         await handleRouteWatch(request, env) ||
         await handlePlaces(

@@ -14,7 +14,8 @@ export type RateLimitBinding =
   | 'RATE_LIMIT_ROUTING'
   | 'RATE_LIMIT_SPEED_LIMIT'
   | 'RATE_LIMIT_AUTH'
-  | 'RATE_LIMIT_FEEDBACK';
+  | 'RATE_LIMIT_FEEDBACK'
+  | 'RATE_LIMIT_VOICE';
 
 interface RateLimiter { limit(options: { key: string }): Promise<{ success: boolean }> }
 

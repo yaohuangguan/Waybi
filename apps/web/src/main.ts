@@ -2,12 +2,13 @@ import './style.css';
 
 import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@waybi/core';
 import './account.css';
-import { applyUiLanguage, t } from './i18n';
+import { applyUiLanguage, formatDuration, localeFor, plural, t, type MessageKey } from './i18n';
+import { readLanguage, writeLanguage, LANGUAGE_EVENT } from './preferences';
 import { currentAccountEmail, initAccount, isSignedIn, ownReview, recentDestinations, rememberDestination, rememberPreferences, rememberRoute, renderAccount, saveOwnReview, savePlace, savedPlace, type AccountProfile } from './account';
 import { lookAheadCenter } from './navigation-view';
 import { initAutocomplete, placeLabel, type SuggestedPlace } from './autocomplete';
 import { WaybiMapAdapter, type PoiSelection } from './waybi-map';
-import { fetchRoutePlan, formatModeDuration, routeFromOption, type RouteOption as PlannerRouteOption, type RoutePlan as PlannerRoutePlan, type TravelMode } from './route-planner';
+import { fetchRoutePlan, routeFromOption, type RouteOption as PlannerRouteOption, type RoutePlan as PlannerRoutePlan, type TravelMode } from './route-planner';
 import type { ParkingPlace } from './parking';
 import { apiFetch, describeError, isAbortError } from './api';
 import { currentPlatform, isStandalone, permissionHelpKey } from './geo-help';
@@ -42,7 +43,8 @@ const routeStops: { label: string; coordinate: Coordinate }[] = [];
 let navigating = false;
 let uiMode: 'explore' | 'navigation' = 'explore';
 let following = true;
-let language: Language = localStorage.getItem('kiwi-language') === 'zh' ? 'zh' : 'en';
+// One language key shared with the website and the dashboard (legacy keys are migrated).
+let language: Language = readLanguage();
 let voiceEnabled = localStorage.getItem('kiwi-voice') !== 'off';
 let keepScreenAwake = localStorage.getItem('kiwi-keep-screen-awake') !== 'off';
 let journeyStarted = 0;
@@ -81,7 +83,7 @@ let parkingDestination: ParkingDestination | null = null;
 let parkingPlaces: ParkingPlace[] = [];
 let selectedParking: ParkingPlace | null = null;
 let parkingLoading = false;
-let parkingError = '';
+let parkingError: MessageKey | '' = '';
 let parkingSearchSequence = 0;
 let parkedAtParking = false;
 
@@ -119,7 +121,7 @@ async function loadParking() {
   } catch {
     if (request !== parkingSearchSequence) return;
     parkingPlaces = [];
-    parkingError = language === 'zh' ? '停车地点暂时无法加载。' : 'Parking places are temporarily unavailable.';
+    parkingError = 'parkingUnavailable';
   } finally {
     if (request === parkingSearchSequence) {
       parkingLoading = false;
@@ -183,42 +185,29 @@ function renderParking() {
   const section = $('parkingSection');
   const hint = $('navParkingHint');
   section.hidden = !destination || selectedTravelMode !== 'drive';
-  $('navDestinationLabel').textContent = selectedParking && selectedTravelMode === 'drive'
-    ? (language === 'zh' ? '停车点' : 'PARKING STOP')
-    : (language === 'zh' ? '目的地' : 'DESTINATION');
+  $('navDestinationLabel').textContent = t(language, selectedParking && selectedTravelMode === 'drive' ? 'parkingStop' : 'destinationLabel');
   hint.hidden = !selectedParking || !parkingDestination || selectedTravelMode !== 'drive';
   if (section.hidden) {
     map.renderParking([], null, selectParking);
     return;
   }
   const target = parkingDestination || { coordinate: destination!, name: destinationName };
-  $('parkingKicker').textContent = language === 'zh' ? '到达前，先看停车' : 'ARRIVE WITH A PLAN';
-  $('parkingTitle').textContent = language === 'zh' ? '终点附近停车' : 'Parking near your destination';
   const isAtSource = parkingPlaces[0]?.source === 'at';
-  $('parkingSourceNote').textContent = isAtSource
-    ? (language === 'zh' ? '来源：AT Open GIS · 总车位并非实时空位' : 'Source: AT Open GIS · total spaces are not live availability')
-    : (language === 'zh' ? '地点搜索 · 不提供实时空位' : 'Place search · live spaces unavailable');
+  $('parkingSourceNote').textContent = t(language, isAtSource ? 'parkingSourceAt' : 'parkingSourceSearch');
   const sourceLink = $('parkingSourceLink') as HTMLAnchorElement;
   sourceLink.hidden = !isAtSource;
-  sourceLink.textContent = language === 'zh' ? 'AT 原始数据 ↗' : 'AT source ↗';
   $('parkingSummary').textContent = selectedParking
-    ? (language === 'zh'
-      ? `已选 ${selectedParking.name}，距 ${target.name} 约 ${formatDistance(selectedParking.distanceMeters, language)}（直线距离）。`
-      : `Driving to ${selectedParking.name} · ${formatDistance(selectedParking.distanceMeters, language)} from ${target.name} as the crow flies.`)
-    : (language === 'zh'
-      ? '先选停车点，导航会以它为驾车终点；距离为直线距离，停车后可继续步行。'
-      : 'Choose a parking place for the driving leg, then continue on foot. Distances are straight line.');
-  if (!hint.hidden) hint.textContent = language === 'zh'
-    ? `停车：${selectedParking!.name} · 之后步行到 ${target.name}`
-    : `Parking: ${selectedParking!.name} · then walk to ${target.name}`;
+    ? t(language, 'parkingSelectedSummary', { parking: selectedParking.name, distance: formatDistance(selectedParking.distanceMeters, language), destination: target.name })
+    : t(language, 'parkingIntro');
+  if (!hint.hidden) hint.textContent = t(language, 'parkingHint', { parking: selectedParking!.name, destination: target.name });
   const list = $('parkingList');
   list.replaceChildren();
   if (parkingLoading && !parkingPlaces.length) {
-    list.textContent = language === 'zh' ? '正在寻找停车点…' : 'Finding nearby parking…';
+    list.textContent = t(language, 'parkingLoading');
   } else if (parkingError && !parkingPlaces.length) {
-    list.textContent = parkingError;
+    list.textContent = t(language, parkingError);
   } else if (!parkingPlaces.length) {
-    list.textContent = language === 'zh' ? '附近暂无已收录停车点。' : 'No listed parking places nearby.';
+    list.textContent = t(language, 'parkingNone');
   } else {
     for (const place of parkingPlaces) {
       const button = document.createElement('button');
@@ -227,21 +216,22 @@ function renderParking() {
       button.setAttribute('aria-pressed', String(place.id === selectedParking?.id));
       const icon = document.createElement('span');
       icon.className = 'parking-option-icon';
+      icon.setAttribute('aria-hidden', 'true');
       icon.textContent = 'P';
       const copy = document.createElement('span');
       copy.className = 'parking-option-copy';
       const name = document.createElement('strong');
       name.textContent = place.name;
       const address = document.createElement('small');
-      address.textContent = place.address || (language === 'zh' ? '停车地点' : 'Parking place');
+      address.textContent = place.address || t(language, 'parkingPlace');
       copy.append(name, address);
       if (place.source === 'at') {
         const details = document.createElement('small');
         details.className = 'parking-option-detail';
         details.textContent = [
-          place.totalSpaces !== null ? (language === 'zh' ? `总车位 ${place.totalSpaces}` : `${place.totalSpaces} total spaces`) : '',
-          place.mobilitySpaces !== null ? (language === 'zh' ? `无障碍 ${place.mobilitySpaces}` : `${place.mobilitySpaces} accessible`) : '',
-          place.clearanceMeters !== null ? (language === 'zh' ? `限高 ${place.clearanceMeters}m` : `${place.clearanceMeters}m clearance`) : ''
+          place.totalSpaces !== null ? t(language, 'parkingTotalSpaces', { count: place.totalSpaces }) : '',
+          place.mobilitySpaces !== null ? t(language, 'parkingAccessible', { count: place.mobilitySpaces }) : '',
+          place.clearanceMeters !== null ? t(language, 'parkingClearance', { meters: place.clearanceMeters }) : ''
         ].filter(Boolean).join(' · ') || 'AT Open GIS';
         copy.append(details);
       }
@@ -259,7 +249,7 @@ function renderParking() {
   if (selectedParking) {
     const direct = document.createElement('button');
     direct.type = 'button';
-    direct.textContent = language === 'zh' ? '改为直接到目的地' : 'Drive to destination instead';
+    direct.textContent = t(language, 'parkingDriveDirect');
     direct.onclick = driveToDestination;
     actions.append(direct);
     const detailsUrl = selectedParking.source === 'at'
@@ -270,16 +260,14 @@ function renderParking() {
       details.href = detailsUrl;
       details.target = '_blank';
       details.rel = 'noopener noreferrer';
-      details.textContent = selectedParking.source === 'at'
-        ? (language === 'zh' ? 'AT 费用与规则 ↗' : 'AT rates & rules ↗')
-        : (language === 'zh' ? '查看地点 ↗' : 'Place details ↗');
+      details.textContent = t(language, selectedParking.source === 'at' ? 'parkingRates' : 'parkingDetails');
       actions.append(details);
     }
     if (parkedAtParking) {
       const walk = document.createElement('button');
       walk.type = 'button';
       walk.className = 'primary';
-      walk.textContent = language === 'zh' ? '继续步行到目的地 →' : 'Continue on foot →';
+      walk.textContent = t(language, 'parkingWalk');
       walk.onclick = continueOnFoot;
       actions.prepend(walk);
     }
@@ -308,19 +296,13 @@ function api<T>(path: string, signal?: AbortSignal): Promise<T> {
 }
 
 function renderTripFlags() {
-  $('sheetVoice').textContent = language === 'zh'
-    ? `语音 ${voiceEnabled ? '✓' : '关闭'}`
-    : `Voice ${voiceEnabled ? '✓' : 'off'}`;
-  $('sheetLane').textContent = language === 'zh'
-    ? `车道 ${laneGuidanceEnabled ? '✓' : '关闭'}`
-    : `Lanes ${laneGuidanceEnabled ? '✓' : 'off'}`;
-  $('sheetAccount').textContent = isSignedIn()
-    ? (language === 'zh' ? '账号已同步' : 'Account synced')
-    : (language === 'zh' ? '访客模式' : 'Guest mode');
+  $('sheetVoice').textContent = t(language, voiceEnabled ? 'voiceOn' : 'voiceOff');
+  $('sheetLane').textContent = t(language, laneGuidanceEnabled ? 'lanesOn' : 'lanesOff');
+  $('sheetAccount').textContent = t(language, isSignedIn() ? 'accountSynced' : 'guestMode');
   const voiceChip = $('navVoiceChip');
   const lanesChip = $('navLanesChip');
-  voiceChip.textContent = language === 'zh' ? `语音 ${voiceEnabled ? '✓' : '关闭'}` : `Voice ${voiceEnabled ? '✓' : 'off'}`;
-  lanesChip.textContent = language === 'zh' ? `车道 ${laneGuidanceEnabled ? '✓' : '关闭'}` : `Lanes ${laneGuidanceEnabled ? '✓' : 'off'}`;
+  voiceChip.textContent = t(language, voiceEnabled ? 'voiceOn' : 'voiceOff');
+  lanesChip.textContent = t(language, laneGuidanceEnabled ? 'lanesOn' : 'lanesOff');
   voiceChip.setAttribute('aria-pressed', String(voiceEnabled));
   lanesChip.setAttribute('aria-pressed', String(laneGuidanceEnabled));
 }
@@ -337,7 +319,7 @@ function setUiMode(next: 'explore' | 'navigation') {
     $('navSecondary').hidden = true;
     $('navSheetHandle').setAttribute('aria-expanded', 'false');
     document.body.classList.remove('nav-sheet-expanded');
-    $('navSheetHandle').setAttribute('aria-label', language === 'zh' ? '展开行程详情' : 'Show trip details');
+    $('navSheetHandle').setAttribute('aria-label', t(language, 'showTripDetails'));
     requestAnimationFrame(updateNavigationOverlayLayout);
   }
 }
@@ -375,8 +357,8 @@ function renderSpeedHud() {
   hud.classList.toggle('speeding', speeding);
   $('speedValue').textContent = String(Math.round(currentSpeedKph));
   $('speedLimitValue').textContent = speedLimitKph === null
-    ? (language === 'zh' ? '限速 —' : 'LIMIT —')
-    : (language === 'zh' ? `限速 ${speedLimitKph}` : `LIMIT ${speedLimitKph}`);
+    ? t(language, 'speedLimitUnknown')
+    : t(language, 'speedLimitBadge', { value: speedLimitKph });
   $('sheetSpeedLimit').textContent = speedLimitKph === null ? '—' : `${speedLimitKph} km/h`;
   $('navSpeedLimit').textContent = speedLimitKph === null ? '—' : `${speedLimitKph} km/h`;
 }
@@ -452,6 +434,14 @@ function renderCameraList() {
   root.append(list);
 }
 
+function renderCameraStatus() {
+  if (!cameraResponse) return;
+  $('dataStatus').textContent = `${cameras.length} ${t(language, 'cameraCount')} · ${cameraResponse.sourceUpdatedAt}${cameraResponse.syncStatus === 'live' ? '' : ` · ${t(language, 'cached')}`}`;
+  $('sourceDate').textContent = cameraResponse.sourceUpdatedAt;
+  $('checkedAt').textContent = cameraResponse.checkedAt ? new Date(cameraResponse.checkedAt).toLocaleString(localeFor(language)) : t(language, 'neverChecked');
+  $('syncStatus').textContent = t(language, cameraResponse.syncStatus === 'live' ? 'synced' : cameraResponse.syncStatus === 'stale' ? 'stale' : cameraResponse.syncStatus === 'offline' ? 'offline' : 'seed');
+}
+
 async function loadCameras() {
   try {
     const data = await api<CameraResponse>('/api/cameras');
@@ -466,10 +456,7 @@ async function loadCameras() {
     } catch { /* ignore damaged local cache */ }
   }
   if (cameraResponse) {
-    $('dataStatus').textContent = `${cameras.length} ${t(language, 'cameraCount')} · ${cameraResponse.sourceUpdatedAt}${cameraResponse.syncStatus === 'live' ? '' : ` · ${t(language, 'cached')}`}`;
-    $('sourceDate').textContent = cameraResponse.sourceUpdatedAt;
-    $('checkedAt').textContent = cameraResponse.checkedAt ? new Date(cameraResponse.checkedAt).toLocaleString(language === 'zh' ? 'zh-NZ' : 'en-NZ') : t(language, 'neverChecked');
-    $('syncStatus').textContent = t(language, cameraResponse.syncStatus === 'live' ? 'synced' : cameraResponse.syncStatus === 'stale' ? 'stale' : cameraResponse.syncStatus === 'offline' ? 'offline' : 'seed');
+    renderCameraStatus();
     if (route) routeCameras = matchCamerasToRoute(cameras, route);
     renderCameras();
   } else $('dataStatus').textContent = t(language, 'camerasUnavailable');
@@ -559,7 +546,7 @@ function renderGpsStatus() {
   const badge = $('gpsBadge');
   const text = $('gpsBadgeText');
   badge.classList.toggle('error', gpsStatus === 'denied' || gpsStatus === 'unavailable');
-  if (gpsStatus === 'active' && gpsAccuracy !== null) text.textContent = `GPS ${Math.round(gpsAccuracy)} m`;
+  if (gpsStatus === 'active' && gpsAccuracy !== null) text.textContent = t(language, 'gpsAccuracyBadge', { meters: Math.round(gpsAccuracy) });
   else if (gpsStatus === 'locating') text.textContent = t(language, 'locating');
   else if (gpsStatus === 'denied') text.textContent = t(language, 'permissionDenied');
   else if (gpsStatus === 'unavailable') text.textContent = t(language, 'gpsTemporary');
@@ -568,7 +555,7 @@ function renderGpsStatus() {
     ? `±${Math.round(gpsAccuracy)} m`
     : '—';
   $('navGpsChip').textContent = gpsStatus === 'active' && gpsAccuracy !== null
-    ? `GPS ±${Math.round(gpsAccuracy)} m` : 'GPS —';
+    ? t(language, 'gpsChip', { meters: Math.round(gpsAccuracy) }) : t(language, 'gpsUnknownChip');
 }
 
 function handleGpsError(error: GeolocationPositionError) {
@@ -704,9 +691,7 @@ function renderRouteInfo(option: PlannerRouteOption | null) {
   if (option.mode === 'drive' && !option.trafficIntervals.length) {
     const card = document.createElement('div');
     card.className = 'route-info-card';
-    card.textContent = language === 'zh'
-      ? '实时交通区间暂不可用；路线颜色不代表当前路况。'
-      : 'Live traffic segments are unavailable; route color does not indicate current traffic.';
+    card.textContent = t(language, 'trafficUnavailable');
     root.append(card);
     root.hidden = false;
   }
@@ -717,9 +702,9 @@ function renderRouteInfo(option: PlannerRouteOption | null) {
     const jam = option.traffic.trafficJam;
     const slow = option.traffic.slow;
     const message = jam > 0
-      ? `${jam} heavy-traffic section${jam === 1 ? '' : 's'} ahead`
-      : slow > 0 ? `${slow} slow section${slow === 1 ? '' : 's'} ahead` : (language === 'zh' ? '沿途道路提示' : 'Road advisory');
-    card.innerHTML = `<strong>⚠ Traffic advisory</strong><span>${escapeHtml(message)}${option.warnings[0] ? ` · ${escapeHtml(option.warnings[0])}` : ''}</span>`;
+      ? plural(language, jam, 'heavySectionsOne', 'heavySectionsOther')
+      : slow > 0 ? plural(language, slow, 'slowSectionsOne', 'slowSectionsOther') : t(language, 'roadAdvisory');
+    card.innerHTML = `<strong>⚠ ${escapeHtml(t(language, 'trafficAdvisory'))}</strong><span>${escapeHtml(message)}${option.warnings[0] ? ` · ${escapeHtml(option.warnings[0])}` : ''}</span>`;
     root.append(card);
     root.hidden = false;
     navCard.textContent = `⚠ ${message}${option.warnings[0] ? ` · ${option.warnings[0]}` : ''}`;
@@ -730,9 +715,10 @@ function renderRouteInfo(option: PlannerRouteOption | null) {
     for (const leg of option.transit) {
       const card = document.createElement('div');
       card.className = 'route-info-card transit';
-      const title = [leg.lineName, leg.headsign].filter(Boolean).join(' → ') || leg.vehicleName || leg.vehicleType || 'Transit';
+      const title = [leg.lineName, leg.headsign].filter(Boolean).join(' → ') || leg.vehicleName || leg.vehicleType || t(language, 'transitFallback');
       const details = [leg.departureStop, leg.arrivalStop].filter(Boolean).join(' → ');
-      card.innerHTML = `<strong>🚆 ${escapeHtml(title)}</strong><span>${escapeHtml(details)}${leg.stopCount ? ` · ${leg.stopCount} stops` : ''}</span>`;
+      const stops = leg.stopCount ? ` · ${plural(language, leg.stopCount, 'transitStopsOne', 'transitStopsOther')}` : '';
+      card.innerHTML = `<strong>🚆 ${escapeHtml(title)}</strong><span>${escapeHtml(details)}${escapeHtml(stops)}</span>`;
       root.append(card);
     }
     root.hidden = false;
@@ -755,7 +741,7 @@ function applyDrivingRoute(index: number) {
   });
   $('tripDistance').textContent = formatDistance(route.distance, language);
   $('tripArrival').textContent = new Date(Date.now() + route.duration * 1000).toLocaleTimeString(
-    language === 'zh' ? 'zh-NZ' : 'en-NZ',
+    localeFor(language),
     { hour: '2-digit', minute: '2-digit' }
   );
   $('navDistance').textContent = $('tripDistance').textContent;
@@ -789,13 +775,14 @@ function renderRoutePlanner() {
   for (const mode of ['drive', 'transit', 'walk', 'bicycle'] as TravelMode[]) {
     const option = routePlan?.options.find((item) => item.mode === mode);
     $(modeIds[mode]).textContent = mode === 'drive' && drivingAlternatives[0]
-      ? formatModeDuration(drivingAlternatives[0].duration)
-      : formatModeDuration(option?.durationSeconds);
+      ? formatDuration(drivingAlternatives[0].duration, language)
+      : formatDuration(option?.durationSeconds, language);
     const button = modes.querySelector<HTMLButtonElement>(`button[data-mode="${mode}"]`);
     if (button) {
       const available = mode !== 'transit';
       button.disabled = !available;
       button.classList.toggle('selected', selectedTravelMode === mode);
+      button.setAttribute('aria-pressed', String(selectedTravelMode === mode));
     }
   }
 
@@ -805,7 +792,8 @@ function renderRoutePlanner() {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'route-option-card' + (selectedDrivingRoute === index ? ' selected' : '');
-      button.innerHTML = `<strong>${escapeHtml(formatModeDuration(item.duration))}</strong><span>${escapeHtml(formatDistance(item.distance, language))}${index === 0 ? ' · recommended' : ''}</span>`;
+      button.setAttribute('aria-pressed', String(selectedDrivingRoute === index));
+      button.innerHTML = `<strong>${escapeHtml(formatDuration(item.duration, language))}</strong><span>${escapeHtml(formatDistance(item.distance, language))}${index === 0 ? ` · ${escapeHtml(t(language, 'recommended'))}` : ''}</span>`;
       button.onclick = () => {
         applyDrivingRoute(index);
         renderRoutePlanner();
@@ -815,7 +803,7 @@ function renderRoutePlanner() {
     alternatives.hidden = drivingAlternatives.length < 2;
     renderRouteInfo(selectedPlannerOption());
     ($('driveButton') as HTMLButtonElement).disabled = drivingAlternatives.length === 0;
-    $('driveLabel').textContent = language === 'zh' ? '开始导航' : 'Start';
+    $('driveLabel').textContent = t(language, 'startShort');
     return;
   }
 
@@ -824,7 +812,7 @@ function renderRoutePlanner() {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'route-option-card selected';
-    button.innerHTML = `<strong>${escapeHtml(formatModeDuration(option.durationSeconds))}</strong><span>${escapeHtml(formatDistance(option.distanceMeters, language))}</span>`;
+    button.innerHTML = `<strong>${escapeHtml(formatDuration(option.durationSeconds, language))}</strong><span>${escapeHtml(formatDistance(option.distanceMeters, language))}</span>`;
     alternatives.append(button);
     alternatives.hidden = false;
     if (destination) {
@@ -837,15 +825,13 @@ function renderRoutePlanner() {
     }
     $('tripDistance').textContent = formatDistance(option.distanceMeters, language);
     $('tripArrival').textContent = new Date(Date.now() + option.durationSeconds * 1000).toLocaleTimeString(
-      language === 'zh' ? 'zh-NZ' : 'en-NZ',
+      localeFor(language),
       { hour: '2-digit', minute: '2-digit' }
     );
     $('cameraRouteCount').textContent = '—';
     $('navCameraCount').textContent = '—';
     ($('driveButton') as HTMLButtonElement).disabled = route?.coordinates.length ? false : true;
-    $('driveLabel').textContent = selectedTravelMode === 'transit'
-      ? (language === 'zh' ? '开始行程' : 'Start trip')
-      : (language === 'zh' ? '开始导航' : 'Start');
+    $('driveLabel').textContent = t(language, selectedTravelMode === 'transit' ? 'startTrip' : 'startShort');
   } else {
     alternatives.hidden = true;
     ($('driveButton') as HTMLButtonElement).disabled = true;
@@ -1105,9 +1091,9 @@ function saveCurrentRoute() {
     void rememberRoute({
       destinationName, latitude: destination[1], longitude: destination[0], mode: selectedTravelMode,
       distanceMeters: record.distance, durationSeconds: record.duration
-    }).then(() => toast(language === 'zh' ? '路线已保存到账户' : 'Route saved to your account'))
+    }).then(() => toast(t(language, 'routeSavedAccount')))
       .catch((error) => toast(String(error)));
-  } else toast(language === 'zh' ? '路线仅保留到本次会话' : 'Route saved for this session only');
+  } else toast(t(language, 'routeSavedSession'));
 }
 
 let speechGeneration = 0;
@@ -1132,9 +1118,7 @@ function speak(message: string, stillRelevant: () => boolean = () => true) {
       if (preferred) utterance.voice = preferred;
       utterance.onend = () => resolve();
       utterance.onerror = (event) => {
-        if (event.error !== 'canceled' && event.error !== 'interrupted') toast(speechLanguage === 'zh'
-          ? '语音播放失败，请检查音量和浏览器语音权限。'
-          : 'Voice playback failed. Check volume and browser speech support.');
+        if (event.error !== 'canceled' && event.error !== 'interrupted') toast(t(speechLanguage, 'voiceFailed'));
         resolve();
       };
       speechSynthesis.resume();
@@ -1146,13 +1130,13 @@ function speak(message: string, stillRelevant: () => boolean = () => true) {
 function turnText(step: RouteStep) {
   if (step.instruction?.trim() && (language !== 'zh' || /[\u3400-\u9fff]/.test(step.instruction))) return step.instruction;
   const modifier = step.modifier || '';
-  const road = step.name || (language === 'zh' ? '道路' : 'the road');
-  if (step.maneuver === 'arrive') return language === 'zh' ? '到达目的地' : 'Arrive at destination';
-  if (step.maneuver === 'roundabout' || step.maneuver === 'rotary') return language === 'zh' ? `进入环岛，驶向 ${road}` : `Enter roundabout toward ${road}`;
-  if (modifier.includes('left')) return language === 'zh' ? `左转进入 ${road}` : `Turn left onto ${road}`;
-  if (modifier.includes('right')) return language === 'zh' ? `右转进入 ${road}` : `Turn right onto ${road}`;
-  if (step.maneuver === 'depart') return language === 'zh' ? `出发，沿 ${road} 行驶` : `Start on ${road}`;
-  return language === 'zh' ? `继续沿 ${road} 行驶` : `Continue on ${road}`;
+  const road = step.name || t(language, 'roadFallback');
+  if (step.maneuver === 'arrive') return t(language, 'arrived');
+  if (step.maneuver === 'roundabout' || step.maneuver === 'rotary') return t(language, 'turnRoundabout', { road });
+  if (modifier.includes('left')) return t(language, 'turnLeft', { road });
+  if (modifier.includes('right')) return t(language, 'turnRight', { road });
+  if (step.maneuver === 'depart') return t(language, 'turnDepart', { road });
+  return t(language, 'turnContinue', { road });
 }
 
 function turnArrow(step: RouteStep) {
@@ -1191,7 +1175,7 @@ function renderLaneGuidance(step?: RouteStep) {
     const item = document.createElement('span');
     item.className = 'lane' + (lane.valid ? ' recommended' : '') + (lane.indications.length > 1 ? ' multi' : '');
     item.textContent = laneSymbol(lane.indications);
-    item.setAttribute('aria-label', (lane.valid ? (language === 'zh' ? '推荐车道' : 'Recommended') : (language === 'zh' ? '车道' : 'Lane')) + ': ' + (lane.indications.join(', ') || 'unknown'));
+    item.setAttribute('aria-label', `${t(language, lane.valid ? 'laneRecommended' : 'laneLabel')}: ${lane.indications.join(', ') || t(language, 'laneUnknown')}`);
     return item;
   }));
   root.hidden = false;
@@ -1229,7 +1213,7 @@ function updateGuidance() {
   $('turnDistance').textContent = maneuver ? formatDistance(Math.max(0, maneuver.along - progress), language) : '—';
   $('turnInstruction').textContent = maneuver ? turnText(maneuver.step) : t(language, 'arrived');
   renderLaneGuidance(maneuver && maneuver.along - progress <= 300 ? maneuver.step : undefined);
-  $('turnEta').textContent = new Date(Date.now() + remainingSeconds * 1000).toLocaleTimeString(language === 'zh' ? 'zh-NZ' : 'en-NZ', { hour: '2-digit', minute: '2-digit' });
+  $('turnEta').textContent = new Date(Date.now() + remainingSeconds * 1000).toLocaleTimeString(localeFor(language), { hour: '2-digit', minute: '2-digit' });
   $('turnRemaining').textContent = formatDistance(remaining, language);
   $('tripDistance').textContent = formatDistance(remaining, language);
   $('tripArrival').textContent = $('turnEta').textContent;
@@ -1245,7 +1229,7 @@ function updateGuidance() {
     const key = `${language}:${maneuver.step.location.join(',')}:${toTurn <= 100 ? '100' : '500'}`;
     if (toTurn > 0 && toTurn <= 500 && key !== lastTurnKey) {
       lastTurnKey = key;
-      speak(language === 'zh' ? `${formatDistance(toTurn, 'zh')}后，${turnText(maneuver.step)}` : `In ${formatDistance(toTurn, 'en')}, ${turnText(maneuver.step)}`, () => navigating && key === lastTurnKey);
+      speak(t(language, 'speakTurn', { distance: formatDistance(toTurn, language), instruction: turnText(maneuver.step) }), () => navigating && key === lastTurnKey);
     }
   }
   const upcoming = routeCameras.filter((item) => item.confidence === 'high' && item.alongMeters >= progress - 15).sort((a, b) => a.alongMeters - b.alongMeters)[0];
@@ -1264,7 +1248,7 @@ function updateGuidance() {
       if (ahead <= threshold && ahead > 0 && !spokenCameras.has(key)) {
         spokenCameras.add(key);
         const label = cameraLabel(upcoming.camera.type, language);
-        speak(language === 'zh' ? `前方 ${threshold} 米${label}，${upcoming.camera.location}` : `${label} in ${threshold} metres, ${upcoming.camera.location}`, () => navigating && current !== null && route !== null && upcoming.alongMeters > nearestOnRoute(current, route.coordinates).alongMeters);
+        speak(t(language, 'speakCamera', { threshold, label, location: upcoming.camera.location }), () => navigating && current !== null && route !== null && upcoming.alongMeters > nearestOnRoute(current, route.coordinates).alongMeters);
       }
     }
   } else $('cameraAlert').hidden = true;
@@ -1296,9 +1280,7 @@ async function startNavigation() {
   lastTurnKey = '';
   if (manualOrigin && current) { manualOrigin = null; void planRoute(); }
   speak(
-    selectedTravelMode === 'transit'
-      ? (language === 'zh' ? '行程开始，请按照换乘信息出行。' : 'Trip started. Follow the transit itinerary.')
-      : (language === 'zh' ? '导航开始，请注意安全。' : 'Navigation started. Travel safely.')
+    t(language, selectedTravelMode === 'transit' ? 'navStartedTransit' : 'navStarted')
   );
   await updateWakeLock();
   updateGuidance();
@@ -1308,7 +1290,7 @@ function stopNavigation(arrived = false) {
   if (!navigating) return;
   if (isSignedIn() && destination && route) {
     void rememberRoute({
-      destinationName: destinationName || 'Destination', latitude: destination[1], longitude: destination[0],
+      destinationName: destinationName || t(language, 'destinationFallback'), latitude: destination[1], longitude: destination[0],
       mode: selectedTravelMode, distanceMeters: route.distance, durationSeconds: route.duration
     }).catch(() => { /* Ending navigation must work even if account sync fails. */ });
   }
@@ -1328,7 +1310,7 @@ function stopNavigation(arrived = false) {
   if (arrived && selectedParking && parkingDestination && selectedTravelMode === 'drive') {
     parkedAtParking = true;
     renderParking();
-    $('bottomPanel').classList.remove('sheet-collapsed');
+    setSheetCollapsed(false);
     requestAnimationFrame(() => $('parkingSection').scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   }
   setTripState(arrived ? (parkedAtParking ? 'stateParkingReached' : 'stateArrived') : 'stateRouteReady');
@@ -1337,9 +1319,7 @@ function stopNavigation(arrived = false) {
   $('drivingStatus').textContent = t(language, 'drivingStopped');
   void wakeLock?.release();
   wakeLock = null;
-  if (arrived) speak(parkedAtParking
-    ? (language === 'zh' ? '已到达停车点。停车后请继续步行到目的地。' : 'You have reached the parking place. Continue on foot to your destination.')
-    : (language === 'zh' ? '已到达目的地。' : 'You have arrived.'));
+  if (arrived) speak(t(language, parkedAtParking ? 'arrivedParkingSpeech' : 'arrivedSpeech'));
 }
 
 function showOverlay(id: string) { $(id).hidden = false; }
@@ -1358,6 +1338,8 @@ function renderPoiAccountState(place: PoiSelection) {
   const note = $('poiNote') as HTMLTextAreaElement;
   const saveNote = $('poiSaveNote') as HTMLButtonElement;
   favorite.textContent = stored?.isFavorite ? '♥' : '♡';
+  favorite.setAttribute('aria-pressed', String(stored?.isFavorite === true));
+  favorite.setAttribute('aria-label', t(language, stored?.isFavorite ? 'poiFavoriteRemove' : 'poiFavorite'));
   favorite.classList.toggle('active', stored?.isFavorite === true);
   favorite.disabled = false;
   note.disabled = !signedIn;
@@ -1372,19 +1354,17 @@ function renderPoiAccountState(place: PoiSelection) {
   comment.value = review?.comment || '';
   comment.disabled = !signedIn;
   saveReview.disabled = !signedIn;
-  $('poiOwnReviewHint').textContent = signedIn
-    ? (language === 'zh' ? '仅保存在你的 Waybi 账户' : 'Private to your Waybi account')
-    : (language === 'zh' ? '登录后撰写私人评价' : 'Sign in to write a private review');
+  $('poiOwnReviewHint').textContent = t(language, signedIn ? 'poiReviewHintSignedIn' : 'poiReviewHintGuest');
   $('poiAccountHint').textContent = signedIn
-    ? (language === 'zh' ? `同步到 ${currentAccountEmail()}` : `Synced to ${currentAccountEmail()}`)
-    : (language === 'zh' ? '登录后同步收藏和备注' : 'Sign in to sync favorites and notes');
+    ? t(language, 'poiAccountHintSignedIn', { email: currentAccountEmail() })
+    : t(language, 'poiAccountHintGuest');
 }
 
 function showPoiCard(place: PoiSelection) {
   if (uiMode === 'navigation') return;
   selectedPoi = place;
   $('poiTitle').textContent = place.name;
-  $('poiType').textContent = place.primaryType || 'OPENSTREETMAP';
+  $('poiType').textContent = place.primaryType || t(language, 'poiTypeFallback');
   $('poiAddress').textContent = place.address || `${place.coordinate[1].toFixed(5)}, ${place.coordinate[0].toFixed(5)}`;
 
   const rating = $('poiRating');
@@ -1394,7 +1374,7 @@ function showPoiCard(place: PoiSelection) {
     stars.className = 'stars';
     stars.textContent = '★'.repeat(Math.max(1, Math.min(5, Math.round(place.rating))));
     const text = document.createElement('span');
-    text.textContent = `${place.rating.toFixed(1)} · ${place.userRatingCount ?? 0} ${language === 'zh' ? '条评分' : 'ratings'}`;
+    text.textContent = t(language, 'poiRatings', { rating: place.rating.toFixed(1), count: place.userRatingCount ?? 0 });
     rating.append(stars, text);
     rating.hidden = false;
   } else rating.hidden = true;
@@ -1430,7 +1410,7 @@ function showPoiCard(place: PoiSelection) {
     chip.textContent = value;
     meta.append(chip);
   };
-  addMeta(place.businessStatus === 'OPERATIONAL' ? (language === 'zh' ? '营业中' : 'Operational') : (place.businessStatus || ''));
+  addMeta(place.businessStatus === 'OPERATIONAL' ? t(language, 'poiOperational') : (place.businessStatus || ''));
   addMeta(place.priceLevel?.replaceAll('_', ' ') || '');
   addMeta(place.phone ? `☎ ${place.phone}` : '');
 
@@ -1478,7 +1458,7 @@ function showPoiCard(place: PoiSelection) {
       link.href = review.sourceUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.textContent = language === 'zh' ? '查看来源 ↗' : 'View source ↗';
+      link.textContent = t(language, 'poiViewSource');
       root.append(link);
     }
     reviewsRoot.append(root);
@@ -1495,7 +1475,7 @@ function showPoiCard(place: PoiSelection) {
 async function saveSelectedPlace(nextFavorite?: boolean) {
   if (!selectedPoi) return;
   if (!isSignedIn()) {
-    toast(language === 'zh' ? '请先在设置中登录，再同步收藏和备注。' : 'Sign in in Settings to sync favorites and notes.');
+    toast(t(language, 'signInToSync'));
     return;
   }
   const stored = savedPlace(selectedPoi.placeId);
@@ -1513,7 +1493,7 @@ async function saveSelectedPlace(nextFavorite?: boolean) {
     });
     renderPoiAccountState(selectedPoi);
     renderTripFlags();
-    toast(language === 'zh' ? '已同步到账号' : 'Saved to your account');
+    toast(t(language, 'savedToAccount'));
   } catch (error) {
     toast(String((error as Error).message));
   }
@@ -1537,53 +1517,81 @@ function navigateToSelectedPoi() {
   }
 }
 
+const sheetQuery = window.matchMedia('(max-width: 759px)');
+function sheetCollapsed() { return $('bottomPanel').classList.contains('sheet-collapsed'); }
+
+/**
+ * Keeps the sheet handle's state in sync and keeps the off-screen part of a
+ * collapsed phone sheet out of the Tab order (inert).
+ */
+function renderSheetHandle() {
+  const collapsed = sheetCollapsed() && sheetQuery.matches;
+  const handle = $('sheetHandle');
+  handle.setAttribute('aria-expanded', String(!collapsed));
+  handle.setAttribute('aria-label', t(language, collapsed ? 'expandSheet' : 'collapseSheet'));
+  $('sheetBody').toggleAttribute('inert', collapsed);
+}
+
+function setSheetCollapsed(collapsed: boolean) {
+  $('bottomPanel').classList.toggle('sheet-collapsed', collapsed);
+  renderSheetHandle();
+}
+
 function initBottomSheet() {
   const panel = $('bottomPanel');
-  const handle = panel.querySelector<HTMLElement>('.panel-handle');
-  if (!handle) return;
-
-  if (window.matchMedia('(max-width: 759px)').matches) {
-    panel.classList.add('sheet-collapsed');
-  }
+  const handle = $('sheetHandle');
+  if (sheetQuery.matches) panel.classList.add('sheet-collapsed');
+  renderSheetHandle();
+  sheetQuery.addEventListener?.('change', renderSheetHandle);
 
   let startY = 0;
   let latestY = 0;
+  let dragging = false;
+  let suppressClick = false;
 
   const finish = () => {
+    if (!dragging) return;
+    dragging = false;
     panel.classList.remove('sheet-dragging');
     const delta = latestY - startY;
-    if (Math.abs(delta) < 18) {
-      panel.classList.toggle('sheet-collapsed');
-    } else if (delta < 0) {
-      panel.classList.remove('sheet-collapsed');
-    } else {
-      panel.classList.add('sheet-collapsed');
-    }
+    if (Math.abs(delta) < 18) setSheetCollapsed(!sheetCollapsed());
+    else setSheetCollapsed(delta > 0);
     panel.style.transform = '';
+    // The pointer gesture already toggled; ignore the click that follows it.
+    suppressClick = true;
+    window.setTimeout(() => { suppressClick = false; }, 0);
   };
 
   handle.addEventListener('pointerdown', (event) => {
+    dragging = true;
     startY = event.clientY;
     latestY = event.clientY;
     panel.classList.add('sheet-dragging');
-    handle.setPointerCapture(event.pointerId);
+    handle.setPointerCapture?.(event.pointerId);
   });
   handle.addEventListener('pointermove', (event) => {
-    if (!panel.classList.contains('sheet-dragging')) return;
+    if (!dragging) return;
     latestY = event.clientY;
     const delta = latestY - startY;
-    const base = panel.classList.contains('sheet-collapsed')
-      ? Math.max(0, panel.offsetHeight - 108)
-      : 0;
+    const base = sheetCollapsed() ? Math.max(0, panel.offsetHeight - 108) : 0;
     panel.style.transform = `translateY(${Math.max(0, base + delta)}px)`;
   });
   handle.addEventListener('pointerup', finish);
   handle.addEventListener('pointercancel', finish);
+  // Keyboard and assistive tech: Enter/Space toggle (click), arrows set the state.
+  handle.addEventListener('click', () => {
+    if (suppressClick) return;
+    setSheetCollapsed(!sheetCollapsed());
+  });
+  handle.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowUp') { event.preventDefault(); setSheetCollapsed(false); }
+    else if (event.key === 'ArrowDown') { event.preventDefault(); setSheetCollapsed(true); }
+  });
 }
 
 async function saveSelectedReview() {
   if (!selectedPoi || !isSignedIn()) {
-    toast(language === 'zh' ? '请先登录再评价地点。' : 'Sign in to review a place.');
+    toast(t(language, 'signInToReview'));
     return;
   }
   try {
@@ -1594,7 +1602,7 @@ async function saveSelectedReview() {
       comment: ($('poiOwnComment') as HTMLTextAreaElement).value.trim()
     });
     renderPoiAccountState(selectedPoi);
-    toast(language === 'zh' ? '私人评价已保存' : 'Private review saved');
+    toast(t(language, 'reviewSaved'));
   } catch (error) { toast(String((error as Error).message)); }
 }
 
@@ -1698,7 +1706,7 @@ $('trafficToggle').onclick = () => {
 for (const [id, degrees] of [['rotateLeft', -45], ['rotateRight', 45]] as const) {
   $(id).onclick = () => {
     if (!map.rotateBy(degrees)) {
-      toast(language === 'zh' ? '旋转需要支持 WebGL 的矢量地图。' : 'Rotation needs a WebGL-capable vector map.');
+      toast(t(language, 'rotationUnavailable'));
       return;
     }
     following = false;
@@ -1716,7 +1724,7 @@ $('navSheetHandle').onclick = () => {
   $('navSecondary').hidden = !expanded;
   document.body.classList.toggle('nav-sheet-expanded', expanded);
   $('navSheetHandle').setAttribute('aria-expanded', String(expanded));
-  $('navSheetHandle').setAttribute('aria-label', language === 'zh' ? (expanded ? '收起行程详情' : '展开行程详情') : (expanded ? 'Hide trip details' : 'Show trip details'));
+  $('navSheetHandle').setAttribute('aria-label', t(language, expanded ? 'hideTripDetails' : 'showTripDetails'));
   requestAnimationFrame(updateNavigationOverlayLayout);
   if (current && route && navigating && following) requestAnimationFrame(() => map.focusNavigation(lookAheadCenter(current!, latestHeading, route!)));
 };
@@ -1733,54 +1741,40 @@ $('cameraListButton').onclick = () => {
 $('closeData').onclick = () => hideOverlay('dataOverlay');
 for (const id of ['settingsOverlay', 'dataOverlay']) $(id).addEventListener('click', (event) => { if (event.target === $(id)) hideOverlay(id); });
 function applyLanguage() {
-  document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
   applyUiLanguage(language);
-  $('cameraAlert').setAttribute('aria-label', language === 'zh' ? '前方摄像头提醒' : 'Upcoming safety camera');
-  $('keepScreenAwakeTitle').textContent = language === 'zh' ? '导航时屏幕常亮' : 'Keep screen awake';
-  $('keepScreenAwakeDescription').textContent = language === 'zh' ? '导航期间防止自动锁屏' : 'Prevent auto-lock while navigating';
-  $('profileButton').setAttribute('aria-label', language === 'zh' ? '账户总览' : 'Account dashboard');
-  $('profileButton').title = language === 'zh' ? '账户总览' : 'Account dashboard';
-  $('poiOwnReviewTitle').textContent = language === 'zh' ? '我的评价' : 'My review';
-  $('poiOwnRatingLabel').textContent = language === 'zh' ? '我的评分' : 'My rating';
-  $('poiOwnComment').setAttribute('placeholder', language === 'zh' ? '写下自己的私人评价' : 'Write a review for your own records');
-  $('poiSaveReview').textContent = language === 'zh' ? '保存我的评价' : 'Save my review';
-  $('zhButton').classList.toggle('selected', language === 'zh');
-  $('enButton').classList.toggle('selected', language === 'en');
+  for (const [id, code] of [['zhButton', 'zh'], ['enButton', 'en']] as const) {
+    $(id).classList.toggle('selected', language === code);
+    $(id).setAttribute('aria-pressed', String(language === code));
+  }
   ($('originInput') as HTMLInputElement).placeholder = currentPlaceLabel ? `${t(language, 'currentPlace')}: ${currentPlaceLabel}` : t(language, 'origin');
-  $('driveLabel').textContent = t(language, navigating ? 'stop' : 'start');
+  if (currentPlaceLabel) $('gpsBadge').title = currentPlaceLabel;
+  $('tripEyebrow').textContent = t(language, tripState);
+  $('driveLabel').textContent = navigating ? t(language, 'stop') : route ? t(language, selectedTravelMode === 'transit' ? 'startTrip' : 'startShort') : t(language, 'start');
   $('drivingStatus').textContent = t(language, navigating ? 'drivingStarted' : 'drivingStopped');
-  $('navEndLabel').textContent = t(language, 'stop');
-  $('navDestinationLabel').textContent = selectedParking && selectedTravelMode === 'drive'
-    ? (language === 'zh' ? '停车点' : 'PARKING STOP')
-    : (language === 'zh' ? '目的地' : 'DESTINATION');
-  $('navCamerasLabel').textContent = t(language, 'camerasAlong');
-  $('navDistanceLabel').textContent = t(language, 'distance');
-  $('navArrivalLabel').textContent = t(language, 'arrival');
-  $('navSpeedLimitLabel').textContent = language === 'zh' ? '当前限速' : 'Speed limit';
-  $('navNextCameraLabel').textContent = language === 'zh' ? '下一摄像头' : 'Next camera';
-  $('navRouteStepsLabel').textContent = language === 'zh' ? '路线步骤' : 'Route steps';
-  $('navDataButton').textContent = t(language, 'dataDetails');
-  $('navBanner').setAttribute('aria-label', language === 'zh' ? '下一步转弯' : 'Next maneuver');
-  $('navSheet').setAttribute('aria-label', language === 'zh' ? '导航行程' : 'Navigation trip');
-  $('navSheetHandle').setAttribute('aria-label', language === 'zh'
-    ? ($('navSecondary').hidden ? '展开行程详情' : '收起行程详情')
-    : ($('navSecondary').hidden ? 'Show trip details' : 'Hide trip details'));
+  $('navDestinationLabel').textContent = t(language, selectedParking && selectedTravelMode === 'drive' ? 'parkingStop' : 'destinationLabel');
+  $('navSheetHandle').setAttribute('aria-label', t(language, $('navSecondary').hidden ? 'showTripDetails' : 'hideTripDetails'));
   if (route) $('navDestinationTitle').textContent = destinationName || t(language, 'destinationFallback');
-  if (!route && !navigating) $('tripTitle').textContent = t(language, 'initialTitle');
-  if (cameraResponse) {
-    $('dataStatus').textContent = `${cameras.length} ${t(language, 'cameraCount')} · ${cameraResponse.sourceUpdatedAt}${cameraResponse.syncStatus === 'live' ? '' : ` · ${t(language, 'cached')}`}`;
-    $('checkedAt').textContent = cameraResponse.checkedAt ? new Date(cameraResponse.checkedAt).toLocaleString(language === 'zh' ? 'zh-NZ' : 'en-NZ') : t(language, 'neverChecked');
-    $('syncStatus').textContent = t(language, cameraResponse.syncStatus === 'live' ? 'synced' : cameraResponse.syncStatus === 'stale' ? 'stale' : cameraResponse.syncStatus === 'offline' ? 'offline' : 'seed');
-  } else $('dataStatus').textContent = t(language, 'camerasLoading');
+  if (!route && !navigating && tripState === 'stateReady') $('tripTitle').textContent = t(language, 'initialTitle');
+  if (tripState === 'stateRouteError') $('tripTitle').textContent = t(language, 'routeError');
+  if (tripState === 'stateCalculating') $('tripTitle').textContent = t(language, 'routeCalculating');
+  if (cameraResponse) renderCameraStatus();
+  else $('dataStatus').textContent = t(language, 'camerasLoading');
+  renderSheetHandle();
   renderCameras();
   renderAccount();
   renderGpsStatus();
   renderSpeedHud();
   renderTripFlags();
   renderParking();
+  renderRerouteStatus();
+  if (routePlan || drivingAlternatives.length) renderRoutePlanner();
+  if (route) {
+    $('tripDistance').textContent = formatDistance(navigating ? Math.max(0, route.distance - nearestOnRoute(current || route.coordinates[0]!, route.coordinates).alongMeters) : route.distance, language);
+  }
   if (selectedPoi) showPoiCard(selectedPoi);
   if (navigating) updateGuidance();
 }
+
 $('zhButton').onclick = () => changeLanguage('zh');
 $('enButton').onclick = () => changeLanguage('en');
 ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled;
@@ -1790,9 +1784,9 @@ $('voiceToggle').addEventListener('change', () => {
   if (!voiceEnabled) stopSpeech();
   renderTripFlags();
   void rememberPreferences(language, voiceEnabled);
-  if (voiceEnabled) speak(language === 'zh' ? '语音提示已开启。' : 'Voice guidance is on.');
+  if (voiceEnabled) speak(t(language, 'voiceOnSpeech'));
 });
-$('voiceTestButton').onclick = () => speak(language === 'zh' ? '语音测试。前方请注意路况。' : 'Voice test. Watch the road ahead.');
+$('voiceTestButton').onclick = () => speak(t(language, 'voiceTestSpeech'));
 ($('laneToggle') as HTMLInputElement).checked = laneGuidanceEnabled;
 $('laneToggle').addEventListener('change', () => {
   laneGuidanceEnabled = ($('laneToggle') as HTMLInputElement).checked;
@@ -1821,6 +1815,13 @@ renderSpeedHud();
 renderTripFlags();
 $('trafficToggle').hidden = true;
 
+window.addEventListener(LANGUAGE_EVENT, (event) => {
+  const next = (event as CustomEvent<Language>).detail;
+  if ((next === 'en' || next === 'zh') && next !== language) changeLanguage(next, false);
+});
+window.addEventListener('storage', (event) => {
+  if (event.key === 'waybi-ui-language' && (event.newValue === 'en' || event.newValue === 'zh') && event.newValue !== language) changeLanguage(event.newValue, false);
+});
 window.addEventListener('kiwi-account-change', () => {
   renderTripFlags();
   if (selectedPoi) renderPoiAccountState(selectedPoi);
@@ -1845,7 +1846,7 @@ async function initializeMap() {
 }
 
 void initializeMap().catch((error) => {
-  toast(`Waybi Map: ${String((error as Error).message)}`);
+  toast(t(language, 'mapLoadFailed', { message: String((error as Error).message) }));
 });
 
 void initGps();
@@ -1858,7 +1859,9 @@ accountRoot.className = 'account-section';
 document.querySelector('#settingsOverlay .modal')?.append(accountRoot);
 applyLanguage();
 void initAccount(accountRoot, () => language, () => voiceEnabled, (saved: AccountProfile) => {
-  language = saved.language;
+  // The account's language is the source of truth once signed in; store it in
+  // the shared key so the website and dashboard follow it too.
+  if (saved.language === 'en' || saved.language === 'zh') changeLanguage(saved.language, false);
   voiceEnabled = saved.voiceEnabled;
   ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled;
   applyLanguage();
@@ -1886,12 +1889,12 @@ async function updateWakeLock() {
   try { await wakeLockRequest; } finally { wakeLockRequest = null; }
 }
 
-function changeLanguage(next: Language) {
+function changeLanguage(next: Language, persistToAccount = true) {
+  if (next === language) { applyLanguage(); return; }
   language = next;
-  localStorage.setItem('kiwi-language', next);
+  writeLanguage(next);
   applyLanguage();
-  updateGuidance();
-  void rememberPreferences(language, voiceEnabled);
+  if (persistToAccount) void rememberPreferences(language, voiceEnabled);
   // Map labels switch in place: destination, route, stops and navigation stay.
   map.setLanguage(next);
 }

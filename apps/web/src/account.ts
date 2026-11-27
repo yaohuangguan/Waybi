@@ -1,4 +1,5 @@
-export type Language = 'en' | 'zh';
+import { t, type Language } from './i18n';
+export type { Language } from './i18n';
 export type RecentDestination = { label: string; latitude: number; longitude: number };
 export type SavedPlace = {
   placeId: string;
@@ -44,25 +45,6 @@ async function accountApi<T>(path: string, method = 'GET', body?: object): Promi
   return data as T;
 }
 
-const copy = {
-  en: {
-    title: 'Welcome to Waybi', guest: 'Guest mode is always available. Sign in to sync your trips and places.',
-    signedIn: 'Signed in as', email: 'Email', password: 'Password (12+ characters)',
-    login: 'Sign in', register: 'Create account', switchLogin: 'Already have an account? Sign in',
-    switchRegister: 'New here? Create an account', logout: 'Sign out',
-    warning: 'New here? Verifying your email creates your account automatically.',
-    error: 'Could not connect to your account.'
-  },
-  zh: {
-    title: '欢迎来到 Waybi', guest: '随时可使用访客模式。登录后同步行程和收藏地点。',
-    signedIn: '已登录', email: '邮箱', password: '密码（至少 12 位）',
-    login: '登录', register: '注册', switchLogin: '已有账户？登录',
-    switchRegister: '没有账户？注册', logout: '退出登录',
-    warning: '首次使用？验证邮箱后将自动创建账号。',
-    error: '无法连接账户。'
-  }
-};
-
 export function isSignedIn() { return Boolean(profile); }
 export function currentProfile() { return profile; }
 export function ownReview(placeId: string) { return profile?.reviews?.find((review) => review.placeId === placeId) || null; }
@@ -74,19 +56,20 @@ export function savedPlace(placeId: string) {
 
 export function renderAccount() {
   if (!accountRoot) return;
-  const words = copy[getLanguage()];
+  const language = getLanguage();
+  const text = (key: Parameters<typeof t>[1], params?: Record<string, string | number>) => t(language, key, params);
   accountRoot.replaceChildren();
   const heading = document.createElement('h3');
-  heading.textContent = words.title;
+  heading.textContent = text('accountTitle');
   accountRoot.append(heading);
   if (profile) {
     const signedIn = document.createElement('p');
     signedIn.className = 'account-note';
-    signedIn.textContent = `${words.signedIn} ${profile.user.email}`;
+    signedIn.textContent = text('accountSignedIn', { email: profile.user.email });
     const signOut = document.createElement('button');
     signOut.type = 'button';
     signOut.className = 'account-button secondary';
-    signOut.textContent = words.logout;
+    signOut.textContent = text('accountLogout');
     signOut.onclick = async () => {
       try { await accountApi('/api/auth/logout', 'POST'); } catch { /* clear client session anyway */ }
       profile = null;
@@ -98,30 +81,29 @@ export function renderAccount() {
   }
   const guest = document.createElement('p');
   guest.className = 'account-note';
-  guest.textContent = words.guest;
+  guest.textContent = text('accountGuest');
   const form = document.createElement('form');
   form.className = 'account-form';
   const email = document.createElement('input');
   email.type = 'email';
   email.required = true;
   email.autocomplete = 'email';
-  email.placeholder = words.email;
-  email.setAttribute('aria-label', words.email);
-  const zh = getLanguage() === 'zh';
-  const text = (en: string, cn: string) => zh ? cn : en;
+  email.placeholder = text('accountEmail');
+  email.setAttribute('aria-label', text('accountEmail'));
+  const zh = language === 'zh';
   if (challenge) email.value = challenge.email;
   email.readOnly = Boolean(challenge);
   const credential = document.createElement('input');
   credential.type = mode === 'password' ? 'password' : 'text';
   credential.required = true;
   credential.autocomplete = mode === 'password' ? 'current-password' : 'one-time-code';
-  credential.placeholder = mode === 'password' ? text('Password', '密码') : text('6-digit code', '6 位验证码');
+  credential.placeholder = mode === 'password' ? text('accountPassword') : text('accountCode');
   credential.setAttribute('aria-label', credential.placeholder);
   if (mode === 'code') { credential.inputMode = 'numeric'; credential.pattern = '[0-9]{6}'; credential.maxLength = 6; }
   const submit = document.createElement('button');
   submit.className = 'account-button';
   submit.type = 'submit';
-  submit.textContent = mode === 'password' ? words.login : challenge ? text('Verify and continue', '验证并继续') : text('Continue with email', '使用邮箱继续');
+  submit.textContent = mode === 'password' ? text('accountLogin') : challenge ? text('accountVerify') : text('accountContinueEmail');
   const status = document.createElement('span');
   status.className = 'account-error';
   status.setAttribute('role', 'status');
@@ -159,7 +141,7 @@ export function renderAccount() {
       renderAccount();
       window.dispatchEvent(new Event('kiwi-account-change'));
     } catch (error) {
-      status.textContent = (error as Error).message || words.error;
+      status.textContent = (error as Error).message || text('accountError');
       submit.disabled = false;
     } finally {
       accountBusy = false;
@@ -172,37 +154,37 @@ export function renderAccount() {
   const switchMode = document.createElement('button');
   switchMode.type = 'button';
   switchMode.className = 'account-link';
-  switchMode.textContent = mode === 'code' ? text('Sign in with a password', '使用密码登录') : text('Use an email code instead', '改用邮箱验证码');
+  switchMode.textContent = mode === 'code' ? text('accountUsePassword') : text('accountUseCode');
   switchMode.onclick = () => { if (accountBusy) return; mode = mode === 'code' ? 'password' : 'code'; challenge = null; renderAccount(); };
   const warning = document.createElement('p');
   warning.className = 'account-warning';
-  warning.textContent = words.warning;
+  warning.textContent = text('accountWarning');
   accountRoot.append(guest, form, switchMode, warning);
   if (challenge) {
     const note = document.createElement('p'); note.className = 'account-note';
-    note.textContent = text('Check your inbox. Your code expires in 10 minutes.', '请查收邮件，验证码 10 分钟内有效。');
+    note.textContent = text('accountCheckInbox');
     form.before(note);
     const resend = document.createElement('button'); resend.type = 'button'; resend.className = 'account-link';
-    resend.textContent = text('Resend code', '重新发送');
+    resend.textContent = text('accountResend');
     const changeEmail = document.createElement('button'); changeEmail.type = 'button'; changeEmail.className = 'account-link';
-    changeEmail.textContent = text('Change email', '更换邮箱');
+    changeEmail.textContent = text('accountChangeEmail');
     changeEmail.onclick = () => { if (!accountBusy) { challenge = null; renderAccount(); } };
     resend.onclick = async () => {
       if (accountBusy || !challenge) return;
       const remaining = Math.ceil((challenge.resendAt - Date.now()) / 1000);
-      if (remaining > 0) { status.textContent = text(`Try again in ${remaining} seconds.`, `请在 ${remaining} 秒后重试。`); return; }
+      if (remaining > 0) { status.textContent = text('accountRetryIn', { seconds: remaining }); return; }
       accountBusy = true; resend.disabled = true; submit.disabled = true;
       try {
         const sent = await accountApi<{challengeId: string; retryAfter: number}>('/api/auth/email/request', 'POST', {email: challenge.email, language: getLanguage()});
         challenge = {...challenge, id: sent.challengeId, resendAt: Date.now() + sent.retryAfter * 1000};
-        credential.value = ''; status.textContent = text('A new code has been sent.', '新验证码已发送。');
-      } catch (error) { status.textContent = (error as Error).message || words.error; }
+        credential.value = ''; status.textContent = text('accountCodeSent');
+      } catch (error) { status.textContent = (error as Error).message || text('accountError'); }
       finally { accountBusy = false; resend.disabled = false; submit.disabled = false; }
     };
     accountRoot.append(resend, document.createTextNode(' · '), changeEmail);
   }
   const policies = document.createElement('p'); policies.className = 'account-note account-policies';
-  for (const [page, label] of [['terms', text('Terms of use', '使用条款')], ['privacy', text('Privacy policy', '隐私政策')]] as const) {
+  for (const [page, label] of [['terms', text('accountTerms')], ['privacy', text('accountPrivacy')]] as const) {
     const link = document.createElement('a'); link.href = `${zh ? '/zh' : ''}/${page}/`; link.textContent = label;
     link.target = '_blank'; link.rel = 'noopener'; policies.append(link, document.createTextNode(' '));
   }

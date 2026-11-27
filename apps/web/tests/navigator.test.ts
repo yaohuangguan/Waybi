@@ -39,7 +39,7 @@ it('real navigator boots offline, retains saved cameras and exposes settings wit
   expect(document.querySelector<HTMLElement>('#settingsOverlay')?.hidden).toBe(false);
   document.querySelector<HTMLButtonElement>('#zhButton')!.click();
   expect(document.documentElement.lang).toBe('zh-CN');
-  expect(localStorage.getItem('kiwi-language')).toBe('zh');
+  expect(localStorage.getItem('waybi-ui-language')).toBe('zh');
   document.querySelector<HTMLButtonElement>('#closeSettings')!.click();
   expect(document.querySelector<HTMLElement>('#settingsOverlay')?.hidden).toBe(true);
   document.querySelector<HTMLButtonElement>('#gpsBadge')!.click();

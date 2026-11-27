@@ -141,7 +141,7 @@ export function matchCamerasToRoute(cameras: Camera[], route: Route): RouteCamer
 }
 
 export function formatDistance(meters: number, lang: 'zh' | 'en' = 'zh'): string {
-  if (meters >= 1000) return `${(meters / 1000).toFixed(meters < 10000 ? 1 : 0)} km`;
+  if (meters >= 1000) return `${(meters / 1000).toFixed(meters < 10000 ? 1 : 0)} ${lang === 'zh' ? '公里' : 'km'}`;
   return `${Math.max(0, Math.round(meters / 10) * 10)} ${lang === 'zh' ? '米' : 'm'}`;
 }
 

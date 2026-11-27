@@ -1,43 +1,48 @@
 import './account.css';
 import './site.css';
-import { currentProfile, initAccount, type AccountProfile, type Language } from './account';
+import { currentProfile, initAccount, renderAccount, rememberPreferences, type AccountProfile } from './account';
 import { renderProfileView } from './profile-view';
+import { lockupSvg } from './brand';
+import { t, translateTree, type Language } from './i18n';
+import { applyTheme, LANGUAGE_EVENT, readLanguage, writeLanguage } from './preferences';
 
-const logo = `<img class="site-lockup" src="/brand/waybi-lockup.svg" alt="Waybi Maps & Navigation" />`;
-
-let language: Language = 'en';
+// Guests see the language they chose on the website or in the map.
+let language: Language = readLanguage();
 let voiceEnabled = true;
 
-document.documentElement.lang = 'en-NZ';
-document.title = 'Dashboard · Waybi';
+applyTheme();
 document.body.dataset.surface = 'dashboard';
 document.body.innerHTML = `
   <div class="dashboard-shell">
     <header class="dashboard-header">
-      <a class="site-brand" href="/">${logo}</a>
-      <nav><a href="/">Website</a><a class="site-primary-button compact" href="/app">Open navigator <span>↗</span></a></nav>
+      <a class="site-brand" href="/" data-i18n-aria-label="home">${lockupSvg('Waybi Maps & Navigation', 'site-lockup', 155)}</a>
+      <nav>
+        <a href="/" data-i18n="dashboardWebsite">Website</a>
+        <button id="dashboardLanguage" class="dashboard-language" type="button"></button>
+        <a class="site-primary-button compact" href="/app"><span data-i18n="dashboardOpenNavigator">Open navigator</span> <span aria-hidden="true">↗</span></a>
+      </nav>
     </header>
     <main class="dashboard-layout">
       <aside class="dashboard-sidebar">
-        <span class="dashboard-label">ACCOUNT</span>
-        <h1 id="dashboardTitle">Your Waybi</h1>
-        <p id="dashboardIntro">Sign in to keep recent trips, favorite places, notes and personal reviews together.</p>
+        <span class="dashboard-label" data-i18n="dashboardAccountLabel">ACCOUNT</span>
+        <h1 id="dashboardTitle" data-i18n="dashboardTitle">Your Waybi</h1>
+        <p id="dashboardIntro" data-i18n="dashboardIntro"></p>
         <div id="dashboardAccount" class="dashboard-account"></div>
-        <div class="dashboard-help"><strong>Navigation stays available</strong><p>You can always use Waybi in guest mode. An account adds synchronization and history.</p><a href="/app">Continue as guest →</a></div>
+        <div class="dashboard-help"><strong data-i18n="dashboardHelpTitle"></strong><p data-i18n="dashboardHelpBody"></p><a href="/app" data-i18n="dashboardContinueGuest"></a></div>
       </aside>
       <section class="dashboard-main">
-        <div class="dashboard-topline"><div><span class="dashboard-label">DASHBOARD</span><h2 id="dashboardGreeting">Your activity, all in one place.</h2></div><span class="dashboard-status"><i></i><span id="dashboardStatusText">Guest mode</span></span></div>
+        <div class="dashboard-topline"><div><span class="dashboard-label" data-i18n="dashboardLabel">DASHBOARD</span><h2 id="dashboardGreeting"></h2></div><span class="dashboard-status"><i aria-hidden="true"></i><span id="dashboardStatusText"></span></span></div>
         <div id="dashboardEmpty" class="dashboard-empty">
           <div class="dashboard-empty-intro">
-            <div class="dashboard-empty-icon">◎</div>
-            <div><h3>Sign in to make Waybi yours</h3><p>Navigation stays available without an account. Sign in when you want history and personal context to follow you.</p></div>
+            <div class="dashboard-empty-icon" aria-hidden="true">◎</div>
+            <div><h3 data-i18n="dashboardEmptyTitle"></h3><p data-i18n="dashboardEmptyBody"></p></div>
           </div>
           <div class="dashboard-empty-grid">
-            <article><span>↗</span><strong>Recent navigation</strong><p>Keep a lightweight history of destinations, travel modes and trip distance.</p></article>
-            <article><span>♥</span><strong>Saved places + notes</strong><p>Favorite places and keep private notes for the locations you return to.</p></article>
-            <article><span>★</span><strong>Your own reviews</strong><p>Keep personal ratings and comments private in your Waybi account.</p></article>
+            <article><span aria-hidden="true">↗</span><strong data-i18n="dashboardRecentTitle"></strong><p data-i18n="dashboardRecentBody"></p></article>
+            <article><span aria-hidden="true">♥</span><strong data-i18n="dashboardSavedTitle"></strong><p data-i18n="dashboardSavedBody"></p></article>
+            <article><span aria-hidden="true">★</span><strong data-i18n="dashboardReviewsTitle"></strong><p data-i18n="dashboardReviewsBody"></p></article>
           </div>
-          <div class="dashboard-empty-actions"><a class="site-primary-button" href="/app">Open navigator <span>→</span></a><small>Account features are optional. Core navigation works in guest mode.</small></div>
+          <div class="dashboard-empty-actions"><a class="site-primary-button" href="/app"><span data-i18n="dashboardOpenNavigator">Open navigator</span> <span aria-hidden="true">→</span></a><small data-i18n="dashboardOptional"></small></div>
         </div>
         <div id="dashboardContent" class="dashboard-content" hidden></div>
       </section>
@@ -46,30 +51,46 @@ document.body.innerHTML = `
 
 const accountRoot = document.getElementById('dashboardAccount') as HTMLElement;
 const contentRoot = document.getElementById('dashboardContent') as HTMLElement;
+const languageButton = document.getElementById('dashboardLanguage') as HTMLButtonElement;
 
 function renderDashboard() {
   const profile = currentProfile();
   const signedIn = Boolean(profile);
+  document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
+  document.title = t(language, 'dashboardDocumentTitle');
+  translateTree(language);
+  // Shows the other language, in that language.
+  languageButton.textContent = t(language, 'languageToggleLabel');
+  languageButton.lang = language === 'zh' ? 'en' : 'zh-CN';
+  languageButton.setAttribute('aria-label', t(language, language === 'zh' ? 'switchToEnglish' : 'switchToChinese'));
   (document.getElementById('dashboardEmpty') as HTMLElement).hidden = signedIn;
   contentRoot.hidden = !signedIn;
-  (document.getElementById('dashboardStatusText') as HTMLElement).textContent = signedIn
-    ? (language === 'zh' ? '已同步' : 'Account synced')
-    : (language === 'zh' ? '访客模式' : 'Guest mode');
-  (document.getElementById('dashboardGreeting') as HTMLElement).textContent = signedIn
-    ? (language === 'zh' ? '欢迎回来，这是你的近期活动。' : 'Welcome back. Here’s your recent activity.')
-    : (language === 'zh' ? '你的活动，集中在一个页面。' : 'Your activity, all in one place.');
-  (document.getElementById('dashboardTitle') as HTMLElement).textContent = language === 'zh' ? '你的 Waybi' : 'Your Waybi';
-  (document.getElementById('dashboardIntro') as HTMLElement).textContent = language === 'zh'
-    ? '登录后可集中查看最近行程、收藏地点、备注和个人评价。'
-    : 'Sign in to keep recent trips, favorite places, notes and personal reviews together.';
+  (document.getElementById('dashboardStatusText') as HTMLElement).textContent = t(language, signedIn ? 'accountSynced' : 'guestMode');
+  (document.getElementById('dashboardGreeting') as HTMLElement).textContent = t(language, signedIn ? 'dashboardGreetingSignedIn' : 'dashboardGreetingGuest');
   if (profile) renderProfileView(contentRoot, language, () => {});
 }
 
+function setLanguage(next: Language, persistToAccount: boolean) {
+  if (next === language) return;
+  language = next;
+  writeLanguage(next);
+  renderDashboard();
+  renderAccount();
+  if (persistToAccount) void rememberPreferences(language, voiceEnabled);
+}
+
+languageButton.addEventListener('click', () => setLanguage(language === 'zh' ? 'en' : 'zh', true));
+window.addEventListener(LANGUAGE_EVENT, (event) => {
+  const next = (event as CustomEvent<Language>).detail;
+  if (next !== language && (next === 'en' || next === 'zh')) setLanguage(next, false);
+});
 window.addEventListener('kiwi-account-change', renderDashboard);
+renderDashboard();
 void initAccount(accountRoot, () => language, () => voiceEnabled, (profile: AccountProfile) => {
-  language = profile.language;
   voiceEnabled = profile.voiceEnabled;
-  document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
+  // A signed-in account's language becomes the shared choice on every surface.
+  if (profile.language === 'en' || profile.language === 'zh') {
+    if (profile.language !== language) { language = profile.language; writeLanguage(language); }
+  }
   renderDashboard();
 });
-renderDashboard();

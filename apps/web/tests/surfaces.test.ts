@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 it('dashboard remains usable as a guest and loads a saved profile', async () => {
   vi.stubGlobal('fetch',vi.fn().mockResolvedValue(Response.json({user:{id:'u',email:'driver@example.test'},language:'zh',voiceEnabled:false,recentDestinations:[],savedPlaces:[],routeHistory:[],reviews:[]})));
   await import('../src/dashboard');
-  await vi.waitFor(()=>expect(document.querySelector('#dashboardStatusText')?.textContent).toBe('已同步'));
+  await vi.waitFor(()=>expect(document.querySelector('#dashboardStatusText')?.textContent).toBe('账号已同步'));
   expect(document.documentElement.lang).toBe('zh-CN');
   expect(document.querySelector<HTMLElement>('#dashboardContent')?.hidden).toBe(false);
   expect(document.body.textContent).toContain('driver@example.test');
@@ -19,7 +19,7 @@ it('marketing localizes, closes its accessible menu, and rejects an unsafe store
   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));
   expect(document.querySelector('.menu')?.getAttribute('aria-expanded')).toBe('false');
   document.querySelector<HTMLButtonElement>('.language')!.click();
-  expect(localStorage.getItem('waybi-language')).toBe('zh');
+  expect(localStorage.getItem('waybi-ui-language')).toBe('zh');
   expect(document.documentElement.lang).toBe('zh-CN');
 });
 it('marketing allows an official store listing and closes the menu on navigation', async () => {

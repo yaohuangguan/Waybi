@@ -585,3 +585,13 @@ body[data-mode='navigation'] .toast { top: auto; bottom: calc(var(--nav-sheet-cl
 .camera-list li button:hover { background: var(--surface); }
 .camera-popup { color: #23351D; font-size: 13px; line-height: 1.45; }
 .camera-popup div:first-child { font-weight: 700; text-transform: capitalize; }
+
+/* The sheet handle is a real button (keyboard: Enter/Space toggle, arrows set). */
+button.panel-handle { display: block; padding: 0; border: 0; background: transparent; border-radius: 12px; }
+button.panel-handle:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+@media (min-width: 760px) { button.panel-handle { cursor: default; } }
+
+/* Inline lockup in the map top bar (follows the theme). */
+.brand .waybi-lockup { width: auto; height: 44px; }
+@media (max-width: 759px) { .brand .waybi-lockup { height: 35px; } }
+@media (max-width: 390px) { .brand .waybi-lockup { height: 31px; } }

@@ -1,4 +1,5 @@
 import './marketing.css';
+import { readLanguage, writeLanguage } from './preferences';
 
 function storeLink(value: string | undefined): string {
   try {
@@ -10,7 +11,7 @@ function storeLink(value: string | undefined): string {
 }
 const appStoreUrl = storeLink(import.meta.env.VITE_APP_STORE_URL);
 
-let language = localStorage.getItem('waybi-language') === 'zh' ? 'zh' : 'en';
+let language = readLanguage();
 const bird = `<svg class="waybi" viewBox="0 0 120 110" aria-hidden="true"><path fill="currentColor" d="M18 57c0-22 16-36 37-36 13 0 23 5 30 15 3-9 10-15 19-15 11 0 17 9 16 18-1 10-8 16-17 18l-16 4C85 79 70 91 48 89 28 88 18 76 18 57Z" transform="translate(-8 0)"/><path d="m98 45 21 8-24 1M44 87l-4 14m0 0-10 3m10-3 8 4m17-19 2 14m0 0-8 4m8-4 10 2" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="94" cy="35" r="3" fill="#F8FBEF"/><path d="M37 48c8-8 17-7 24-2" fill="none" stroke="#F8FBEF" stroke-width="3" stroke-linecap="round"/></svg>`;
 const logo = `<img src="/brand/waybi-lockup.svg" alt="Waybi" width="171" height="44" />`;
 const copy = {
@@ -413,7 +414,7 @@ function render() {
     </div>`;
   document.querySelector('.language')?.addEventListener('click', () => {
     language = language === 'zh' ? 'en' : 'zh';
-    localStorage.setItem('waybi-language', language);
+    writeLanguage(language);
     render();
     document.querySelector<HTMLButtonElement>('.language')?.focus({ preventScroll: true });
   });

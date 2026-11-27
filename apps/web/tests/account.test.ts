@@ -111,7 +111,8 @@ it('syncs profile features and treats user text as plain text', async () => {
   await account.rememberRoute(populated.routeHistory[0]);
   expect(await account.saveOwnReview(populated.reviews[0])).toEqual(populated.reviews[0]);
   renderProfileView(root,'zh',vi.fn());
-  expect(root.textContent).toContain('1.5 km');
+  expect(root.textContent).toContain('1.5 公里');
+  expect(root.textContent).toContain('驾车');
   expect(root.textContent).toContain('★★★★');
   expect(root.querySelector('script')).toBeNull();
   expect(root.querySelector('img')).toBeNull();

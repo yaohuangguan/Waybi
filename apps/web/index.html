@@ -130,199 +130,201 @@
   </head>
   <body>
     <div id="app" hidden>
-      <div id="map" aria-label="新西兰导航地图"></div>
+      <div id="map" data-i18n-aria-label="map" aria-label="Waybi navigation map"></div>
 
       <header class="topbar">
-        <a class="brand" href="/" aria-label="Waybi home"><img src="/brand/waybi-lockup.svg" alt="Waybi Maps & Navigation" /></a>
-        <div class="topbar-right"><button id="gpsBadge" class="gps-badge" type="button" aria-label="启用定位"><i></i><span id="gpsBadgeText">定位中</span></button><button id="profileButton" class="icon-button dark" type="button" aria-label="My profile" title="My profile">♙</button><button id="settingsButton" class="icon-button dark" aria-label="打开设置">⚙</button></div>
+        <a class="brand" href="/" data-i18n-aria-label="home" aria-label="Waybi home"><svg class="waybi-lockup" width="185" height="58" viewBox="0 0 268 84" aria-hidden="true" focusable="false"><circle cx="42" cy="42" r="39" fill="#d0f58a"/><ellipse cx="36" cy="49" rx="23" ry="18" fill="#29441f"/><circle cx="54" cy="30" r="14" fill="#29441f"/><path d="M64 29 82 36 64 36Z" fill="#e4a850"/><path d="m29 62-2 11h7m12-11-2 11h7" fill="none" stroke="#e4a850" stroke-width="3.5" stroke-linecap="round"/><circle cx="58" cy="26" r="4.5" fill="#fff"/><circle cx="59" cy="26" r="2" fill="#152510"/><ellipse cx="57" cy="34" rx="4" ry="2.5" fill="#edb7a3"/><ellipse cx="34" cy="46" rx="10" ry="6" fill="#729f36"/><text class="lockup-word" x="96" y="44" font-family="system-ui,sans-serif" font-size="36" font-weight="850" letter-spacing="-1.4">Waybi</text><text class="lockup-tag" x="98" y="64" font-family="system-ui,sans-serif" font-size="11" letter-spacing="1.5">A CLEARER JOURNEY</text></svg></a>
+        <div class="topbar-right"><button id="gpsBadge" class="gps-badge" type="button" data-i18n-aria-label="useGps" data-i18n-title="useGps" aria-label="Use live location"><i aria-hidden="true"></i><span id="gpsBadgeText" data-i18n="enableLocation">Use my location</span></button><button id="profileButton" class="icon-button dark" type="button" data-i18n-aria-label="profile" data-i18n-title="profile" aria-label="Account dashboard">♙</button><button id="settingsButton" class="icon-button dark" type="button" data-i18n-aria-label="settings" data-i18n-title="settings" aria-label="Open settings" aria-haspopup="dialog">⚙</button></div>
       </header>
 
-      <section id="searchPanel" class="search-panel" aria-label="路线搜索">
-        <div class="search-track"><span class="track-dot start"></span><span class="track-line"></span><span class="track-dot end"></span></div>
+      <section id="searchPanel" class="search-panel" data-i18n-aria-label="searchPanel" aria-label="Route search">
+        <div class="search-track" aria-hidden="true"><span class="track-dot start"></span><span class="track-line"></span><span class="track-dot end"></span></div>
         <div class="search-fields">
-          <div class="search-field"><input id="originInput" type="search" autocomplete="off" placeholder="当前位置 · 点击可改起点" aria-label="起点" /><button id="useGpsButton" title="使用实时位置" aria-label="使用实时位置">◎</button></div>
-          <div class="search-field destination"><input id="destinationInput" type="search" autocomplete="off" placeholder="搜索目的地 / Search destination" aria-label="目的地" /><button id="searchButton" aria-label="搜索目的地">⌕</button></div>
+          <div class="search-field"><input id="originInput" type="search" autocomplete="off" enterkeyhint="search" data-i18n-placeholder="origin" data-i18n-aria-label="originLabel" placeholder="Current location · tap to change" aria-label="Starting point" /><button id="useGpsButton" type="button" data-i18n-title="useGps" data-i18n-aria-label="useGps" aria-label="Use live location">◎</button></div>
+          <div class="search-field destination"><input id="destinationInput" type="search" autocomplete="off" enterkeyhint="search" data-i18n-placeholder="destination" data-i18n-aria-label="destination" placeholder="Search destination" aria-label="Search destination" /><button id="searchButton" type="button" data-i18n-aria-label="searchButton" data-i18n-title="searchButton" aria-label="Search destination">⌕</button></div>
         </div>
         <div id="stopEditor" class="stop-editor" hidden>
           <div id="stopList" class="stop-list"></div>
           <div class="search-field stop-field">
-            <input id="stopInput" type="search" autocomplete="off" placeholder="Add a stop" aria-label="Intermediate stop" />
-            <button id="stopSearchButton" aria-label="Search stop">⌕</button>
+            <input id="stopInput" type="search" autocomplete="off" enterkeyhint="search" data-i18n-placeholder="stopPlaceholder" data-i18n-aria-label="stopLabel" placeholder="Add a stop" aria-label="Intermediate stop" />
+            <button id="stopSearchButton" type="button" data-i18n-aria-label="stopSearch" data-i18n-title="stopSearch" aria-label="Search stop">⌕</button>
           </div>
         </div>
         <div id="searchResults" class="search-results" hidden></div>
       </section>
 
-      <section id="navBanner" class="nav-banner" hidden aria-label="Next maneuver">
-        <div id="turnArrow" class="turn-arrow">↑</div>
-        <div class="turn-content"><strong id="turnDistance">—</strong><span id="turnInstruction">沿路线行驶</span><div id="laneGuidance" class="lane-guidance" hidden></div></div>
+      <section id="navBanner" class="nav-banner" hidden data-i18n-aria-label="nextManeuver" aria-label="Next maneuver">
+        <div id="turnArrow" class="turn-arrow" aria-hidden="true">↑</div>
+        <div class="turn-content"><strong id="turnDistance">—</strong><span id="turnInstruction" data-i18n="turnDefault">Continue along the route</span><div id="laneGuidance" class="lane-guidance" hidden></div></div>
         <div class="turn-eta"><strong id="turnEta">—</strong><span id="turnRemaining">—</span></div>
       </section>
 
       <div class="map-controls">
-        <button id="followButton" class="map-control active" title="跟随位置" aria-label="跟随位置">➤</button>
-        <button id="recenterButton" class="map-control" title="回到当前位置" aria-label="回到当前位置">◎</button>
-        <div class="rotate-controls"><button id="rotateLeft" class="map-control" type="button" aria-label="Rotate map left" title="Rotate map left">↶</button><button id="rotateRight" class="map-control" type="button" aria-label="Rotate map right" title="Rotate map right">↷</button></div>
-        <button id="trafficToggle" class="map-control active traffic-toggle" type="button" aria-label="Show traffic" title="Show traffic" aria-pressed="true">≋</button>
+        <button id="followButton" class="map-control active" type="button" data-i18n-title="follow" data-i18n-aria-label="follow" aria-label="Follow location">➤</button>
+        <button id="recenterButton" class="map-control" type="button" data-i18n-title="recenter" data-i18n-aria-label="recenter" aria-label="Recenter map">◎</button>
+        <div class="rotate-controls"><button id="rotateLeft" class="map-control" type="button" data-i18n-aria-label="rotateLeft" data-i18n-title="rotateLeft" aria-label="Rotate map left">↶</button><button id="rotateRight" class="map-control" type="button" data-i18n-aria-label="rotateRight" data-i18n-title="rotateRight" aria-label="Rotate map right">↷</button></div>
+        <button id="trafficToggle" class="map-control active traffic-toggle" type="button" data-i18n-aria-label="showTraffic" data-i18n-title="showTraffic" aria-label="Show traffic" aria-pressed="true">≋</button>
       </div>
 
-      <section id="speedHud" class="speed-hud" aria-label="当前车速">
-        <div><strong id="speedValue">0</strong><span>km/h</span></div>
+      <section id="speedHud" class="speed-hud" data-i18n-aria-label="currentSpeed" aria-label="Current speed">
+        <div><strong id="speedValue">0</strong><span data-i18n="speedUnit">km/h</span></div>
         <small id="speedLimitValue">LIMIT —</small>
       </section>
 
-      <section id="cameraAlert" class="camera-alert" aria-label="Upcoming safety camera" hidden>
-        <div class="alert-symbol">◉</div>
-        <div class="alert-copy"><span id="alertType">固定测速摄像头</span><strong id="alertRoad">—</strong></div>
+      <section id="cameraAlert" class="camera-alert" data-i18n-aria-label="upcomingCamera" aria-label="Upcoming safety camera" hidden>
+        <div class="alert-symbol" aria-hidden="true">◉</div>
+        <div class="alert-copy"><span id="alertType" data-i18n="fixedCamera">Fixed speed camera</span><strong id="alertRoad">—</strong></div>
         <strong id="alertDistance">—</strong>
       </section>
 
-      <section id="poiCard" class="poi-card" hidden>
+      <section id="poiCard" class="poi-card" hidden aria-labelledby="poiTitle">
         <div id="poiPhotos" class="poi-photos" hidden></div>
-        <button id="poiClose" class="poi-close" aria-label="关闭地点">×</button>
+        <button id="poiClose" class="poi-close" type="button" data-i18n-aria-label="poiClose" aria-label="Close place">×</button>
         <div class="poi-scroll">
           <div class="poi-heading">
             <div>
-              <span id="poiType" class="eyebrow">OPENSTREETMAP</span>
+              <span id="poiType" class="eyebrow" data-i18n="poiTypeFallback">OpenStreetMap</span>
               <h2 id="poiTitle">—</h2>
               <div id="poiRating" class="poi-rating" hidden></div>
             </div>
-            <button id="poiFavorite" class="poi-favorite" type="button" aria-label="收藏地点">♡</button>
+            <button id="poiFavorite" class="poi-favorite" type="button" data-i18n-aria-label="poiFavorite" aria-label="Save place" aria-pressed="false">♡</button>
           </div>
           <p id="poiAddress">—</p>
           <p id="poiSummary" class="poi-summary" hidden></p>
           <div id="poiMeta" class="poi-meta"></div>
           <div id="poiHours" class="poi-hours" hidden></div>
           <div class="poi-actions">
-            <button id="poiNavigate" class="poi-navigate">➤ <span>导航到这里</span></button>
-            <a id="poiWebsite" class="poi-action-link" target="_blank" rel="noopener noreferrer" hidden>网站 ↗</a>
+            <button id="poiNavigate" class="poi-navigate" type="button"><span aria-hidden="true">➤</span> <span data-i18n="poiNavigate">Navigate here</span></button>
+            <a id="poiWebsite" class="poi-action-link" target="_blank" rel="noopener noreferrer" hidden data-i18n="poiWebsite">Website ↗</a>
             <a id="poiMapSource" class="poi-action-link" target="_blank" rel="noopener noreferrer" hidden>OpenStreetMap ↗</a>
           </div>
           <section id="poiAccountSection" class="poi-account">
-            <div class="poi-section-head"><strong>我的地点</strong><span id="poiAccountHint"></span></div>
-            <textarea id="poiNote" maxlength="2000" rows="3" placeholder="写下自己的备注…" disabled></textarea>
-            <button id="poiSaveNote" type="button" disabled>保存备注</button>
+            <div class="poi-section-head"><strong data-i18n="poiMyPlace">My place</strong><span id="poiAccountHint"></span></div>
+            <textarea id="poiNote" maxlength="2000" rows="3" data-i18n-placeholder="poiNotePlaceholder" data-i18n-aria-label="poiNoteLabel" placeholder="Write a private note…" aria-label="Private note" disabled></textarea>
+            <button id="poiSaveNote" type="button" data-i18n="poiSaveNote" disabled>Save note</button>
           </section>
           <section id="poiOwnReviewSection" class="poi-account">
-            <div class="poi-section-head"><strong id="poiOwnReviewTitle">My review</strong><span id="poiOwnReviewHint">Private to your Waybi account</span></div>
-            <label for="poiOwnRating" id="poiOwnRatingLabel">Your rating</label>
-            <select id="poiOwnRating" aria-label="Your rating"><option value="5">★★★★★</option><option value="4">★★★★☆</option><option value="3">★★★☆☆</option><option value="2">★★☆☆☆</option><option value="1">★☆☆☆☆</option></select>
-            <textarea id="poiOwnComment" maxlength="2000" rows="3" placeholder="Write a review for your own records" disabled></textarea>
-            <button id="poiSaveReview" type="button" disabled>Save my review</button>
+            <div class="poi-section-head"><strong id="poiOwnReviewTitle" data-i18n="poiMyReview">My review</strong><span id="poiOwnReviewHint"></span></div>
+            <label for="poiOwnRating" id="poiOwnRatingLabel" data-i18n="poiMyRating">My rating</label>
+            <select id="poiOwnRating"><option value="5">★★★★★</option><option value="4">★★★★☆</option><option value="3">★★★☆☆</option><option value="2">★★☆☆☆</option><option value="1">★☆☆☆☆</option></select>
+            <textarea id="poiOwnComment" maxlength="2000" rows="3" data-i18n-placeholder="poiReviewPlaceholder" data-i18n-aria-label="poiReviewLabel" placeholder="Write a review for your own records" aria-label="Private review" disabled></textarea>
+            <button id="poiSaveReview" type="button" data-i18n="poiSaveReview" disabled>Save my review</button>
           </section>
           <section id="poiReviewsSection" class="poi-reviews" hidden>
-            <div class="poi-section-head"><strong>地点评价</strong><span id="poiReviewCount"></span></div>
+            <div class="poi-section-head"><strong data-i18n="poiReviews">Place reviews</strong><span id="poiReviewCount"></span></div>
             <div id="poiReviews"></div>
           </section>
         </div>
       </section>
 
       <section id="bottomPanel" class="bottom-panel">
-        <div class="panel-handle"></div>
+        <button id="sheetHandle" class="panel-handle" type="button" aria-controls="sheetBody" aria-expanded="true" data-i18n-aria-label="collapseSheet" aria-label="Hide route details"></button>
         <div class="panel-header">
-          <div><span class="eyebrow" id="tripEyebrow">READY TO GO</span><h2 id="tripTitle">探索新西兰，安心出发</h2></div>
+          <div><span class="eyebrow" id="tripEyebrow" data-i18n="stateReady">READY TO GO</span><h2 id="tripTitle" data-i18n="initialTitle">Plan your next journey</h2></div>
           <div class="panel-actions">
-            <button id="clearDestinationButton" class="cancel-route-button" type="button" hidden>取消</button>
-            <button id="driveButton" class="drive-button" disabled><span id="driveIcon">➤</span><span id="driveLabel">开始导航</span></button>
+            <button id="clearDestinationButton" class="cancel-route-button" type="button" data-i18n="cancelDestination" data-i18n-aria-label="clearDestination" data-i18n-title="clearDestination" aria-label="Clear destination" hidden>Clear</button>
+            <button id="driveButton" class="drive-button" type="button" disabled><span id="driveIcon" aria-hidden="true">➤</span><span id="driveLabel" data-i18n="start">Start navigation</span></button>
           </div>
         </div>
-        <div id="travelModes" class="travel-modes" hidden>
-          <button type="button" data-mode="drive" class="selected"><span>🚗</span><strong>Drive</strong><small id="modeDriveTime">—</small></button>
-          <button type="button" data-mode="transit"><span>🚆</span><strong>Transit</strong><small id="modeTransitTime">—</small></button>
-          <button type="button" data-mode="walk"><span>🚶</span><strong>Walk</strong><small id="modeWalkTime">—</small></button>
-          <button type="button" data-mode="bicycle"><span>🚲</span><strong>Bike</strong><small id="modeBicycleTime">—</small></button>
+        <div id="sheetBody" class="sheet-body">
+          <div id="travelModes" class="travel-modes" role="group" data-i18n-aria-label="travelModes" aria-label="Travel mode" hidden>
+            <button type="button" data-mode="drive" class="selected" aria-pressed="true"><span aria-hidden="true">🚗</span><strong data-i18n="modeDrive">Drive</strong><small id="modeDriveTime">—</small></button>
+            <button type="button" data-mode="transit" aria-pressed="false"><span aria-hidden="true">🚆</span><strong data-i18n="modeTransit">Transit</strong><small id="modeTransitTime">—</small></button>
+            <button type="button" data-mode="walk" aria-pressed="false"><span aria-hidden="true">🚶</span><strong data-i18n="modeWalk">Walk</strong><small id="modeWalkTime">—</small></button>
+            <button type="button" data-mode="bicycle" aria-pressed="false"><span aria-hidden="true">🚲</span><strong data-i18n="modeBike">Bike</strong><small id="modeBicycleTime">—</small></button>
+          </div>
+          <div id="routeAlternatives" class="route-alternatives" role="group" data-i18n-aria-label="routeAlternatives" aria-label="Route alternatives" hidden></div>
+          <div id="trafficLegend" class="traffic-legend" hidden>
+            <span><i class="traffic-dot normal"></i><span data-i18n="trafficNormal">Normal</span></span>
+            <span><i class="traffic-dot slow"></i><span data-i18n="trafficSlow">Slow</span></span>
+            <span><i class="traffic-dot jam"></i><span data-i18n="trafficHeavy">Heavy traffic</span></span>
+          </div>
+          <div id="routeInfoCards" class="route-info-cards" hidden></div>
+          <section id="parkingSection" class="parking-section" hidden aria-live="polite" aria-labelledby="parkingTitle">
+            <div class="parking-heading"><div><span class="parking-kicker" id="parkingKicker" data-i18n="parkingKicker">ARRIVE WITH A PLAN</span><h2 id="parkingTitle" data-i18n="parkingTitle">Parking near your destination</h2></div><span class="parking-symbol" aria-hidden="true">P</span></div>
+            <p id="parkingSummary" class="parking-summary"></p>
+            <div id="parkingList" class="parking-list"></div>
+            <div id="parkingActions" class="parking-actions" hidden></div>
+            <div class="parking-source"><span id="parkingSourceNote" data-i18n="parkingSourceSearch">Place search · live spaces unavailable</span><a id="parkingSourceLink" href="https://services2.arcgis.com/JkPEgZJGxhSjYOo0/arcgis/rest/services/ParkingService/FeatureServer/1" target="_blank" rel="noopener noreferrer" data-i18n="parkingSourceLink">AT source ↗</a></div>
+          </section>
+          <div id="planningActions" class="planning-actions" hidden>
+            <button id="addStopButton" type="button" data-i18n="addStop">＋ Add stop</button>
+            <button id="saveRouteButton" type="button" data-i18n="saveRoute">♡ Save</button>
+          </div>
+          <div class="route-stats">
+            <div><span data-i18n="camerasAlong">Cameras on route</span><strong id="cameraRouteCount">—</strong></div>
+            <div><span data-i18n="distance">Distance</span><strong id="tripDistance">—</strong></div>
+            <div><span data-i18n="arrival">Arrival</span><strong id="tripArrival">—</strong></div>
+          </div>
+          <div class="trip-detail-grid">
+            <div><span data-i18n="speedLimit">Speed limit</span><strong id="sheetSpeedLimit">—</strong></div>
+            <div><span data-i18n="nextCamera">Next camera</span><strong id="sheetNextCamera">—</strong></div>
+            <div><span data-i18n="gpsAccuracy">GPS accuracy</span><strong id="sheetGps">—</strong></div>
+            <div><span data-i18n="routeSteps">Route steps</span><strong id="sheetRouteSteps">—</strong></div>
+          </div>
+          <div class="trip-flags">
+            <span id="sheetVoice" data-i18n="voiceOn">Voice ✓</span>
+            <span id="sheetLane" data-i18n="lanesOn">Lanes ✓</span>
+            <span id="sheetAccount" data-i18n="guestMode">Guest mode</span>
+          </div>
+          <div class="data-status"><div><span class="data-dot" aria-hidden="true"></span><span id="dataStatus" data-i18n="camerasLoading">Loading NZTA cameras…</span></div><div class="data-actions"><button id="cameraListButton" type="button" aria-expanded="false" aria-controls="cameraList" data-i18n="cameraList">Camera list</button><button id="dataButton" type="button" aria-haspopup="dialog" data-i18n="dataDetails">Data details ↗</button></div></div>
+          <div id="cameraList" class="camera-list" hidden></div>
         </div>
-        <div id="routeAlternatives" class="route-alternatives" hidden></div>
-        <div id="trafficLegend" class="traffic-legend" hidden>
-          <span><i class="traffic-dot normal"></i>Normal</span>
-          <span><i class="traffic-dot slow"></i>Slow</span>
-          <span><i class="traffic-dot jam"></i>Heavy traffic</span>
-        </div>
-        <div id="routeInfoCards" class="route-info-cards" hidden></div>
-        <section id="parkingSection" class="parking-section" hidden aria-live="polite">
-          <div class="parking-heading"><div><span class="parking-kicker" id="parkingKicker">ARRIVE WITH A PLAN</span><h2 id="parkingTitle">Parking near your destination</h2></div><span class="parking-symbol" aria-hidden="true">P</span></div>
-          <p id="parkingSummary" class="parking-summary"></p>
-          <div id="parkingList" class="parking-list"></div>
-          <div id="parkingActions" class="parking-actions" hidden></div>
-          <div class="parking-source"><span id="parkingSourceNote">OpenStreetMap · availability not provided</span><a id="parkingSourceLink" href="https://services2.arcgis.com/JkPEgZJGxhSjYOo0/arcgis/rest/services/ParkingService/FeatureServer/1" target="_blank" rel="noopener noreferrer">AT source ↗</a></div>
-        </section>
-        <div id="planningActions" class="planning-actions" hidden>
-          <button id="addStopButton" type="button">＋ Add stop</button>
-          <button id="saveRouteButton" type="button">♡ Save</button>
-        </div>
-        <div class="route-stats">
-          <div><span>沿途摄像头</span><strong id="cameraRouteCount">—</strong></div>
-          <div><span>路程</span><strong id="tripDistance">—</strong></div>
-          <div><span>预计到达</span><strong id="tripArrival">—</strong></div>
-        </div>
-        <div class="trip-detail-grid">
-          <div><span>当前限速</span><strong id="sheetSpeedLimit">—</strong></div>
-          <div><span>下一摄像头</span><strong id="sheetNextCamera">—</strong></div>
-          <div><span>GPS 精度</span><strong id="sheetGps">—</strong></div>
-          <div><span>路线步骤</span><strong id="sheetRouteSteps">—</strong></div>
-        </div>
-        <div class="trip-flags">
-          <span id="sheetVoice">语音 ✓</span>
-          <span id="sheetLane">车道 ✓</span>
-          <span id="sheetAccount">访客模式</span>
-        </div>
-        <div class="data-status"><div><span class="data-dot"></span><span id="dataStatus">正在加载 NZTA 摄像头…</span></div><div class="data-actions"><button id="cameraListButton" type="button" aria-expanded="false" aria-controls="cameraList">Camera list</button><button id="dataButton">数据详情 ↗</button></div></div>
-        <div id="cameraList" class="camera-list" hidden></div>
       </section>
 
-      <section id="navSheet" class="nav-sheet" hidden aria-label="Navigation trip">
-        <button id="navSheetHandle" class="nav-sheet-handle" type="button" aria-controls="navSecondary" aria-expanded="false" aria-label="Show trip details"><span></span></button>
+      <section id="navSheet" class="nav-sheet" hidden data-i18n-aria-label="navigationTrip" aria-label="Navigation trip">
+        <button id="navSheetHandle" class="nav-sheet-handle" type="button" aria-controls="navSecondary" aria-expanded="false" data-i18n-aria-label="showTripDetails" aria-label="Show trip details"><span></span></button>
         <div id="navStatus" class="nav-status" role="status" aria-live="polite" hidden></div>
         <div class="nav-sheet-heading">
-          <div class="nav-destination"><small id="navDestinationLabel">DESTINATION</small><h2 id="navDestinationTitle">—</h2></div>
-          <button id="navEndButton" class="nav-end-button" type="button"><span aria-hidden="true">■</span><span id="navEndLabel">End navigation</span></button>
+          <div class="nav-destination"><small id="navDestinationLabel" data-i18n="destinationLabel">DESTINATION</small><h2 id="navDestinationTitle">—</h2></div>
+          <button id="navEndButton" class="nav-end-button" type="button"><span aria-hidden="true">■</span><span id="navEndLabel" data-i18n="stop">End navigation</span></button>
         </div>
         <div class="nav-stats">
-          <div><span id="navCamerasLabel">Cameras on route</span><strong id="navCameraCount">—</strong></div>
-          <div><span id="navDistanceLabel">Distance</span><strong id="navDistance">—</strong></div>
-          <div><span id="navArrivalLabel">Arrival</span><strong id="navArrival">—</strong></div>
+          <div><span id="navCamerasLabel" data-i18n="camerasAlong">Cameras on route</span><strong id="navCameraCount">—</strong></div>
+          <div><span id="navDistanceLabel" data-i18n="distance">Distance</span><strong id="navDistance">—</strong></div>
+          <div><span id="navArrivalLabel" data-i18n="arrival">Arrival</span><strong id="navArrival">—</strong></div>
         </div>
         <div class="nav-chips">
-          <button id="navVoiceChip" type="button" aria-pressed="true">Voice ✓</button>
-          <button id="navLanesChip" type="button" aria-pressed="true">Lanes ✓</button>
-          <button id="navGpsChip" type="button">GPS —</button>
-          <button id="navOverviewChip" type="button">Route overview</button>
+          <button id="navVoiceChip" type="button" aria-pressed="true" data-i18n="voiceOn">Voice ✓</button>
+          <button id="navLanesChip" type="button" aria-pressed="true" data-i18n="lanesOn">Lanes ✓</button>
+          <button id="navGpsChip" type="button" data-i18n="gpsUnknownChip">GPS —</button>
+          <button id="navOverviewChip" type="button" data-i18n="navOverview">Route overview</button>
         </div>
         <div id="navTrafficCard" class="nav-traffic-card" hidden></div>
         <div id="navParkingHint" class="nav-parking-hint" hidden></div>
         <div id="navSecondary" class="nav-secondary" hidden>
-          <div><span id="navSpeedLimitLabel">Speed limit</span><strong id="navSpeedLimit">—</strong></div>
-          <div><span id="navNextCameraLabel">Next camera</span><strong id="navNextCamera">—</strong></div>
-          <div><span id="navRouteStepsLabel">Route steps</span><strong id="navRouteSteps">—</strong></div>
-          <button id="navDataButton" type="button">Camera data ↗</button>
+          <div><span id="navSpeedLimitLabel" data-i18n="speedLimit">Speed limit</span><strong id="navSpeedLimit">—</strong></div>
+          <div><span id="navNextCameraLabel" data-i18n="nextCamera">Next camera</span><strong id="navNextCamera">—</strong></div>
+          <div><span id="navRouteStepsLabel" data-i18n="routeSteps">Route steps</span><strong id="navRouteSteps">—</strong></div>
+          <button id="navDataButton" type="button" aria-haspopup="dialog" data-i18n="cameraData">Camera data ↗</button>
         </div>
       </section>
 
-      <div id="toast" class="toast" role="status" hidden></div>
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
       <div id="journeySummaryOverlay" class="overlay" hidden></div>
 
       <div id="settingsOverlay" class="overlay" hidden>
         <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-          <div class="modal-head"><div><span class="eyebrow">NAVIGATION</span><h2 id="settingsTitle">导航设置</h2></div><button id="closeSettings" class="close-button" aria-label="关闭设置">×</button></div>
-          <div class="setting-row"><div><strong>语音语言</strong><small>Turn & camera alerts</small></div><div class="language-switch"><button id="zhButton" class="selected">中文</button><button id="enButton">EN</button></div></div>
-          <div class="setting-row"><div><strong>语音提示</strong><small>Turn-by-turn guidance</small></div><button id="voiceTestButton" class="voice-test-button" type="button">Test voice ▶</button><label class="toggle"><input id="voiceToggle" type="checkbox" checked /><span></span></label></div>
-          <div class="setting-row"><div><strong id="laneSettingTitle">推荐车道</strong><small id="laneSettingDescription">路线数据提供时显示</small></div><label class="toggle"><input id="laneToggle" type="checkbox" checked /><span></span></label></div>
-          <div class="setting-row"><div><strong id="keepScreenAwakeTitle">Keep screen awake</strong><small id="keepScreenAwakeDescription">Prevent auto-lock while navigating</small></div><label class="toggle"><input id="keepScreenAwakeToggle" type="checkbox" checked /><span></span></label></div>
-          <div class="setting-row"><div><strong>驾驶模式</strong><small>保持屏幕唤醒，持续前台定位</small></div><span id="drivingStatus" class="status-chip">未启动</span></div>
-          <div class="info-card"><strong>后台导航说明</strong><p>PWA 切到后台或锁屏后，浏览器可能暂停 GPS 与语音。后续 iOS 客户端将使用原生后台定位。</p></div>
+          <div class="modal-head"><div><span class="eyebrow" data-i18n="settingsEyebrow">NAVIGATION</span><h2 id="settingsTitle" data-i18n="settingsTitle">Navigation settings</h2></div><button id="closeSettings" class="close-button" type="button" data-i18n-aria-label="closeSettings" data-i18n-title="closeSettings" aria-label="Close settings">×</button></div>
+          <div class="setting-row" id="languageSettingRow"><div><strong id="languageSettingTitle" data-i18n="language">Language</strong><small data-i18n="languageDescription">App and voice alerts</small></div><div class="language-switch" role="group" aria-labelledby="languageSettingTitle"><button id="zhButton" type="button" lang="zh-CN" aria-pressed="false">中文</button><button id="enButton" type="button" lang="en" aria-pressed="true" class="selected">EN</button></div></div>
+          <div class="setting-row" id="voiceSettingRow"><div><strong id="voiceSettingTitle" data-i18n="voice">Voice guidance</strong><small id="voiceSettingDescription" data-i18n="voiceDescription">Turns and cameras</small></div><button id="voiceTestButton" class="voice-test-button" type="button" data-i18n="voiceTest">Test voice ▶</button><label class="toggle"><input id="voiceToggle" type="checkbox" role="switch" aria-labelledby="voiceSettingTitle" aria-describedby="voiceSettingDescription" checked /><span aria-hidden="true"></span></label></div>
+          <div class="setting-row" id="laneSettingRow"><div><strong id="laneSettingTitle" data-i18n="laneGuidance">Recommended lanes</strong><small id="laneSettingDescription" data-i18n="laneGuidanceDescription">Show when route data includes lane guidance</small></div><label class="toggle"><input id="laneToggle" type="checkbox" role="switch" aria-labelledby="laneSettingTitle" aria-describedby="laneSettingDescription" checked /><span aria-hidden="true"></span></label></div>
+          <div class="setting-row" id="keepScreenAwakeRow"><div><strong id="keepScreenAwakeTitle" data-i18n="keepScreenAwake">Keep screen awake</strong><small id="keepScreenAwakeDescription" data-i18n="keepScreenAwakeDescription">Prevent auto-lock while navigating</small></div><label class="toggle"><input id="keepScreenAwakeToggle" type="checkbox" role="switch" aria-labelledby="keepScreenAwakeTitle" aria-describedby="keepScreenAwakeDescription" checked /><span aria-hidden="true"></span></label></div>
+          <div class="setting-row" id="drivingModeRow"><div><strong data-i18n="drivingMode">Driving mode</strong><small data-i18n="drivingDescription">Keep the screen awake and track location in foreground</small></div><span id="drivingStatus" class="status-chip" data-i18n="drivingStopped">Inactive</span></div>
+          <div class="info-card" id="backgroundInfo"><strong data-i18n="backgroundTitle">Background navigation</strong><p data-i18n="backgroundDescription">Keep the web map open during navigation. A browser may pause GPS and voice guidance when locked or in the background.</p></div>
         </section>
       </div>
 
       <div id="dataOverlay" class="overlay" hidden>
         <section class="modal" role="dialog" aria-modal="true" aria-labelledby="dataTitle">
-          <div class="modal-head"><div><span class="eyebrow">DATA SOURCE</span><h2 id="dataTitle">摄像头数据</h2></div><button id="closeData" class="close-button" aria-label="关闭数据详情">×</button></div>
-          <div class="data-detail"><span>数据来源</span><strong>NZ Transport Agency Waka Kotahi</strong></div>
-          <div class="data-detail"><span>官方更新时间</span><strong id="sourceDate">—</strong></div>
-          <div class="data-detail"><span>最近检查</span><strong id="checkedAt">—</strong></div>
-          <div class="data-detail"><span>同步状态</span><strong id="syncStatus">—</strong></div>
-          <div class="info-card"><strong>自动同步</strong><p>服务器每 6 小时检查官方列表。同步失败时保留最近一次经过校验的数据。摄像头方向和车道未在官方列表中提供，提醒仅作辅助。</p></div>
-          <a class="source-link" href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" target="_blank" rel="noopener noreferrer">查看 NZTA 官方列表 ↗</a>
+          <div class="modal-head"><div><span class="eyebrow" data-i18n="dataEyebrow">DATA SOURCE</span><h2 id="dataTitle" data-i18n="dataTitle">Camera data</h2></div><button id="closeData" class="close-button" type="button" data-i18n-aria-label="closeData" data-i18n-title="closeData" aria-label="Close data details">×</button></div>
+          <div class="data-detail"><span data-i18n="source">Data source</span><strong>NZ Transport Agency Waka Kotahi</strong></div>
+          <div class="data-detail"><span data-i18n="sourceUpdated">Source updated</span><strong id="sourceDate">—</strong></div>
+          <div class="data-detail"><span data-i18n="lastChecked">Last checked</span><strong id="checkedAt">—</strong></div>
+          <div class="data-detail"><span data-i18n="syncStatus">Sync status</span><strong id="syncStatus">—</strong></div>
+          <div class="info-card"><strong data-i18n="autoSync">Automatic sync</strong><p data-i18n="autoSyncDescription">The server automatically refreshes the official NZTA list. Validated data is kept if syncing fails. Camera direction and lane data are not provided by NZTA; alerts are advisory.</p></div>
+          <a class="source-link" href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" target="_blank" rel="noopener noreferrer" data-i18n="sourceLink">View official NZTA list ↗</a>
         </section>
       </div>
     </div>

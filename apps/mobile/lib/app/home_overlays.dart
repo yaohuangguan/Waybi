@@ -42,8 +42,20 @@ class HomeMapControls extends StatelessWidget {
   /// What tapping the location control does next.
   String get locationTooltip {
     if (!following) return _text('Return to my location', '回到我的位置');
-    if (!cameraMode.northUp) return _text('Switch to north-up', '切换到北向俯视');
-    return _text('Switch to heading-up', '切换到车头朝上俯视');
+    return switch (cameraMode.next) {
+      NavigationCameraMode.headingUpPerspective => _text(
+        'Switch to 3D view',
+        '切换到 3D 视角',
+      ),
+      NavigationCameraMode.northUpFlat => _text(
+        'Switch to north-up',
+        '切换到北向俯视',
+      ),
+      NavigationCameraMode.headingUpFlat => _text(
+        'Switch to heading-up',
+        '切换到车头朝上俯视',
+      ),
+    };
   }
 
   IconData get _locationIcon {

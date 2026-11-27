@@ -119,11 +119,23 @@ void main() {
       expect(find.byTooltip('Return to my location'), findsOneWidget);
       expect(find.byIcon(Icons.my_location_outlined), findsOneWidget);
       expect(find.byTooltip('Parked just now'), findsNothing);
+      // The tooltip names the mode the next tap switches to.
       await t.pumpWidget(controls(mode: NavigationCameraMode.headingUpFlat));
-      expect(find.byTooltip('Switch to north-up'), findsOneWidget);
+      expect(find.byTooltip('Switch to 3D view'), findsOneWidget);
       expect(find.byIcon(Icons.navigation_rounded), findsOneWidget);
       await t.pumpWidget(
+        controls(mode: NavigationCameraMode.headingUpPerspective),
+      );
+      expect(find.byTooltip('Switch to north-up'), findsOneWidget);
+      await t.pumpWidget(
         controls(mode: NavigationCameraMode.headingUpFlat, language: 'zh'),
+      );
+      expect(find.byTooltip('切换到 3D 视角'), findsOneWidget);
+      await t.pumpWidget(
+        controls(
+          mode: NavigationCameraMode.headingUpPerspective,
+          language: 'zh',
+        ),
       );
       expect(find.byTooltip('切换到北向俯视'), findsOneWidget);
       expect(find.byTooltip('收藏地点'), findsOneWidget);

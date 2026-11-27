@@ -94,22 +94,61 @@ export async function syncAppleTransaction(db, env, transactionId, userId, { fet
   return { verified: true, active: [1, 4].includes(status) && expiry > now && !transaction.revocationDate };
 }
 
-export async function syncAppleForUser(db, env, userId) {
-  if (!appleConfig(env).ready) return;
-  const rows = await db.prepare('SELECT transaction_id FROM apple_subscriptions WHERE user_id = ? AND updated_at < ?')
-    .bind(userId, Date.now() - 60000).all();
-  for (const row of rows.results || []) await syncAppleTransaction(db, env, row.transaction_id, userId);
+const POLL_INTERVAL_MS = 10 * 60 * 1000;
+const MAX_BACKOFF_MS = 24 * 60 * 60 * 1000;
+/** Expired more than this long ago: a resubscription is verified by the app. */
+const STOP_POLLING_AFTER_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function appleRetryDelayMs(failures: number) {
+  return Math.min(MAX_BACKOFF_MS, 15 * 60 * 1000 * 2 ** Math.max(0, Math.min(10, failures - 1)));
 }
-export async function syncAllAppleSubscriptions(env) {
-  if (!env.USER_DB || !appleConfig(env).ready) return;
-  const rows = await env.USER_DB.prepare('SELECT transaction_id, user_id FROM apple_subscriptions WHERE updated_at < ? ORDER BY updated_at LIMIT 50')
-    .bind(Date.now() - 10 * 60000).all();
+
+// Rows still worth polling: not revoked/refunded (status 5) and not expired for
+// more than 30 days. A failing row is pushed back with exponential backoff, so
+// a few permanently failing transactions can no longer starve every renewal.
+const POLLABLE = `status != 5 AND expires_at > ? AND COALESCE(next_check_at, updated_at + ${POLL_INTERVAL_MS}) <= ?`;
+
+async function refreshAppleRow(db, env, row, now: number, fetcher: typeof fetch) {
+  try {
+    await syncAppleTransaction(db, env, row.transaction_id, row.user_id, { fetcher, now });
+    await db.prepare('UPDATE apple_subscriptions SET next_check_at = ?, check_failures = 0 WHERE original_transaction_id = ?')
+      .bind(now + POLL_INTERVAL_MS, row.original_transaction_id).run();
+    return true;
+  } catch (error) {
+    const failures = Number(row.check_failures || 0) + 1;
+    await db.prepare('UPDATE apple_subscriptions SET next_check_at = ?, check_failures = ? WHERE original_transaction_id = ?')
+      .bind(now + appleRetryDelayMs(failures), failures, row.original_transaction_id).run()
+      .catch(() => { /* the next run retries; nothing else to do */ });
+    console.warn(JSON.stringify({ level: 'warn', event: 'apple_subscription_refresh_failed',
+      failures, apiCode: error?.apiCode ?? null, message: String(error?.message || error).slice(0, 160) }));
+    return false;
+  }
+}
+
+export async function syncAppleForUser(db, env, userId, now = Date.now(), fetcher: typeof fetch = fetch) {
+  if (!appleConfig(env).ready) return;
+  const rows = await db.prepare(`SELECT original_transaction_id, transaction_id, user_id, check_failures FROM apple_subscriptions
+    WHERE user_id = ? AND updated_at < ? AND status != 5 AND expires_at > ?
+      AND COALESCE(next_check_at, 0) <= ?`)
+    .bind(userId, now - 60000, now - STOP_POLLING_AFTER_EXPIRY_MS, now).all();
+  for (const row of rows.results || []) await refreshAppleRow(db, env, row, now, fetcher);
+}
+
+export async function syncAllAppleSubscriptions(env, now = Date.now(), fetcher: typeof fetch = fetch) {
+  if (!env.USER_DB || !appleConfig(env).ready) return { checked: 0, failed: 0 };
+  const rows = await env.USER_DB.prepare(`SELECT original_transaction_id, transaction_id, user_id, check_failures
+    FROM apple_subscriptions WHERE ${POLLABLE}
+    ORDER BY COALESCE(next_check_at, updated_at + ${POLL_INTERVAL_MS}) LIMIT 50`)
+    .bind(now - STOP_POLLING_AFTER_EXPIRY_MS, now).all();
   const pending = rows.results || [];
+  let failed = 0;
   // Bound API concurrency and total runtime for a scheduled Worker invocation.
   for (let i = 0; i < pending.length; i += 5) {
-    await Promise.all(pending.slice(i, i + 5).map(async (row) => {
-      try { await syncAppleTransaction(env.USER_DB, env, row.transaction_id, row.user_id); }
-      catch { console.warn('Apple subscription refresh will be retried'); }
-    }));
+    const outcomes = await Promise.all(pending.slice(i, i + 5).map((row) => refreshAppleRow(env.USER_DB, env, row, now, fetcher)));
+    failed += outcomes.filter((ok) => !ok).length;
   }
+  if (pending.length) {
+    console.info(JSON.stringify({ level: failed ? 'warn' : 'info', event: 'apple_subscription_run', checked: pending.length, failed }));
+  }
+  return { checked: pending.length, failed };
 }

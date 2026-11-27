@@ -111,26 +111,42 @@ export async function revokeAppleAuthorization(env: any, sealed: string, fetcher
       token: await openAppleToken(env, sealed), token_type_hint: 'refresh_token' }), signal: AbortSignal.timeout(5000) });
   if (!r.ok) throw new Error('Apple authorization could not be revoked; retry deletion');
 }
-/** Use existing 15-minute cron; check up to five oldest identities per run,
- * each at most daily. Never interpret an outage as revoked authorization. */
+/** Use the 15-minute cron; check up to five identities per run, each at most
+ * daily. A failure (outage, undecryptable token) always advances the next check
+ * with exponential backoff and is logged, so a few broken rows can no longer
+ * block the queue. Never interpret an outage as revoked authorization. */
 export async function refreshAppleAuthorizations(env: any, now = Date.now(), fetcher: typeof fetch = fetch) {
-  if (!env.USER_DB || !appleAuthConfig(env).tokenExchange) return;
+  if (!env.USER_DB || !appleAuthConfig(env).tokenExchange) return { checked: 0, failed: 0 };
   const db = env.USER_DB;
-  const rows = await db.prepare('SELECT apple_sub, user_id, refresh_token FROM apple_identities WHERE checked_at < ? AND revoked_at IS NULL AND length(refresh_token) > 0 ORDER BY checked_at LIMIT 5')
-    .bind(now - 86400000).all();
+  const due = 'COALESCE(next_check_at, checked_at + 86400000)';
+  const rows = await db.prepare(`SELECT apple_sub, user_id, refresh_token, check_failures FROM apple_identities
+    WHERE revoked_at IS NULL AND length(refresh_token) > 0 AND ${due} <= ? ORDER BY ${due} LIMIT 5`)
+    .bind(now).all();
+  let failed = 0;
   for (const row of rows.results || []) {
     try {
       const data = await tokenRequest(env, { grant_type: 'refresh_token', refresh_token: await openAppleToken(env, row.refresh_token) }, fetcher);
-      if (!data.access_token) continue;
-      await db.prepare('UPDATE apple_identities SET checked_at = ? WHERE apple_sub = ? AND refresh_token = ?')
-        .bind(now, row.apple_sub, row.refresh_token).run();
+      if (!data.access_token) throw new Error('Apple refresh returned no access token');
+      await db.prepare('UPDATE apple_identities SET checked_at = ?, next_check_at = ?, check_failures = 0 WHERE apple_sub = ? AND refresh_token = ?')
+        .bind(now, now + 86400000, row.apple_sub, row.refresh_token).run();
     } catch (error) {
-      if (error.revoked) await db.batch([
-        db.prepare('DELETE FROM sessions WHERE user_id = ? AND EXISTS (SELECT 1 FROM apple_identities WHERE apple_sub = ? AND refresh_token = ?)')
-          .bind(row.user_id, row.apple_sub, row.refresh_token),
-        db.prepare('UPDATE apple_identities SET revoked_at = ?, checked_at = ? WHERE apple_sub = ? AND refresh_token = ?')
-          .bind(now, now, row.apple_sub, row.refresh_token),
-      ]);
+      if (error.revoked) {
+        await db.batch([
+          db.prepare('DELETE FROM sessions WHERE user_id = ? AND EXISTS (SELECT 1 FROM apple_identities WHERE apple_sub = ? AND refresh_token = ?)')
+            .bind(row.user_id, row.apple_sub, row.refresh_token),
+          db.prepare('UPDATE apple_identities SET revoked_at = ?, checked_at = ? WHERE apple_sub = ? AND refresh_token = ?')
+            .bind(now, now, row.apple_sub, row.refresh_token),
+        ]);
+        continue;
+      }
+      failed++;
+      const failures = Number(row.check_failures || 0) + 1;
+      const delay = Math.min(86400000, 15 * 60000 * 2 ** Math.min(10, failures - 1));
+      await db.prepare('UPDATE apple_identities SET checked_at = ?, next_check_at = ?, check_failures = ? WHERE apple_sub = ? AND refresh_token = ?')
+        .bind(now, now + delay, failures, row.apple_sub, row.refresh_token).run().catch(() => {});
+      console.warn(JSON.stringify({ level: 'warn', event: 'apple_authorization_check_failed', failures,
+        message: String(error?.message || error).slice(0, 160) }));
     }
   }
+  return { checked: (rows.results || []).length, failed };
 }

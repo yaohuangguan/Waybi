@@ -17,6 +17,13 @@ const CACHE_KEY = 'road-events/current';
 // without making each API request perform its own KV write.
 const FRESH_MS = 12 * 60 * 1000;
 const MAX_STALE_MS = 15 * 60 * 1000;
+/** Map/API readers also see closures starting within this window, with their
+ * validFrom/validUntil, so a driver leaving at 20:45 learns about a 21:00
+ * closure. Server-side consumers that need only active events (route
+ * conditions, Route Watch, routing closures) filter by time themselves. */
+export const SCHEDULED_WINDOW_MS = 12 * 60 * 60 * 1000;
+/** Cron-owned snapshot readers never refresh; older data is not trusted. */
+const SNAPSHOT_MAX_AGE_MS = 30 * 60 * 1000;
 // Coalesce overlapping requests within a Worker isolate. Scheduled refreshes
 // publish one shared snapshot to KV; App requests normally only read it.
 const refreshes = new WeakMap<KVNamespace, Promise<RoadEventState>>();
@@ -196,6 +203,22 @@ export async function readRoadEventState(env: RoadEventEnv): Promise<RoadEventSt
   return await env.CAMERA_DATA.get<RoadEventState>(CACHE_KEY, 'json');
 }
 
+/** Active now, or scheduled to start within SCHEDULED_WINDOW_MS. */
+export function currentOrUpcoming(event: { validFrom?: string | null; validUntil?: string | null }, now: Date) {
+  const from = Date.parse(event.validFrom || '');
+  const until = Date.parse(event.validUntil || '');
+  return (!Number.isFinite(from) || from <= now.getTime() + SCHEDULED_WINDOW_MS) &&
+    (!Number.isFinite(until) || until > now.getTime());
+}
+
+/** Active at `now`; for consumers that must ignore scheduled events. */
+export function activeAt(event: { validFrom?: string | null; validUntil?: string | null }, now: Date) {
+  const from = Date.parse(event.validFrom || '');
+  const until = Date.parse(event.validUntil || '');
+  return (!Number.isFinite(from) || from <= now.getTime()) &&
+    (!Number.isFinite(until) || until > now.getTime());
+}
+
 function currentSnapshot(state: RoadEventState, now: Date): RoadEventState {
   const age = now.getTime() - Date.parse(state.retrievedAt || '');
   if (state.syncStatus === 'stale' && (!Number.isFinite(age) || age > MAX_STALE_MS)) {
@@ -203,13 +226,25 @@ function currentSnapshot(state: RoadEventState, now: Date): RoadEventState {
   }
   return {
     ...state,
-    events: (state.events ?? []).filter((event) => {
-      const from = Date.parse(event.validFrom || '');
-      const until = Date.parse(event.validUntil || '');
-      return (!Number.isFinite(from) || from <= now.getTime()) &&
-        (!Number.isFinite(until) || until > now.getTime());
-    })
+    events: (state.events ?? []).filter((event) => currentOrUpcoming(event, now)),
+    scheduledWindowHours: SCHEDULED_WINDOW_MS / 3600000,
   };
+}
+
+/**
+ * Read the Cron-maintained snapshot without ever refreshing it from a request
+ * or another job. Missing or old data is reported as unavailable so callers
+ * can answer `unknown` instead of trusting it.
+ */
+export async function readRoadEventSnapshot(env: RoadEventEnv, now = new Date()): Promise<RoadEventState> {
+  const stored = await readRoadEventState(env);
+  const retrieved = Date.parse(stored?.retrievedAt || stored?.checkedAt || '');
+  const age = now.getTime() - retrieved;
+  if (!stored || !Array.isArray(stored.events) || !Number.isFinite(age) || age > SNAPSHOT_MAX_AGE_MS) {
+    return { events: [], source: ROAD_EVENTS_SOURCE_PAGE, checkedAt: stored?.checkedAt || now.toISOString(),
+      retrievedAt: stored?.retrievedAt ?? null, syncStatus: 'unavailable', syncError: stored ? 'Road event snapshot is out of date' : 'No road event snapshot' };
+  }
+  return currentSnapshot(stored, now);
 }
 
 export async function refreshRoadEventState(env: RoadEventEnv, fetcher: typeof fetch = fetch, now = new Date()): Promise<RoadEventState> {

@@ -263,7 +263,7 @@ test('traffic and road-event crons write independently within the daily KV budge
 
     const config = JSON.parse(readFileSync(new URL('../../../wrangler.jsonc', import.meta.url), 'utf8'));
     assert.deepEqual(config.triggers.crons, [
-      '*/5 * * * *', '*/10 * * * *', '*/15 * * * *', '0 3 * * *',
+      '*/5 * * * *', '*/10 * * * *', '*/15 * * * *', '7,22,37,52 * * * *', '0 3 * * *',
     ]);
     // Traffic and road events share snapshots; cameras refresh once per day.
     const daily = 24 * ((60 / 5) + 2 * (60 / 10)) + 1;

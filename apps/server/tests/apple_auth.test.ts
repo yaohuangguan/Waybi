@@ -118,6 +118,13 @@ test('Apple verified email never takes over an existing account; private-relay l
     await refreshAppleAuthorizations(env,Date.now(),async()=>Response.json({error:'temporarily_unavailable'},{status:503}));
     assert.equal(sql.prepare('SELECT count(*) AS c FROM sessions').get().c,1,'an outage must not revoke sessions');
     assert.equal(sql.prepare('SELECT revoked_at FROM apple_identities').get().revoked_at,null);
+    const backedOff=sql.prepare('SELECT checked_at,next_check_at,check_failures FROM apple_identities').get();
+    assert.equal(backedOff.check_failures,1,'a failed check is counted');
+    assert.ok(backedOff.checked_at>0&&backedOff.next_check_at>backedOff.checked_at,'a failed check always advances with backoff');
+    let calls=0;
+    await refreshAppleAuthorizations(env,Date.now(),async()=>{calls++;return Response.json({});});
+    assert.equal(calls,0,'a backed-off row is not retried before its next check');
+    sql.prepare('UPDATE apple_identities SET next_check_at=0').run();
     const withdrawn=mockApple();withdrawn.withdraw();
     await refreshAppleAuthorizations(env,Date.now(),withdrawn.fetcher);
     assert.equal(sql.prepare('SELECT count(*) AS c FROM sessions').get().c,0);

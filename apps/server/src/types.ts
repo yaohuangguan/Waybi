@@ -73,4 +73,8 @@ export interface RoadEventState {
   retrievedAt: string | null;
   syncStatus: 'live' | 'stale' | 'unavailable';
   syncError: string | null;
+  /** Events starting within this many hours are included with validFrom set. */
+  scheduledWindowHours?: number;
+  /** Source feeds that failed in the latest refresh (their last events are retained). */
+  failedFeeds?: string[];
 }

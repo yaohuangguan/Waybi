@@ -22,7 +22,8 @@ import { loadRegionalRoadEvents } from './regional_road_events.ts';
 import { readTrafficFlowState, refreshTrafficFlowState } from './traffic_flow.ts';
 import { handleRoadIntelligence } from './road_intelligence_api.ts';
 import { createRoadReport, readRoadReports, validRoadReportInput } from './road_reports.ts';
-import { reserveRoadReportQuota } from './road_report_quota.ts';
+import { refundRoadReportQuota, reserveRoadReportQuota } from './road_report_quota.ts';
+import { runDailyCleanup } from './retention.ts';
 import { handleGooglePlacePicker } from './google_place_picker.ts';
 import { sendGoogleSearchAlerts } from './google_search_budget.ts';
 import { readPublicEdgeJson, writePublicEdgeJson } from './public_edge_cache.ts';
@@ -43,6 +44,8 @@ const CAMERA_KEY = 'cameras/current';
 // Camera locations are slow-changing metadata, not live traffic frames.
 // A shared daily refresh is sufficient; manual checks must respect the same window.
 const CAMERA_SYNC_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+/** Route Watch has its own trigger so its CPU never competes with the Apple jobs. */
+export const ROUTE_WATCH_CRON = '7,22,37,52 * * * *';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -197,6 +200,8 @@ async function handleApi(request: Request, env, ctx) {
     } catch (error) {
       console.error(JSON.stringify({ level: 'error', event: 'road_report_write_failed',
         errorName: error?.name, message: String(error?.message || error).slice(0, 200) }));
+      // The report was not stored, so it must not count against the user.
+      await refundRoadReportQuota(env.USER_DB, reporter.id).catch(() => {});
       return json({ error: 'Road reports are temporarily unavailable. Please try again.' }, 503);
     }
   }
@@ -617,12 +622,16 @@ export default {
     if (event.cron === '*/15 * * * *') {
       ctx.waitUntil(refreshAppleAuthorizations(env));
       ctx.waitUntil(syncAllAppleSubscriptions(env));
+      return;
+    }
+    if (event.cron === ROUTE_WATCH_CRON) {
       ctx.waitUntil(evaluateAllRouteWatches(env));
       return;
     }
     if (event.cron === '0 3 * * *') {
       ctx.waitUntil(syncCameras(env));
       ctx.waitUntil(refreshTransitSnapshot(env));
+      ctx.waitUntil(runDailyCleanup(env));
     }
   }
 };

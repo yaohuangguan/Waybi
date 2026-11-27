@@ -5,6 +5,7 @@ import {
   fetchNztaRoadEvents,
   loadRoadEventState,
   normalizeRoadEvent,
+  readRoadEventSnapshot,
   readRoadEventState
 } from '../src/road_events.ts';
 
@@ -52,7 +53,7 @@ test('drops future, expired and malformed road events', () => {
   assert.equal(normalizeRoadEvent(event({ geometry: 'POINT (0 0)' }), NOW), null);
 });
 
-test('shared snapshot retains imminent schedules for routing without showing them as current map closures', async () => {
+test('readers see closures starting within 12 hours with their start time; later schedules stay routing-only', async () => {
   let stored;
   const env = { CAMERA_DATA: {
     async get() { return stored ?? null; },
@@ -60,13 +61,29 @@ test('shared snapshot retains imminent schedules for routing without showing the
   } };
   const fetcher = async () => Response.json({ response: { roadevent: [
     event({ id: 99, startDate: '2026-09-26T00:30:00Z', impact: 'Road Closed' }),
+    event({ id: 101, startDate: '2026-09-26T20:00:00Z', impact: 'Road Closed' }),
     event({ id: 100, startDate: '2026-09-29T00:30:00Z', impact: 'Road Closed', endDate: '2026-10-01T00:00:00Z' }),
   ] } });
   const current = await loadRoadEventState(env, fetcher, NOW);
-  assert.equal(current.events.length, 0);
+  assert.deepEqual(current.events.map((item) => item.id), ['nzta:event:99']);
+  assert.equal(current.events[0].validFrom, '2026-09-26T00:30:00.000Z');
+  assert.equal(current.scheduledWindowHours, 12);
   const routing = await readRoadEventState(env);
-  assert.equal(routing.events.length, 1);
-  assert.equal(routing.events[0].id, 'nzta:event:99');
+  assert.deepEqual(routing.events.map((item) => item.id), ['nzta:event:99', 'nzta:event:101']);
+  // The Cron-owned snapshot reader never refreshes and applies the same window.
+  const snapshot = await readRoadEventSnapshot(env, NOW);
+  assert.deepEqual(snapshot.events.map((item) => item.id), ['nzta:event:99']);
+  assert.equal((await readRoadEventSnapshot(env, new Date(NOW.getTime() + 31 * 60000))).syncStatus, 'unavailable',
+    'an old snapshot is not trusted without a refresh');
+  assert.equal((await readRoadEventSnapshot({ CAMERA_DATA: { async get() { return null; } } }, NOW)).syncStatus, 'unavailable');
+});
+
+test('server-side consumers ignore a closure that has not started yet', async () => {
+  const { evaluateRouteWatch } = await import('../src/route_watch.ts');
+  const scheduled = normalizeRoadEvent(event({ id: 120, impact: 'Road Closed', startDate: '2026-09-26T03:00:00Z' }), NOW, true);
+  const route = [{ latitude: -36.8485, longitude: 174.75 }, { latitude: -36.8485, longitude: 174.78 }];
+  assert.equal(evaluateRouteWatch(route, [scheduled], NOW).status, 'healthy');
+  assert.equal(evaluateRouteWatch(route, [scheduled], new Date('2026-09-26T03:00:01Z')).status, 'disrupted');
 });
 
 test('fetches official NZTA response shape and normalizes usable events', async () => {

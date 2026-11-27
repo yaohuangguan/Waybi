@@ -1,13 +1,14 @@
 import type { OfficialRoadEvent, RoadEventState, GeoPoint } from './types.ts';
 import { validCoordinate } from './geo.ts';
+import { currentOrUpcoming, SCHEDULED_WINDOW_MS } from './road_events.ts';
 
 /** Transport for NSW's published GeoJSON feed. AU coverage starts with NSW;
  * additional state sources join this adapter registry as they are validated.
  * Source and licence: https://opendata.transport.nsw.gov.au/data/dataset/live-traffic-hazards
  */
 export const NSW_SOURCE_PAGE = 'https://opendata.transport.nsw.gov.au/data/dataset/live-traffic-hazards';
-const FEEDS = ['incident', 'roadwork', 'flood'].map(kind =>
-  `https://data.livetraffic.com/traffic/hazards/${kind}-open.json`);
+const FEED_KINDS = ['incident', 'roadwork', 'flood'] as const;
+const feedUrl = (kind: string) => `https://data.livetraffic.com/traffic/hazards/${kind}-open.json`;
 const KEY = 'road-events/au-nsw/current';
 type Env = Pick<WorkerBindings, 'CAMERA_DATA'>;
 type JsonObject = Record<string, unknown>;
@@ -33,10 +34,13 @@ export function normalizeNswRoadEvent(input: unknown, now = new Date()): Officia
   const location: GeoPoint = { longitude: coordinates[0], latitude: coordinates[1] };
   if (location.longitude < 140 || location.longitude > 154 || location.latitude < -38 || location.latitude > -27) return null;
   const from = timestamp(p.start), until = timestamp(p.end);
-  if ((from && Date.parse(from) > now.getTime()) || (until && Date.parse(until) <= now.getTime())) return null;
+  const upcoming = Boolean(from && Date.parse(from) > now.getTime());
+  // Keep events scheduled to start within the window (with their start time);
+  // consumers that need only active events filter by validFrom themselves.
+  if ((from && Date.parse(from) > now.getTime() + SCHEDULED_WINDOW_MS) || (until && Date.parse(until) <= now.getTime())) return null;
   // An open planned event can contain periods not active at this time. Do not
   // call its road closed unless the publisher says it affects the network now.
-  if (p.incidentKind === 'Planned' && p.impactingNetwork !== true) return null;
+  if (p.incidentKind === 'Planned' && p.impactingNetwork !== true && !upcoming) return null;
   const periods = objects(p.periods), roads = objects(p.roads);
   const closed = periods.some(period => period.closureType === 'ROAD_CLOSURE');
   const category = text(p.mainCategory).toLowerCase();
@@ -63,24 +67,47 @@ export function normalizeNswRoadEvent(input: unknown, now = new Date()): Officia
   };
 }
 
-export async function fetchNswRoadEvents(fetcher: typeof fetch = fetch, now = new Date()): Promise<RoadEventState> {
-  const batches = await Promise.all(FEEDS.map(async url => {
-    const response = await fetcher(url, { headers: { accept: 'application/json', 'user-agent': 'Waybi/1.0 (+https://waybi.co)' }, signal: AbortSignal.timeout(12000) });
-    if (!response.ok) throw new Error(`TfNSW HTTP ${response.status}`);
+/**
+ * Fetch the three TfNSW feeds independently. One failing feed no longer
+ * discards the other two: its events from the previous snapshot are retained
+ * while that snapshot is recent, and the failure is reported in failedFeeds.
+ * Only when every feed fails is the refresh treated as a failure.
+ */
+export async function fetchNswRoadEvents(fetcher: typeof fetch = fetch, now = new Date(),
+  previous: RoadEventState | null = null): Promise<RoadEventState> {
+  const settled = await Promise.allSettled(FEED_KINDS.map(async kind => {
+    const response = await fetcher(feedUrl(kind), { headers: { accept: 'application/json', 'user-agent': 'Waybi/1.0 (+https://waybi.co)' }, signal: AbortSignal.timeout(12000) });
+    if (!response.ok) throw new Error(`TfNSW ${kind} HTTP ${response.status}`);
     const body = await response.json<JsonObject>();
-    if (body.type !== 'FeatureCollection' || !Array.isArray(body.features)) throw new Error('Invalid TfNSW feed');
-    return body.features.slice(0, 3000).map(item => normalizeNswRoadEvent(item, now)).filter((e): e is OfficialRoadEvent => e !== null);
+    if (body.type !== 'FeatureCollection' || !Array.isArray(body.features)) throw new Error(`Invalid TfNSW ${kind} feed`);
+    return body.features.slice(0, 3000).map(item => normalizeNswRoadEvent(item, now))
+      .filter((e): e is OfficialRoadEvent => e !== null)
+      .map(event => ({ ...event, metadata: { ...event.metadata, feed: kind } }));
   }));
-  const events = [...new Map(batches.flat().map(event => [event.id, event])).values()];
-  return { events, source: NSW_SOURCE_PAGE, checkedAt: now.toISOString(), retrievedAt: now.toISOString(), syncStatus: 'live', syncError: null };
+  const failedFeeds = FEED_KINDS.filter((_, index) => settled[index].status === 'rejected');
+  if (failedFeeds.length === FEED_KINDS.length) {
+    throw new Error(`TfNSW feeds unavailable: ${settled.map(result =>
+      result.status === 'rejected' ? String(result.reason?.message || result.reason) : '').join('; ')}`);
+  }
+  const fresh = settled.flatMap(result => result.status === 'fulfilled' ? result.value : []);
+  const previousAge = now.getTime() - Date.parse(previous?.retrievedAt || '');
+  const retained = failedFeeds.length && Number.isFinite(previousAge) && previousAge >= 0 && previousAge <= 15 * 60000
+    ? (previous?.events || []).filter(event => failedFeeds.includes(event.metadata?.feed as typeof FEED_KINDS[number]))
+    : [];
+  if (failedFeeds.length) {
+    console.warn(JSON.stringify({ level: 'warn', event: 'tfnsw_feed_failed', failedFeeds, retainedEvents: retained.length }));
+  }
+  const events = [...new Map([...retained, ...fresh].map(event => [event.id, event])).values()];
+  return { events, source: NSW_SOURCE_PAGE, checkedAt: now.toISOString(), retrievedAt: now.toISOString(), syncStatus: 'live',
+    syncError: failedFeeds.length ? `TfNSW feeds unavailable: ${failedFeeds.join(', ')}` : null,
+    ...(failedFeeds.length ? { failedFeeds: [...failedFeeds] } : {}) };
 }
 
 function current(state: RoadEventState, now: Date): RoadEventState {
   const age = now.getTime() - Date.parse(state.retrievedAt || '');
   if (state.syncStatus === 'stale' && (!Number.isFinite(age) || age > 15 * 60000)) return { ...state, events: [], syncStatus: 'unavailable' };
-  return { ...state, events: state.events.filter(event =>
-    (!event.validFrom || Date.parse(event.validFrom) <= now.getTime()) &&
-    (!event.validUntil || Date.parse(event.validUntil) > now.getTime())) };
+  return { ...state, events: state.events.filter(event => currentOrUpcoming(event, now)),
+    scheduledWindowHours: SCHEDULED_WINDOW_MS / 3600000 };
 }
 
 export async function refreshNswRoadEventState(env: Env, fetcher: typeof fetch = fetch, now = new Date()): Promise<RoadEventState> {
@@ -89,7 +116,7 @@ export async function refreshNswRoadEventState(env: Env, fetcher: typeof fetch =
   const job = (async () => {
     const stored = await env.CAMERA_DATA.get<RoadEventState>(KEY, 'json');
     let state: RoadEventState;
-    try { state = await fetchNswRoadEvents(fetcher, now); }
+    try { state = await fetchNswRoadEvents(fetcher, now, stored); }
     catch (error) {
       const age = now.getTime() - Date.parse(stored?.retrievedAt || '');
       const usable = Number.isFinite(age) && age >= 0 && age <= 15 * 60000;

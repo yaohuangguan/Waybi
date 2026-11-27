@@ -76,3 +76,33 @@ test('NSW shares the three feeds for concurrent users; request area selects cove
   assert.deepEqual(melbourne.officialCoverage, []);
   assert.equal(calls, 3);
 });
+
+test('one failing TfNSW feed keeps the other feeds and the failed feed\'s recent events, and is reported', async () => {
+  const { fetchNswRoadEvents } = await import('../src/au_road_events.ts');
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const feeds = (failing: string[]) => async (url) => {
+      const kind = String(url).match(/hazards\/(\w+)-open/)![1];
+      if (failing.includes(kind)) return new Response('down', { status: 503 });
+      return Response.json({ type: 'FeatureCollection', features: [nswEvent({ mainCategory: kind === 'flood' ? 'Flooding' : 'Crash' })]
+        .map((feature) => ({ ...feature, id: `${kind}-1` })) });
+    };
+    const healthy = await fetchNswRoadEvents(feeds([]) as typeof fetch, now);
+    assert.equal(healthy.events.length, 3);
+    assert.equal(healthy.failedFeeds, undefined);
+    const partial = await fetchNswRoadEvents(feeds(['flood']) as typeof fetch, new Date(now.getTime() + 600_000), healthy);
+    assert.deepEqual(partial.failedFeeds, ['flood']);
+    assert.match(partial.syncError!, /flood/);
+    assert.equal(partial.syncStatus, 'live');
+    assert.deepEqual(partial.events.map((event) => event.id).sort(),
+      ['tfnsw:event:flood-1', 'tfnsw:event:incident-1', 'tfnsw:event:roadwork-1'], 'recent flood events are retained');
+    await assert.rejects(fetchNswRoadEvents(feeds(['incident', 'roadwork', 'flood']) as typeof fetch, now), /feeds unavailable/);
+  } finally { console.warn = originalWarn; }
+});
+
+test('TfNSW events starting within 12 hours are kept with their start time', () => {
+  const soon = normalizeNswRoadEvent(nswEvent({ start: now.getTime() + 3 * 3600_000, incidentKind: 'Planned', impactingNetwork: false }), now);
+  assert.equal(soon.validFrom, new Date(now.getTime() + 3 * 3600_000).toISOString());
+  assert.equal(normalizeNswRoadEvent(nswEvent({ start: now.getTime() + 13 * 3600_000 }), now), null);
+});

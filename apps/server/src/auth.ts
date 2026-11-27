@@ -362,7 +362,7 @@ export async function handleAccount(request: Request, env, ctx?: Pick<ExecutionC
     );
     statements.push(linked
       ? db.prepare(`UPDATE apple_identities SET refresh_token = ?, checked_at = ?, revoked_at = NULL,
-          verified_email = COALESCE(?, verified_email)
+          next_check_at = NULL, check_failures = 0, verified_email = COALESCE(?, verified_email)
           WHERE apple_sub = ? AND user_id = ?`)
         .bind(storedToken, Date.now(), appleVerifiedEmail, identity.sub, user.id)
       : db.prepare('INSERT INTO apple_identities (apple_sub, user_id, refresh_token, created_at, checked_at, verified_email) VALUES (?, ?, ?, ?, ?, ?)')

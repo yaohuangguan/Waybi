@@ -8,6 +8,8 @@ import { isGeographicPlace } from './search/place_intent.ts';
 import { loadSearchEnrichments, mergeAndRankSearchResults, needsAddressEnrichment } from './search/search_orchestrator.ts';
 import { searchIndependentGlobal } from './search/independent_global_search.ts';
 import { independentSuggestionCache, suggestionCacheKey } from './search/suggestion_cache.ts';
+import { googleBudgetExhaustedResponse, reserveGoogleUnits } from './google_budget.ts';
+import { nominatimObject } from './nominatim.ts';
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -16,6 +18,24 @@ function json(body, status = 200) {
 }
 
 function geoPoint(value) { return parseLonLat(value); }
+
+const PHOTO_SEGMENT = /^[A-Za-z0-9_-]+$/;
+/** Only the exact `places/{placeId}/photos/{photoId}` resource is proxied. The
+ * server key is attached here, so the final URL must contain nothing else. */
+export function placePhotoUrl(name: string, apiKey: string): URL | null {
+  const match = /^places\/([A-Za-z0-9_-]+)\/photos\/([A-Za-z0-9_-]+)$/.exec(name);
+  if (!match || match[1].length > 300 || match[2].length > 1000) return null;
+  const [, placeId, photoId] = match;
+  if (!PHOTO_SEGMENT.test(placeId) || !PHOTO_SEGMENT.test(photoId)) return null;
+  const url = new URL(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}/photos/${encodeURIComponent(photoId)}/media`);
+  url.searchParams.set('maxWidthPx', '1200');
+  url.searchParams.set('key', apiKey);
+  const params = [...url.searchParams.keys()].sort();
+  if (url.origin !== 'https://places.googleapis.com' || url.hash ||
+      url.pathname !== `/v1/places/${placeId}/photos/${photoId}/media` || !url.pathname.endsWith('/media') ||
+      params.length !== 2 || params[0] !== 'key' || params[1] !== 'maxWidthPx') return null;
+  return url;
+}
 
 function placesApiKey(env) {
   return env.GOOGLE_PLACES_SERVER_API_KEY || env.GOOGLE_ROUTES_API_KEY;
@@ -109,7 +129,13 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
       }
     }
     const googleKey = placesApiKey(env);
-    if (googleKey && requestedProvider !== 'geoapify') {
+    let googleBudgetExhausted = false;
+    const reserveTextSearch = async () => {
+      if (await reserveGoogleUnits(env, 'places_text_search')) return true;
+      googleBudgetExhausted = true;
+      return false;
+    };
+    if (googleKey && requestedProvider !== 'geoapify' && await reserveTextSearch()) {
       const body: { textQuery: string; languageCode: string; pageSize: number; locationBias?: { circle: { center: { latitude: number; longitude: number }; radius: number } } } = {
         textQuery: query,
         languageCode: prefersChinese ? 'zh-CN' : 'en',
@@ -159,8 +185,7 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
         }
       }
 
-      trackUsage('google', 'places_text_search', 1);
-      const globalGoogle = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      const globalGoogle = !await reserveTextSearch() ? null : (trackUsage('google', 'places_text_search', 1), await fetch('https://places.googleapis.com/v1/places:searchText', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -173,8 +198,8 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
           pageSize: 12
         }),
         signal: AbortSignal.timeout(10000)
-      });
-      if (globalGoogle.ok) {
+      }));
+      if (globalGoogle?.ok) {
         const global = mapGooglePlaces(await globalGoogle.json<ProviderPayload>());
         const enrichments = await enrichmentPromise;
         const merged = mergeAndRankSearchResults(
@@ -189,6 +214,16 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
         const enrichments = await enrichmentPromise;
         return json(mergeAndRankSearchResults([enrichments, local], query, point, 12));
       }
+    }
+
+    if (googleBudgetExhausted && !env.GEOAPIFY_API_KEY) {
+      // The daily Google ceiling is reached: answer from the independent
+      // (non-Google) providers instead of failing the search.
+      const language = prefersChinese ? 'zh' : 'en';
+      const results = await searchIndependentGlobal({
+        query, point, language, env, trackUsage, enrichmentsPromise: enrichmentPromise,
+      });
+      return results.length ? json(results) : json({ error: 'Place search temporarily unavailable' }, 503);
     }
 
     if (!env.GEOAPIFY_API_KEY) {
@@ -321,7 +356,10 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
         }
       };
     }
-    trackUsage('google', query.length >= 2 ? 'places_text_search' : 'places_nearby_search', 1);
+    const exploreSku = query.length >= 2 ? 'places_text_search' : 'places_nearby_search';
+    // Past the daily Google ceiling, Explore continues on OpenStreetMap data.
+    if (!await reserveGoogleUnits(env, exploreSku)) return independentExplore(url, env);
+    trackUsage('google', exploreSku, 1);
     const upstream = await fetch(provider, {
       method: 'POST',
       headers: {
@@ -333,7 +371,7 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
       signal: AbortSignal.timeout(12000)
     });
     if (!upstream.ok) {
-      return json({ error: 'Google Places explore HTTP ' + upstream.status }, 502);
+      return json({ error: 'Nearby places are temporarily unavailable' }, 502);
     }
     const data = await upstream.json<ProviderPayload>();
     return json((data.places || []).map((place) => ({
@@ -375,12 +413,17 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
       'websiteUri', 'googleMapsUri', 'editorialSummary', 'regularOpeningHours',
       'photos', 'reviews'
     ].join(',');
+    if (!await reserveGoogleUnits(env, 'place_details')) return googleBudgetExhaustedResponse();
     trackUsage('google', 'place_details', 1);
     const upstream = await fetch(provider, {
       headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': fieldMask },
       signal: AbortSignal.timeout(12000)
     });
-    if (!upstream.ok) return json({ error: `Google Places HTTP ${upstream.status}` }, upstream.status === 404 ? 404 : 502);
+    if (!upstream.ok) {
+      return upstream.status === 404
+        ? json({ error: 'Place not found' }, 404)
+        : json({ error: 'Place details are temporarily unavailable' }, 502);
+    }
     const place = await upstream.json<ProviderPayload>();
     return json({
       placeId: place.id || placeId,
@@ -415,13 +458,12 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
     const apiKey = placesApiKey(env);
     if (!apiKey) return json({ error: 'Google Places server key is not configured' }, 503);
     const name = (url.searchParams.get('name') || '').trim();
-    if (!/^places\/[^/]+\/photos\/[^/]+$/.test(name)) return json({ error: 'Valid photo name required' }, 400);
-    const provider = new URL(`https://places.googleapis.com/v1/${name}/media`);
-    provider.searchParams.set('maxWidthPx', '1200');
-    provider.searchParams.set('key', apiKey);
+    const provider = placePhotoUrl(name, apiKey);
+    if (!provider) return json({ error: 'Valid photo name required' }, 400);
+    if (!await reserveGoogleUnits(env, 'place_photo')) return googleBudgetExhaustedResponse();
     trackUsage('google', 'place_photo', 1);
     const upstream = await fetch(provider, { redirect: 'follow', signal: AbortSignal.timeout(12000) });
-    if (!upstream.ok) return json({ error: `Google Place Photo HTTP ${upstream.status}` }, 502);
+    if (!upstream.ok) return json({ error: 'Place photo is temporarily unavailable' }, 502);
     return new Response(upstream.body, {
       status: 200,
       headers: {
@@ -441,13 +483,13 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
     provider.searchParams.set('lon', String(point[0]));
     provider.searchParams.set('zoom', '14');
     provider.searchParams.set('addressdetails', '1');
-    const upstream = await fetch(provider, {
-      headers: { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)',
-        referer: 'https://github.com/yaohuangguan/Waybi', accept: 'application/json' },
-      signal: AbortSignal.timeout(10000)
-    });
-    if (!upstream.ok) return json({ error: 'Current-place lookup unavailable' }, 502);
-    const data = await upstream.json<ProviderPayload>();
+    let data: ProviderPayload;
+    // Shares the per-isolate one-request-per-second Nominatim queue with /api/search.
+    try { data = await nominatimObject(provider); }
+    catch (error) {
+      if ((error as { status?: number })?.status === 503) throw error;
+      return json({ error: 'Current-place lookup unavailable' }, 502);
+    }
     const address = data.address || {};
     return json({ label: [address.road || address.suburb || address.neighbourhood,
       address.suburb || address.city || address.town || address.village,

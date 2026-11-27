@@ -14,6 +14,10 @@ export interface RouteRequestOptions {
   language?: string;
   /** Internal fallback strategy for incident-heavy detours, not a public route preference. */
   detourLocalRoads?: boolean;
+  /** Pseudonymous caller key for the per-client NZ routing share. */
+  routingClientKey?: string;
+  /** Reserve paid Google units before calling Google; false falls back to independent routing. */
+  reserveGoogle?: (sku: string, units: number) => Promise<boolean>;
 }
 export interface PlacePhoto {
   url: string;

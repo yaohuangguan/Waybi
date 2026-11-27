@@ -36,12 +36,28 @@ export async function cloudRunIdentityToken(
   if (cached?.credentials === credentials && cached.audience === audience && cached.expires > Date.now() + 60000) {
     return cached.token;
   }
-  if (pending?.credentials === credentials && pending.audience === audience) return pending.promise;
-  const promise = exchange(credentials, audience, signal, fetcher);
+  if (pending?.credentials === credentials && pending.audience === audience) return waitFor(pending.promise, signal);
+  // The shared exchange has its own deadline. Tying it to the first caller's
+  // signal would abort the exchange for every concurrent caller when that one
+  // request is cancelled or runs out of its routing budget.
+  const promise = exchange(credentials, audience, AbortSignal.timeout(EXCHANGE_TIMEOUT_MS), fetcher);
   const entry = { credentials, audience, promise };
   pending = entry;
-  try { return await promise; }
-  finally { if (pending === entry) pending = undefined; }
+  promise.catch(() => {}).finally(() => { if (pending === entry) pending = undefined; });
+  return waitFor(promise, signal);
+}
+
+const EXCHANGE_TIMEOUT_MS = 4000;
+
+/** Let one caller stop waiting without cancelling the shared exchange. */
+function waitFor<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(signal.reason ?? new Error('Aborted'));
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason ?? new Error('Aborted'));
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
 }
 
 async function exchange(credentials: string, audience: string, signal: AbortSignal, fetcher: typeof fetch) {

@@ -11,6 +11,8 @@ export interface NzRoutingConfig {
   /** Worker secret, never a client credential. Only run.invoker on this service. */
   WAYBI_NZ_ROUTING_GCP_SERVICE_ACCOUNT?: string;
   WAYBI_NZ_ROUTING_DAILY_LIMIT?: string;
+  /** Optional per-client share of the daily limit; defaults to 10%. */
+  WAYBI_NZ_ROUTING_CLIENT_DAILY_LIMIT?: string;
   USER_DB?: any;
 }
 
@@ -47,7 +49,10 @@ export async function fetchNzRouting(
   if (url.hostname.endsWith('.run.app')) body.shape_format = 'polyline6';
   const request = async (requestBody: ProviderPayload) => {
     if (env.WAYBI_NZ_ROUTING_DAILY_LIMIT != null) {
-      await reserveNzRoutingQuota(env.USER_DB, env.WAYBI_NZ_ROUTING_DAILY_LIMIT);
+      await reserveNzRoutingQuota(env.USER_DB, env.WAYBI_NZ_ROUTING_DAILY_LIMIT, new Date(),
+        options.routingClientKey
+          ? { key: options.routingClientKey, limit: env.WAYBI_NZ_ROUTING_CLIENT_DAILY_LIMIT }
+          : null);
     }
     const response = await fetcher(url, {
       method: 'POST', redirect: 'manual',

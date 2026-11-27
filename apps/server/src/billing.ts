@@ -3,7 +3,7 @@ import { clientKind } from './brand_compat.ts';
 import Stripe from 'stripe';
 import { reconcileEntitlement } from './billing_entitlements.ts';
 import { appleConfig, syncAppleTransaction } from './apple_billing.ts';
-import { subscriptionForUser, userFromRequest } from './auth.ts';
+import { appleSubscriptionRenewing, subscriptionForUser, userFromRequest } from './auth.ts';
 
 export const BILLING_EVENTS = [
   'checkout.session.completed', 'checkout.session.async_payment_succeeded',
@@ -79,9 +79,37 @@ async function billingState(db, userId, now) {
   const entitlement = await subscriptionForUser(db, userId, now);
   const row = await db.prepare(`SELECT subscription_id, status, period_end, cancel_at_period_end
     FROM billing_subscriptions WHERE user_id = ? ORDER BY period_end DESC LIMIT 1`).bind(userId).first();
-  return { ...entitlement, billing: row ? {
+  return { ...entitlement, appleSubscriptionActive: await appleSubscriptionRenewing(db, userId, now), billing: row ? {
     status: row.status, periodEnd: row.period_end, cancelAtPeriodEnd: Boolean(row.cancel_at_period_end)
   } : null };
+}
+
+// Every status in which a Stripe subscription can still charge or resume.
+const ENDED_STRIPE_STATUSES = new Set(['canceled', 'incomplete_expired']);
+
+/** Cancel the user's live Stripe subscriptions before the account (and its
+ * billing_customers row) is deleted. Stripe is the source of truth, so a
+ * subscription whose webhook has not arrived yet is cancelled too. Without a
+ * Stripe configuration there is nothing Waybi can cancel. */
+export async function cancelStripeSubscriptionsForDeletion(db, env, userId: string, stripe?: ReturnType<typeof createStripe>) {
+  const customer = await db.prepare('SELECT customer_id FROM billing_customers WHERE user_id = ?').bind(userId).first();
+  if (!customer?.customer_id || !env.STRIPE_SECRET_KEY) return { ok: true, cancelled: 0 };
+  const client = stripe ?? createStripe(env);
+  try {
+    let cancelled = 0;
+    const listed = await client.subscriptions.list({ customer: customer.customer_id, status: 'all', limit: 100 });
+    for (const subscription of listed.data || []) {
+      if (ENDED_STRIPE_STATUSES.has(subscription.status)) continue;
+      await client.subscriptions.cancel(subscription.id, {},
+        { idempotencyKey: `waybi-account-deletion-${userId}-${subscription.id}` });
+      cancelled++;
+    }
+    return { ok: true, cancelled };
+  } catch (error) {
+    console.error(JSON.stringify({ level: 'error', event: 'stripe_cancel_for_deletion_failed',
+      errorType: (error as { type?: string })?.type || 'stripe' }));
+    return { ok: false, cancelled: 0 };
+  }
 }
 
 async function webhook(request: Request, env, stripe, now) {

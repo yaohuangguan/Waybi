@@ -62,7 +62,7 @@ test('rejects invalid destinations and token responses; a failed exchange can be
   assert.equal(calls, 1);
 });
 
-test('private routing shares a deadline, keeps closures, and never follows redirects with its identity token', async () => {
+test('private routing bounds both calls with their own deadlines, keeps closures, and never follows redirects with its identity token', async () => {
   let calls = 0;
   let exchangeSignal;
   const points: [number, number][] = [[174.76, -36.85], [175.28, -37.78]];
@@ -77,7 +77,11 @@ test('private routing shares a deadline, keeps closures, and never follows redir
     assert.equal(String(url), `${audience}/route`);
     assert.equal(init.headers['authorization'], `Bearer ${validToken()}`);
     assert.equal(init.redirect, 'manual');
-    assert.equal(init.signal, exchangeSignal);
+    // The shared identity exchange has its own timeout, independent of this
+    // caller's routing deadline (which would otherwise abort other callers).
+    assert.ok(init.signal instanceof AbortSignal);
+    assert.ok(exchangeSignal instanceof AbortSignal);
+    assert.notEqual(init.signal, exchangeSignal);
     const body = JSON.parse(init.body as string);
     assert.deepEqual(body.exclude_locations, exclusions);
     assert.deepEqual(body.date_time, { type: 0 });
@@ -87,4 +91,24 @@ test('private routing shares a deadline, keeps closures, and never follows redir
   assert.equal(calls, 2);
   await assert.rejects(fetchNzRouting({ ...env, WAYBI_NZ_ROUTING_URL: `${audience}/base` }, points,
     'DRIVE', {}, [], async () => { throw new Error('must not fetch'); }), /canonical/);
+});
+
+test('one caller abandoning a shared identity exchange does not abort it for other callers', async () => {
+  const key = credentials('abandoned-caller');
+  let release: () => void = () => {};
+  let exchangeAborted = false;
+  const fetcher = async (_url, init) => {
+    init.signal.addEventListener('abort', () => { exchangeAborted = true; });
+    await new Promise<void>(resolve => { release = resolve; });
+    return Response.json({ id_token: validToken() });
+  };
+  const impatient = new AbortController();
+  const first = cloudRunIdentityToken(key, audience, impatient.signal, fetcher);
+  const second = cloudRunIdentityToken(key, audience, signal(), fetcher);
+  await new Promise(resolve => setTimeout(resolve, 5));
+  impatient.abort(new Error('caller gave up'));
+  await assert.rejects(first, /caller gave up/);
+  release();
+  assert.equal(await second, validToken());
+  assert.equal(exchangeAborted, false);
 });

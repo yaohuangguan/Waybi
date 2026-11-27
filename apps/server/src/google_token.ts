@@ -15,7 +15,8 @@ function jsonPart(value) {
 
 async function googleKeys(fetchJwks: typeof fetch, now: number) {
   if (fetchJwks === globalThis.fetch && cachedKeys && now < keysExpiresAt) return cachedKeys;
-  const response = await fetchJwks(jwksUrl);
+  // A hung key endpoint must not hold a sign-in request open indefinitely.
+  const response = await fetchJwks(jwksUrl, { signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw new Error('Google signing keys are unavailable');
   const body = await response.json<ProviderPayload>();
   if (!Array.isArray(body.keys)) throw new Error('Invalid Google signing keys');

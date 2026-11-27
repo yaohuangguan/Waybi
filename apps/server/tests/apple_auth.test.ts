@@ -30,7 +30,7 @@ function database() {
     async first(){return sql.prepare(query).get(...values)||null;},
     async all(){return {results:sql.prepare(query).all(...values)};},
     async run(){return sql.prepare(query).run(...values);}
-  };}};},async batch(items:any[]){sql.exec('BEGIN');try{const results=items.map(s=>sql.prepare(s.sql).run(...s.values));sql.exec('COMMIT');return results;}catch(e){sql.exec('ROLLBACK');throw e;}}};
+  };}};},async batch(items:any[]){sql.exec('BEGIN');try{const results=items.map(s=>{const st=sql.prepare(s.sql);return st.columns().length?{results:st.all(...s.values)}:(st.run(...s.values),{results:[]});});sql.exec('COMMIT');return results;}catch(e){sql.exec('ROLLBACK');throw e;}}};
   return {sql,env:{USER_DB:db,...envKeys}};
 }
 function call(path:string, body:any, token?:string) {

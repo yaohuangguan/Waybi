@@ -88,12 +88,30 @@ export async function handleEmailOtp(request: Request, env, authenticated: (user
     WHERE email_key = ? AND challenge_id = ? AND code_hash = ? AND expires_at > ? AND attempts <= 5 AND delivered = 1
     RETURNING challenge_id`).bind(emailKey, body.challengeId, hash, now).first();
   if (!consumed) return reply({ error: 'Code is invalid or expired. Request a new code.' }, 401);
+  // Password registration and provider linking do not prove mailbox
+  // ownership. On the FIRST proof for an existing account, everything set up
+  // before it is untrusted (it may be an attacker pre-registering the victim's
+  // address): clear the password, end every session, drop provider links that
+  // never proved this same address, and revoke Road Intelligence keys. Each
+  // statement re-checks "not yet proven" inside the transaction and runs before
+  // the proof is recorded, so a concurrent registration cannot slip through.
+  const unproven = `NOT EXISTS (SELECT 1 FROM email_identities WHERE user_id = (SELECT id FROM users WHERE email = ?))`;
+  const owner = `(SELECT id FROM users WHERE email = ?)`;
   await db.batch([
     db.prepare(`INSERT INTO users (id, email, password_salt, password_hash, created_at) VALUES (?, ?, '', '', ?)
       ON CONFLICT(email) DO NOTHING`).bind(crypto.randomUUID(), email, now),
     db.prepare(`INSERT INTO profiles (user_id, language, voice_enabled)
       SELECT id, ?, ? FROM users WHERE email = ? ON CONFLICT(user_id) DO NOTHING`)
       .bind(body.language === 'zh' ? 'zh' : 'en', body.voiceEnabled === false ? 0 : 1, email),
+    db.prepare(`UPDATE users SET password_salt = '', password_hash = '' WHERE email = ? AND ${unproven}`)
+      .bind(email, email),
+    db.prepare(`DELETE FROM sessions WHERE user_id = ${owner} AND ${unproven}`).bind(email, email),
+    db.prepare(`DELETE FROM google_identities WHERE user_id = ${owner}
+      AND (verified_email IS NULL OR verified_email <> ?) AND ${unproven}`).bind(email, email, email),
+    db.prepare(`DELETE FROM apple_identities WHERE user_id = ${owner}
+      AND (verified_email IS NULL OR verified_email <> ?) AND ${unproven}`).bind(email, email, email),
+    db.prepare(`UPDATE road_api_keys SET revoked_at = ? WHERE user_id = ${owner} AND revoked_at IS NULL AND ${unproven}`)
+      .bind(now, email, email),
     db.prepare(`INSERT INTO email_identities (user_id, verified_at) SELECT id, ? FROM users WHERE email = ?
       ON CONFLICT(user_id) DO UPDATE SET verified_at = excluded.verified_at`).bind(now, email),
   ]);

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { handleAccount } from '../src/auth.ts';
+import { migratedD1 } from './d1_fixture.ts';
 
 function makeDb() {
   const sqlite = new DatabaseSync(':memory:');
@@ -89,7 +90,7 @@ test('account deletion requires current session and exact confirmation, cascades
     assert.equal(sqlite.prepare('SELECT count(*) as c FROM users').get().c, 2);
     const deleted = await handleAccount(call(token, 'alice@waybi.test'), env);
     assert.equal(deleted.status, 200);
-    assert.deepEqual(await deleted.json(), {ok: true});
+    assert.deepEqual(await deleted.json(), {ok: true, appleSubscriptionActive: false, stripeSubscriptionsCancelled: 0});
     assert.match(deleted.headers.get('set-cookie') || '', /Max-Age=0/);
     for (const table of ['users','profiles','sessions','route_history','friends_saves','user_subscriptions']) {
       const key = table === 'users' ? 'id' : 'user_id';
@@ -104,4 +105,71 @@ test('account deletion requires current session and exact confirmation, cascades
   } finally {
     sqlite.close();
   }
+});
+
+function seedAccount(sqlite, id = 'carol', email = 'carol@waybi.test') {
+  sqlite.prepare('INSERT INTO users(id,email,password_salt,password_hash,created_at) VALUES(?,?,?,?,?)').run(id, email, '', '', 0);
+  const token = 'c'.repeat(64);
+  sqlite.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)')
+    .run(createHash('sha256').update(token).digest('hex'), id, Date.now() + 60000);
+  return { id, email, token };
+}
+
+function stripeMock(subscriptions, { failCancel = false } = {}) {
+  const cancelled = [];
+  return { cancelled, stripe: { subscriptions: {
+    async list({ customer }) { assert.equal(customer, 'cus_carol'); return { data: subscriptions }; },
+    async cancel(id, _params, options) {
+      assert.match(options.idempotencyKey, /^waybi-account-deletion-/);
+      if (failCancel) throw Object.assign(new Error('stripe down'), { type: 'StripeConnectionError' });
+      cancelled.push(id);
+      return { id, status: 'canceled' };
+    },
+  } } };
+}
+
+test('account deletion cancels live Stripe subscriptions first and reports a renewing App Store subscription', async () => {
+  const { sqlite, db } = migratedD1();
+  try {
+    const { id, email, token } = seedAccount(sqlite);
+    sqlite.prepare('INSERT INTO billing_customers(user_id,customer_id,created_at) VALUES(?,?,?)').run(id, 'cus_carol', 0);
+    sqlite.prepare(`INSERT INTO apple_subscriptions(original_transaction_id,user_id,transaction_id,product_id,status,expires_at,cancel_at_period_end,updated_at)
+      VALUES('1000001',?,'1000002','co.waybi.ios.plus.monthly',1,?,0,0)`).run(id, Date.now() + 86_400_000);
+    const { stripe, cancelled } = stripeMock([
+      { id: 'sub_live', status: 'active' }, { id: 'sub_retrying', status: 'past_due' }, { id: 'sub_old', status: 'canceled' },
+    ]);
+    const response = await handleAccount(call(token, email), { USER_DB: db, STRIPE_SECRET_KEY: 'sk_test_x' }, undefined, { stripe });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, appleSubscriptionActive: true, stripeSubscriptionsCancelled: 2 });
+    assert.deepEqual(cancelled, ['sub_live', 'sub_retrying']);
+    assert.equal(sqlite.prepare('SELECT count(*) AS c FROM users').get().c, 0);
+  } finally { sqlite.close(); }
+});
+
+test('account deletion is refused with 503 when Stripe cancellation fails, and nothing is deleted', async () => {
+  const { sqlite, db } = migratedD1();
+  try {
+    const { id, email, token } = seedAccount(sqlite);
+    sqlite.prepare('INSERT INTO billing_customers(user_id,customer_id,created_at) VALUES(?,?,?)').run(id, 'cus_carol', 0);
+    const { stripe } = stripeMock([{ id: 'sub_live', status: 'trialing' }], { failCancel: true });
+    const response = await handleAccount(call(token, email), { USER_DB: db, STRIPE_SECRET_KEY: 'sk_test_x' }, undefined, { stripe });
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).code, 'SUBSCRIPTION_CANCEL_FAILED');
+    assert.equal(sqlite.prepare('SELECT count(*) AS c FROM users').get().c, 1);
+    assert.equal(sqlite.prepare('SELECT count(*) AS c FROM billing_customers').get().c, 1);
+  } finally { sqlite.close(); }
+});
+
+test('profile and billing status expose whether an App Store subscription still renews', async () => {
+  const { sqlite, db } = migratedD1();
+  try {
+    const { id, token } = seedAccount(sqlite);
+    sqlite.prepare(`INSERT INTO apple_subscriptions(original_transaction_id,user_id,transaction_id,product_id,status,expires_at,cancel_at_period_end,updated_at)
+      VALUES('2000001',?,'2000002','co.waybi.ios.plus.annual',1,?,1,?)`).run(id, Date.now() + 86_400_000, Date.now());
+    const me = await handleAccount(new Request('https://waybi.co/api/auth/me', { headers: { cookie: `waybi_session=${token}` } }), { USER_DB: db });
+    assert.equal((await me.json()).subscription.appleSubscriptionActive, false, 'auto-renew already turned off');
+    sqlite.prepare('UPDATE apple_subscriptions SET cancel_at_period_end = 0').run();
+    const again = await handleAccount(new Request('https://waybi.co/api/auth/me', { headers: { cookie: `waybi_session=${token}` } }), { USER_DB: db });
+    assert.equal((await again.json()).subscription.appleSubscriptionActive, true);
+  } finally { sqlite.close(); }
 });

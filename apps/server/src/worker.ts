@@ -33,12 +33,16 @@ import {
   handleRouteWatch,
   handleRouteWatchAlerts,
 } from './route_watch.ts';
+import { apiErrorResponse, UpstreamError } from './http_errors.ts';
+import { clientFingerprint, clientIp, guardApiRequest } from './abuse_guard.ts';
+import { reserveGoogleUnits } from './google_budget.ts';
+import { nominatimArray } from './nominatim.ts';
+import { nzRoutingEndpoint } from './nz_routing.ts';
 
 const CAMERA_KEY = 'cameras/current';
 // Camera locations are slow-changing metadata, not live traffic frames.
 // A shared daily refresh is sufficient; manual checks must respect the same window.
 const CAMERA_SYNC_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-let lastSearchAt = 0;
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -107,10 +111,31 @@ export async function syncCameras(env, fetcher: typeof fetch = fetch) {
 function validateCoordinatePair(value) { return parseLonLat(value); }
 function validateNzCoordinatePair(value) { return parseNzLonLat(value); }
 
+/** Every intermediate stop must be a valid coordinate. A malformed entry is
+ * rejected instead of being dropped, which silently changed the route. */
+export function parseStops(value: string | null): ReturnType<typeof parseLonLat>[] | null {
+  if (value == null || value === '') return [];
+  const entries = value.split(';');
+  if (entries.length > 24) return null;
+  const stops = entries.map((entry) => validateCoordinatePair(entry.trim()));
+  return stops.every(Boolean) ? stops : null;
+}
+
 async function upstreamJson(url, headers = {}) {
   const response = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new Error(`Map service HTTP ${response.status}`);
-  return response.json<ProviderPayload>();
+  if (!response.ok) throw new UpstreamError(`Map service HTTP ${response.status}`);
+  try { return await response.json<ProviderPayload>(); }
+  catch (error) { throw new UpstreamError('Map service returned invalid JSON', { cause: error }); }
+}
+
+/** Signed-in callers share by account; anonymous callers by a pseudonymous
+ * IP key. Only consulted when the owned NZ engine would be used. */
+async function routingClientKey(request: Request, env) {
+  if (env.USER_DB && /(?:^|;\s*)(?:waybi|kiwi)_session=/.test(request.headers.get('cookie') || '')) {
+    const user = await userFromRequest(env.USER_DB, request).catch(() => null);
+    if (user?.id) return `user:${user.id}`;
+  }
+  return `ip:${await clientFingerprint(env, clientIp(request))}`;
 }
 
 async function handleApi(request: Request, env, ctx) {
@@ -170,7 +195,9 @@ async function handleApi(request: Request, env, ctx) {
       const report = await createRoadReport(env, payload, reporter);
       return json({ ok: true, report }, 201);
     } catch (error) {
-      return json({ error: String(error.message || error) }, 503);
+      console.error(JSON.stringify({ level: 'error', event: 'road_report_write_failed',
+        errorName: error?.name, message: String(error?.message || error).slice(0, 200) }));
+      return json({ error: 'Road reports are temporarily unavailable. Please try again.' }, 503);
     }
   }
   if (url.pathname === '/api/cameras/sync' && request.method === 'POST') {
@@ -348,11 +375,8 @@ async function handleApi(request: Request, env, ctx) {
     const from = validateCoordinatePair(url.searchParams.get('from'));
     const to = validateCoordinatePair(url.searchParams.get('to'));
     if (!from || !to) return json({ error: 'Valid coordinates required' }, 400);
-    const stops = (url.searchParams.get('stops') || '')
-      .split(';')
-      .filter(Boolean)
-      .map((value) => validateCoordinatePair(value))
-      .filter(Boolean);
+    const stops = parseStops(url.searchParams.get('stops'));
+    if (!stops) return json({ error: 'stops must be up to 23 longitude,latitude pairs separated by ;' }, 400);
     if (stops.length > 23) return json({ error: 'At most 23 intermediate stops are supported' }, 400);
     const requestedMode = url.searchParams.get('mode');
     const googleMode = requestedMode == null ? null : ({
@@ -391,6 +415,7 @@ async function handleApi(request: Request, env, ctx) {
     }
     const exclusions = parseRouteExclusions(url.searchParams.get('avoid'));
     if (exclusions == null) return json({ error: 'avoid requires up to 32 lon,lat,heading entries' }, 400);
+    const ownedEngine = Boolean(nzRoutingEndpoint(env, [from, ...stops, to]));
     return json(await routeOptions(
       from,
       to,
@@ -406,6 +431,8 @@ async function handleApi(request: Request, env, ctx) {
         alternatives: alternatives == null ? undefined : alternatives === 'true',
         headingDegrees,
         language: url.searchParams.get('lang') === 'zh' ? 'zh' : 'en',
+        routingClientKey: ownedEngine ? await routingClientKey(request, env) : undefined,
+        reserveGoogle: (sku, units) => reserveGoogleUnits(env, sku, units),
       }
     ));
   }
@@ -423,9 +450,6 @@ async function handleApi(request: Request, env, ctx) {
     }
     const query = (url.searchParams.get('q') || '').trim();
     if ([...query].length < 2 || query.length > 120) return json({ error: 'Search query must be 2–120 characters' }, 400);
-    const wait = Math.max(0, 1050 - (Date.now() - lastSearchAt));
-    if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-    lastSearchAt = Date.now();
     const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
     const near = validateCoordinatePair(url.searchParams.get('near'));
     const enrichmentPromise = loadSearchEnrichments(query, near).catch(() => []);
@@ -442,7 +466,8 @@ async function handleApi(request: Request, env, ctx) {
       search.searchParams.set('viewbox', [near[0] - lonDelta, near[1] + latDelta, near[0] + lonDelta, near[1] - latDelta].join(','));
       search.searchParams.set('bounded', '0');
     }
-    const results = await upstreamJson(search.toString(), { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)', 'referer': 'https://github.com/yaohuangguan/Waybi', accept: 'application/json' });
+    // Serialized per isolate at Nominatim's one-request-per-second policy.
+    const results = await nominatimArray(search);
     const globalResults = results.map((place) => {
       const address = place.address || {};
       const poiClasses = new Set([
@@ -481,11 +506,8 @@ async function handleApi(request: Request, env, ctx) {
     const from = validateCoordinatePair(url.searchParams.get('from'));
     const to = validateCoordinatePair(url.searchParams.get('to'));
     if (!from || !to) return json({ error: 'Valid coordinates required' }, 400);
-    const stops = (url.searchParams.get('stops') || '')
-      .split(';')
-      .filter(Boolean)
-      .map((value) => validateCoordinatePair(value))
-      .filter(Boolean);
+    const stops = parseStops(url.searchParams.get('stops'));
+    if (!stops) return json({ error: 'stops must be up to 23 longitude,latitude pairs separated by ;' }, 400);
     if (stops.length > 23) return json({ error: 'At most 23 intermediate stops are supported' }, 400);
     const points = [from, ...stops, to];
     const routeUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${points.map((point) => point.join(',')).join(';')}?overview=full&geometries=geojson&steps=true`;
@@ -554,12 +576,15 @@ export default {
         headers: { 'Content-Type': 'application/json', 'Retry-After': '60' }
       });
     }
+    const requestId = crypto.randomUUID();
     try {
+      const limited = await guardApiRequest(request, env);
+      if (limited) return limited;
       const featureResponse =
         await handleGooglePlacePicker(request, env, ctx) ||
         await handleRoadIntelligence(request, env, ctx, readCameraState) ||
         await handleBilling(request, env) ||
-        await handleAccount(request, env) ||
+        await handleAccount(request, env, ctx) ||
         await handleRouteWatchAlerts(request, env) ||
         await handleRouteWatch(request, env) ||
         await handlePlaces(
@@ -573,8 +598,8 @@ export default {
       if (featureResponse) return featureResponse;
       return await handleApi(request, env, ctx);
     } catch (error) {
-      console.error(error);
-      return json({ error: String(error.message || error) }, 502);
+      // Generic body with a request id; details go to the structured log only.
+      return apiErrorResponse(error, request, requestId);
     }
   },
   async scheduled(event, env, ctx) {

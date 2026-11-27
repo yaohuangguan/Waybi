@@ -8,6 +8,7 @@ import { matchRouteClosures, crossesExcludedRoads } from './routing_closures.ts'
 import type { ClosureLocation } from './routing_closures.ts';
 import { readTransitSnapshot, transitRoadBlocks } from './transit_lanes.ts';
 import { applyRouteConditions } from './route_conditions.ts';
+import { HttpError } from './http_errors.ts';
 /// Waybi offers surface navigation, not international flights. Only reject
 /// the NZ <-> AU sea gap; land borders and Australian states remain routable.
 export function crossesTasmanSea(points: LonLat[]): boolean {
@@ -295,11 +296,14 @@ export async function routeOptions(
   options: RouteRequestOptions = {}
 ) {
   const forceIndependent = options.forceIndependent === true || Boolean(options.exclusions?.length);
-  if (!forceIndependent && env.GOOGLE_ROUTES_API_KEY) {
-    const defaultModes = stops.length
-      ? ['DRIVE', 'WALK', 'BICYCLE']
-      : ['DRIVE', 'TRANSIT', 'WALK', 'BICYCLE'];
-    const modes = requestedModes?.length ? requestedModes : defaultModes;
+  const defaultModes = stops.length
+    ? ['DRIVE', 'WALK', 'BICYCLE']
+    : ['DRIVE', 'TRANSIT', 'WALK', 'BICYCLE'];
+  const googleModes = requestedModes?.length ? requestedModes : defaultModes;
+  // Past the daily Google Routes ceiling, the independent routers below answer.
+  if (!forceIndependent && env.GOOGLE_ROUTES_API_KEY &&
+      (!options.reserveGoogle || await options.reserveGoogle('routes_compute', googleModes.length))) {
+    const modes = googleModes;
     trackUsage('google', 'routes_compute', modes.length);
     const settled = await Promise.allSettled(
       modes.map((mode) => googleModeRoutes(from, to, mode, env.GOOGLE_ROUTES_API_KEY, stops))
@@ -346,7 +350,7 @@ export async function routeOptions(
   );
   if (options.exclusions?.length) driving = driving.filter(route => route.mode !== 'drive' ||
     !crossesExcludedRoads(route, options.exclusions!));
-  if (!driving.length) throw new Error('No routes available for the requested travel mode');
+  if (!driving.length) throw new HttpError(502, 'No routes available for the requested travel mode', { code: 'NO_ROUTE' });
   let roadAwareness = null;
   let roadEvents = [];
   let roadEventsAt: string | null = null;

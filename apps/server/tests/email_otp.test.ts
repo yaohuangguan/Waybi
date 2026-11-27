@@ -15,7 +15,7 @@ function fixture() {
     async run() { return sql.prepare(query).run(...values); }
   }; } }; }, async batch(items: any[]) {
     sql.exec('BEGIN');
-    try { const results = items.map(s => sql.prepare(s.sql).run(...s.values)); sql.exec('COMMIT'); return results; }
+    try { const results = items.map(s => { const st = sql.prepare(s.sql); return st.columns().length ? { results: st.all(...s.values) } : (st.run(...s.values), { results: [] }); }); sql.exec('COMMIT'); return results; }
     catch (error) { sql.exec('ROLLBACK'); throw error; }
   } };
   const env = { USER_DB: db, SENDPULSE_API_KEY: 'canary-sendpulse-key', AUTH_EMAIL_FROM: 'accounts@waybi.test',
@@ -76,18 +76,78 @@ test('email OTP creates no account before verification; code is private, single 
   assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 1);
 }));
 
-test('email OTP safely signs into an existing password account without overwriting its profile or password', () => withFixture(async f => {
-  const registered = await handleAccount(new Request('https://waybi.co/api/auth/register', { method: 'POST', headers: {
+function register(password = 'existing-long-password') {
+  return new Request('https://waybi.co/api/auth/register', { method: 'POST', headers: {
     'content-type': 'application/json', 'x-waybi-client': 'mobile',
-  }, body: JSON.stringify({ email, password: 'existing-long-password', language: 'en' }) }), f.env);
-  assert.equal(registered.status, 200);
-  const user = f.sql.prepare('SELECT * FROM users').get();
+  }, body: JSON.stringify({ email, password, language: 'en' }) });
+}
+function login(password = 'existing-long-password') {
+  return new Request('https://waybi.co/api/auth/login', { method: 'POST', headers: {
+    'content-type': 'application/json', 'x-waybi-client': 'mobile', 'cf-connecting-ip': '198.51.100.7',
+  }, body: JSON.stringify({ email, password }) });
+}
+async function verifyEmail(f, extra = {}) {
   const challenge = await (await handleAccount(request('request', { email }), f.env)).json() as any;
-  const verified = await handleAccount(request('verify', { email, challengeId: challenge.challengeId, code: f.sent[0].code, language: 'zh' }), f.env);
+  return handleAccount(request('verify', { email, challengeId: challenge.challengeId, code: f.sent.at(-1).code, ...extra }), f.env);
+}
+
+test('first email proof of a pre-registered account clears the unproven password and ends earlier sessions, keeping the profile', () => withFixture(async f => {
+  // An attacker can register a victim's address with a password (no proof).
+  const registered = await handleAccount(register(), f.env);
+  assert.equal(registered.status, 200);
+  const attackerCookie = registered.headers.get('set-cookie').split(';')[0];
+  const user = f.sql.prepare('SELECT * FROM users').get();
+  assert.ok(user.password_hash);
+  const verified = await verifyEmail(f, { language: 'zh' });
   assert.equal(verified.status, 200);
-  assert.equal((await verified.json() as any).user.id, user.id);
-  assert.deepEqual(f.sql.prepare('SELECT * FROM users').get(), user);
-  assert.equal(f.sql.prepare('SELECT language FROM profiles').get().language, 'en');
+  const profile = await verified.json() as any;
+  assert.equal(profile.user.id, user.id);
+  assert.deepEqual(profile.user.providers, ['email']);
+  const after = f.sql.prepare('SELECT * FROM users').get();
+  assert.equal(after.password_hash, '');
+  assert.equal(after.password_salt, '');
+  assert.equal(after.email, user.email);
+  assert.equal(f.sql.prepare('SELECT language FROM profiles').get().language, 'en', 'profile data is kept');
+  // Only the session issued for the proof survives; the attacker's is gone.
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 1);
+  const me = await handleAccount(new Request('https://waybi.co/api/auth/me', { headers: { cookie: attackerCookie } }), f.env);
+  assert.equal(me.status, 401);
+  // The pre-registered password no longer signs in.
+  assert.equal((await handleAccount(login(), f.env)).status, 401);
+}));
+
+test('first email proof removes provider links that never proved the same address and revokes API keys', () => withFixture(async f => {
+  assert.equal((await handleAccount(register(), f.env)).status, 200);
+  const { id } = f.sql.prepare('SELECT id FROM users').get();
+  f.sql.prepare('INSERT INTO google_identities (google_sub, user_id, created_at, verified_email) VALUES (?, ?, ?, ?)')
+    .run('attacker-google', id, Date.now(), 'attacker@example.test');
+  f.sql.prepare('INSERT INTO apple_identities (apple_sub, user_id, refresh_token, created_at, checked_at) VALUES (?, ?, ?, ?, ?)')
+    .run('attacker-apple', id, '', Date.now(), Date.now());
+  f.sql.prepare(`INSERT INTO road_api_keys (id, user_id, name, key_hash, key_prefix, created_at, expires_at)
+    VALUES ('key-1', ?, 'pre-proof', 'hash', 'klri_', ?, ?)`).run(id, Date.now(), Date.now() + 86_400_000);
+  assert.equal((await verifyEmail(f)).status, 200);
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM google_identities').get().n, 0);
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM apple_identities').get().n, 0);
+  assert.ok(f.sql.prepare('SELECT revoked_at FROM road_api_keys').get().revoked_at);
+}));
+
+test('first email proof keeps a provider link that verified the same address', () => withFixture(async f => {
+  assert.equal((await handleAccount(register(), f.env)).status, 200);
+  const { id } = f.sql.prepare('SELECT id FROM users').get();
+  f.sql.prepare('INSERT INTO google_identities (google_sub, user_id, created_at, verified_email) VALUES (?, ?, ?, ?)')
+    .run('owner-google', id, Date.now(), email);
+  assert.equal((await verifyEmail(f)).status, 200);
+  assert.equal(f.sql.prepare('SELECT google_sub FROM google_identities').get().google_sub, 'owner-google');
+}));
+
+test('a password set after the email was proven is trusted and kept on later email sign-ins', () => withFixture(async f => {
+  assert.equal((await verifyEmail(f)).status, 200);
+  const { id } = f.sql.prepare('SELECT id FROM users').get();
+  f.sql.prepare("UPDATE users SET password_salt = 'aa', password_hash = 'bb' WHERE id = ?").run(id);
+  f.sql.prepare('UPDATE email_otp_challenges SET created_at = 0').run();
+  assert.equal((await verifyEmail(f)).status, 200);
+  assert.equal(f.sql.prepare('SELECT password_hash FROM users').get().password_hash, 'bb');
+  assert.equal(f.sql.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 2, 'proven accounts keep other sessions');
 }));
 
 test('invalid input, missing configuration and cross-origin requests never send or create accounts', () => withFixture(async f => {

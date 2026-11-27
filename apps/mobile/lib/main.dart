@@ -12,7 +12,6 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:waybi_friends/waybi_friends.dart' show GameController;
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'data/account_repository.dart';
 import 'data/friends_backup_service.dart';
@@ -57,6 +56,7 @@ import 'widgets/journey_summary_sheet.dart';
 
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'app/home_sheets.dart';
 import 'app/trip_state.dart';
 import 'drive/custom_voice.dart';
 import 'drive/drive_engine.dart';
@@ -85,10 +85,10 @@ import 'widgets/profile_page.dart';
 import 'widgets/map_layer_sheet.dart';
 import 'widgets/splash_gate.dart';
 import 'widgets/route_preview_sheet.dart';
-import 'widgets/road_event_details_sheet.dart';
 import 'widgets/transit_trip_overlay.dart';
 import 'widgets/trips_page.dart';
 import 'widgets/waybi_format.dart';
+import 'app/home_chrome.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -171,61 +171,6 @@ class _WaybiAppState extends State<WaybiApp> {
       ),
     );
   }
-}
-
-class _OnboardingFeature extends StatelessWidget {
-  const _OnboardingFeature({
-    required this.icon,
-    required this.title,
-    required this.body,
-  });
-
-  final IconData icon;
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 7),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: WaybiColors.ice,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(icon, color: WaybiColors.ocean, size: 21),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: WaybiColors.deepOcean,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                body,
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  height: 1.35,
-                  color: WaybiColors.lightTextSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 enum _LocationNoticeAction { retry, appSettings, locationSettings }
@@ -775,93 +720,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       a.location.latitude == b.location.latitude &&
       a.location.longitude == b.location.longitude;
 
-  Future<void> _maybeShowCoreOnboarding() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool('waybi.onboarding.core.v1') == true) return;
-    if (!mounted) return;
-    await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 6),
-        contentPadding: const EdgeInsets.fromLTRB(24, 10, 24, 8),
-        actionsPadding: const EdgeInsets.fromLTRB(18, 6, 18, 18),
-        title: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [WaybiColors.ocean, WaybiColors.teal],
-                ),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(Icons.navigation_rounded, color: Colors.white),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _text('Welcome to Waybi', '欢迎使用 Waybi'),
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _OnboardingFeature(
-              icon: Icons.route_rounded,
-              title: _text('Navigation first', '专注导航'),
-              body: _text(
-                'Clear route guidance, traffic-aware routing and a focused Drive Mode.',
-                '清晰路线指引、实时交通路线，以及专注驾驶的 Drive Mode。',
-              ),
-            ),
-            _OnboardingFeature(
-              icon: Icons.shield_outlined,
-              title: _text('Road Intelligence', '道路情报'),
-              body: _text(
-                'Worldwide road reports and route guidance, with official safety cameras in New Zealand.',
-                '全球道路上报与路线提示，新西兰另有官方安全摄像头数据。',
-              ),
-            ),
-            _OnboardingFeature(
-              icon: Icons.add_alert_rounded,
-              title: _text('Report the road', '上报道路情况'),
-              body: _text(
-                'Share crashes, hazards, roadworks, flooding and congestion with other Waybi drivers.',
-                '向其他 Waybi 用户分享事故、危险、施工、积水与拥堵。',
-              ),
-            ),
-            _OnboardingFeature(
-              icon: Icons.explore_rounded,
-              title: _text('Made for New Zealand', '为新西兰道路设计'),
-              body: _text(
-                'Waybi location marker, NZ road data and a calm lime driving interface.',
-                'Waybi 定位标记、新西兰道路数据，以及 Waybi lime 驾驶界面。',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          FilledButton.icon(
-            onPressed: () async {
-              await prefs.setBool('waybi.onboarding.core.v1', true);
-              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-            },
-            icon: const Icon(Icons.arrow_forward_rounded),
-            label: Text(_text('Start exploring', '开始探索')),
-          ),
-        ],
-      ),
-    );
-  }
+  Future<void> _maybeShowCoreOnboarding() =>
+      maybeShowCoreOnboarding(context, _appLanguage);
 
   /// Custom voice is Plus-only: a lapsed or signed-out account immediately
   /// falls back to the standard voice (recordings stay on the device).
@@ -1362,15 +1222,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             .toList(growable: false)
       : const [];
 
-  String _roadEventLabel(RoadEventType type) => switch (type) {
-    RoadEventType.incident => _text('Crash / hazard', '事故 / 危险'),
-    RoadEventType.roadworks => _text('Roadworks', '道路施工'),
-    RoadEventType.roadClosure => _text('Road closed', '道路封闭'),
-    RoadEventType.congestion => _text('Heavy traffic', '严重拥堵'),
-    RoadEventType.flooding => _text('Flooding', '积水 / 洪水'),
-    RoadEventType.slip => _text('Slip / debris', '滑坡 / 道路杂物'),
-    _ => _text('Road report', '道路报告'),
-  };
+  String _roadEventLabel(RoadEventType type) =>
+      roadEventLabel(type, _appLanguage);
 
   Future<void> _notifyRoadIntelligence() async {
     if (!_driveEngine.active) return;
@@ -1418,257 +1271,17 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _showCameraDetails(SafetyCamera camera) async {
-    final kind = CameraKindLabel.fromCamera(camera);
-    await showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (sheetContext) {
-        final scheme = Theme.of(sheetContext).colorScheme;
-        Widget row(IconData icon, String label, String value) => Padding(
-          padding: const EdgeInsets.only(bottom: 11),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, size: 19, color: scheme.primary),
-              const SizedBox(width: 11),
-              SizedBox(
-                width: 72,
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: scheme.onSurfaceVariant,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  value,
-                  style: TextStyle(
-                    color: scheme.onSurface,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
+  Future<void> _showCameraDetails(SafetyCamera camera) =>
+      showCameraDetailsSheet(context, camera, _appLanguage);
 
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 26),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: scheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Icon(
-                      Icons.photo_camera_rounded,
-                      color: scheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          kind.localizedLabel(_appLanguage),
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Text(
-                          camera.location,
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              row(Icons.map_outlined, _text('Region', '区域'), camera.region),
-              row(
-                Icons.location_city_rounded,
-                _text('Suburb', '地区'),
-                camera.suburb,
-              ),
-              row(
-                Icons.pin_drop_outlined,
-                _text('Location', '位置'),
-                camera.location,
-              ),
-              row(
-                Icons.speed_rounded,
-                _text('Camera type', '摄像头类型'),
-                camera.type,
-              ),
-              row(
-                Icons.gps_fixed_rounded,
-                'GPS',
-                '${camera.latitude.toStringAsFixed(6)}, '
-                    '${camera.longitude.toStringAsFixed(6)}',
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _text(
-                  'Published by NZ Transport Agency · fixed safety camera location',
-                  'NZ Transport Agency 公开 · 固定安全摄像头位置',
-                ),
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontSize: 10.5,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  Future<void> _showTransitLaneDetails(TransitLane lane) =>
+      showTransitLaneDetailsSheet(context, lane, _appLanguage);
 
-  Future<void> _showTransitLaneDetails(TransitLane lane) async {
-    final active = lane.schedule.activeAt(DateTime.now());
-    final status = switch (active) {
-      true => _text('Operating now', '当前生效'),
-      false => _text('Outside published hours', '当前不在公布时段内'),
-      null => _text('Hours not confirmed', '时段尚未确认'),
-    };
-    await showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 26),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              lane.roadName.isEmpty ? lane.label(_appLanguage) : lane.roadName,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 8),
-            Text(lane.label(_appLanguage)),
-            const SizedBox(height: 8),
-            Text(status, style: const TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Text(lane.schedule.label(_appLanguage)),
-            const SizedBox(height: 14),
-            Text(
-              _text(
-                'Auckland Transport published lane geometry. Dashed lines do not mean the entire road is restricted. Check roadside signs before entering.',
-                '奥克兰交通局公布的专用车道位置。虚线不代表整条道路禁止通行，驶入前请以现场标志为准。',
-              ),
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '© Auckland Transport · CC BY 4.0',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Future<void> _showTransitReviewDetails(TransitReviewCorridor corridor) =>
+      showTransitReviewDetailsSheet(context, corridor, _appLanguage);
 
-  Future<void> _showTransitReviewDetails(TransitReviewCorridor corridor) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              corridor.roadName,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 6),
-            Text(corridor.city),
-            const SizedBox(height: 12),
-            Text(
-              _text(
-                'Review-only road corridor · Not verified lane limits',
-                '待核实道路走廊 · 不是已确认的公交车道边界',
-              ),
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                color: Colors.orange,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _appLanguage == 'zh'
-                  ? corridor.ruleSummaryZh
-                  : corridor.ruleSummary,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _text(
-                'This line is an approximate council STREET CENTRELINE, not the physical bus lane. Published rules may cover only part of the road and one direction. It is not used for route blocking or automatic lane alerts. Always follow roadside signs.',
-                '此线仅为市议会道路中心线示意，不是实际公交车道的精确边界。官方规则可能只覆盖部分路段或某个方向；Waybi 不会据此封禁路线或自动提醒违规。请以现场路牌为准。',
-              ),
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '© ${corridor.authority}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            TextButton.icon(
-              onPressed: () => unawaited(
-                launchUrl(
-                  Uri.parse(corridor.ruleSource),
-                  mode: LaunchMode.externalApplication,
-                ),
-              ),
-              icon: const Icon(Icons.open_in_new_rounded),
-              label: Text(_text('Council source', '查看市议会来源')),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showRoadEventDetails(RoadEvent event) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * .8,
-      ),
-      builder: (_) => RoadEventDetailsSheet(
-        event: event,
-        title: _roadEventLabel(event.type),
-        language: _appLanguage,
-      ),
-    );
-  }
+  Future<void> _showRoadEventDetails(RoadEvent event) =>
+      showRoadEventDetails(context, event, _appLanguage);
 
   /// Never leaves the page on its loading spinner: a failing platform call
   /// or damaged preference falls back to defaults and the map still opens.
@@ -2640,60 +2253,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       );
       return;
     }
-    final choices = <(String, String, String, IconData)>[
-      ('incident', 'Crash / hazard', '事故 / 危险', Icons.car_crash_rounded),
-      ('roadworks', 'Roadworks', '道路施工', Icons.construction_rounded),
-      ('roadClosure', 'Road closed', '道路封闭', Icons.block_rounded),
-      ('congestion', 'Heavy traffic', '严重拥堵', Icons.traffic_rounded),
-      ('flooding', 'Flooding', '积水 / 洪水', Icons.water_rounded),
-      ('slip', 'Slip / debris', '滑坡 / 道路杂物', Icons.landslide_rounded),
-    ];
-    final selected = await showModalBottomSheet<(String, String)>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: false,
-      builder: (sheetContext) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 44,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Theme.of(context).dividerColor,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                _text('Report road issue', '上报道路情况'),
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              subtitle: Text(
-                _text(
-                  'Reports are shared with Waybi drivers for about 2 hours.',
-                  '上报内容将在约 2 小时内共享给 Waybi 驾驶用户。',
-                ),
-              ),
-            ),
-            for (final choice in choices)
-              ListTile(
-                leading: Icon(choice.$4, color: WaybiColors.ocean),
-                title: Text(_text(choice.$2, choice.$3)),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () =>
-                    Navigator.pop(sheetContext, (choice.$1, choice.$2)),
-              ),
-          ],
-        ),
-      ),
-    );
+    final selected = await showRoadReportPicker(context, _appLanguage);
     if (selected == null) return;
     try {
       await _account.submitRoadReport(
@@ -3606,91 +3166,31 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final existing = _account.profile?.reviews
         .where((review) => review['placeId'] == _placeKey(poi))
         .firstOrNull;
-    final comment = TextEditingController(
-      text: existing?['comment'] as String? ?? '',
+    final review = await showPlaceReviewDialog(
+      context,
+      language: _appLanguage,
+      placeName: poi.name,
+      initialRating: (existing?['rating'] as num?)?.round() ?? 5,
+      initialComment: existing?['comment'] as String? ?? '',
     );
-    var rating = (existing?['rating'] as num?)?.round() ?? 5;
-    final save = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
-          title: Text(
-            _text('My review · ${poi.name}', '我的评价 · ${poi.name}'),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+    if (review == null) return;
+    try {
+      await _account.saveReview(
+        placeId: _placeKey(poi),
+        placeName: poi.name,
+        rating: review.rating,
+        comment: review.comment,
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _message = _text(
+            'Could not save your review. ${friendlyErrorMessage(error, _appLanguage)}',
+            '无法保存评价。${friendlyErrorMessage(error, _appLanguage)}',
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<int>(
-                initialValue: rating,
-                decoration: InputDecoration(labelText: _text('Rating', '评分')),
-                items: [
-                  for (var value = 1; value <= 5; value++)
-                    DropdownMenuItem(
-                      value: value,
-                      child: Text('${'★' * value} ($value/5)'),
-                    ),
-                ],
-                onChanged: (value) {
-                  if (value != null) update(() => rating = value);
-                },
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: comment,
-                maxLines: 4,
-                maxLength: 2000,
-                decoration: InputDecoration(
-                  labelText: _text('Private comment', '私人备注'),
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-              Text(
-                _text(
-                  'Saved to Waybi only; not published to Google.',
-                  '仅保存在 Waybi，不会发布到 Google。',
-                ),
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(_text('Cancel', '取消')),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(_text('Save', '保存')),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (save == true) {
-      try {
-        await _account.saveReview(
-          placeId: _placeKey(poi),
-          placeName: poi.name,
-          rating: rating,
-          comment: comment.text.trim(),
         );
-      } catch (error) {
-        if (mounted) {
-          setState(
-            () => _message = _text(
-              'Could not save your review. ${friendlyErrorMessage(error, _appLanguage)}',
-              '无法保存评价。${friendlyErrorMessage(error, _appLanguage)}',
-            ),
-          );
-        }
       }
     }
-    comment.dispose();
   }
 
   Future<void> _renderRoutePreview() async {
@@ -4859,182 +4359,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     {}
 
     if (!mounted) return;
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final dark = theme.brightness == Brightness.dark;
-    final sheetColor = dark ? WaybiColors.darkOcean : scheme.surface;
-    final headerColor = dark ? WaybiColors.darkSurface : scheme.surface;
-    final badgeColor = dark
-        ? WaybiColors.deepTeal.withValues(alpha: .38)
-        : scheme.primaryContainer;
-    final badgeForeground = dark ? WaybiColors.sky : scheme.onPrimaryContainer;
-    final secondaryColor = dark
-        ? WaybiColors.darkTextSecondary
-        : scheme.onSurfaceVariant;
-    final dividerColor = dark ? WaybiColors.darkBorder : theme.dividerColor;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: true,
-      enableDrag: true,
-      useSafeArea: true,
-      showDragHandle: false,
-      backgroundColor: sheetColor,
-      barrierColor: Colors.black.withValues(alpha: dark ? .46 : .28),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      constraints: BoxConstraints(maxHeight: sheetHeight),
-      builder: (sheetContext) {
-        return Material(
-          color: sheetColor,
-          elevation: 0,
-          child: Column(
-            children: [
-              ColoredBox(
-                color: headerColor,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 8, 8, 4),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 42,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: dividerColor,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      Row(
-                        children: [
-                          Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: badgeColor,
-                              borderRadius: BorderRadius.circular(11),
-                            ),
-                            child: Icon(
-                              Icons.route_rounded,
-                              color: badgeForeground,
-                              size: 19,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _text('Directions', '路线指引'),
-                                  style: const TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                Text(
-                                  _text(
-                                    '${(route.distanceMeters / 1000).toStringAsFixed(1)} km · ${route.steps.length} steps',
-                                    '${(route.distanceMeters / 1000).toStringAsFixed(1)} 公里 · ${route.steps.length} 个步骤',
-                                  ),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: secondaryColor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            visualDensity: VisualDensity.compact,
-                            tooltip: _text('Close', '关闭'),
-                            onPressed: () => Navigator.of(sheetContext).pop(),
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Divider(height: 1, color: dividerColor),
-              Expanded(
-                child: route.steps.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Text(
-                            _text(
-                              'Turn list is not available for this route.',
-                              '这条路线暂时没有逐步指引。',
-                            ),
-                            style: TextStyle(color: scheme.onSurfaceVariant),
-                          ),
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(12, 3, 12, 18),
-                        itemCount: route.steps.length,
-                        separatorBuilder: (_, _) =>
-                            Divider(height: 1, color: dividerColor),
-                        itemBuilder: (context, index) {
-                          final step = route.steps[index];
-                          return ListTile(
-                            dense: true,
-                            minTileHeight: 48,
-                            visualDensity: VisualDensity.compact,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 1,
-                            ),
-                            leading: Container(
-                              width: 28,
-                              height: 28,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: badgeColor,
-                                borderRadius: BorderRadius.circular(9),
-                              ),
-                              child: Text(
-                                '${index + 1}',
-                                style: TextStyle(
-                                  color: badgeForeground,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            title: Text(
-                              routeStepInstruction(step, _appLanguage),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            trailing: Text(
-                              formatDistance(step.distanceMeters, _appLanguage),
-                              style: TextStyle(
-                                color: secondaryColor,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 10,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
-        );
-      },
+    await showDirectionsSheet(
+      context,
+      route,
+      language: _appLanguage,
+      sheetHeight: sheetHeight,
     );
-
-    {}
   }
 
   Future<void> _shareTripSnapshot() async {
@@ -5593,121 +4923,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             .where((item) => item['isFavorite'] == true)
             .toList(growable: false);
     if (!mounted) return;
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (sheetContext) => SizedBox(
-        height: MediaQuery.sizeOf(sheetContext).height * .65,
-        child: ListView(
-          children: [
-            ListTile(
-              title: Text(
-                _text('Saved places & routes', '收藏地点与路线'),
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            for (final place in favoritePlaces)
-              ListTile(
-                leading: const Icon(Icons.bookmark_rounded),
-                title: Text(
-                  place['name']?.toString() ?? _text('Saved place', '收藏地点'),
-                ),
-                onTap: () {
-                  final latitude = place['latitude'],
-                      longitude = place['longitude'];
-                  if (latitude is! num || longitude is! num) return;
-                  final id = place['placeId']?.toString() ?? '';
-                  if ((id.isNotEmpty) &&
-                      !id.startsWith('coords:') &&
-                      !id.startsWith('osm:')) {
-                    Navigator.of(sheetContext).pop();
-                    setState(
-                      () => _message = _text(
-                        'This saved Google place is available on Google Maps.',
-                        '这个收藏的 Google 地点请在 Google 地图中查看。',
-                      ),
-                    );
-                    return;
-                  }
-                  Navigator.of(sheetContext).pop();
-                  _selectPlace(
-                    PlaceSummary(
-                      name:
-                          place['name']?.toString() ??
-                          _text('Saved place', '收藏地点'),
-                      address: place['address']?.toString() ?? '',
-                      location: GeoPoint(
-                        latitude.toDouble(),
-                        longitude.toDouble(),
-                      ),
-                      reference: id.startsWith('osm:')
-                          ? ProviderReference('osm', id.substring(4))
-                          : null,
-                    ),
-                    SelectionSource.saved,
-                  );
-                },
-              ),
-            for (final record in savedRoutes)
-              Builder(
-                builder: (context) {
-                  try {
-                    final data = jsonDecode(record) as Map<String, dynamic>;
-                    final place = data['destination'] as Map<String, dynamic>;
-                    return ListTile(
-                      leading: const Icon(Icons.route_rounded),
-                      title: Text(
-                        place['name']?.toString() ??
-                            _text('Saved route', '收藏路线'),
-                      ),
-                      onTap: () {
-                        if ((data['provider'] != 'independent')) {
-                          Navigator.of(sheetContext).pop();
-                          setState(
-                            () => _message = _text(
-                              'This saved route belongs to Google Maps.',
-                              '这条收藏路线来自 Google 地图。',
-                            ),
-                          );
-                          return;
-                        }
-                        Navigator.of(sheetContext).pop();
-                        _selectPlace(
-                          PlaceSummary(
-                            name:
-                                place['name']?.toString() ??
-                                _text('Saved route', '收藏路线'),
-                            location: GeoPoint(
-                              (place['latitude'] as num).toDouble(),
-                              (place['longitude'] as num).toDouble(),
-                            ),
-                          ),
-                          SelectionSource.saved,
-                        );
-                      },
-                    );
-                  } catch (_) {
-                    return const SizedBox.shrink();
-                  }
-                },
-              ),
-            if (savedRoutes.isEmpty && favoritePlaces.isEmpty)
-              ListTile(
-                title: Text(_text('No saved places yet', '还没有收藏地点')),
-                subtitle: Text(
-                  _text(
-                    'Tap the bookmark on a place to keep it here.',
-                    '打开地点后点收藏，就会出现在这里。',
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
+    showSavedSheet(
+      context,
+      language: _appLanguage,
+      savedRoutes: savedRoutes,
+      favoritePlaces: favoritePlaces,
+      onPlace: (place) => _selectPlace(place, SelectionSource.saved),
+      onNotice: (message) => setState(() => _message = message),
     );
   }
 
@@ -5945,131 +5167,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     return place;
   }
 
-  /// Shortcut keys stay English in preferences; this is what people read.
-  String _quickActionTitle(String action) => switch (action) {
-    'Home' => _text('Home', '家'),
-    'Work' => _text('Work', '公司'),
-    'Frequent' => _text('Frequent', '常去'),
-    'Restaurants' => _text('Restaurants', '餐厅'),
-    'Shopping' => _text('Shopping', '购物'),
-    // New Zealand calls it petrol.
-    'Gas' => _text('Petrol', '加油站'),
-    _ => action,
-  };
-
-  /// The search a shortcut runs, in the app language.
-  String _quickActionQuery(String action) => switch (action) {
-    'Restaurants' => _text('restaurants', '餐厅'),
-    'Shopping' => _text('shopping', '购物'),
-    'Gas' => _text('petrol station', '加油站'),
-    _ => _quickActionTitle(action),
-  };
-
-  IconData _quickActionIcon(String action) => switch (action) {
-    'Home' => Icons.home_rounded,
-    'Work' => Icons.work_rounded,
-    'Frequent' => Icons.history_rounded,
-    'Restaurants' => Icons.restaurant_rounded,
-    'Shopping' => Icons.shopping_bag_rounded,
-    'Gas' => Icons.local_gas_station_rounded,
-    _ => Icons.place_rounded,
-  };
-
-  String _quickCommuteEta(RouteOption route) {
-    final minutes = (route.durationSeconds / 60).ceil().clamp(1, 999);
-    if (minutes < 60) return _text('$minutes min', '$minutes 分钟');
-    final hours = minutes ~/ 60;
-    final remainder = minutes % 60;
-    if (remainder == 0) return _text('${hours}h', '$hours 小时');
-    return _text('${hours}h ${remainder}m', '$hours 小时 $remainder 分');
-  }
-
-  Color _quickCommuteColor(RouteOption route) {
-    final delay = route.trafficDelaySeconds ?? 0;
-    if (delay >= 600) return WaybiColors.danger;
-    if (delay >= 180 || route.traffic.trafficJam > 0) {
-      return WaybiColors.warning;
-    }
-    return WaybiColors.ocean;
-  }
-
-  Widget _quickActionLabel(String action) {
-    final route = _quickCommuteRoutes[action];
-    final scheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          _quickActionTitle(action),
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: scheme.onSurface,
-          ),
-        ),
-        if (route != null) ...[
-          const SizedBox(width: 6),
-          Container(
-            width: 5,
-            height: 5,
-            decoration: BoxDecoration(
-              color: _quickCommuteColor(route),
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            _quickCommuteEta(route),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildQuickActions() => SizedBox(
-    height: 34,
-    child: ListView(
-      scrollDirection: Axis.horizontal,
-      children: [
-        for (final action in _quickActions)
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: ActionChip(
-              avatar: Icon(
-                _quickActionIcon(action),
-                size: 15,
-                color: WaybiColors.ocean,
-              ),
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: const EdgeInsets.symmetric(horizontal: 7),
-              backgroundColor: Theme.of(context).colorScheme.surface
-                  .withValues(alpha: .96),
-              side: BorderSide(color: WaybiColors.sky.withValues(alpha: .28)),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(13),
-              ),
-              label: _quickActionLabel(action),
-              onPressed: () => _onQuickAction(action),
-            ),
-          ),
-        SizedBox(
-          width: 34,
-          height: 34,
-          child: IconButton.filledTonal(
-            padding: EdgeInsets.zero,
-            tooltip: _text('Edit shortcuts', '编辑快捷入口'),
-            onPressed: _editQuickActions,
-            icon: const Icon(Icons.tune_rounded, size: 17),
-          ),
-        ),
-      ],
-    ),
+  Widget _buildQuickActions() => QuickActionsBar(
+    actions: _quickActions,
+    language: _appLanguage,
+    commuteRoutes: _quickCommuteRoutes,
+    onAction: _onQuickAction,
+    onEdit: _editQuickActions,
   );
 
   void _onQuickAction(String action) {
@@ -6101,7 +5204,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
     }
     unawaited(
-      _openSearch(query: action == 'Frequent' ? '' : _quickActionQuery(action)),
+      _openSearch(
+        query: action == 'Frequent'
+            ? ''
+            : quickActionQuery(action, _appLanguage),
+      ),
     );
   }
 
@@ -6120,98 +5227,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _editQuickActions() {
     final actions = [..._quickActions];
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, updateSheet) => SafeArea(
-          child: SizedBox(
-            height: 430,
-            child: Column(
-              children: [
-                ListTile(
-                  title: Text(_text('Edit shortcuts', '编辑快捷入口')),
-                  subtitle: Text(
-                    _text(
-                      'Drag to reorder. Remove or add shortcuts any time.',
-                      '拖动排序，可随时移除或添加。',
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: ReorderableListView(
-                    onReorderItem: (oldIndex, newIndex) {
-                      updateSheet(() {
-                        final item = actions.removeAt(oldIndex);
-                        actions.insert(newIndex, item);
-                      });
-                    },
-                    children: [
-                      for (final action in actions)
-                        ListTile(
-                          key: ValueKey(action),
-                          title: Text(_quickActionTitle(action)),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (action == 'Home' || action == 'Work')
-                                IconButton(
-                                  tooltip: _text('Set location', '设置地点'),
-                                  icon: const Icon(
-                                    Icons.edit_location_alt_outlined,
-                                  ),
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                    unawaited(_openSearch(saveAs: action));
-                                  },
-                                ),
-                              IconButton(
-                                icon: const Icon(Icons.remove_circle_outline),
-                                onPressed: () =>
-                                    updateSheet(() => actions.remove(action)),
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                Wrap(
-                  spacing: 4,
-                  children: [
-                    for (final action in [
-                      'Home',
-                      'Work',
-                      'Frequent',
-                      'Restaurants',
-                      'Shopping',
-                      'Gas',
-                    ])
-                      if (!actions.contains(action))
-                        ActionChip(
-                          label: Text('+ ${_quickActionTitle(action)}'),
-                          onPressed: () =>
-                              updateSheet(() => actions.add(action)),
-                        ),
-                  ],
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: FilledButton(
-                    onPressed: () async {
-                      setState(() => _quickActions = actions);
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setStringList('waybi.quick_actions', actions);
-                      if (context.mounted) Navigator.of(context).pop();
-                    },
-                    child: Text(_text('Done', '完成')),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    showQuickActionsEditor(
+      context,
+      language: _appLanguage,
+      actions: actions,
+      onSetLocation: (action) => unawaited(_openSearch(saveAs: action)),
+      onDone: (actions) async {
+        setState(() => _quickActions = actions);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setStringList('waybi.quick_actions', actions);
+      },
     );
   }
 
@@ -6271,129 +5296,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildBottomBar() {
-    Widget item(IconData icon, String label, VoidCallback action) => Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: action,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 22,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface.withValues(alpha: .96),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: .25),
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x2220351C),
-              blurRadius: 22,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 4),
-          child: Row(
-            children: [
-              item(Icons.map_outlined, _text('Map', '地图'), _recenter),
-              item(
-                Icons.travel_explore_outlined,
-                _text('Discover', '发现'),
-                () => unawaited(_showDiscover()),
-              ),
-              Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(17),
-                  onTap: _showGoSearch,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 4,
-                      horizontal: 3,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 55,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [WaybiColors.ocean, WaybiColors.teal],
-                            ),
-                            borderRadius: BorderRadius.circular(15),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x30486B29),
-                                blurRadius: 10,
-                                offset: Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.navigation_rounded,
-                            size: 22,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _text('Start', '出发'),
-                          style: TextStyle(
-                            color: WaybiColors.ocean,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              item(
-                Icons.route_rounded,
-                _text('Trips', '行程'),
-                () => unawaited(_showTrips()),
-              ),
-              item(
-                Icons.person_outline_rounded,
-                _text('Me', '我的'),
-                _showProfile,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildBottomBar() => HomeBottomBar(
+    language: _appLanguage,
+    onMap: _recenter,
+    onDiscover: () => unawaited(_showDiscover()),
+    onStart: _showGoSearch,
+    onTrips: () => unawaited(_showTrips()),
+    onMe: _showProfile,
+  );
 
   void _updateNavigationTopInset(double inset) {
     _navigationTopInset = inset;

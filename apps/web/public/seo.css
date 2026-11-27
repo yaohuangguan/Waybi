@@ -66,3 +66,23 @@ html{scroll-padding-top:110px}.wrap{width:min(1220px,calc(100% - 80px))}.site-he
 .proof small{display:block;color:var(--muted);font-size:13px;line-height:1.45;margin-top:4px}.proof div{align-items:flex-start}.proof div>span{margin-top:2px}
 
 .web-map-entry{font-size:13px;color:var(--muted);margin-top:18px}.web-map-entry a{text-underline-offset:3px}
+
+/* Muted text stays at 4.5:1 on the tinted asides and cards. */
+:root{--muted:#56645a}
+/* Dark theme (follows the system setting). Illustrations keep their own light palette. */
+@media (prefers-color-scheme:dark){
+:root{color-scheme:dark;--ink:#e3ecd8;--green:#b9de7e;--muted:#b1bea8;--line:#2f3d2b;--paper:#0e150b;--card:#172015}
+body{background:var(--paper);color:var(--ink)}
+.site-header{border-bottom-color:var(--line);background:rgba(14,21,11,.94)}
+.nav .primary,.button{color:#132110}
+.button.secondary{background:#2a3a22;color:#d3eda8}
+.hero .lead,.article p,.article ul{color:#c9d4bf}
+.callout,.proof div,.aside section{background:#1b2518}
+.card{background:#1b2518}
+.card:hover{background:#22301e}
+.character-strip,.room-art{background:#211e16}
+.watch-art{background:#1d2819}
+.road-chip{background:#1d2b17;color:#e3ecd8}
+.skip-link{color:#152510}
+.hero-art{border-color:#2f3d2b}
+}

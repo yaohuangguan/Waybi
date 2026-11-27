@@ -244,6 +244,14 @@ pnpm mobile:test
 
 The test suite covers route/camera matching, NZTA parsing and snapshot safety, Route Watch evaluation, Worker APIs, map-provider rules, navigation state, parking flows and Flutter UI behavior.
 
+Web failure scenarios (reroute 503 during navigation, offline search, 429 with `retry-after`, Enter vs. late suggestions, language switch keeping the route, service-worker scope and fallback) run in Chromium with Playwright against `vite preview` and a mocked API:
+
+```bash
+pnpm build:web
+pnpm --filter @waybi/web test:e2e        # needs the playwright package and a Chromium build
+ONLY=reroute,serviceworker pnpm --filter @waybi/web test:e2e
+```
+
 ## Cloudflare deployment
 
 Production uses a **full-stack Worker**: the Worker serves the PWA assets and handles `/api/*`.

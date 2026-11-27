@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="robots" content="noindex,follow" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#F8FBEF" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#10180D" media="(prefers-color-scheme: dark)" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Your Waybi subscription · Waybi</title>
+  <script>
+    try { var t = localStorage.getItem('waybi-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <style>
+    :root{color-scheme:light;--page:#f8fbef;--surface:#fff;--ink:#152510;--muted:#56634e;--line:#dbe5cb;--action:#486b29;--on-action:#fff;--lime:#d0f58a;--focus:#3f6b22}
+    @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--page:#0e150b;--surface:#172015;--ink:#e3ecd8;--muted:#b1bea8;--line:#2f3d2b;--action:#b9de7e;--on-action:#132110;--focus:#c5e88d}}
+    :root[data-theme="dark"]{color-scheme:dark;--page:#0e150b;--surface:#172015;--ink:#e3ecd8;--muted:#b1bea8;--line:#2f3d2b;--action:#b9de7e;--on-action:#132110;--focus:#c5e88d}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:var(--page);color:var(--ink);font:18px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .box{width:min(720px,100%);padding:clamp(28px,6vw,56px);border:1px solid var(--line);border-radius:28px;background:var(--surface)}
+    .k{margin:30px 0 0;color:var(--muted);font-size:13px;font-weight:800;letter-spacing:.12em}
+    h1{margin:10px 0 16px;font-size:clamp(36px,8vw,60px);line-height:1.05;letter-spacing:-.045em}
+    p{margin:0;color:var(--muted)}
+    .links{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+    .links a{padding:12px 17px;border-radius:12px;background:var(--action);color:var(--on-action);font-weight:800;text-decoration:none}
+    .links a+a{background:var(--lime);color:#23351d}
+    a:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+    .lockup-word{fill:var(--ink)}.lockup-tag{fill:var(--muted)}
+  </style>
+</head>
+<body>
+  <main class="box">
+    <a href="/" aria-label="Waybi home"><svg width="180" height="56" viewBox="0 0 268 84" role="img" aria-label="Waybi"><circle cx="42" cy="42" r="39" fill="#d0f58a"/><ellipse cx="36" cy="49" rx="23" ry="18" fill="#29441f"/><circle cx="54" cy="30" r="14" fill="#29441f"/><path d="M64 29 82 36 64 36Z" fill="#e4a850"/><circle cx="58" cy="26" r="4.5" fill="#fff"/><circle cx="59" cy="26" r="2" fill="#152510"/><ellipse cx="34" cy="46" rx="10" ry="6" fill="#729f36"/><text class="lockup-word" x="96" y="44" font-family="system-ui,sans-serif" font-size="36" font-weight="850" letter-spacing="-1.4">Waybi</text><text class="lockup-tag" x="98" y="64" font-family="system-ui,sans-serif" font-size="11" letter-spacing="1.5">A CLEARER JOURNEY</text></svg></a>
+    <p class="k">WAYBI PLUS</p>
+    <h1 id="title">Your Waybi subscription</h1>
+    <p id="body">Manage Waybi Plus from your account. Subscriptions bought through the App Store are managed in your Apple account settings.</p>
+    <div class="links"><a id="dashboard" href="/dashboard">Open your dashboard</a><a id="app" href="/app">Open Waybi</a></div>
+  </main>
+  <script>
+    (function () {
+      var copy = {
+        en: {
+          success: ['Thanks — you’re all set.', 'Your payment went through. Waybi Plus becomes active on your account within a few moments; reopen the app if it does not show yet.'],
+          cancelled: ['Checkout cancelled.', 'No payment was taken. You can keep using Waybi as before and subscribe any time.'],
+          manage: ['Your Waybi subscription', 'Manage Waybi Plus from your account. Subscriptions bought through the App Store are managed in your Apple account settings.'],
+          links: ['Open your dashboard', 'Open Waybi']
+        },
+        zh: {
+          success: ['谢谢，一切就绪。', '付款已完成。Waybi Plus 将在片刻后在你的账户中生效；如果还没显示，请重新打开 App。'],
+          cancelled: ['已取消结账。', '没有产生任何扣款。你可以照常使用 Waybi，随时再订阅。'],
+          manage: ['你的 Waybi 订阅', '可在账户中管理 Waybi Plus。通过 App Store 购买的订阅请在 Apple 账户设置中管理。'],
+          links: ['打开个人面板', '打开 Waybi']
+        }
+      };
+      var language = 'en';
+      try { language = localStorage.getItem('waybi-ui-language') === 'zh' ? 'zh' : 'en'; } catch (e) {}
+      var checkout = new URLSearchParams(location.search).get('checkout');
+      var state = checkout === 'success' ? 'success' : checkout === 'cancelled' ? 'cancelled' : 'manage';
+      var text = copy[language];
+      document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
+      document.getElementById('title').textContent = text[state][0];
+      document.getElementById('body').textContent = text[state][1];
+      document.getElementById('dashboard').textContent = text.links[0];
+      document.getElementById('app').textContent = text.links[1];
+      document.title = text[state][0] + ' · Waybi';
+    })();
+  </script>
+</body>
+</html>

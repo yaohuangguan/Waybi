@@ -2,18 +2,28 @@ import './style.css';
 
 import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@waybi/core';
 import './account.css';
-import { applyUiLanguage, t } from './i18n';
+import { applyUiLanguage, formatDuration, localeFor, plural, t, type MessageKey } from './i18n';
+import { applyTheme, readLanguage, readTheme, writeLanguage, writeTheme, LANGUAGE_EVENT, type ThemePreference } from './preferences';
 import { currentAccountEmail, initAccount, isSignedIn, ownReview, recentDestinations, rememberDestination, rememberPreferences, rememberRoute, renderAccount, saveOwnReview, savePlace, savedPlace, type AccountProfile } from './account';
 import { lookAheadCenter } from './navigation-view';
 import { initAutocomplete, placeLabel, type SuggestedPlace } from './autocomplete';
 import { WaybiMapAdapter, type PoiSelection } from './waybi-map';
-import { fetchRoutePlan, formatModeDuration, routeFromOption, type RouteOption as PlannerRouteOption, type RoutePlan as PlannerRoutePlan, type TravelMode } from './route-planner';
+import { fetchRoutePlan, routeFromOption, type RouteOption as PlannerRouteOption, type RoutePlan as PlannerRoutePlan, type TravelMode } from './route-planner';
 import type { ParkingPlace } from './parking';
+import { apiFetch, describeError, isAbortError } from './api';
+import { closeDialog, openDialog } from './dialogs';
+import { registerUpdates } from './pwa';
+import { lockupSvg } from './brand';
+import { currentPlatform, isStandalone, permissionHelpKey } from './geo-help';
+import { RouteRequestCoordinator, journeySummaryKind, layoutSignature, type PlanTrigger } from './route-requests';
 
 type Language = 'zh' | 'en';
 type Place = SuggestedPlace;
 type CameraResponse = { cameras: Camera[]; sourceUpdatedAt: string; checkedAt: string | null; syncStatus: string; syncError?: string | null; change?: { added: number; removed: number } };
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+// The router keeps the map shell hidden until this chunk (and its CSS) has loaded.
+$('app').hidden = false;
+applyTheme();
 const map = new WaybiMapAdapter();
 let cameras: Camera[] = [];
 let cameraResponse: CameraResponse | null = null;
@@ -39,7 +49,8 @@ const routeStops: { label: string; coordinate: Coordinate }[] = [];
 let navigating = false;
 let uiMode: 'explore' | 'navigation' = 'explore';
 let following = true;
-let language: Language = localStorage.getItem('kiwi-language') === 'zh' ? 'zh' : 'en';
+// One language key shared with the website and the dashboard (legacy keys are migrated).
+let language: Language = readLanguage();
 let voiceEnabled = localStorage.getItem('kiwi-voice') !== 'off';
 let keepScreenAwake = localStorage.getItem('kiwi-keep-screen-awake') !== 'off';
 let journeyStarted = 0;
@@ -47,14 +58,19 @@ let journeyDistance = 0;
 let journeyPoints: Coordinate[] = [];
 let arrivalWithinRadiusAt = 0;
 let latestGpsFixAt = 0;
-let mapLanguage: Language | null = null;
 let laneGuidanceEnabled = localStorage.getItem('kiwi-lane-guidance') !== 'off';
 let searchTarget: 'origin' | 'destination' | 'stop' = 'destination';
-let routeAbort: AbortController | null = null;
+const routeRequests = new RouteRequestCoordinator();
 let lastRerouteAt = 0;
+let rerouteTimer = 0;
+let rerouteStatusTimer = 0;
+type RerouteStatus = { kind: 'rerouting' } | { kind: 'offline' | 'retry' | 'busy'; until: number };
+let rerouteStatus: RerouteStatus | null = null;
 let lastTurnKey = '';
 let wakeLock: WakeLockSentinel | null = null;
 let toastTimeout = 0;
+type TripState = 'stateCalculating' | 'stateRouteReady' | 'stateRouteError' | 'stateDriving' | 'stateGuidance' | 'stateReady' | 'stateArrived' | 'stateParkingReached';
+let tripState: TripState = 'stateReady';
 type GpsStatus = 'idle' | 'locating' | 'active' | 'denied' | 'unavailable';
 let gpsStatus: GpsStatus = 'idle';
 let gpsAccuracy: number | null = null;
@@ -73,7 +89,7 @@ let parkingDestination: ParkingDestination | null = null;
 let parkingPlaces: ParkingPlace[] = [];
 let selectedParking: ParkingPlace | null = null;
 let parkingLoading = false;
-let parkingError = '';
+let parkingError: MessageKey | '' = '';
 let parkingSearchSequence = 0;
 let parkedAtParking = false;
 
@@ -111,7 +127,7 @@ async function loadParking() {
   } catch {
     if (request !== parkingSearchSequence) return;
     parkingPlaces = [];
-    parkingError = language === 'zh' ? '停车地点暂时无法加载。' : 'Parking places are temporarily unavailable.';
+    parkingError = 'parkingUnavailable';
   } finally {
     if (request === parkingSearchSequence) {
       parkingLoading = false;
@@ -175,42 +191,29 @@ function renderParking() {
   const section = $('parkingSection');
   const hint = $('navParkingHint');
   section.hidden = !destination || selectedTravelMode !== 'drive';
-  $('navDestinationLabel').textContent = selectedParking && selectedTravelMode === 'drive'
-    ? (language === 'zh' ? '停车点' : 'PARKING STOP')
-    : (language === 'zh' ? '目的地' : 'DESTINATION');
+  $('navDestinationLabel').textContent = t(language, selectedParking && selectedTravelMode === 'drive' ? 'parkingStop' : 'destinationLabel');
   hint.hidden = !selectedParking || !parkingDestination || selectedTravelMode !== 'drive';
   if (section.hidden) {
     map.renderParking([], null, selectParking);
     return;
   }
   const target = parkingDestination || { coordinate: destination!, name: destinationName };
-  $('parkingKicker').textContent = language === 'zh' ? '到达前，先看停车' : 'ARRIVE WITH A PLAN';
-  $('parkingTitle').textContent = language === 'zh' ? '终点附近停车' : 'Parking near your destination';
   const isAtSource = parkingPlaces[0]?.source === 'at';
-  $('parkingSourceNote').textContent = isAtSource
-    ? (language === 'zh' ? '来源：AT Open GIS · 总车位并非实时空位' : 'Source: AT Open GIS · total spaces are not live availability')
-    : (language === 'zh' ? '地点搜索 · 不提供实时空位' : 'Place search · live spaces unavailable');
+  $('parkingSourceNote').textContent = t(language, isAtSource ? 'parkingSourceAt' : 'parkingSourceSearch');
   const sourceLink = $('parkingSourceLink') as HTMLAnchorElement;
   sourceLink.hidden = !isAtSource;
-  sourceLink.textContent = language === 'zh' ? 'AT 原始数据 ↗' : 'AT source ↗';
   $('parkingSummary').textContent = selectedParking
-    ? (language === 'zh'
-      ? `已选 ${selectedParking.name}，距 ${target.name} 约 ${formatDistance(selectedParking.distanceMeters, language)}（直线距离）。`
-      : `Driving to ${selectedParking.name} · ${formatDistance(selectedParking.distanceMeters, language)} from ${target.name} as the crow flies.`)
-    : (language === 'zh'
-      ? '先选停车点，导航会以它为驾车终点；距离为直线距离，停车后可继续步行。'
-      : 'Choose a parking place for the driving leg, then continue on foot. Distances are straight line.');
-  if (!hint.hidden) hint.textContent = language === 'zh'
-    ? `停车：${selectedParking!.name} · 之后步行到 ${target.name}`
-    : `Parking: ${selectedParking!.name} · then walk to ${target.name}`;
+    ? t(language, 'parkingSelectedSummary', { parking: selectedParking.name, distance: formatDistance(selectedParking.distanceMeters, language), destination: target.name })
+    : t(language, 'parkingIntro');
+  if (!hint.hidden) hint.textContent = t(language, 'parkingHint', { parking: selectedParking!.name, destination: target.name });
   const list = $('parkingList');
   list.replaceChildren();
   if (parkingLoading && !parkingPlaces.length) {
-    list.textContent = language === 'zh' ? '正在寻找停车点…' : 'Finding nearby parking…';
+    list.textContent = t(language, 'parkingLoading');
   } else if (parkingError && !parkingPlaces.length) {
-    list.textContent = parkingError;
+    list.textContent = t(language, parkingError);
   } else if (!parkingPlaces.length) {
-    list.textContent = language === 'zh' ? '附近暂无已收录停车点。' : 'No listed parking places nearby.';
+    list.textContent = t(language, 'parkingNone');
   } else {
     for (const place of parkingPlaces) {
       const button = document.createElement('button');
@@ -219,21 +222,22 @@ function renderParking() {
       button.setAttribute('aria-pressed', String(place.id === selectedParking?.id));
       const icon = document.createElement('span');
       icon.className = 'parking-option-icon';
+      icon.setAttribute('aria-hidden', 'true');
       icon.textContent = 'P';
       const copy = document.createElement('span');
       copy.className = 'parking-option-copy';
       const name = document.createElement('strong');
       name.textContent = place.name;
       const address = document.createElement('small');
-      address.textContent = place.address || (language === 'zh' ? '停车地点' : 'Parking place');
+      address.textContent = place.address || t(language, 'parkingPlace');
       copy.append(name, address);
       if (place.source === 'at') {
         const details = document.createElement('small');
         details.className = 'parking-option-detail';
         details.textContent = [
-          place.totalSpaces !== null ? (language === 'zh' ? `总车位 ${place.totalSpaces}` : `${place.totalSpaces} total spaces`) : '',
-          place.mobilitySpaces !== null ? (language === 'zh' ? `无障碍 ${place.mobilitySpaces}` : `${place.mobilitySpaces} accessible`) : '',
-          place.clearanceMeters !== null ? (language === 'zh' ? `限高 ${place.clearanceMeters}m` : `${place.clearanceMeters}m clearance`) : ''
+          place.totalSpaces !== null ? t(language, 'parkingTotalSpaces', { count: place.totalSpaces }) : '',
+          place.mobilitySpaces !== null ? t(language, 'parkingAccessible', { count: place.mobilitySpaces }) : '',
+          place.clearanceMeters !== null ? t(language, 'parkingClearance', { meters: place.clearanceMeters }) : ''
         ].filter(Boolean).join(' · ') || 'AT Open GIS';
         copy.append(details);
       }
@@ -251,7 +255,7 @@ function renderParking() {
   if (selectedParking) {
     const direct = document.createElement('button');
     direct.type = 'button';
-    direct.textContent = language === 'zh' ? '改为直接到目的地' : 'Drive to destination instead';
+    direct.textContent = t(language, 'parkingDriveDirect');
     direct.onclick = driveToDestination;
     actions.append(direct);
     const detailsUrl = selectedParking.source === 'at'
@@ -262,16 +266,14 @@ function renderParking() {
       details.href = detailsUrl;
       details.target = '_blank';
       details.rel = 'noopener noreferrer';
-      details.textContent = selectedParking.source === 'at'
-        ? (language === 'zh' ? 'AT 费用与规则 ↗' : 'AT rates & rules ↗')
-        : (language === 'zh' ? '查看地点 ↗' : 'Place details ↗');
+      details.textContent = t(language, selectedParking.source === 'at' ? 'parkingRates' : 'parkingDetails');
       actions.append(details);
     }
     if (parkedAtParking) {
       const walk = document.createElement('button');
       walk.type = 'button';
       walk.className = 'primary';
-      walk.textContent = language === 'zh' ? '继续步行到目的地 →' : 'Continue on foot →';
+      walk.textContent = t(language, 'parkingWalk');
       walk.onclick = continueOnFoot;
       actions.prepend(walk);
     }
@@ -284,39 +286,29 @@ function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] || char);
 }
 
-function toast(message: string) {
+function toast(message: string, duration = 4500) {
   const element = $('toast');
   element.textContent = message;
   element.hidden = false;
   window.clearTimeout(toastTimeout);
-  toastTimeout = window.setTimeout(() => { element.hidden = true; }, 4500);
+  // Longer messages stay a little longer so they can be read.
+  toastTimeout = window.setTimeout(() => { element.hidden = true; }, Math.max(duration, Math.min(10000, message.length * 70)));
 }
 
 const API_BASE_URL = '';
 
-async function api<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, { signal });
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `HTTP ${response.status}`);
-  }
-  return response.json() as Promise<T>;
+function api<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return apiFetch<T>(`${API_BASE_URL}${path}`, { signal });
 }
 
 function renderTripFlags() {
-  $('sheetVoice').textContent = language === 'zh'
-    ? `语音 ${voiceEnabled ? '✓' : '关闭'}`
-    : `Voice ${voiceEnabled ? '✓' : 'off'}`;
-  $('sheetLane').textContent = language === 'zh'
-    ? `车道 ${laneGuidanceEnabled ? '✓' : '关闭'}`
-    : `Lanes ${laneGuidanceEnabled ? '✓' : 'off'}`;
-  $('sheetAccount').textContent = isSignedIn()
-    ? (language === 'zh' ? '账号已同步' : 'Account synced')
-    : (language === 'zh' ? '访客模式' : 'Guest mode');
+  $('sheetVoice').textContent = t(language, voiceEnabled ? 'voiceOn' : 'voiceOff');
+  $('sheetLane').textContent = t(language, laneGuidanceEnabled ? 'lanesOn' : 'lanesOff');
+  $('sheetAccount').textContent = t(language, isSignedIn() ? 'accountSynced' : 'guestMode');
   const voiceChip = $('navVoiceChip');
   const lanesChip = $('navLanesChip');
-  voiceChip.textContent = language === 'zh' ? `语音 ${voiceEnabled ? '✓' : '关闭'}` : `Voice ${voiceEnabled ? '✓' : 'off'}`;
-  lanesChip.textContent = language === 'zh' ? `车道 ${laneGuidanceEnabled ? '✓' : '关闭'}` : `Lanes ${laneGuidanceEnabled ? '✓' : 'off'}`;
+  voiceChip.textContent = t(language, voiceEnabled ? 'voiceOn' : 'voiceOff');
+  lanesChip.textContent = t(language, laneGuidanceEnabled ? 'lanesOn' : 'lanesOff');
   voiceChip.setAttribute('aria-pressed', String(voiceEnabled));
   lanesChip.setAttribute('aria-pressed', String(laneGuidanceEnabled));
 }
@@ -333,7 +325,7 @@ function setUiMode(next: 'explore' | 'navigation') {
     $('navSecondary').hidden = true;
     $('navSheetHandle').setAttribute('aria-expanded', 'false');
     document.body.classList.remove('nav-sheet-expanded');
-    $('navSheetHandle').setAttribute('aria-label', language === 'zh' ? '展开行程详情' : 'Show trip details');
+    $('navSheetHandle').setAttribute('aria-label', t(language, 'showTripDetails'));
     requestAnimationFrame(updateNavigationOverlayLayout);
   }
 }
@@ -371,8 +363,8 @@ function renderSpeedHud() {
   hud.classList.toggle('speeding', speeding);
   $('speedValue').textContent = String(Math.round(currentSpeedKph));
   $('speedLimitValue').textContent = speedLimitKph === null
-    ? (language === 'zh' ? '限速 —' : 'LIMIT —')
-    : (language === 'zh' ? `限速 ${speedLimitKph}` : `LIMIT ${speedLimitKph}`);
+    ? t(language, 'speedLimitUnknown')
+    : t(language, 'speedLimitBadge', { value: speedLimitKph });
   $('sheetSpeedLimit').textContent = speedLimitKph === null ? '—' : `${speedLimitKph} km/h`;
   $('navSpeedLimit').textContent = speedLimitKph === null ? '—' : `${speedLimitKph} km/h`;
 }
@@ -390,8 +382,11 @@ async function refreshSpeedLimit(coordinate: Coordinate) {
     );
     speedLimitKph = Number.isFinite(result.speedLimitKph) ? result.speedLimitKph : null;
     renderSpeedHud();
-  } catch {
-    // Keep the last known legal limit if the network lookup temporarily fails.
+  } catch (error) {
+    // Keep the last known legal limit if the lookup fails; when rate limited,
+    // do not ask again before retry-after.
+    const failure = describeError(error);
+    if (failure.rateLimited) lastSpeedLimitLookupAt = Date.now() + (failure.retryAfterMs || 60_000);
   } finally {
     speedLimitLookupPending = false;
   }
@@ -399,9 +394,61 @@ async function refreshSpeedLimit(coordinate: Coordinate) {
 
 function renderCameras() {
   const onRoute = new Set(routeCameras.map((item) => item.camera.id));
-  map.renderCameras(cameras, onRoute, language);
+  map.renderCameras(cameras, onRoute);
   $('cameraRouteCount').textContent = route ? String(routeCameras.length) : '—';
   $('navCameraCount').textContent = route ? String(routeCameras.length) : '—';
+  if (!$('cameraList').hidden) renderCameraList();
+}
+
+/**
+ * Keyboard and screen-reader route to the camera markers (which are kept out
+ * of the Tab order): cameras on the current route, or the closest ones to the
+ * map centre.
+ */
+function renderCameraList() {
+  const root = $('cameraList');
+  root.replaceChildren();
+  const heading = document.createElement('p');
+  heading.className = 'camera-list-heading';
+  const items: { camera: Camera; distance: number }[] = route && routeCameras.length
+    ? routeCameras.map((item) => ({ camera: item.camera, distance: Math.max(0, item.alongMeters) }))
+    : (() => {
+      const center = map.getCenter() || current || [174.7633, -36.8485] as Coordinate;
+      return cameras.map((camera) => ({ camera, distance: distanceMeters(center, [camera.longitude, camera.latitude]) }))
+        .sort((a, b) => a.distance - b.distance).slice(0, 12);
+    })();
+  heading.textContent = `${t(language, route && routeCameras.length ? 'cameraListRoute' : 'cameraListNearby')} · ${t(language, 'cameraListHint')}`;
+  root.append(heading);
+  if (!items.length) {
+    const empty = document.createElement('p');
+    empty.className = 'camera-list-empty';
+    empty.textContent = t(language, 'cameraListEmpty');
+    root.append(empty);
+    return;
+  }
+  const list = document.createElement('ul');
+  for (const { camera, distance } of items) {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = t(language, 'cameraListItem', { label: cameraLabel(camera.type, language), location: camera.location, distance: formatDistance(distance, language) });
+    button.onclick = () => {
+      following = false;
+      $('followButton').classList.remove('active');
+      map.showCamera(camera.id);
+    };
+    item.append(button);
+    list.append(item);
+  }
+  root.append(list);
+}
+
+function renderCameraStatus() {
+  if (!cameraResponse) return;
+  $('dataStatus').textContent = `${cameras.length} ${t(language, 'cameraCount')} · ${cameraResponse.sourceUpdatedAt}${cameraResponse.syncStatus === 'live' ? '' : ` · ${t(language, 'cached')}`}`;
+  $('sourceDate').textContent = cameraResponse.sourceUpdatedAt;
+  $('checkedAt').textContent = cameraResponse.checkedAt ? new Date(cameraResponse.checkedAt).toLocaleString(localeFor(language)) : t(language, 'neverChecked');
+  $('syncStatus').textContent = t(language, cameraResponse.syncStatus === 'live' ? 'synced' : cameraResponse.syncStatus === 'stale' ? 'stale' : cameraResponse.syncStatus === 'offline' ? 'offline' : 'seed');
 }
 
 async function loadCameras() {
@@ -418,10 +465,7 @@ async function loadCameras() {
     } catch { /* ignore damaged local cache */ }
   }
   if (cameraResponse) {
-    $('dataStatus').textContent = `${cameras.length} ${t(language, 'cameraCount')} · ${cameraResponse.sourceUpdatedAt}${cameraResponse.syncStatus === 'live' ? '' : ` · ${t(language, 'cached')}`}`;
-    $('sourceDate').textContent = cameraResponse.sourceUpdatedAt;
-    $('checkedAt').textContent = cameraResponse.checkedAt ? new Date(cameraResponse.checkedAt).toLocaleString(language === 'zh' ? 'zh-NZ' : 'en-NZ') : t(language, 'neverChecked');
-    $('syncStatus').textContent = t(language, cameraResponse.syncStatus === 'live' ? 'synced' : cameraResponse.syncStatus === 'stale' ? 'stale' : cameraResponse.syncStatus === 'offline' ? 'offline' : 'seed');
+    renderCameraStatus();
     if (route) routeCameras = matchCamerasToRoute(cameras, route);
     renderCameras();
   } else $('dataStatus').textContent = t(language, 'camerasUnavailable');
@@ -502,7 +546,8 @@ function updatePosition(latitude: number, longitude: number, heading: number | n
     else map.setView(center, 15);
     map.setFollowHeading(mapHeading);
   }
-  if (destination && !route && !manualOrigin) void planRoute();
+  // A GPS fix only starts a plan when none is in flight and no failure backoff is running.
+  if (destination && !route && !manualOrigin) void planRoute(undefined, 'auto');
   if (navigating && route) updateGuidance();
 }
 
@@ -510,7 +555,7 @@ function renderGpsStatus() {
   const badge = $('gpsBadge');
   const text = $('gpsBadgeText');
   badge.classList.toggle('error', gpsStatus === 'denied' || gpsStatus === 'unavailable');
-  if (gpsStatus === 'active' && gpsAccuracy !== null) text.textContent = `GPS ${Math.round(gpsAccuracy)} m`;
+  if (gpsStatus === 'active' && gpsAccuracy !== null) text.textContent = t(language, 'gpsAccuracyBadge', { meters: Math.round(gpsAccuracy) });
   else if (gpsStatus === 'locating') text.textContent = t(language, 'locating');
   else if (gpsStatus === 'denied') text.textContent = t(language, 'permissionDenied');
   else if (gpsStatus === 'unavailable') text.textContent = t(language, 'gpsTemporary');
@@ -519,7 +564,7 @@ function renderGpsStatus() {
     ? `±${Math.round(gpsAccuracy)} m`
     : '—';
   $('navGpsChip').textContent = gpsStatus === 'active' && gpsAccuracy !== null
-    ? `GPS ±${Math.round(gpsAccuracy)} m` : 'GPS —';
+    ? t(language, 'gpsChip', { meters: Math.round(gpsAccuracy) }) : t(language, 'gpsUnknownChip');
 }
 
 function handleGpsError(error: GeolocationPositionError) {
@@ -530,7 +575,7 @@ function handleGpsError(error: GeolocationPositionError) {
   gpsStatus = error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable';
   gpsAccuracy = null;
   renderGpsStatus();
-  if (error.code === error.PERMISSION_DENIED) toast(t(language, 'permissionHelp'));
+  if (error.code === error.PERMISSION_DENIED) toast(t(language, permissionHelpKey(currentPlatform(), isStandalone())), 9000);
 }
 
 function startGpsWatch() {
@@ -568,41 +613,42 @@ function requestGps() {
   );
 }
 
+/**
+ * Starts tracking only when location was already granted. The permission
+ * prompt itself is only ever shown from a user gesture (GPS badge, "use my
+ * location", recenter, choosing a destination or starting navigation).
+ */
 async function initGps() {
   if (!navigator.geolocation) {
     gpsStatus = 'unavailable';
     renderGpsStatus();
     return;
   }
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-  if ('permissions' in navigator) {
-    try {
-      const permission = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+  if (!('permissions' in navigator)) { gpsStatus = 'idle'; renderGpsStatus(); return; }
+  try {
+    const permission = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+    if (permission.state === 'granted') startGpsWatch();
+    else {
+      gpsStatus = permission.state === 'denied' ? 'denied' : 'idle';
+      renderGpsStatus();
+    }
+    permission.onchange = () => {
       if (permission.state === 'granted') startGpsWatch();
       else {
-        gpsStatus = permission.state === 'denied' ? 'denied' : 'idle';
-        renderGpsStatus();
-        if (permission.state === 'prompt' && !standalone) requestGps();
-      }
-      permission.onchange = () => {
-        if (permission.state === 'granted') startGpsWatch();
-        else {
-          if (gpsWatchId !== null) {
-            navigator.geolocation.clearWatch(gpsWatchId);
-            gpsWatchId = null;
-          }
-          gpsStatus = permission.state === 'denied' ? 'denied' : 'idle';
-          gpsAccuracy = null;
-          renderGpsStatus();
+        if (gpsWatchId !== null) {
+          navigator.geolocation.clearWatch(gpsWatchId);
+          gpsWatchId = null;
         }
-      };
-      return;
-    } catch { /* older Safari may not expose geolocation through Permissions API */ }
-  }
-  if (standalone) {
+        gpsStatus = permission.state === 'denied' ? 'denied' : 'idle';
+        gpsAccuracy = null;
+        renderGpsStatus();
+      }
+    };
+  } catch {
+    // Older Safari does not expose geolocation through the Permissions API.
     gpsStatus = 'idle';
     renderGpsStatus();
-  } else requestGps();
+  }
 }
 
 function renderStops() {
@@ -654,9 +700,7 @@ function renderRouteInfo(option: PlannerRouteOption | null) {
   if (option.mode === 'drive' && !option.trafficIntervals.length) {
     const card = document.createElement('div');
     card.className = 'route-info-card';
-    card.textContent = language === 'zh'
-      ? '实时交通区间暂不可用；路线颜色不代表当前路况。'
-      : 'Live traffic segments are unavailable; route color does not indicate current traffic.';
+    card.textContent = t(language, 'trafficUnavailable');
     root.append(card);
     root.hidden = false;
   }
@@ -667,9 +711,9 @@ function renderRouteInfo(option: PlannerRouteOption | null) {
     const jam = option.traffic.trafficJam;
     const slow = option.traffic.slow;
     const message = jam > 0
-      ? `${jam} heavy-traffic section${jam === 1 ? '' : 's'} ahead`
-      : slow > 0 ? `${slow} slow section${slow === 1 ? '' : 's'} ahead` : (language === 'zh' ? '沿途道路提示' : 'Road advisory');
-    card.innerHTML = `<strong>⚠ Traffic advisory</strong><span>${escapeHtml(message)}${option.warnings[0] ? ` · ${escapeHtml(option.warnings[0])}` : ''}</span>`;
+      ? plural(language, jam, 'heavySectionsOne', 'heavySectionsOther')
+      : slow > 0 ? plural(language, slow, 'slowSectionsOne', 'slowSectionsOther') : t(language, 'roadAdvisory');
+    card.innerHTML = `<strong>⚠ ${escapeHtml(t(language, 'trafficAdvisory'))}</strong><span>${escapeHtml(message)}${option.warnings[0] ? ` · ${escapeHtml(option.warnings[0])}` : ''}</span>`;
     root.append(card);
     root.hidden = false;
     navCard.textContent = `⚠ ${message}${option.warnings[0] ? ` · ${option.warnings[0]}` : ''}`;
@@ -680,9 +724,10 @@ function renderRouteInfo(option: PlannerRouteOption | null) {
     for (const leg of option.transit) {
       const card = document.createElement('div');
       card.className = 'route-info-card transit';
-      const title = [leg.lineName, leg.headsign].filter(Boolean).join(' → ') || leg.vehicleName || leg.vehicleType || 'Transit';
+      const title = [leg.lineName, leg.headsign].filter(Boolean).join(' → ') || leg.vehicleName || leg.vehicleType || t(language, 'transitFallback');
       const details = [leg.departureStop, leg.arrivalStop].filter(Boolean).join(' → ');
-      card.innerHTML = `<strong>🚆 ${escapeHtml(title)}</strong><span>${escapeHtml(details)}${leg.stopCount ? ` · ${leg.stopCount} stops` : ''}</span>`;
+      const stops = leg.stopCount ? ` · ${plural(language, leg.stopCount, 'transitStopsOne', 'transitStopsOther')}` : '';
+      card.innerHTML = `<strong>🚆 ${escapeHtml(title)}</strong><span>${escapeHtml(details)}${escapeHtml(stops)}</span>`;
       root.append(card);
     }
     root.hidden = false;
@@ -697,7 +742,6 @@ function applyDrivingRoute(index: number) {
   routeCameras = matchCamerasToRoute(cameras, route);
   renderCameras();
   map.renderRoute(route, destination, navigating);
-  mapLanguage = language;
   map.setTrafficEnabled(trafficLayerEnabled);
   map.renderTrafficRoutes(trafficVisuals(), selectedDrivingRoute, (chosen) => {
     if (chosen === selectedDrivingRoute || navigating) return;
@@ -706,7 +750,7 @@ function applyDrivingRoute(index: number) {
   });
   $('tripDistance').textContent = formatDistance(route.distance, language);
   $('tripArrival').textContent = new Date(Date.now() + route.duration * 1000).toLocaleTimeString(
-    language === 'zh' ? 'zh-NZ' : 'en-NZ',
+    localeFor(language),
     { hour: '2-digit', minute: '2-digit' }
   );
   $('navDistance').textContent = $('tripDistance').textContent;
@@ -740,13 +784,14 @@ function renderRoutePlanner() {
   for (const mode of ['drive', 'transit', 'walk', 'bicycle'] as TravelMode[]) {
     const option = routePlan?.options.find((item) => item.mode === mode);
     $(modeIds[mode]).textContent = mode === 'drive' && drivingAlternatives[0]
-      ? formatModeDuration(drivingAlternatives[0].duration)
-      : formatModeDuration(option?.durationSeconds);
+      ? formatDuration(drivingAlternatives[0].duration, language)
+      : formatDuration(option?.durationSeconds, language);
     const button = modes.querySelector<HTMLButtonElement>(`button[data-mode="${mode}"]`);
     if (button) {
       const available = mode !== 'transit';
       button.disabled = !available;
       button.classList.toggle('selected', selectedTravelMode === mode);
+      button.setAttribute('aria-pressed', String(selectedTravelMode === mode));
     }
   }
 
@@ -756,7 +801,8 @@ function renderRoutePlanner() {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'route-option-card' + (selectedDrivingRoute === index ? ' selected' : '');
-      button.innerHTML = `<strong>${escapeHtml(formatModeDuration(item.duration))}</strong><span>${escapeHtml(formatDistance(item.distance, language))}${index === 0 ? ' · recommended' : ''}</span>`;
+      button.setAttribute('aria-pressed', String(selectedDrivingRoute === index));
+      button.innerHTML = `<strong>${escapeHtml(formatDuration(item.duration, language))}</strong><span>${escapeHtml(formatDistance(item.distance, language))}${index === 0 ? ` · ${escapeHtml(t(language, 'recommended'))}` : ''}</span>`;
       button.onclick = () => {
         applyDrivingRoute(index);
         renderRoutePlanner();
@@ -766,7 +812,7 @@ function renderRoutePlanner() {
     alternatives.hidden = drivingAlternatives.length < 2;
     renderRouteInfo(selectedPlannerOption());
     ($('driveButton') as HTMLButtonElement).disabled = drivingAlternatives.length === 0;
-    $('driveLabel').textContent = language === 'zh' ? '开始导航' : 'Start';
+    $('driveLabel').textContent = t(language, 'startShort');
     return;
   }
 
@@ -775,7 +821,7 @@ function renderRoutePlanner() {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'route-option-card selected';
-    button.innerHTML = `<strong>${escapeHtml(formatModeDuration(option.durationSeconds))}</strong><span>${escapeHtml(formatDistance(option.distanceMeters, language))}</span>`;
+    button.innerHTML = `<strong>${escapeHtml(formatDuration(option.durationSeconds, language))}</strong><span>${escapeHtml(formatDistance(option.distanceMeters, language))}</span>`;
     alternatives.append(button);
     alternatives.hidden = false;
     if (destination) {
@@ -788,15 +834,13 @@ function renderRoutePlanner() {
     }
     $('tripDistance').textContent = formatDistance(option.distanceMeters, language);
     $('tripArrival').textContent = new Date(Date.now() + option.durationSeconds * 1000).toLocaleTimeString(
-      language === 'zh' ? 'zh-NZ' : 'en-NZ',
+      localeFor(language),
       { hour: '2-digit', minute: '2-digit' }
     );
     $('cameraRouteCount').textContent = '—';
     $('navCameraCount').textContent = '—';
     ($('driveButton') as HTMLButtonElement).disabled = route?.coordinates.length ? false : true;
-    $('driveLabel').textContent = selectedTravelMode === 'transit'
-      ? (language === 'zh' ? '开始行程' : 'Start trip')
-      : (language === 'zh' ? '开始导航' : 'Start');
+    $('driveLabel').textContent = t(language, selectedTravelMode === 'transit' ? 'startTrip' : 'startShort');
   } else {
     alternatives.hidden = true;
     ($('driveButton') as HTMLButtonElement).disabled = true;
@@ -804,87 +848,136 @@ function renderRoutePlanner() {
   renderRouteInfo(option);
 }
 
+function searchInput(target: 'origin' | 'destination' | 'stop') {
+  return $(target === 'origin' ? 'originInput' : target === 'stop' ? 'stopInput' : 'destinationInput') as HTMLInputElement;
+}
+
+/** Applies a place chosen from suggestions or full search results. */
+function selectPlace(target: 'origin' | 'destination' | 'stop', place: Place) {
+  const coordinate: Coordinate = [place.longitude, place.latitude];
+  const shortLabel = place.label.split(',').slice(0, 2).join(',');
+  if (target === 'origin') {
+    manualOrigin = coordinate;
+    ($('originInput') as HTMLInputElement).value = shortLabel;
+  } else if (target === 'stop') {
+    routeStops.push({ label: shortLabel, coordinate });
+    ($('stopInput') as HTMLInputElement).value = '';
+    renderStops();
+  } else {
+    setDestinationSelection(coordinate, shortLabel);
+    ($('destinationInput') as HTMLInputElement).value = destinationName;
+    $('clearDestinationButton').hidden = false;
+    void rememberDestination({ label: place.label, latitude: place.latitude, longitude: place.longitude });
+  }
+  if (destination && (manualOrigin || current)) void planRoute();
+  else if (destination) { requestGps(); toast(t(language, 'chooseOrigin')); }
+}
+
 async function search(target: 'origin' | 'destination' | 'stop') {
   searchTarget = target;
-  const input = target === 'origin'
-    ? $('originInput') as HTMLInputElement
-    : target === 'stop'
-      ? $('stopInput') as HTMLInputElement
-      : $('destinationInput') as HTMLInputElement;
+  const input = searchInput(target);
   const query = input.value.trim();
   if (query.length < 3) { toast(t(language, 'minQuery')); return; }
-  const results = $('searchResults');
-  results.hidden = false;
-  results.innerHTML = `<div class="search-message">${t(language, 'searching')}</div>`;
+  // Claiming the results panel cancels any pending suggestion debounce or
+  // request, so a late suggestion can never replace these results.
+  const token = autocomplete.begin(input);
+  autocomplete.showMessage(input, t(language, 'searching'));
   try {
     const near = manualOrigin || current;
     const params = new URLSearchParams({ q: query, lang: language, provider: 'independent' });
     if (near) params.set('near', near.join(','));
     const places = await api<Place[]>(`/api/search?${params}`);
-    results.replaceChildren();
-    if (!places.length) { results.innerHTML = `<div class="search-message">${t(language, 'noResults')}</div>`; return; }
-    for (const place of places) {
-      const displayLabel = placeLabel(place);
-      const button = document.createElement('button');
-      button.className = 'result-item';
-      button.type = 'button';
-      const pin = document.createElement('span');
-      pin.className = 'result-pin';
-      pin.textContent = '⌖';
-      const label = document.createElement('span');
-      label.textContent = displayLabel;
-      button.append(pin, label);
-      button.onclick = () => {
-        results.hidden = true;
-        const coordinate: Coordinate = [place.longitude, place.latitude];
-        if (target === 'origin') {
-          manualOrigin = coordinate;
-          ($('originInput') as HTMLInputElement).value = displayLabel.split(',').slice(0, 2).join(',');
-        } else if (target === 'stop') {
-          routeStops.push({ label: displayLabel.split(',').slice(0, 2).join(','), coordinate });
-          ($('stopInput') as HTMLInputElement).value = '';
-          renderStops();
-        } else {
-          setDestinationSelection(coordinate, displayLabel.split(',').slice(0, 2).join(','));
-          ($('destinationInput') as HTMLInputElement).value = destinationName;
-          $('clearDestinationButton').hidden = false;
-          void rememberDestination({ label: displayLabel, latitude: place.latitude, longitude: place.longitude });
-        }
-        if (destination && (manualOrigin || current)) void planRoute();
-        else if (destination) toast(t(language, 'chooseOrigin'));
-      };
-      results.append(button);
-    }
+    if (!autocomplete.isCurrent(token)) return;
+    if (!places.length) { autocomplete.showMessage(input, t(language, 'noResults')); return; }
+    autocomplete.renderPlaces(input, places, (place) => selectPlace(target, place));
   } catch (error) {
-    results.innerHTML = `<div class="search-message">${t(language, 'searchFailed')}: ${escapeHtml(String((error as Error).message))}</div>`;
+    if (isAbortError(error) || !autocomplete.isCurrent(token)) return;
+    const failure = describeError(error);
+    const retry = () => void search(target);
+    // Server error text is never shown (5xx bodies are generic and English); use localised copy.
+    if (failure.offline) autocomplete.showMessage(input, t(language, 'searchOffline'), retry);
+    else if (failure.busy) autocomplete.showMessage(input, t(language, 'searchBusy', { seconds: Math.ceil((failure.retryAfterMs || 30000) / 1000) }), retry);
+    else autocomplete.showMessage(input, t(language, 'searchFailedRetry'), retry);
   }
 }
 
-async function planRoute(modeOverride?: TravelMode) {
+function secondsUntil(until: number) { return Math.max(1, Math.ceil((until - Date.now()) / 1000)); }
+
+/** Non-blocking navigation status shown in the trip sheet while a reroute is pending or failing. */
+function renderRerouteStatus() {
+  const node = $('navStatus');
+  window.clearTimeout(rerouteStatusTimer);
+  if (!rerouteStatus || !navigating) { node.hidden = true; node.textContent = ''; node.removeAttribute('data-kind'); return; }
+  node.hidden = false;
+  node.dataset.kind = rerouteStatus.kind;
+  if (rerouteStatus.kind === 'rerouting') { node.textContent = t(language, 'rerouting'); return; }
+  const key = rerouteStatus.kind === 'offline' ? 'rerouteOffline' : rerouteStatus.kind === 'busy' ? 'rerouteBusy' : 'rerouteRetry';
+  node.textContent = t(language, key, { seconds: secondsUntil(rerouteStatus.until) });
+  // Keep the countdown honest without re-rendering every frame.
+  rerouteStatusTimer = window.setTimeout(renderRerouteStatus, 1000);
+}
+
+function setRerouteStatus(next: RerouteStatus | null) {
+  rerouteStatus = next;
+  renderRerouteStatus();
+  requestAnimationFrame(updateNavigationOverlayLayout);
+}
+
+function clearRerouteRetry() {
+  window.clearTimeout(rerouteTimer);
+  rerouteTimer = 0;
+}
+
+function isOffRoute() {
+  if (!current || !route) return false;
+  return nearestOnRoute(current, route.coordinates).offsetMeters > 100;
+}
+
+function scheduleRerouteRetry(delay: number) {
+  clearRerouteRetry();
+  rerouteTimer = window.setTimeout(() => {
+    rerouteTimer = 0;
+    if (!navigating || manualOrigin) return;
+    if (!isOffRoute()) { setRerouteStatus(null); routeRequests.backoff.succeed(); return; }
+    lastRerouteAt = Date.now();
+    void planRoute(undefined, 'reroute');
+  }, delay + 50);
+}
+
+function setTripState(state: TripState) {
+  tripState = state;
+  $('tripEyebrow').textContent = t(language, state);
+}
+
+async function planRoute(modeOverride?: TravelMode, trigger: PlanTrigger = 'user') {
   const from = manualOrigin || current;
   if (!from || !destination) return;
-  routeAbort?.abort();
-  routeAbort = new AbortController();
-  const signal = routeAbort.signal;
-  $('tripEyebrow').textContent = 'CALCULATING ROUTE';
-  $('tripTitle').textContent = t(language, 'routeCalculating');
+  if (!routeRequests.canStart(trigger)) return;
+  const controller = routeRequests.begin(trigger);
+  const signal = controller.signal;
+  const rerouting = navigating && trigger !== 'user';
   const requestedMode = modeOverride || selectedTravelMode;
-  ($('driveButton') as HTMLButtonElement).disabled = true;
+  if (rerouting) setRerouteStatus({ kind: 'rerouting' });
+  else {
+    setTripState('stateCalculating');
+    $('tripTitle').textContent = t(language, 'routeCalculating');
+    ($('driveButton') as HTMLButtonElement).disabled = true;
+  }
   try {
     const stopCoordinates = routeStops.map((stop) => stop.coordinate);
     const planner = await fetchRoutePlan(API_BASE_URL, from, destination, stopCoordinates, signal, requestedMode, language);
-    if (signal.aborted) return;
+    if (signal.aborted || !routeRequests.isCurrent(controller)) return;
     const usable = planner.options.filter(option => routeFromOption(option).coordinates.length >= 2);
-    if (!usable.some(option => option.mode === requestedMode)) {
-      throw new Error(language === 'zh' ? '暂无可用路线，请调整地点或稍后重试。' : 'No available route. Change the destination or try again later.');
-    }
+    if (!usable.some(option => option.mode === requestedMode)) throw new Error(t(language, 'noRouteAvailable'));
+    routeRequests.succeed(controller);
+    clearRerouteRetry();
     routePlan = planner;
     drivingAlternatives = usable.filter(option => option.mode === 'drive').map(routeFromOption);
     drivingFromPlanner = true;
     selectedDrivingRoute = 0;
     selectedTravelMode = requestedMode;
     if (requestedMode === 'drive') applyDrivingRoute(0);
-    $('tripEyebrow').textContent = navigating ? 'DRIVING MODE' : 'ROUTE READY';
+    setTripState(navigating ? 'stateDriving' : 'stateRouteReady');
     $('tripTitle').textContent = destinationName || t(language, 'destinationFallback');
     $('navDestinationTitle').textContent = destinationName || t(language, 'destinationFallback');
     $('sheetNextCamera').textContent = routeCameras.length
@@ -893,11 +986,22 @@ async function planRoute(modeOverride?: TravelMode) {
     $('navNextCamera').textContent = $('sheetNextCamera').textContent;
     renderRoutePlanner();
     renderParking();
-    if (navigating && selectedTravelMode !== 'drive') document.body.dataset.travelMode = selectedTravelMode;
-    if (navigating) updateGuidance();
+    if (navigating) {
+      setRerouteStatus(null);
+      if (selectedTravelMode !== 'drive') document.body.dataset.travelMode = selectedTravelMode;
+      updateGuidance();
+    }
   } catch (error) {
-    if ((error as Error).name === 'AbortError' || signal.aborted) return;
-    if (navigating) stopNavigation();
+    if (isAbortError(error) || signal.aborted || !routeRequests.isCurrent(controller)) return;
+    const failure = describeError(error);
+    const { delay, notify } = routeRequests.fail(controller, failure.retryAfterMs);
+    if (navigating) {
+      // Never end a trip because a reroute failed: keep guiding along the last
+      // known route and retry quietly until the user ends navigation.
+      setRerouteStatus({ kind: failure.offline ? 'offline' : failure.busy ? 'busy' : 'retry', until: Date.now() + delay });
+      scheduleRerouteRetry(delay);
+      return;
+    }
     route = null;
     routePlan = null;
     drivingAlternatives = [];
@@ -905,9 +1009,14 @@ async function planRoute(modeOverride?: TravelMode) {
     map.clearRoute();
     renderRoutePlanner();
     ($('driveButton') as HTMLButtonElement).disabled = true;
-    $('tripEyebrow').textContent = 'ROUTE ERROR';
+    setTripState('stateRouteError');
     $('tripTitle').textContent = t(language, 'routeError');
-    toast(`${t(language, 'routeFailed')}: ${String((error as Error).message)}`);
+    // One message per failure streak; GPS-triggered retries stay silent.
+    if (notify) {
+      if (failure.busy) toast(t(language, 'routeBusy', { seconds: Math.ceil(delay / 1000) }));
+      else if (failure.offline) toast(t(language, 'routeOffline'));
+      else toast(t(language, failure.status >= 400 && failure.status < 500 ? 'noRouteAvailable' : 'routeFailedRetry'));
+    }
   }
 }
 
@@ -922,8 +1031,8 @@ function clearDestination() {
   map.renderParking([], null, selectParking);
   $('parkingSection').hidden = true;
   $('navParkingHint').hidden = true;
-  routeAbort?.abort();
-  routeAbort = null;
+  routeRequests.reset();
+  clearRerouteRetry();
   destination = null;
   destinationName = '';
   route = null;
@@ -938,7 +1047,8 @@ function clearDestination() {
   spokenCameras.clear();
 
   ($('destinationInput') as HTMLInputElement).value = '';
-  $('searchResults').hidden = true;
+  autocomplete.cancel();
+  autocomplete.close();
   $('stopEditor').hidden = true;
   $('travelModes').hidden = true;
   $('routeAlternatives').hidden = true;
@@ -950,7 +1060,7 @@ function clearDestination() {
   $('clearDestinationButton').hidden = true;
   ($('driveButton') as HTMLButtonElement).disabled = true;
 
-  $('tripEyebrow').textContent = 'READY TO GO';
+  setTripState('stateReady');
   $('tripTitle').textContent = t(language, 'initialTitle');
   $('tripDistance').textContent = '—';
   $('tripArrival').textContent = '—';
@@ -991,9 +1101,9 @@ function saveCurrentRoute() {
     void rememberRoute({
       destinationName, latitude: destination[1], longitude: destination[0], mode: selectedTravelMode,
       distanceMeters: record.distance, durationSeconds: record.duration
-    }).then(() => toast(language === 'zh' ? '路线已保存到账户' : 'Route saved to your account'))
+    }).then(() => toast(t(language, 'routeSavedAccount')))
       .catch((error) => toast(String(error)));
-  } else toast(language === 'zh' ? '路线仅保留到本次会话' : 'Route saved for this session only');
+  } else toast(t(language, 'routeSavedSession'));
 }
 
 let speechGeneration = 0;
@@ -1018,9 +1128,7 @@ function speak(message: string, stillRelevant: () => boolean = () => true) {
       if (preferred) utterance.voice = preferred;
       utterance.onend = () => resolve();
       utterance.onerror = (event) => {
-        if (event.error !== 'canceled' && event.error !== 'interrupted') toast(speechLanguage === 'zh'
-          ? '语音播放失败，请检查音量和浏览器语音权限。'
-          : 'Voice playback failed. Check volume and browser speech support.');
+        if (event.error !== 'canceled' && event.error !== 'interrupted') toast(t(speechLanguage, 'voiceFailed'));
         resolve();
       };
       speechSynthesis.resume();
@@ -1032,13 +1140,13 @@ function speak(message: string, stillRelevant: () => boolean = () => true) {
 function turnText(step: RouteStep) {
   if (step.instruction?.trim() && (language !== 'zh' || /[\u3400-\u9fff]/.test(step.instruction))) return step.instruction;
   const modifier = step.modifier || '';
-  const road = step.name || (language === 'zh' ? '道路' : 'the road');
-  if (step.maneuver === 'arrive') return language === 'zh' ? '到达目的地' : 'Arrive at destination';
-  if (step.maneuver === 'roundabout' || step.maneuver === 'rotary') return language === 'zh' ? `进入环岛，驶向 ${road}` : `Enter roundabout toward ${road}`;
-  if (modifier.includes('left')) return language === 'zh' ? `左转进入 ${road}` : `Turn left onto ${road}`;
-  if (modifier.includes('right')) return language === 'zh' ? `右转进入 ${road}` : `Turn right onto ${road}`;
-  if (step.maneuver === 'depart') return language === 'zh' ? `出发，沿 ${road} 行驶` : `Start on ${road}`;
-  return language === 'zh' ? `继续沿 ${road} 行驶` : `Continue on ${road}`;
+  const road = step.name || t(language, 'roadFallback');
+  if (step.maneuver === 'arrive') return t(language, 'arrived');
+  if (step.maneuver === 'roundabout' || step.maneuver === 'rotary') return t(language, 'turnRoundabout', { road });
+  if (modifier.includes('left')) return t(language, 'turnLeft', { road });
+  if (modifier.includes('right')) return t(language, 'turnRight', { road });
+  if (step.maneuver === 'depart') return t(language, 'turnDepart', { road });
+  return t(language, 'turnContinue', { road });
 }
 
 function turnArrow(step: RouteStep) {
@@ -1077,7 +1185,7 @@ function renderLaneGuidance(step?: RouteStep) {
     const item = document.createElement('span');
     item.className = 'lane' + (lane.valid ? ' recommended' : '') + (lane.indications.length > 1 ? ' multi' : '');
     item.textContent = laneSymbol(lane.indications);
-    item.setAttribute('aria-label', (lane.valid ? (language === 'zh' ? '推荐车道' : 'Recommended') : (language === 'zh' ? '车道' : 'Lane')) + ': ' + (lane.indications.join(', ') || 'unknown'));
+    item.setAttribute('aria-label', `${t(language, lane.valid ? 'laneRecommended' : 'laneLabel')}: ${lane.indications.join(', ') || t(language, 'laneUnknown')}`);
     return item;
   }));
   root.hidden = false;
@@ -1098,10 +1206,14 @@ function updateGuidance() {
     if (latestGpsFixAt - arrivalWithinRadiusAt >= 750) { stopNavigation(true); return; }
   } else arrivalWithinRadiusAt = 0;
   const position = nearestOnRoute(current, route.coordinates);
-  if (position.offsetMeters > 100 && Date.now() - lastRerouteAt > 20000 && !manualOrigin) {
+  if (position.offsetMeters > 100 && !manualOrigin && !rerouteTimer && Date.now() - lastRerouteAt > 20000 && routeRequests.canStart('reroute')) {
     lastRerouteAt = Date.now();
-    void planRoute();
-    return;
+    void planRoute(undefined, 'reroute');
+  } else if (position.offsetMeters <= 60 && rerouteStatus && rerouteStatus.kind !== 'rerouting') {
+    // Back on the old route: the pending retry is no longer needed.
+    clearRerouteRetry();
+    routeRequests.backoff.succeed();
+    setRerouteStatus(null);
   }
   const progress = position.alongMeters;
   const remaining = Math.max(0, route.distance - progress);
@@ -1111,7 +1223,7 @@ function updateGuidance() {
   $('turnDistance').textContent = maneuver ? formatDistance(Math.max(0, maneuver.along - progress), language) : '—';
   $('turnInstruction').textContent = maneuver ? turnText(maneuver.step) : t(language, 'arrived');
   renderLaneGuidance(maneuver && maneuver.along - progress <= 300 ? maneuver.step : undefined);
-  $('turnEta').textContent = new Date(Date.now() + remainingSeconds * 1000).toLocaleTimeString(language === 'zh' ? 'zh-NZ' : 'en-NZ', { hour: '2-digit', minute: '2-digit' });
+  $('turnEta').textContent = new Date(Date.now() + remainingSeconds * 1000).toLocaleTimeString(localeFor(language), { hour: '2-digit', minute: '2-digit' });
   $('turnRemaining').textContent = formatDistance(remaining, language);
   $('tripDistance').textContent = formatDistance(remaining, language);
   $('tripArrival').textContent = $('turnEta').textContent;
@@ -1127,7 +1239,7 @@ function updateGuidance() {
     const key = `${language}:${maneuver.step.location.join(',')}:${toTurn <= 100 ? '100' : '500'}`;
     if (toTurn > 0 && toTurn <= 500 && key !== lastTurnKey) {
       lastTurnKey = key;
-      speak(language === 'zh' ? `${formatDistance(toTurn, 'zh')}后，${turnText(maneuver.step)}` : `In ${formatDistance(toTurn, 'en')}, ${turnText(maneuver.step)}`, () => navigating && key === lastTurnKey);
+      speak(t(language, 'speakTurn', { distance: formatDistance(toTurn, language), instruction: turnText(maneuver.step) }), () => navigating && key === lastTurnKey);
     }
   }
   const upcoming = routeCameras.filter((item) => item.confidence === 'high' && item.alongMeters >= progress - 15).sort((a, b) => a.alongMeters - b.alongMeters)[0];
@@ -1146,7 +1258,7 @@ function updateGuidance() {
       if (ahead <= threshold && ahead > 0 && !spokenCameras.has(key)) {
         spokenCameras.add(key);
         const label = cameraLabel(upcoming.camera.type, language);
-        speak(language === 'zh' ? `前方 ${threshold} 米${label}，${upcoming.camera.location}` : `${label} in ${threshold} metres, ${upcoming.camera.location}`, () => navigating && current !== null && route !== null && upcoming.alongMeters > nearestOnRoute(current, route.coordinates).alongMeters);
+        speak(t(language, 'speakCamera', { threshold, label, location: upcoming.camera.location }), () => navigating && current !== null && route !== null && upcoming.alongMeters > nearestOnRoute(current, route.coordinates).alongMeters);
       }
     }
   } else $('cameraAlert').hidden = true;
@@ -1158,6 +1270,7 @@ async function startNavigation() {
   if (!current) { requestGps(); toast(t(language, 'noGps')); return; }
   if (!route) { toast(t(language, 'routeError')); return; }
   navigating = true;
+  $('updateBanner').hidden = true;
   journeyStarted = Date.now();
   journeyDistance = 0;
   journeyPoints = [[...current] as Coordinate];
@@ -1167,7 +1280,7 @@ async function startNavigation() {
   requestCompassFromGesture();
   document.body.dataset.travelMode = selectedTravelMode;
   $('followButton').classList.add('active');
-  $('tripEyebrow').textContent = selectedTravelMode === 'drive' ? 'DRIVING MODE' : 'GUIDANCE MODE';
+  setTripState(selectedTravelMode === 'drive' ? 'stateDriving' : 'stateGuidance');
   $('driveLabel').textContent = t(language, 'stop');
   $('driveIcon').textContent = '■';
   $('drivingStatus').textContent = t(language, 'drivingStarted');
@@ -1178,9 +1291,7 @@ async function startNavigation() {
   lastTurnKey = '';
   if (manualOrigin && current) { manualOrigin = null; void planRoute(); }
   speak(
-    selectedTravelMode === 'transit'
-      ? (language === 'zh' ? '行程开始，请按照换乘信息出行。' : 'Trip started. Follow the transit itinerary.')
-      : (language === 'zh' ? '导航开始，请注意安全。' : 'Navigation started. Travel safely.')
+    t(language, selectedTravelMode === 'transit' ? 'navStartedTransit' : 'navStarted')
   );
   await updateWakeLock();
   updateGuidance();
@@ -1190,13 +1301,19 @@ function stopNavigation(arrived = false) {
   if (!navigating) return;
   if (isSignedIn() && destination && route) {
     void rememberRoute({
-      destinationName: destinationName || 'Destination', latitude: destination[1], longitude: destination[0],
+      destinationName: destinationName || t(language, 'destinationFallback'), latitude: destination[1], longitude: destination[0],
       mode: selectedTravelMode, distanceMeters: route.distance, durationSeconds: route.duration
     }).catch(() => { /* Ending navigation must work even if account sync fails. */ });
   }
   navigating = false;
+  clearRerouteRetry();
+  setRerouteStatus(null);
+  // A failed or pending reroute must not keep running after the trip ends.
+  if (routeRequests.pendingTrigger !== 'user') routeRequests.cancel();
+  routeRequests.backoff.succeed();
   stopSpeech();
   showJourneySummary(arrived);
+  showUpdateBanner();
   delete document.body.dataset.travelMode;
   renderLaneGuidance();
   $('cameraAlert').hidden = true;
@@ -1205,22 +1322,20 @@ function stopNavigation(arrived = false) {
   if (arrived && selectedParking && parkingDestination && selectedTravelMode === 'drive') {
     parkedAtParking = true;
     renderParking();
-    $('bottomPanel').classList.remove('sheet-collapsed');
+    setSheetCollapsed(false);
     requestAnimationFrame(() => $('parkingSection').scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
   }
-  $('tripEyebrow').textContent = arrived ? (parkedAtParking ? 'PARKING REACHED' : 'ARRIVED') : 'ROUTE READY';
+  setTripState(arrived ? (parkedAtParking ? 'stateParkingReached' : 'stateArrived') : 'stateRouteReady');
   $('driveLabel').textContent = t(language, 'start');
   $('driveIcon').textContent = '➤';
   $('drivingStatus').textContent = t(language, 'drivingStopped');
   void wakeLock?.release();
   wakeLock = null;
-  if (arrived) speak(parkedAtParking
-    ? (language === 'zh' ? '已到达停车点。停车后请继续步行到目的地。' : 'You have reached the parking place. Continue on foot to your destination.')
-    : (language === 'zh' ? '已到达目的地。' : 'You have arrived.'));
+  if (arrived) speak(t(language, parkedAtParking ? 'arrivedParkingSpeech' : 'arrivedSpeech'));
 }
 
-function showOverlay(id: string) { $(id).hidden = false; }
-function hideOverlay(id: string) { $(id).hidden = true; }
+function showDialog(id: string) { openDialog($(id) as HTMLDialogElement); }
+function hideDialog(id: string) { closeDialog($(id) as HTMLDialogElement); }
 
 function hidePoiCard() {
   selectedPoi = null;
@@ -1235,6 +1350,8 @@ function renderPoiAccountState(place: PoiSelection) {
   const note = $('poiNote') as HTMLTextAreaElement;
   const saveNote = $('poiSaveNote') as HTMLButtonElement;
   favorite.textContent = stored?.isFavorite ? '♥' : '♡';
+  favorite.setAttribute('aria-pressed', String(stored?.isFavorite === true));
+  favorite.setAttribute('aria-label', t(language, stored?.isFavorite ? 'poiFavoriteRemove' : 'poiFavorite'));
   favorite.classList.toggle('active', stored?.isFavorite === true);
   favorite.disabled = false;
   note.disabled = !signedIn;
@@ -1249,19 +1366,17 @@ function renderPoiAccountState(place: PoiSelection) {
   comment.value = review?.comment || '';
   comment.disabled = !signedIn;
   saveReview.disabled = !signedIn;
-  $('poiOwnReviewHint').textContent = signedIn
-    ? (language === 'zh' ? '仅保存在你的 Waybi 账户' : 'Private to your Waybi account')
-    : (language === 'zh' ? '登录后撰写私人评价' : 'Sign in to write a private review');
+  $('poiOwnReviewHint').textContent = t(language, signedIn ? 'poiReviewHintSignedIn' : 'poiReviewHintGuest');
   $('poiAccountHint').textContent = signedIn
-    ? (language === 'zh' ? `同步到 ${currentAccountEmail()}` : `Synced to ${currentAccountEmail()}`)
-    : (language === 'zh' ? '登录后同步收藏和备注' : 'Sign in to sync favorites and notes');
+    ? t(language, 'poiAccountHintSignedIn', { email: currentAccountEmail() })
+    : t(language, 'poiAccountHintGuest');
 }
 
 function showPoiCard(place: PoiSelection) {
   if (uiMode === 'navigation') return;
   selectedPoi = place;
   $('poiTitle').textContent = place.name;
-  $('poiType').textContent = place.primaryType || 'OPENSTREETMAP';
+  $('poiType').textContent = place.primaryType || t(language, 'poiTypeFallback');
   $('poiAddress').textContent = place.address || `${place.coordinate[1].toFixed(5)}, ${place.coordinate[0].toFixed(5)}`;
 
   const rating = $('poiRating');
@@ -1271,7 +1386,7 @@ function showPoiCard(place: PoiSelection) {
     stars.className = 'stars';
     stars.textContent = '★'.repeat(Math.max(1, Math.min(5, Math.round(place.rating))));
     const text = document.createElement('span');
-    text.textContent = `${place.rating.toFixed(1)} · ${place.userRatingCount ?? 0} ${language === 'zh' ? '条评分' : 'ratings'}`;
+    text.textContent = t(language, 'poiRatings', { rating: place.rating.toFixed(1), count: place.userRatingCount ?? 0 });
     rating.append(stars, text);
     rating.hidden = false;
   } else rating.hidden = true;
@@ -1307,7 +1422,7 @@ function showPoiCard(place: PoiSelection) {
     chip.textContent = value;
     meta.append(chip);
   };
-  addMeta(place.businessStatus === 'OPERATIONAL' ? (language === 'zh' ? '营业中' : 'Operational') : (place.businessStatus || ''));
+  addMeta(place.businessStatus === 'OPERATIONAL' ? t(language, 'poiOperational') : (place.businessStatus || ''));
   addMeta(place.priceLevel?.replaceAll('_', ' ') || '');
   addMeta(place.phone ? `☎ ${place.phone}` : '');
 
@@ -1355,7 +1470,7 @@ function showPoiCard(place: PoiSelection) {
       link.href = review.sourceUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.textContent = language === 'zh' ? '查看来源 ↗' : 'View source ↗';
+      link.textContent = t(language, 'poiViewSource');
       root.append(link);
     }
     reviewsRoot.append(root);
@@ -1366,13 +1481,13 @@ function showPoiCard(place: PoiSelection) {
   renderPoiAccountState(place);
   $('poiCard').hidden = false;
   document.body.classList.add('poi-open');
-  $('searchResults').hidden = true;
+  autocomplete.close();
 }
 
 async function saveSelectedPlace(nextFavorite?: boolean) {
   if (!selectedPoi) return;
   if (!isSignedIn()) {
-    toast(language === 'zh' ? '请先在设置中登录，再同步收藏和备注。' : 'Sign in in Settings to sync favorites and notes.');
+    toast(t(language, 'signInToSync'));
     return;
   }
   const stored = savedPlace(selectedPoi.placeId);
@@ -1390,7 +1505,7 @@ async function saveSelectedPlace(nextFavorite?: boolean) {
     });
     renderPoiAccountState(selectedPoi);
     renderTripFlags();
-    toast(language === 'zh' ? '已同步到账号' : 'Saved to your account');
+    toast(t(language, 'savedToAccount'));
   } catch (error) {
     toast(String((error as Error).message));
   }
@@ -1414,53 +1529,81 @@ function navigateToSelectedPoi() {
   }
 }
 
+const sheetQuery = window.matchMedia('(max-width: 759px)');
+function sheetCollapsed() { return $('bottomPanel').classList.contains('sheet-collapsed'); }
+
+/**
+ * Keeps the sheet handle's state in sync and keeps the off-screen part of a
+ * collapsed phone sheet out of the Tab order (inert).
+ */
+function renderSheetHandle() {
+  const collapsed = sheetCollapsed() && sheetQuery.matches;
+  const handle = $('sheetHandle');
+  handle.setAttribute('aria-expanded', String(!collapsed));
+  handle.setAttribute('aria-label', t(language, collapsed ? 'expandSheet' : 'collapseSheet'));
+  $('sheetBody').toggleAttribute('inert', collapsed);
+}
+
+function setSheetCollapsed(collapsed: boolean) {
+  $('bottomPanel').classList.toggle('sheet-collapsed', collapsed);
+  renderSheetHandle();
+}
+
 function initBottomSheet() {
   const panel = $('bottomPanel');
-  const handle = panel.querySelector<HTMLElement>('.panel-handle');
-  if (!handle) return;
-
-  if (window.matchMedia('(max-width: 759px)').matches) {
-    panel.classList.add('sheet-collapsed');
-  }
+  const handle = $('sheetHandle');
+  if (sheetQuery.matches) panel.classList.add('sheet-collapsed');
+  renderSheetHandle();
+  sheetQuery.addEventListener?.('change', renderSheetHandle);
 
   let startY = 0;
   let latestY = 0;
+  let dragging = false;
+  let suppressClick = false;
 
   const finish = () => {
+    if (!dragging) return;
+    dragging = false;
     panel.classList.remove('sheet-dragging');
     const delta = latestY - startY;
-    if (Math.abs(delta) < 18) {
-      panel.classList.toggle('sheet-collapsed');
-    } else if (delta < 0) {
-      panel.classList.remove('sheet-collapsed');
-    } else {
-      panel.classList.add('sheet-collapsed');
-    }
+    if (Math.abs(delta) < 18) setSheetCollapsed(!sheetCollapsed());
+    else setSheetCollapsed(delta > 0);
     panel.style.transform = '';
+    // The pointer gesture already toggled; ignore the click that follows it.
+    suppressClick = true;
+    window.setTimeout(() => { suppressClick = false; }, 0);
   };
 
   handle.addEventListener('pointerdown', (event) => {
+    dragging = true;
     startY = event.clientY;
     latestY = event.clientY;
     panel.classList.add('sheet-dragging');
-    handle.setPointerCapture(event.pointerId);
+    handle.setPointerCapture?.(event.pointerId);
   });
   handle.addEventListener('pointermove', (event) => {
-    if (!panel.classList.contains('sheet-dragging')) return;
+    if (!dragging) return;
     latestY = event.clientY;
     const delta = latestY - startY;
-    const base = panel.classList.contains('sheet-collapsed')
-      ? Math.max(0, panel.offsetHeight - 108)
-      : 0;
+    const base = sheetCollapsed() ? Math.max(0, panel.offsetHeight - 108) : 0;
     panel.style.transform = `translateY(${Math.max(0, base + delta)}px)`;
   });
   handle.addEventListener('pointerup', finish);
   handle.addEventListener('pointercancel', finish);
+  // Keyboard and assistive tech: Enter/Space toggle (click), arrows set the state.
+  handle.addEventListener('click', () => {
+    if (suppressClick) return;
+    setSheetCollapsed(!sheetCollapsed());
+  });
+  handle.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowUp') { event.preventDefault(); setSheetCollapsed(false); }
+    else if (event.key === 'ArrowDown') { event.preventDefault(); setSheetCollapsed(true); }
+  });
 }
 
 async function saveSelectedReview() {
   if (!selectedPoi || !isSignedIn()) {
-    toast(language === 'zh' ? '请先登录再评价地点。' : 'Sign in to review a place.');
+    toast(t(language, 'signInToReview'));
     return;
   }
   try {
@@ -1471,40 +1614,31 @@ async function saveSelectedReview() {
       comment: ($('poiOwnComment') as HTMLTextAreaElement).value.trim()
     });
     renderPoiAccountState(selectedPoi);
-    toast(language === 'zh' ? '私人评价已保存' : 'Private review saved');
+    toast(t(language, 'reviewSaved'));
   } catch (error) { toast(String((error as Error).message)); }
 }
 
 $('originInput').addEventListener('focus', () => { searchTarget = 'origin'; });
 $('destinationInput').addEventListener('focus', () => { searchTarget = 'destination'; });
 $('stopInput').addEventListener('focus', () => { searchTarget = 'stop'; $('stopEditor').hidden = false; });
-for (const [id, target] of [['originInput', 'origin'], ['destinationInput', 'destination'], ['stopInput', 'stop']] as const) {
-  $(id).addEventListener('keydown', (event) => { if ((event as KeyboardEvent).key === 'Enter') { (event.target as HTMLInputElement).blur(); void search(target); } });
-}
-$('searchButton').onclick = () => void search('destination');
-$('stopSearchButton').onclick = () => void search('stop');
-initAutocomplete({
+const autocomplete = initAutocomplete({
   origin: $('originInput') as HTMLInputElement,
   destination: $('destinationInput') as HTMLInputElement,
+  extraInputs: [$('stopInput') as HTMLInputElement],
   results: $('searchResults'),
   language: () => language,
   recent: recentDestinations,
   near: () => manualOrigin || current,
-  select: (target, place: SuggestedPlace) => {
-    const coordinate: Coordinate = [place.longitude, place.latitude];
-    if (target === 'origin') {
-      manualOrigin = coordinate;
-      ($('originInput') as HTMLInputElement).value = place.label.split(',').slice(0, 2).join(',');
-    } else {
-      setDestinationSelection(coordinate, place.label.split(',').slice(0, 2).join(','));
-      ($('destinationInput') as HTMLInputElement).value = destinationName;
-      $('clearDestinationButton').hidden = false;
-      void rememberDestination({ label: place.label, latitude: place.latitude, longitude: place.longitude });
-    }
-    if (destination && (manualOrigin || current)) void planRoute();
-    else if (destination) toast(t(language, 'chooseOrigin'));
-  }
+  select: (target, place: SuggestedPlace) => selectPlace(target, place)
 });
+for (const [id, target] of [['originInput', 'origin'], ['destinationInput', 'destination'], ['stopInput', 'stop']] as const) {
+  $(id).addEventListener('keydown', (event) => {
+    // Enter on a highlighted suggestion is handled by the combobox.
+    if ((event as KeyboardEvent).key === 'Enter' && !event.defaultPrevented) { event.preventDefault(); void search(target); }
+  });
+}
+$('searchButton').onclick = () => void search('destination');
+$('stopSearchButton').onclick = () => void search('stop');
 $('useGpsButton').onclick = () => {
   manualOrigin = null;
   ($('originInput') as HTMLInputElement).value = '';
@@ -1539,7 +1673,7 @@ $('driveButton').onclick = () => {
   else void startNavigation();
 };
 $('navEndButton').onclick = () => stopNavigation();
-$('navDataButton').onclick = () => showOverlay('dataOverlay');
+$('navDataButton').onclick = () => showDialog('dataDialog');
 $('poiClose').onclick = hidePoiCard;
 $('poiNavigate').onclick = navigateToSelectedPoi;
 $('poiFavorite').onclick = () => {
@@ -1584,7 +1718,7 @@ $('trafficToggle').onclick = () => {
 for (const [id, degrees] of [['rotateLeft', -45], ['rotateRight', 45]] as const) {
   $(id).onclick = () => {
     if (!map.rotateBy(degrees)) {
-      toast(language === 'zh' ? '旋转需要支持 WebGL 的矢量地图。' : 'Rotation needs a WebGL-capable vector map.');
+      toast(t(language, 'rotationUnavailable'));
       return;
     }
     following = false;
@@ -1602,65 +1736,71 @@ $('navSheetHandle').onclick = () => {
   $('navSecondary').hidden = !expanded;
   document.body.classList.toggle('nav-sheet-expanded', expanded);
   $('navSheetHandle').setAttribute('aria-expanded', String(expanded));
-  $('navSheetHandle').setAttribute('aria-label', language === 'zh' ? (expanded ? '收起行程详情' : '展开行程详情') : (expanded ? 'Hide trip details' : 'Show trip details'));
+  $('navSheetHandle').setAttribute('aria-label', t(language, expanded ? 'hideTripDetails' : 'showTripDetails'));
   requestAnimationFrame(updateNavigationOverlayLayout);
   if (current && route && navigating && following) requestAnimationFrame(() => map.focusNavigation(lookAheadCenter(current!, latestHeading, route!)));
 };
-$('settingsButton').onclick = () => showOverlay('settingsOverlay');
+$('settingsButton').onclick = () => showDialog('settingsDialog');
 $('profileButton').onclick = () => { window.location.href = '/dashboard'; };
-$('closeSettings').onclick = () => hideOverlay('settingsOverlay');
-$('dataButton').onclick = () => showOverlay('dataOverlay');
-$('closeData').onclick = () => hideOverlay('dataOverlay');
-for (const id of ['settingsOverlay', 'dataOverlay']) $(id).addEventListener('click', (event) => { if (event.target === $(id)) hideOverlay(id); });
+$('closeSettings').onclick = () => hideDialog('settingsDialog');
+$('dataButton').onclick = () => showDialog('dataDialog');
+$('cameraListButton').onclick = () => {
+  const list = $('cameraList');
+  list.hidden = !list.hidden;
+  $('cameraListButton').setAttribute('aria-expanded', String(!list.hidden));
+  if (!list.hidden) renderCameraList();
+};
+$('closeData').onclick = () => hideDialog('dataDialog');
 function applyLanguage() {
-  document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
   applyUiLanguage(language);
-  $('cameraAlert').setAttribute('aria-label', language === 'zh' ? '前方摄像头提醒' : 'Upcoming safety camera');
-  $('keepScreenAwakeTitle').textContent = language === 'zh' ? '导航时屏幕常亮' : 'Keep screen awake';
-  $('keepScreenAwakeDescription').textContent = language === 'zh' ? '导航期间防止自动锁屏' : 'Prevent auto-lock while navigating';
-  $('profileButton').setAttribute('aria-label', language === 'zh' ? '账户总览' : 'Account dashboard');
-  $('profileButton').title = language === 'zh' ? '账户总览' : 'Account dashboard';
-  $('poiOwnReviewTitle').textContent = language === 'zh' ? '我的评价' : 'My review';
-  $('poiOwnRatingLabel').textContent = language === 'zh' ? '我的评分' : 'My rating';
-  $('poiOwnComment').setAttribute('placeholder', language === 'zh' ? '写下自己的私人评价' : 'Write a review for your own records');
-  $('poiSaveReview').textContent = language === 'zh' ? '保存我的评价' : 'Save my review';
-  $('zhButton').classList.toggle('selected', language === 'zh');
-  $('enButton').classList.toggle('selected', language === 'en');
+  for (const [id, code] of [['zhButton', 'zh'], ['enButton', 'en']] as const) {
+    $(id).classList.toggle('selected', language === code);
+    $(id).setAttribute('aria-pressed', String(language === code));
+  }
   ($('originInput') as HTMLInputElement).placeholder = currentPlaceLabel ? `${t(language, 'currentPlace')}: ${currentPlaceLabel}` : t(language, 'origin');
-  $('driveLabel').textContent = t(language, navigating ? 'stop' : 'start');
+  if (currentPlaceLabel) $('gpsBadge').title = currentPlaceLabel;
+  $('tripEyebrow').textContent = t(language, tripState);
+  $('driveLabel').textContent = navigating ? t(language, 'stop') : route ? t(language, selectedTravelMode === 'transit' ? 'startTrip' : 'startShort') : t(language, 'start');
   $('drivingStatus').textContent = t(language, navigating ? 'drivingStarted' : 'drivingStopped');
-  $('navEndLabel').textContent = t(language, 'stop');
-  $('navDestinationLabel').textContent = selectedParking && selectedTravelMode === 'drive'
-    ? (language === 'zh' ? '停车点' : 'PARKING STOP')
-    : (language === 'zh' ? '目的地' : 'DESTINATION');
-  $('navCamerasLabel').textContent = t(language, 'camerasAlong');
-  $('navDistanceLabel').textContent = t(language, 'distance');
-  $('navArrivalLabel').textContent = t(language, 'arrival');
-  $('navSpeedLimitLabel').textContent = language === 'zh' ? '当前限速' : 'Speed limit';
-  $('navNextCameraLabel').textContent = language === 'zh' ? '下一摄像头' : 'Next camera';
-  $('navRouteStepsLabel').textContent = language === 'zh' ? '路线步骤' : 'Route steps';
-  $('navDataButton').textContent = t(language, 'dataDetails');
-  $('navBanner').setAttribute('aria-label', language === 'zh' ? '下一步转弯' : 'Next maneuver');
-  $('navSheet').setAttribute('aria-label', language === 'zh' ? '导航行程' : 'Navigation trip');
-  $('navSheetHandle').setAttribute('aria-label', language === 'zh'
-    ? ($('navSecondary').hidden ? '展开行程详情' : '收起行程详情')
-    : ($('navSecondary').hidden ? 'Show trip details' : 'Hide trip details'));
+  $('navDestinationLabel').textContent = t(language, selectedParking && selectedTravelMode === 'drive' ? 'parkingStop' : 'destinationLabel');
+  $('navSheetHandle').setAttribute('aria-label', t(language, $('navSecondary').hidden ? 'showTripDetails' : 'hideTripDetails'));
   if (route) $('navDestinationTitle').textContent = destinationName || t(language, 'destinationFallback');
-  if (!route && !navigating) $('tripTitle').textContent = t(language, 'initialTitle');
-  if (cameraResponse) {
-    $('dataStatus').textContent = `${cameras.length} ${t(language, 'cameraCount')} · ${cameraResponse.sourceUpdatedAt}${cameraResponse.syncStatus === 'live' ? '' : ` · ${t(language, 'cached')}`}`;
-    $('checkedAt').textContent = cameraResponse.checkedAt ? new Date(cameraResponse.checkedAt).toLocaleString(language === 'zh' ? 'zh-NZ' : 'en-NZ') : t(language, 'neverChecked');
-    $('syncStatus').textContent = t(language, cameraResponse.syncStatus === 'live' ? 'synced' : cameraResponse.syncStatus === 'stale' ? 'stale' : cameraResponse.syncStatus === 'offline' ? 'offline' : 'seed');
-  } else $('dataStatus').textContent = t(language, 'camerasLoading');
+  if (!route && !navigating && tripState === 'stateReady') $('tripTitle').textContent = t(language, 'initialTitle');
+  if (tripState === 'stateRouteError') $('tripTitle').textContent = t(language, 'routeError');
+  if (tripState === 'stateCalculating') $('tripTitle').textContent = t(language, 'routeCalculating');
+  if (cameraResponse) renderCameraStatus();
+  else $('dataStatus').textContent = t(language, 'camerasLoading');
+  renderSheetHandle();
   renderCameras();
   renderAccount();
   renderGpsStatus();
   renderSpeedHud();
   renderTripFlags();
   renderParking();
+  renderRerouteStatus();
+  if (routePlan || drivingAlternatives.length) renderRoutePlanner();
+  if (route) {
+    $('tripDistance').textContent = formatDistance(navigating ? Math.max(0, route.distance - nearestOnRoute(current || route.coordinates[0]!, route.coordinates).alongMeters) : route.distance, language);
+  }
   if (selectedPoi) showPoiCard(selectedPoi);
   if (navigating) updateGuidance();
 }
+
+/** Appearance: follow the system, or a light/dark choice shared with the website and dashboard. */
+function renderThemeChoice(preference: ThemePreference = readTheme()) {
+  for (const id of ['themeSystem', 'themeLight', 'themeDark']) {
+    $(id).setAttribute('aria-pressed', String($(id).dataset.themeChoice === preference));
+  }
+}
+for (const id of ['themeSystem', 'themeLight', 'themeDark']) {
+  $(id).onclick = () => {
+    const preference = $(id).dataset.themeChoice as ThemePreference;
+    writeTheme(preference);
+    renderThemeChoice(preference);
+  };
+}
+renderThemeChoice();
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme());
 $('zhButton').onclick = () => changeLanguage('zh');
 $('enButton').onclick = () => changeLanguage('en');
 ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled;
@@ -1670,9 +1810,9 @@ $('voiceToggle').addEventListener('change', () => {
   if (!voiceEnabled) stopSpeech();
   renderTripFlags();
   void rememberPreferences(language, voiceEnabled);
-  if (voiceEnabled) speak(language === 'zh' ? '语音提示已开启。' : 'Voice guidance is on.');
+  if (voiceEnabled) speak(t(language, 'voiceOnSpeech'));
 });
-$('voiceTestButton').onclick = () => speak(language === 'zh' ? '语音测试。前方请注意路况。' : 'Voice test. Watch the road ahead.');
+$('voiceTestButton').onclick = () => speak(t(language, 'voiceTestSpeech'));
 ($('laneToggle') as HTMLInputElement).checked = laneGuidanceEnabled;
 $('laneToggle').addEventListener('change', () => {
   laneGuidanceEnabled = ($('laneToggle') as HTMLInputElement).checked;
@@ -1682,9 +1822,16 @@ $('laneToggle').addEventListener('change', () => {
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) void updateWakeLock(); });
 $('gpsBadge').onclick = () => { requestCompassFromGesture(); requestGps(); };
+let lastLayout = layoutSignature(window.innerWidth, window.innerHeight);
 window.addEventListener('resize', () => {
+  // Keyboards and collapsing address bars resize the viewport constantly; only a
+  // rotation or a breakpoint change should undo the user's own pan and zoom.
+  const layout = layoutSignature(window.innerWidth, window.innerHeight);
+  const changed = layout !== lastLayout;
+  lastLayout = layout;
   if (!route) return;
   requestAnimationFrame(updateNavigationOverlayLayout);
+  if (!changed) return;
   if (navigating && current && following) map.focusNavigation(lookAheadCenter(current, latestHeading, route));
   else if (uiMode === 'explore') map.fitRoute(route);
 });
@@ -1694,10 +1841,28 @@ renderSpeedHud();
 renderTripFlags();
 $('trafficToggle').hidden = true;
 
+window.addEventListener(LANGUAGE_EVENT, (event) => {
+  const next = (event as CustomEvent<Language>).detail;
+  if ((next === 'en' || next === 'zh') && next !== language) changeLanguage(next, false);
+});
+window.addEventListener('storage', (event) => {
+  if (event.key === 'waybi-ui-language' && (event.newValue === 'en' || event.newValue === 'zh') && event.newValue !== language) changeLanguage(event.newValue, false);
+});
 window.addEventListener('kiwi-account-change', () => {
   renderTripFlags();
   if (selectedPoi) renderPoiAccountState(selectedPoi);
 });
+
+// Offline shell and updates: a new version is offered, never forced. During
+// navigation the prompt waits until the trip ends.
+let applyUpdate: (() => void) | null = null;
+function showUpdateBanner() {
+  if (!applyUpdate || navigating) return;
+  $('updateBanner').hidden = false;
+}
+registerUpdates((apply) => { applyUpdate = apply; showUpdateBanner(); });
+$('updateReload').onclick = () => applyUpdate?.();
+$('updateLater').onclick = () => { $('updateBanner').hidden = true; applyUpdate = null; };
 
 async function initializeMap() {
   await map.init({
@@ -1707,19 +1872,18 @@ async function initializeMap() {
       $('followButton').classList.remove('active');
     },
     onMapClick: () => {
-      $('searchResults').hidden = true;
+      autocomplete.close();
       hidePoiCard();
     },
     onPoiSelected: showPoiCard
   });
-  mapLanguage = language;
   map.setTrafficEnabled(trafficLayerEnabled);
   renderParking();
   if (destination && !parkingDestination && !parkingPlaces.length) void loadParking();
 }
 
 void initializeMap().catch((error) => {
-  toast(`Waybi Map: ${String((error as Error).message)}`);
+  toast(t(language, 'mapLoadFailed', { message: String((error as Error).message) }));
 });
 
 void initGps();
@@ -1727,12 +1891,12 @@ void loadCameras();
 if (typeof DeviceOrientationEvent !== 'undefined' && !('requestPermission' in DeviceOrientationEvent)) listenToCompass();
 window.setInterval(() => void loadCameras(), 15 * 60_000);
 
-const accountRoot = document.createElement('div');
-accountRoot.className = 'account-section';
-document.querySelector('#settingsOverlay .modal')?.append(accountRoot);
+const accountRoot = $('accountSection');
 applyLanguage();
 void initAccount(accountRoot, () => language, () => voiceEnabled, (saved: AccountProfile) => {
-  language = saved.language;
+  // The account's language is the source of truth once signed in; store it in
+  // the shared key so the website and dashboard follow it too.
+  if (saved.language === 'en' || saved.language === 'zh') changeLanguage(saved.language, false);
   voiceEnabled = saved.voiceEnabled;
   ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled;
   applyLanguage();
@@ -1760,41 +1924,44 @@ async function updateWakeLock() {
   try { await wakeLockRequest; } finally { wakeLockRequest = null; }
 }
 
-function changeLanguage(next: Language) {
+function changeLanguage(next: Language, persistToAccount = true) {
+  if (next === language) { applyLanguage(); return; }
   language = next;
-  localStorage.setItem('kiwi-language', next);
+  writeLanguage(next);
   applyLanguage();
-  updateGuidance();
-  void rememberPreferences(language, voiceEnabled);
-  if (mapLanguage && mapLanguage !== next) {
-    if (!navigating) window.location.reload();
-    else toast(next === 'zh' ? '导航文字已更新。地图标签将在重新打开时更新。' : 'Navigation text updated. Map labels update when reopened.');
-  }
+  if (persistToAccount) void rememberPreferences(language, voiceEnabled);
+  // Map labels switch in place: destination, route, stops and navigation stay.
+  map.setLanguage(next);
 }
 
 function showJourneySummary(arrived: boolean) {
-  const root = $('journeySummaryOverlay');
-  const points = journeyPoints;
-  const title = language === 'zh' ? (arrived ? '到啦！' : '本次导航已结束') : (arrived ? 'You made it!' : 'Journey complete');
-  const minutes = Math.max(1, Math.round((Date.now() - journeyStarted) / 60000));
+  const elapsed = Date.now() - journeyStarted;
+  const kind = journeySummaryKind(arrived, journeyDistance, elapsed);
+  if (kind === 'none') { toast(t(language, 'navigationEnded')); return; }
+  const root = $('journeySummaryDialog') as HTMLDialogElement;
+  const points = journeyPoints.length ? journeyPoints : current ? [current] : [];
+  const title = t(language, kind === 'arrived' ? 'journeyArrived' : 'journeyEnded');
+  const minutes = Math.max(1, Math.round(elapsed / 60000));
   const minX = Math.min(...points.map(p => p[0])), maxX = Math.max(...points.map(p => p[0]));
   const minY = Math.min(...points.map(p => p[1])), maxY = Math.max(...points.map(p => p[1]));
   const aspect = Math.cos((minY + maxY) / 2 * Math.PI / 180);
   const scale = Math.min(300 / Math.max(.00001, (maxX - minX) * aspect), 140 / Math.max(.00001, maxY - minY));
   const trace = points.map(p => `${(180 + (p[0] - (minX + maxX) / 2) * aspect * scale).toFixed(1)},${(95 - (p[1] - (minY + maxY) / 2) * scale).toFixed(1)}`).join(' ');
   root.replaceChildren();
-  const modal = document.createElement('section'); modal.className = 'modal journey-summary';
-  modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', 'journeySummaryTitle');
-  modal.innerHTML = `<img src="/brand/waybi-lockup.svg" alt="Waybi" width="210" /><h2 id="journeySummaryTitle">${title}</h2>
-    <p>${escapeHtml(destinationName)}</p><div class="journey-stats"><div><strong>${formatDistance(journeyDistance, language)}</strong><span>${language === 'zh' ? '行驶距离' : 'Travelled'}</span></div>
-    <div><strong>${minutes} ${language === 'zh' ? '分钟' : 'min'}</strong><span>${language === 'zh' ? '行程用时' : 'Journey time'}</span></div></div>
-    <svg class="journey-trace" viewBox="0 0 360 190" role="img" aria-label="${language === 'zh' ? '行程路线总览' : 'Journey route overview'}"><rect width="360" height="190" rx="20" fill="#eaf5cf"/>
+  const modal = root;
+  modal.innerHTML = `${lockupSvg('Waybi', 'journey-lockup', 210)}<h2 id="journeySummaryTitle">${escapeHtml(title)}</h2>
+    <p>${escapeHtml(destinationName)}</p><div class="journey-stats"><div><strong>${formatDistance(journeyDistance, language)}</strong><span>${t(language, 'journeyTravelled')}</span></div>
+    <div><strong>${escapeHtml(t(language, 'durationMinutes', { minutes }))}</strong><span>${t(language, 'journeyTime')}</span></div></div>
+    <svg class="journey-trace" viewBox="0 0 360 190" role="img" aria-label="${escapeHtml(t(language, 'journeyOverview'))}"><rect width="360" height="190" rx="20" fill="#eaf5cf"/>
     <polyline points="${trace}" fill="none" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
     <polyline points="${trace}" fill="none" stroke="#486b29" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    <p>${language === 'zh' ? '小 kiwi 陪你，又完成了一段旅程。' : 'A little kiwi, a good journey.'}</p>`;
-  const done = document.createElement('button'); done.className = 'primary-button'; done.textContent = language === 'zh' ? '继续探索' : 'Keep exploring';
-  done.onclick = () => { root.hidden = true; $('driveButton').focus(); };
-  modal.append(done); root.append(modal); root.hidden = false; done.focus();
+    <p>${escapeHtml(t(language, 'journeyTagline'))}</p>`;
+  const done = document.createElement('button'); done.type = 'button'; done.className = 'primary-button'; done.textContent = t(language, 'keepExploring');
+  done.onclick = () => closeDialog(root);
+  modal.append(done);
+  // Focus returns to the Start button (the trip's own control) when it closes.
+  openDialog(root, $('driveButton'));
+  done.focus();
 }
 
 ($('keepScreenAwakeToggle') as HTMLInputElement).checked = keepScreenAwake;

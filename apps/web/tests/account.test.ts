@@ -39,10 +39,15 @@ it('keeps password sign-in available, displays errors and clears the session on 
   expect(password.autocomplete).toBe('current-password');
   root.querySelector<HTMLInputElement>('input[type=email]')!.value='driver@example.test';
   password.value='test-only-long-password';
-  fetcher.mockResolvedValueOnce(Response.json({error:'Try later'},{status:503}));
+  // Generic 5xx bodies are never shown; the user sees localised copy.
+  fetcher.mockResolvedValueOnce(Response.json({error:'Internal error',code:'INTERNAL',requestId:'r1'},{status:503}));
   const submit=()=>root.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
-  submit(); await vi.waitFor(()=>expect(root.textContent).toContain('Try later'));
+  submit(); await vi.waitFor(()=>expect(root.textContent).toContain('Could not connect to your account.'));
+  expect(root.textContent).not.toContain('Internal error');
   expect(root.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled).toBe(false);
+  // A lockout explains how long to wait.
+  fetcher.mockResolvedValueOnce(new Response(JSON.stringify({error:'Locked',code:'LOGIN_LOCKED'}),{status:429,headers:{'retry-after':'600','content-type':'application/json'}}));
+  submit(); await vi.waitFor(()=>expect(root.textContent).toContain('Try again in 10 min'));
   fetcher.mockResolvedValueOnce(Response.json(profile));
   submit();await vi.waitFor(()=>expect(account.isSignedIn()).toBe(true));
   expect(loaded).toHaveBeenCalledWith(profile);
@@ -111,7 +116,8 @@ it('syncs profile features and treats user text as plain text', async () => {
   await account.rememberRoute(populated.routeHistory[0]);
   expect(await account.saveOwnReview(populated.reviews[0])).toEqual(populated.reviews[0]);
   renderProfileView(root,'zh',vi.fn());
-  expect(root.textContent).toContain('1.5 km');
+  expect(root.textContent).toContain('1.5 公里');
+  expect(root.textContent).toContain('驾车');
   expect(root.textContent).toContain('★★★★');
   expect(root.querySelector('script')).toBeNull();
   expect(root.querySelector('img')).toBeNull();

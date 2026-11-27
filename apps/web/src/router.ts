@@ -1,40 +1,63 @@
-const path = window.location.pathname.replace(/\/+$/, '') || '/';
-const app = document.getElementById('app');
+import { canonicalAppUrl, resolveSurface } from './routes';
+
+const surface = resolveSurface(window.location.pathname);
+
+const failureCopy = {
+  en: ['Waybi could not load this page.', 'Refresh the page or return to the website.', 'Return home'],
+  zh: ['Waybi 无法加载此页面。', '请刷新页面，或返回网站首页。', '返回首页'],
+} as const;
+
+function storedLanguage(): 'en' | 'zh' {
+  try { return localStorage.getItem('waybi-ui-language') === 'zh' ? 'zh' : 'en'; } catch { return 'en'; }
+}
 
 function renderBootState(label: string) {
-  document.body.innerHTML = `
-    <div style="min-height:100vh;display:grid;place-items:center;background:#F8FBEF;color:#152510;font:600 14px system-ui,sans-serif">
-      <div style="display:grid;justify-items:center;gap:14px">
-        <span style="width:42px;height:42px;border-radius:13px;background:#152510;box-shadow:0 10px 26px rgba(11,23,23,.18)"></span>
-        <span style="color:#64705B">${label}</span>
-      </div>
-    </div>`;
+  const shell = document.createElement('div');
+  shell.className = 'boot-state';
+  shell.setAttribute('role', 'status');
+  shell.innerHTML = '<span class="boot-mark" aria-hidden="true"></span><span class="boot-label"></span>';
+  shell.querySelector('.boot-label')!.textContent = label;
+  document.body.replaceChildren(shell);
+}
+
+function renderFailure() {
+  const [title, body, home] = failureCopy[storedLanguage()];
+  const main = document.createElement('main');
+  main.className = 'boot-state';
+  main.innerHTML = '<div class="boot-failure"><h1></h1><p></p><a href="/"></a></div>';
+  main.querySelector('h1')!.textContent = title;
+  main.querySelector('p')!.textContent = body;
+  main.querySelector('a')!.textContent = home;
+  document.body.replaceChildren(main);
 }
 
 async function boot() {
   try {
-    if (path === '/app') {
-      if (app) app.hidden = false;
+    if (surface === 'app') {
+      const canonical = canonicalAppUrl(window.location);
+      if (canonical) history.replaceState(history.state, '', canonical);
+      document.getElementById('marketing-root')?.remove();
       await import('./main');
       return;
     }
-
-    app?.remove();
-
-    if (path === '/dashboard') {
-      renderBootState('Loading your Waybi dashboard…');
+    document.getElementById('app')?.remove();
+    if (surface === 'marketing') {
+      // The page is already rendered statically; this only adds behaviour.
+      await import('./marketing');
+      return;
+    }
+    document.getElementById('marketing-root')?.remove();
+    if (surface === 'dashboard') {
+      renderBootState(storedLanguage() === 'zh' ? '正在加载你的 Waybi 个人面板…' : 'Loading your Waybi dashboard…');
       await import('./dashboard');
       return;
     }
-
-    renderBootState('Loading Waybi…');
-    await import('./marketing');
+    const status = await import('./status-page');
+    if (surface === 'subscribe') status.renderSubscribe();
+    else status.renderNotFound();
   } catch (error) {
     console.error('Waybi route failed to load', error);
-    document.body.innerHTML = `
-      <main style="min-height:100vh;display:grid;place-items:center;padding:32px;background:#F8FBEF;font-family:system-ui,sans-serif;color:#152510">
-        <div style="max-width:520px;text-align:center"><h1>Waybi could not load this page.</h1><p style="color:#64705B">Refresh the page or return to the website.</p><a href="/" style="color:#486B29;font-weight:700">Return home</a></div>
-      </main>`;
+    renderFailure();
   }
 }
 

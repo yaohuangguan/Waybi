@@ -253,6 +253,9 @@ importers:
       vitest:
         specifier: 5.0.4
         version: 5.0.4(@types/node@24.19.2)(@vitest/coverage-v8@5.0.4)(happy-dom@21.0.1)(vite@7.3.7(@types/node@24.19.2)(terser@5.51.2))
+      workbox-window:
+        specifier: 7.4.1
+        version: 7.4.1
 
   infra/nz-routing/cloudflare:
     dependencies:

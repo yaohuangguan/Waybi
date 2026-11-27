@@ -67,6 +67,19 @@ class FakeDrive extends DriveEngine {
     spoken.add(message);
   }
 
+  final urgency = <bool>[];
+  final relevance = <bool Function()?>[];
+  @override
+  Future<void> speakTurn(
+    String Function() message, {
+    bool Function()? stillRelevant,
+    bool urgent = false,
+  }) async {
+    spoken.add(message());
+    urgency.add(urgent);
+    relevance.add(stillRelevant);
+  }
+
   @override
   Future<void> stop() async {
     stops++;
@@ -1009,4 +1022,40 @@ void main() {
       expect(requests, 0);
     });
   });
+
+  test(
+    'turn prompts jump alerts, are built when spoken and expire when passed',
+    () async {
+      final drive = FakeDrive();
+      var now = DateTime(2026, 9, 30);
+      final nav = IndependentNavigationEngine(drive, clock: () => now);
+      addTearDown(() {
+        nav.dispose();
+        drive.dispose();
+      });
+      await nav.start(makeRoute());
+      drive.emit(origin, now);
+      expect(drive.spoken.last, 'In 556 m, Turn right');
+      expect(drive.urgency.single, isFalse, reason: 'A far prompt queues');
+      final far = drive.relevance.single!;
+      expect(far(), isTrue);
+      now = now.add(const Duration(seconds: 25));
+      drive.emit(const GeoPoint(-36.8573, 174.76), now);
+      expect(far(), isFalse, reason: 'Superseded by the nearer prompt');
+      expect(
+        drive.urgency.last,
+        isTrue,
+        reason: 'Near prompts interrupt alerts',
+      );
+      final near = drive.relevance.last!;
+      expect(near(), isTrue);
+      now = now.add(const Duration(seconds: 25));
+      drive.emit(middle, now);
+      drive.emit(
+        const GeoPoint(-36.8545, 174.76),
+        now.add(const Duration(seconds: 1)),
+      );
+      expect(near(), isFalse, reason: 'The turn has been passed');
+    },
+  );
 }

@@ -26,6 +26,12 @@ class _FakeDrive extends DriveEngine {
 
   @override
   Future<void> speakMessage(String message) async {}
+  @override
+  Future<void> speakTurn(
+    String Function() message, {
+    bool Function()? stillRelevant,
+    bool urgent = false,
+  }) async {}
 
   @override
   Future<void> stop() async {

@@ -226,6 +226,9 @@
     "apps/mobile/lib/drive/route_progress_tracker.dart": {
       "minimumLinePercent": 95
     },
+    "apps/mobile/lib/drive/speed_limit_pacer.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/drive/system_navigation.dart": {
       "minimumLinePercent": 85
     },

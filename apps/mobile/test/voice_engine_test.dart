@@ -144,7 +144,7 @@ void main() {
       await voice.dispose();
     });
   }
-  test('camera waits for guidance completion and never overlaps', () async {
+  test('guidance jumps queued alerts but never overlaps speech', () async {
     final tts = ControlledTts();
     final voice = VoiceEngine(tts: tts);
     final turn = voice.guidance('Turn left');
@@ -160,13 +160,82 @@ void main() {
     tts.completeSpeech();
     await turn;
     await flush();
+    expect(
+      tts.spoken.last,
+      'Continue straight',
+      reason: 'A turn prompt must not wait behind a camera reminder',
+    );
+    tts.completeSpeech();
+    await next;
+    await flush();
     expect(tts.spoken.last, contains('Fixed speed camera'));
     tts.completeSpeech();
     expect(await camera, true);
+    await voice.dispose();
+  });
+  test(
+    'an urgent turn interrupts a long alert, which can retry later',
+    () async {
+      final tts = ControlledTts();
+      final voice = VoiceEngine(tts: tts);
+      final lane = voice.roadAlert(
+        () => 'Bus lane ahead. Monday to Friday, 07:00 to 10:00. Stay left.',
+      );
+      await flush();
+      expect(tts.spoken, hasLength(1));
+      var distance = 48.0;
+      final turn = voice.turnPrompt(
+        () => 'In ${distance.round()} m, turn left',
+        urgent: true,
+      );
+      distance = 41;
+      expect(await lane, false, reason: 'Interrupted, not spoken');
+      await flush();
+      expect(tts.events, contains('stop'));
+      expect(tts.spoken.last, 'In 41 m, turn left');
+      tts.completeSpeech();
+      expect(await turn, true);
+      await voice.dispose();
+    },
+  );
+  test('a non-urgent turn prompt waits for the alert being spoken', () async {
+    final tts = ControlledTts();
+    final voice = VoiceEngine(tts: tts);
+    final camera = voice.cameraAlert(
+      distanceMeters: 800,
+      cameraType: 'Spot speed',
+      roadName: '',
+    );
     await flush();
-    expect(tts.spoken.last, 'Continue straight');
+    final queuedAlert = voice.roadAlert(() => 'Roadworks ahead');
+    var stillAhead = true;
+    final far = voice.turnPrompt(
+      () => 'In 800 m, keep right',
+      stillRelevant: () => stillAhead,
+    );
+    final passed = voice.turnPrompt(
+      () => 'In 300 m, turn left',
+      stillRelevant: () => false,
+    );
+    await flush();
+    expect(tts.events, isNot(contains('stop')));
     tts.completeSpeech();
-    await next;
+    expect(await camera, true);
+    await flush();
+    expect(tts.spoken.last, 'In 800 m, keep right');
+    stillAhead = false;
+    tts.completeSpeech();
+    expect(await far, true);
+    expect(
+      await passed,
+      false,
+      reason: 'No longer relevant when its turn came',
+    );
+    await flush();
+    expect(tts.spoken.last, 'Roadworks ahead');
+    tts.completeSpeech();
+    expect(await queuedAlert, true);
+    expect(await voice.turnPrompt(() => '  '), false);
     await voice.dispose();
   });
   test('mute cancels current speech and all pending alerts', () async {

@@ -398,4 +398,27 @@ void main() {
       f.drive.stopTrafficFlowRefresh();
     }, () => f.client);
   });
+
+  test('a turn prompt reaches the speaker ahead of queued reminders', () async {
+    final f = SafetyFixture()..withLane = false;
+    await http.runWithClient(() async {
+      await f.boot(TargetPlatform.android, routed: false);
+      var relevant = true;
+      await f.drive.speakTurn(() => 'Turn left now', urgent: true);
+      await f.drive.speakTurn(
+        () => 'In 300 m, turn right',
+        stillRelevant: () => relevant,
+      );
+      relevant = false;
+      await f.drive.speakTurn(
+        () => 'Never spoken',
+        stillRelevant: () => relevant,
+      );
+      expect(f.speech, containsAll(['Turn left now', 'In 300 m, turn right']));
+      expect(f.speech, isNot(contains('Never spoken')));
+      f.drive.voiceEnabled = false;
+      await f.drive.speakTurn(() => 'Muted');
+      expect(f.speech, isNot(contains('Muted')));
+    }, () => f.client);
+  });
 }

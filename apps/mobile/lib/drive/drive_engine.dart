@@ -30,6 +30,8 @@ import 'voice_engine.dart';
 import 'navigation_language.dart';
 import 'navigation_location_filter.dart';
 import 'reliable_location_feed.dart';
+import 'speed_limit_pacer.dart';
+import '../data/http_guard.dart';
 import 'navigation_motion.dart';
 import 'drive_trail.dart';
 
@@ -252,7 +254,15 @@ class DriveEngine extends ChangeNotifier {
   Timer? _roadIntelligenceRefreshTimer;
   Timer? _trafficFlowRefreshTimer;
   Duration? _trafficFlowRefreshInterval;
-  final Set<String> _spokenAlerts = <String>{};
+
+  /// Spoken camera reminders by `alertKey:threshold`. They expire with the
+  /// lifecycle cooldown and when the camera is passed, so a driver who passes
+  /// the same camera again later (Just Drive all day, or after a reroute)
+  /// hears it again instead of only seeing the card.
+  late final SpokenCameraAlerts _spokenAlerts = SpokenCameraAlerts(
+    lifetime: _cameraLifecycle.cooldown,
+  );
+  final SpeedLimitPacer _speedLimitPacer = SpeedLimitPacer();
   final Map<String, Object> _pendingCameraAlerts = {};
   final Map<String, DateTime> _cameraRetryAfter = {};
   final RouteCameraMatcher _routeMatcher = const RouteCameraMatcher();
@@ -306,11 +316,8 @@ class DriveEngine extends ChangeNotifier {
                 10;
   double? get snappedHeadingDegrees => _headingDegrees;
   LatLng? _lastSnappedLocation;
-  LatLng? _lastSpeedLimitLocation;
-  DateTime? _lastSpeedLimitLookup;
   DateTime? _lastRoadEventEvaluationAt;
   LatLng? _lastRoadEventEvaluationLocation;
-  bool _speedLimitLookupPending = false;
   double? _headingDegrees;
   Completer<void>? _roadSnappedFixCompleter;
 
@@ -956,6 +963,7 @@ class DriveEngine extends ChangeNotifier {
             0,
             1200,
           ),
+          passKey: upcoming.pass == 0 ? null : upcoming.alertKey,
         );
       }
     } else {
@@ -1003,7 +1011,11 @@ class DriveEngine extends ChangeNotifier {
       _lastRoadEventEvaluationLocation = current;
     }
 
-    cameraAlertState = _cameraLifecycle.update(match, DateTime.now());
+    cameraAlertState = _cameraLifecycle.update(match, now);
+    _spokenAlerts.expire(now);
+    if (cameraAlertState.phase == CameraAlertPhase.passed) {
+      _spokenAlerts.passed(cameraAlertState.alertKey);
+    }
     if (cameraAlertState.phase == CameraAlertPhase.approaching) {
       upcomingCamera = match?.camera;
       upcomingCameraDistanceMeters = match?.distanceMeters;
@@ -1043,6 +1055,33 @@ class DriveEngine extends ChangeNotifier {
       await _voiceEngine.guidance(
         message,
         language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
+      );
+    } catch (_) {
+      debugPrint('Navigation audio unavailable');
+    }
+  }
+
+  /// A maneuver prompt: plays before queued camera, road and transit alerts
+  /// (an [urgent] one interrupts an alert already speaking). [message] is
+  /// built when spoken, so its distance is current; [stillRelevant] drops it
+  /// once the maneuver is passed or superseded.
+  Future<void> speakTurn(
+    String Function() message, {
+    bool Function()? stillRelevant,
+    bool urgent = false,
+  }) async {
+    if (!voiceEnabled) return;
+    final session = _locationSession;
+    try {
+      await _voiceEngine.turnPrompt(
+        message,
+        language: navigationLanguage == 'zh' ? 'zh-CN' : 'en-NZ',
+        urgent: urgent,
+        stillRelevant: () =>
+            active &&
+            voiceEnabled &&
+            session == _locationSession &&
+            (stillRelevant?.call() ?? true),
       );
     } catch (_) {
       debugPrint('Navigation audio unavailable');
@@ -1094,53 +1133,46 @@ class DriveEngine extends ChangeNotifier {
   }
 
   Future<void> _refreshSpeedLimit(LatLng current) async {
-    if (_speedLimitLookupPending) return;
     final now = DateTime.now();
-    final last = _lastSpeedLimitLocation;
-    final moved = last == null
-        ? double.infinity
-        : distanceMeters(
-            last.latitude,
-            last.longitude,
-            current.latitude,
-            current.longitude,
-          );
-    final recent =
-        _lastSpeedLimitLookup != null &&
-        now.difference(_lastSpeedLimitLookup!).inSeconds < 15;
-    if (recent && moved < 75) return;
-
+    final at = GeoPoint(current.latitude, current.longitude);
+    if (speedLimitKph != null && _speedLimitPacer.isStale(now, at)) {
+      // Lookups have failed or been rate limited for a long way: an old limit
+      // may belong to a different road.
+      speedLimitKph = null;
+      speedLimitZoneName = null;
+    }
+    if (!_speedLimitPacer.shouldLookUp(now, at, speedKph)) return;
     final session = _locationSession;
-    _speedLimitLookupPending = true;
-    _lastSpeedLimitLookup = now;
-    _lastSpeedLimitLocation = current;
+    _speedLimitPacer.started(now, at);
     try {
       final info = await _speedLimitRepository.fetch(
         latitude: current.latitude,
         longitude: current.longitude,
       );
       if (!active || _disposed || session != _locationSession) return;
+      _speedLimitPacer.finished(DateTime.now(), success: true);
       final latest = _lastSnappedLocation;
       if (latest != null &&
-          distanceMeters(
-                current.latitude,
-                current.longitude,
-                latest.latitude,
-                latest.longitude,
-              ) <
-              100) {
+          SpeedLimitPacer.stillApplies(
+            at,
+            GeoPoint(latest.latitude, latest.longitude),
+            speedKph,
+          )) {
         speedLimitKph = info.speedLimitKph;
         speedLimitZoneName = info.zoneName;
         notifyListeners();
       }
+    } on RateLimitedException catch (error) {
+      if (session != _locationSession) return;
+      // Keep a fresh limit; staleness clears it if the back-off lasts.
+      _speedLimitPacer.finished(DateTime.now(), retryAfter: error.retryAfter);
     } catch (_) {
       if (!active || _disposed || session != _locationSession) return;
+      _speedLimitPacer.finished(DateTime.now());
       // An old limit may belong to a different road or region.
       speedLimitKph = null;
       speedLimitZoneName = null;
       notifyListeners();
-    } finally {
-      _speedLimitLookupPending = false;
     }
   }
 
@@ -1154,8 +1186,8 @@ class DriveEngine extends ChangeNotifier {
         ? 800
         : null;
     if (threshold == null) return;
-    final key = '${match.camera.id}:$threshold';
-    if (_spokenAlerts.contains(key) ||
+    final key = '${match.alertKey}:$threshold';
+    if (_spokenAlerts.contains(match.alertKey, threshold) ||
         _pendingCameraAlerts.containsKey(key) ||
         (_cameraRetryAfter[key]?.isAfter(DateTime.now()) ?? false)) {
       return;
@@ -1182,8 +1214,7 @@ class DriveEngine extends ChangeNotifier {
             (threshold != 800 || (upcomingCameraDistanceMeters ?? 0) > 300),
       );
       if (spoken && session == _locationSession && revision == _turnRevision) {
-        _spokenAlerts.add(key);
-        if (threshold == 300) _spokenAlerts.add('${match.camera.id}:800');
+        _spokenAlerts.record(match.alertKey, threshold, DateTime.now());
       }
     } catch (_) {
       // Audio errors must not become unhandled navigation errors or consume
@@ -1239,14 +1270,13 @@ class DriveEngine extends ChangeNotifier {
     speedKph = 0;
     speedLimitKph = null;
     speedLimitZoneName = null;
-    _lastSpeedLimitLocation = null;
+    _speedLimitPacer.reset();
     _lastSnappedLocation = null;
     _lastRawLocation = null;
     latestPosition = null;
     _rawHeadingDegrees = null;
     _localNavigation = false;
     _roadSnappedFixCompleter = null;
-    _lastSpeedLimitLookup = null;
     _lastRoadEventEvaluationAt = null;
     _lastRoadEventEvaluationLocation = null;
     await localFeed?.stop();

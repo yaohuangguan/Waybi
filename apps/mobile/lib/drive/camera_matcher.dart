@@ -4,10 +4,20 @@ import '../domain/geo_math.dart';
 import '../domain/safety_camera.dart';
 
 class CameraMatch {
-  const CameraMatch({required this.camera, required this.distanceMeters});
+  const CameraMatch({
+    required this.camera,
+    required this.distanceMeters,
+    this.passKey,
+  });
 
   final SafetyCamera camera;
   final double distanceMeters;
+
+  /// Distinguishes a later pass of the same camera on one route.
+  final String? passKey;
+
+  /// Identity for alert lifecycle and voice de-duplication.
+  String get alertKey => passKey ?? camera.id;
 }
 
 class CameraMatcher {

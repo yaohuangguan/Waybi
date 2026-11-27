@@ -63,6 +63,7 @@ class IndependentNavigationEngine extends ChangeNotifier
   double _alongMeters = 0;
   int _remainingSeconds = 0;
   final Set<String> _spokenSteps = {};
+  int _nextIndex = -1;
   int _session = 0;
   int _lastLocationRevision = -1;
   int _offRouteFixes = 0;
@@ -429,36 +430,57 @@ class IndependentNavigationEngine extends ChangeNotifier
         _nextStep != null &&
         _nextStep!.maneuverType != 'arrive' &&
         drive.voiceEnabled) {
-      final farThreshold = drive.speedKph >= 80 ? 1200.0 : 800.0;
-      final stage = _distanceToStep <= 55
-          ? 'turn'
-          : _distanceToStep <= 300
-          ? 'near'
-          : _distanceToStep <= farThreshold
-          ? 'far'
-          : null;
-      if (stage != null &&
-          _spokenSteps.add('$nextIndex:$stage:${drive.navigationLanguage}')) {
+      final stage = _promptStage(_distanceToStep);
+      final language = drive.navigationLanguage;
+      if (stage != null && _spokenSteps.add('$nextIndex:$stage:$language')) {
         if (stage == 'turn') {
           _spokenSteps
-            ..add('$nextIndex:near:${drive.navigationLanguage}')
-            ..add('$nextIndex:far:${drive.navigationLanguage}');
+            ..add('$nextIndex:near:$language')
+            ..add('$nextIndex:far:$language');
         } else if (stage == 'near') {
-          _spokenSteps.add('$nextIndex:far:${drive.navigationLanguage}');
+          _spokenSteps.add('$nextIndex:far:$language');
         }
-        final instruction = routeStepInstruction(
-          _nextStep,
-          drive.navigationLanguage,
+        _nextIndex = nextIndex;
+        final session = _session;
+        final step = _nextStep!;
+        unawaited(
+          drive.speakTurn(
+            () {
+              final language = drive.navigationLanguage;
+              final instruction = routeStepInstruction(step, language);
+              if (stage == 'turn') return instruction;
+              // The distance when spoken, not when queued.
+              final metres = navigationMetres(_distanceToStep, language);
+              return language == 'zh'
+                  ? '$metres后，$instruction'
+                  : 'In $metres, $instruction';
+            },
+            urgent: stage != 'far',
+            // Passed, rerouted, or superseded by a nearer prompt.
+            stillRelevant: () =>
+                session == _session &&
+                identical(_route, route) &&
+                !arrived &&
+                !offRoute &&
+                _nextIndex == nextIndex &&
+                _promptStage(_distanceToStep) == stage,
+          ),
         );
-        final message = stage == 'turn'
-            ? instruction
-            : drive.navigationLanguage == 'zh'
-            ? '${navigationMetres(_distanceToStep, drive.navigationLanguage)}后，$instruction'
-            : 'In ${navigationMetres(_distanceToStep, drive.navigationLanguage)}, $instruction';
-        unawaited(drive.speakMessage(message));
       }
     }
+    _nextIndex = nextIndex;
     notifyListeners();
+  }
+
+  String? _promptStage(double distance) {
+    final farThreshold = drive.speedKph >= 80 ? 1200.0 : 800.0;
+    return distance <= 55
+        ? 'turn'
+        : distance <= 300
+        ? 'near'
+        : distance <= farThreshold
+        ? 'far'
+        : null;
   }
 
   /// Parked near a large venue (or its car park) for 30 s counts as arrived,

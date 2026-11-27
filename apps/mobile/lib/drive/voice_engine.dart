@@ -6,7 +6,48 @@ import 'package:flutter_tts/flutter_tts.dart';
 
 import '../domain/map_layer_settings.dart';
 
-/// One completion-aware queue and temporary audio session for spoken guidance.
+/// Order of spoken prompts. Within one priority, prompts play first-in,
+/// first-out; a higher priority always plays before a lower one.
+enum VoicePriority {
+  /// Camera, road-event and transit-lane reminders.
+  alert,
+
+  /// Guidance such as "In 800 m, turn left" or trip messages.
+  guidance,
+
+  /// An imminent maneuver: interrupts an alert that is already speaking.
+  urgent,
+}
+
+class _Utterance {
+  _Utterance(
+    this.message, {
+    required this.language,
+    required this.stillRelevant,
+    required this.priority,
+    required this.generation,
+    required this.sequence,
+  });
+  final String Function() message;
+  final String? language;
+  final bool Function()? stillRelevant;
+  final VoicePriority priority;
+  final int generation;
+  final int sequence;
+  final completer = Completer<bool>();
+  final _aborted = Completer<void>();
+  bool get aborted => _aborted.isCompleted;
+
+  bool get relevant => stillRelevant?.call() ?? true;
+
+  void abort() {
+    if (!_aborted.isCompleted) _aborted.complete();
+    if (!completer.isCompleted) completer.complete(false);
+  }
+}
+
+/// One completion-aware priority queue and temporary audio session for spoken
+/// guidance. Speech never overlaps; turn prompts never wait behind alerts.
 class VoiceEngine {
   VoiceEngine({FlutterTts? tts}) : _tts = tts ?? FlutterTts();
   final FlutterTts _tts;
@@ -14,7 +55,14 @@ class VoiceEngine {
   Future<void>? _initializing;
   String _language = 'en-NZ';
   int _generation = 0;
-  Future<void> _speechQueue = Future<void>.value();
+  int _sequence = 0;
+  final List<_Utterance> _queue = [];
+  _Utterance? _speaking;
+  bool _pumping = false;
+
+  /// New speech waits for a pending native stop, never for an abandoned
+  /// completion (some engines never resolve a cancelled `speak`).
+  Future<void> _barrier = Future<void>.value();
 
   Future<void> setLanguage(String language) async {
     _language = language == 'zh-CN' ? 'zh-CN' : 'en-NZ';
@@ -52,64 +100,163 @@ class VoiceEngine {
     String Function() message, {
     String? language,
     bool Function()? stillRelevant,
+    VoicePriority priority = VoicePriority.alert,
   }) {
-    final generation = _generation;
-    final speech = _speechQueue.catchError((Object _) {}).then((_) async {
-      if (generation != _generation || !(stillRelevant?.call() ?? true)) {
-        return false;
-      }
-      await initialize();
-      if (generation != _generation || !(stillRelevant?.call() ?? true)) {
-        return false;
-      }
-      final text = message().trim();
-      if (text.isEmpty) return false;
-      await _tts.setLanguage(language ?? _language);
-      try {
-        // Configure mixing before activating; activating an exclusive session
-        // even briefly can pause music without giving it a chance to resume.
-        if (defaultTargetPlatform == TargetPlatform.iOS) {
-          await _audioSession.invokeMethod<void>('prepare');
-        }
-        if (generation != _generation || !(stillRelevant?.call() ?? true)) {
-          return false;
-        }
-        final result = await _tts.speak(text);
-        if (result != 1 && result != true) {
-          throw StateError('Speech did not complete');
-        }
-        return true;
-      } finally {
-        // stop() releases a cancelled generation before allowing new speech.
-        // A late completion must not deactivate that new speech's session.
-        if (generation == _generation) await _releaseIosAudio();
-      }
-    });
-    _speechQueue = speech.then<void>(
-      (_) {},
-      onError: (Object _, StackTrace _) {},
+    final utterance = _Utterance(
+      message,
+      language: language,
+      stillRelevant: stillRelevant,
+      priority: priority,
+      generation: _generation,
+      sequence: _sequence++,
     );
-    return speech;
+    _queue.add(utterance);
+    final current = _speaking;
+    if (priority == VoicePriority.urgent &&
+        current != null &&
+        current.priority == VoicePriority.alert) {
+      _interrupt(current);
+    }
+    unawaited(_pump());
+    return utterance.completer.future;
+  }
+
+  void _interrupt(_Utterance current) {
+    current.abort();
+    final stopped = _tts
+        .stop()
+        .then<void>((_) {})
+        .whenComplete(_releaseIosAudio);
+    _barrier = stopped.catchError((Object _) {});
+  }
+
+  _Utterance? _takeNext() {
+    _Utterance? best;
+    for (final candidate in _queue) {
+      if (best == null ||
+          candidate.priority.index > best.priority.index ||
+          (candidate.priority == best.priority &&
+              candidate.sequence < best.sequence)) {
+        best = candidate;
+      }
+    }
+    if (best != null) _queue.remove(best);
+    return best;
+  }
+
+  Future<void> _pump() async {
+    if (_pumping) return;
+    _pumping = true;
+    try {
+      while (_queue.isNotEmpty) {
+        await _barrier;
+        final next = _takeNext();
+        if (next == null) break;
+        await _speak(next);
+      }
+    } finally {
+      _pumping = false;
+    }
+  }
+
+  bool _live(_Utterance utterance) =>
+      !utterance.aborted &&
+      utterance.generation == _generation &&
+      utterance.relevant;
+
+  Future<void> _speak(_Utterance utterance) async {
+    var prepared = false;
+    Object? failure;
+    StackTrace? failureStack;
+    var spoken = false;
+    try {
+      if (!_live(utterance)) return;
+      await initialize();
+      if (!_live(utterance)) return;
+      final text = utterance.message().trim();
+      if (text.isEmpty) return;
+      await _tts.setLanguage(utterance.language ?? _language);
+      // Configure mixing before activating; activating an exclusive session
+      // even briefly can pause music without giving it a chance to resume.
+      prepared = true;
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await _audioSession.invokeMethod<void>('prepare');
+      }
+      if (!_live(utterance)) return;
+      _speaking = utterance;
+      final result = await Future.any<Object?>([
+        Future<Object?>.value(_tts.speak(text)),
+        utterance._aborted.future,
+      ]);
+      if (utterance.aborted) return;
+      if (result != 1 && result != true) {
+        throw StateError('Speech did not complete');
+      }
+      spoken = true;
+    } catch (error, stack) {
+      failure = error;
+      failureStack = stack;
+    } finally {
+      if (identical(_speaking, utterance)) _speaking = null;
+      // stop() and interruptions release their own session; a late
+      // completion must not deactivate the next utterance's session.
+      if (prepared &&
+          !utterance.aborted &&
+          utterance.generation == _generation) {
+        await _releaseIosAudio();
+      }
+      if (!utterance.completer.isCompleted) {
+        if (failure != null) {
+          utterance.completer.completeError(failure, failureStack);
+        } else {
+          utterance.completer.complete(spoken);
+        }
+      }
+    }
   }
 
   Future<void> guidance(
     String message, {
     String? language,
     bool Function()? stillRelevant,
+    VoicePriority priority = VoicePriority.guidance,
   }) => _enqueue(
     () => message,
     language: language,
     stillRelevant: stillRelevant,
+    priority: priority,
   ).then<void>((_) {});
+
+  /// A maneuver prompt. [message] is built when it is spoken, so a distance
+  /// reflects the car's position then, and [stillRelevant] drops a prompt the
+  /// car has already passed. An [urgent] prompt interrupts a speaking alert.
+  Future<bool> turnPrompt(
+    String Function() message, {
+    String? language,
+    bool Function()? stillRelevant,
+    bool urgent = false,
+  }) => _enqueue(
+    message,
+    language: language,
+    stillRelevant: stillRelevant,
+    priority: urgent ? VoicePriority.urgent : VoicePriority.guidance,
+  );
 
   Future<void> stop() async {
     ++_generation;
+    final current = _speaking;
+    final pending = List.of(_queue);
+    _queue.clear();
     final stopped = _initializing == null
         ? Future<void>.value()
         : _tts.stop().then<void>((_) {}).whenComplete(_releaseIosAudio);
     // Some engines do not resolve speak() when cancelled. New speech must
     // wait for stop(), without waiting on that abandoned completion future.
-    _speechQueue = stopped;
+    _barrier = stopped.catchError((Object _) {});
+    current?.abort();
+    for (final utterance in pending) {
+      utterance.abort();
+    }
     await stopped;
   }
 

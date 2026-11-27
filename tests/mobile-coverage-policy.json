@@ -28,6 +28,9 @@
     "apps/mobile/lib/app/home_sheets.dart": {
       "minimumLinePercent": 85
     },
+    "apps/mobile/lib/app/journey_store.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/app/request_generation.dart": {
       "minimumLinePercent": 95
     },

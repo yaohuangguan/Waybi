@@ -12,6 +12,7 @@ import { fetchRoutePlan, routeFromOption, type RouteOption as PlannerRouteOption
 import type { ParkingPlace } from './parking';
 import { apiFetch, describeError, isAbortError } from './api';
 import { closeDialog, openDialog } from './dialogs';
+import { registerUpdates } from './pwa';
 import { currentPlatform, isStandalone, permissionHelpKey } from './geo-help';
 import { RouteRequestCoordinator, journeySummaryKind, layoutSignature, type PlanTrigger } from './route-requests';
 
@@ -1267,6 +1268,7 @@ async function startNavigation() {
   if (!current) { requestGps(); toast(t(language, 'noGps')); return; }
   if (!route) { toast(t(language, 'routeError')); return; }
   navigating = true;
+  $('updateBanner').hidden = true;
   journeyStarted = Date.now();
   journeyDistance = 0;
   journeyPoints = [[...current] as Coordinate];
@@ -1309,6 +1311,7 @@ function stopNavigation(arrived = false) {
   routeRequests.backoff.succeed();
   stopSpeech();
   showJourneySummary(arrived);
+  showUpdateBanner();
   delete document.body.dataset.travelMode;
   renderLaneGuidance();
   $('cameraAlert').hidden = true;
@@ -1832,6 +1835,17 @@ window.addEventListener('kiwi-account-change', () => {
   renderTripFlags();
   if (selectedPoi) renderPoiAccountState(selectedPoi);
 });
+
+// Offline shell and updates: a new version is offered, never forced. During
+// navigation the prompt waits until the trip ends.
+let applyUpdate: (() => void) | null = null;
+function showUpdateBanner() {
+  if (!applyUpdate || navigating) return;
+  $('updateBanner').hidden = false;
+}
+registerUpdates((apply) => { applyUpdate = apply; showUpdateBanner(); });
+$('updateReload').onclick = () => applyUpdate?.();
+$('updateLater').onclick = () => { $('updateBanner').hidden = true; applyUpdate = null; };
 
 async function initializeMap() {
   await map.init({

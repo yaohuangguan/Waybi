@@ -72,7 +72,8 @@ for (const url of urls) {
       if (!html.includes(`href="${target}"`)) fail(`${pathname}: missing alternate language page ${target}`);
     }
     if (!html.includes('application/ld+json')) fail(`${pathname}: missing about page structured data`);
-    if (!html.includes('/brand/waybi.png')) fail(`${pathname}: missing Waybi artwork`);
+    // Artwork is served as resized WebP (waybi-640.webp); the PNG name is still accepted.
+    if (!/\/brand\/waybi(?:-\d+)?\.(?:png|webp)/.test(html)) fail(`${pathname}: missing Waybi artwork`);
   }
   if (contentUnits < 180) fail(`${pathname}: page is unexpectedly thin (${contentUnits} content units)`);
 

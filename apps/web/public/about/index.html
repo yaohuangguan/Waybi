@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <meta name="theme-color" content="#F8FBEF"/>
+  <meta name="theme-color" content="#F8FBEF" media="(prefers-color-scheme: light)"/>
+  <meta name="theme-color" content="#10180D" media="(prefers-color-scheme: dark)"/>
+  <meta name="color-scheme" content="light dark"/>
   <title>About Waybi — Why We Built a Different Kind of Map</title>
   <meta name="description" content="Why build another map? Waybi began with a bus-lane fine in New Zealand and a belief in more useful road reminders and a little company along the way."/>
   <meta name="robots" content="index,follow,max-image-preview:large"/>
@@ -11,10 +13,13 @@
   <link rel="alternate" hreflang="en-NZ" href="https://waybi.co/about/"/>
   <link rel="alternate" hreflang="zh-CN" href="https://waybi.co/zh/about/"/>
   <link rel="alternate" hreflang="x-default" href="https://waybi.co/about/"/>
-  <link rel="icon" type="image/png" href="/brand/waybi-icon.png"/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="/brand/waybi-icon-192.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <!-- One non-blocking web-font request; Chinese text uses system CJK fonts. -->
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..800&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..800&display=swap"/></noscript>
   <link rel="stylesheet" href="/about.css"/>
   <meta property="og:type" content="website"/>
   <meta property="og:site_name" content="Waybi"/>
@@ -57,7 +62,7 @@
             <path d="M10 361 C95 355 80 178 173 178 S260 300 340 251 429 82 494 101" stroke="#84a868" stroke-width="5" stroke-linecap="round" stroke-dasharray="8 15"/>
             <circle cx="10" cy="361" r="8" fill="#84a868"/><circle cx="492" cy="101" r="9" fill="#476b35"/>
           </svg>
-          <img class="big-waybi" src="/brand/waybi.png" alt="Waybi the kiwi bird" width="290" height="290" decoding="async"/>
+          <img class="big-waybi" src="/brand/waybi-640.webp" alt="Waybi the kiwi bird" width="290" height="290" decoding="async" fetchpriority="high"/>
           <div class="about-sticker left">One wrong lane.<span>One very expensive lesson.</span></div>
           <div class="about-sticker right">A different direction.<span>Not a different destination.</span></div>
         </div>
@@ -89,9 +94,9 @@
       <section class="about-friends" id="friends">
         <div><span class="about-eyebrow">A LITTLE COMPANY</span><h2>Meet the friends who travel with you.</h2><p>Waybi is our curious little kiwi bird. Clover prefers a sunny spot by the window. Sett is always ready for another walk. Together, they have a life beyond the next turn.</p><p>That part is inspired by the cosy feeling of games where a little companion goes on adventures and comes back with stories. We wanted a similar sense of warmth in a travel app — without making you play a game while driving.</p><p>Complete a journey, collect a small country-themed keepsake, and visit their little world when you are parked or back home. Getting somewhere is practical. Feeling connected to the journey is something else.</p><a class="about-underlink" href="/waybi-friends/">Explore Waybi & Friends ↗</a></div>
         <div class="about-friends-visual" aria-label="Waybi, Clover and Sett">
-          <img src="/brand/clover.png" alt="Clover the cat" loading="lazy" width="240" height="260"/>
-          <img src="/brand/waybi.png" alt="Waybi the kiwi bird" loading="lazy" width="240" height="260"/>
-          <img src="/brand/sett.png" alt="Sett the dog" loading="lazy" width="240" height="260"/>
+          <img src="/brand/clover-512.webp" alt="Clover the cat" loading="lazy" decoding="async" width="240" height="260"/>
+          <img src="/brand/waybi-640.webp" alt="Waybi the kiwi bird" loading="lazy" decoding="async" width="240" height="260"/>
+          <img src="/brand/sett-512.webp" alt="Sett the dog" loading="lazy" decoding="async" width="240" height="260"/>
         </div>
       </section>
 
@@ -108,7 +113,7 @@
 
       <section class="about-cta">
         <div><span class="about-eyebrow">THE JOURNEY IS JUST BEGINNING</span><h2>Find your way. Bring a little Waybi along.</h2><p>A clearer look at the road ahead, and a few friends waiting when you arrive.</p><a class="about-pill" href="/#download">Explore Waybi ↗</a></div>
-        <img src="/brand/waybi.png" alt="" loading="lazy" width="150" height="160"/>
+        <img src="/brand/waybi-640.webp" alt="" loading="lazy" decoding="async" width="150" height="160"/>
       </section>
     </main>
     <footer class="about-footer">

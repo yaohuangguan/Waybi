@@ -601,3 +601,10 @@ dialog.modal::backdrop { background: var(--overlay); }
 dialog.modal:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
 @media (min-width: 760px) { dialog.modal { margin: auto; } }
 .journey-summary img { margin: 0 auto 6px; }
+
+/* "New version ready" prompt: offered, never forced. */
+.update-banner { position: absolute; z-index: 860; left: 50%; bottom: calc(118px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(420px, calc(100vw - 24px)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text-primary); box-shadow: 0 12px 30px var(--shadow); font-size: 13px; font-weight: 600; }
+.update-banner span { flex: 1 1 180px; }
+.update-banner button { min-height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--surface-muted); color: var(--text-primary); font-size: 12px; font-weight: 700; }
+.update-banner #updateReload { background: var(--action-bg); color: var(--action-text); }
+@media (min-width: 760px) { .update-banner { left: auto; right: 28px; bottom: 28px; transform: none; } }

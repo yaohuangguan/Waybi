@@ -192,7 +192,9 @@ function renderPage(c) {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-  <meta name="theme-color" content="#F8FBEF"/>
+  <meta name="theme-color" content="#F8FBEF" media="(prefers-color-scheme: light)"/>
+  <meta name="theme-color" content="#10180D" media="(prefers-color-scheme: dark)"/>
+  <meta name="color-scheme" content="light dark"/>
   <title>${esc(c.title)}</title>
   <meta name="description" content="${esc(c.description)}"/>
   <meta name="robots" content="index,follow,max-image-preview:large"/>
@@ -200,10 +202,13 @@ function renderPage(c) {
   <link rel="alternate" hreflang="en-NZ" href="https://waybi.co/about/"/>
   <link rel="alternate" hreflang="zh-CN" href="https://waybi.co/zh/about/"/>
   <link rel="alternate" hreflang="x-default" href="https://waybi.co/about/"/>
-  <link rel="icon" type="image/png" href="/brand/waybi-icon.png"/>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+  <link rel="icon" type="image/png" sizes="192x192" href="/brand/waybi-icon-192.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <!-- One non-blocking web-font request; Chinese text uses system CJK fonts. -->
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..800&display=swap" onload="this.onload=null;this.rel='stylesheet'"/>
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..800&display=swap"/></noscript>
   <link rel="stylesheet" href="/about.css"/>
   <meta property="og:type" content="website"/>
   <meta property="og:site_name" content="Waybi"/>
@@ -246,7 +251,7 @@ function renderPage(c) {
             <path d="M10 361 C95 355 80 178 173 178 S260 300 340 251 429 82 494 101" stroke="#84a868" stroke-width="5" stroke-linecap="round" stroke-dasharray="8 15"/>
             <circle cx="10" cy="361" r="8" fill="#84a868"/><circle cx="492" cy="101" r="9" fill="#476b35"/>
           </svg>
-          <img class="big-waybi" src="/brand/waybi.png" alt="Waybi the kiwi bird" width="290" height="290" decoding="async"/>
+          <img class="big-waybi" src="/brand/waybi-640.webp" alt="Waybi the kiwi bird" width="290" height="290" decoding="async" fetchpriority="high"/>
           <div class="about-sticker left">${esc(c.stickerOne)}<span>${esc(c.stickerOneSub)}</span></div>
           <div class="about-sticker right">${esc(c.stickerTwo)}<span>${esc(c.stickerTwoSub)}</span></div>
         </div>
@@ -278,9 +283,9 @@ function renderPage(c) {
       <section class="about-friends" id="friends">
         <div><span class="about-eyebrow">${esc(c.friendsEyebrow)}</span><h2>${esc(c.friendsTitle)}</h2>${c.friends.map(x=>`<p>${esc(x)}</p>`).join('')}<a class="about-underlink" href="${localized?'/zh/waybi-friends/':'/waybi-friends/'}">${localized?'了解 Waybi & Friends':'Explore Waybi & Friends'} ↗</a></div>
         <div class="about-friends-visual" aria-label="Waybi, Clover and Sett">
-          <img src="/brand/clover.png" alt="Clover the cat" loading="lazy" width="240" height="260"/>
-          <img src="/brand/waybi.png" alt="Waybi the kiwi bird" loading="lazy" width="240" height="260"/>
-          <img src="/brand/sett.png" alt="Sett the dog" loading="lazy" width="240" height="260"/>
+          <img src="/brand/clover-512.webp" alt="Clover the cat" loading="lazy" decoding="async" width="240" height="260"/>
+          <img src="/brand/waybi-640.webp" alt="Waybi the kiwi bird" loading="lazy" decoding="async" width="240" height="260"/>
+          <img src="/brand/sett-512.webp" alt="Sett the dog" loading="lazy" decoding="async" width="240" height="260"/>
         </div>
       </section>
 
@@ -297,7 +302,7 @@ function renderPage(c) {
 
       <section class="about-cta">
         <div><span class="about-eyebrow">${esc(c.ctaEyebrow)}</span><h2>${c.ctaTitle}</h2><p>${esc(c.ctaLead)}</p><a class="about-pill" href="${rootHome}#download">${esc(c.ctaAction)} ↗</a></div>
-        <img src="/brand/waybi.png" alt="" loading="lazy" width="150" height="160"/>
+        <img src="/brand/waybi-640.webp" alt="" loading="lazy" decoding="async" width="150" height="160"/>
       </section>
     </main>
     <footer class="about-footer">

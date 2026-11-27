@@ -299,7 +299,7 @@
       "minimumLinePercent": 90
     },
     "apps/mobile/lib/main.dart": {
-      "minimumLinePercent": 10
+      "minimumLinePercent": 90
     },
     "apps/mobile/lib/providers/camera_marker_art.dart": {
       "minimumLinePercent": 100

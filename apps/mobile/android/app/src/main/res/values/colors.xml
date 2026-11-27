@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Keep in sync with WaybiColors.lightBackground and LaunchScreen.storyboard. -->
+    <!-- Keep in sync with SplashGate (WaybiColors.lightBackground) and the iOS
+         LaunchBackground color set. values-night/colors.xml holds the dark
+         variant; every launch resource refers to this one name. -->
     <color name="waybi_launch_background">#F8FBEF</color>
 </resources>

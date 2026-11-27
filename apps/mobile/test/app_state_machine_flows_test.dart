@@ -678,6 +678,62 @@ void main() {
       expect(preview(t).destinationCategory, 'cafe');
       expect(previewCaution(), findsOneWidget);
     });
+
+    Finder cardCaution() => find.descendant(
+      of: find.byType(PlaceDetailsContent),
+      matching: find.textContaining('km away'),
+    );
+
+    flow('a far Home shows no caution on the place card ETA', (t, h) async {
+      await h.boot(
+        preferences: {
+          'waybi.quick_location.Home': jsonEncode({
+            'name': 'Holiday home',
+            'address': 'Coast road',
+            'latitude': -37.2,
+            'longitude': 175.7,
+            'provider': 'independent',
+          }),
+        },
+      );
+      await h.act(
+        t
+            .widget<ActionChip>(find.widgetWithText(ActionChip, 'Home'))
+            .onPressed!,
+      );
+      expect(details(t).selectedPlace.name, 'Holiday home');
+      await h.until(
+        () => details(t).quickRoute != null,
+        reason: 'the drive ETA loads',
+      );
+      expect(details(t).warnFarDestination, isFalse);
+      expect(cardCaution(), findsNothing);
+    });
+
+    flow('a far searched place is flagged on the place card ETA', (
+      t,
+      h,
+    ) async {
+      await h.boot();
+      await h.act(
+        () => t
+            .widget<CompanionSearchPrompt>(find.byType(CompanionSearchPrompt))
+            .onSuggestionSelected(
+              const PlaceCandidate(
+                name: 'Far café',
+                address: 'Coast road',
+                category: 'cafe',
+                location: GeoPoint(-37.2, 175.7),
+              ),
+            ),
+      );
+      await h.until(
+        () => details(t).quickRoute != null,
+        reason: 'the drive ETA loads',
+      );
+      expect(details(t).warnFarDestination, isTrue);
+      expect(cardCaution(), findsOneWidget);
+    });
   });
 
   group('accounts', () {

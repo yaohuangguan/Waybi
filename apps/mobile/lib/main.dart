@@ -3,14 +3,12 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_navigation_flutter/google_navigation_flutter.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:waybi_friends/waybi_friends.dart' show GameController;
+import 'package:waybi_friends/waybi_friends.dart'
+    show GameController, JourneyMemory;
 import 'package:flutter/services.dart';
 
 import 'data/account_repository.dart';
@@ -25,7 +23,6 @@ import 'data/navigation_reward_repository.dart';
 import 'data/navigation_feedback_repository.dart';
 import 'domain/map_layer_settings.dart';
 import 'domain/map_provider.dart';
-import 'domain/navigation_link.dart';
 import 'domain/navigation_camera_mode.dart';
 import 'domain/geo_math.dart';
 import 'domain/route_option.dart';
@@ -38,11 +35,9 @@ import 'domain/safety_camera.dart';
 import 'domain/transit_lane.dart';
 import 'domain/transit_review_corridor.dart';
 import 'drive/journey_tracker.dart';
-import 'drive/navigation_language.dart';
 import 'drive/navigation_location_filter.dart';
 import 'widgets/status_banner.dart';
 import 'drive/independent_navigation_camera.dart';
-import 'drive/route_progress_tracker.dart';
 import 'services/native_map_language.dart';
 import 'services/external_navigation_inbox.dart';
 import 'widgets/journey_summary_sheet.dart';
@@ -53,10 +48,8 @@ import 'app/home_sheets.dart';
 import 'app/trip_state.dart';
 import 'drive/custom_voice.dart';
 import 'drive/drive_engine.dart';
-import 'drive/voice_prompts.dart';
 import 'drive/system_navigation.dart';
 import 'widgets/system_navigation_status.dart';
-import 'drive/route_camera_matcher.dart';
 import 'providers/independent_map_renderer.dart';
 import 'providers/independent_navigation_engine.dart';
 import 'providers/independent_routing_provider.dart';
@@ -73,7 +66,6 @@ import 'widgets/explore_search.dart';
 import 'widgets/explore_page.dart';
 import 'widgets/friendly_error.dart';
 import 'widgets/full_screen_search.dart';
-import 'widgets/companion_search_prompt.dart';
 import 'widgets/place_details_content.dart';
 import 'widgets/profile_page.dart';
 import 'widgets/map_layer_sheet.dart';
@@ -81,14 +73,16 @@ import 'widgets/splash_gate.dart';
 import 'widgets/route_preview_sheet.dart';
 import 'widgets/transit_trip_overlay.dart';
 import 'widgets/trips_page.dart';
-import 'widgets/waybi_format.dart';
 import 'app/commute_controller.dart';
 import 'app/home_chrome.dart';
+import 'app/home_overlays.dart';
 import 'app/location_controller.dart';
 import 'app/road_alerts.dart';
 import 'app/journey_store.dart';
-import 'app/offline_corridor.dart';
+import 'app/navigation_session_controller.dart';
 import 'app/place_selection_controller.dart';
+import 'app/route_preview_controller.dart';
+import 'app/trips_snapshots.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -193,13 +187,10 @@ class MapHomePage extends StatefulWidget {
   State<MapHomePage> createState() => _MapHomePageState();
 }
 
-class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
-  final _externalNavigation = ExternalNavigationInbox.instance;
+class _MapHomePageState extends State<MapHomePage>
+    with WidgetsBindingObserver
+    implements TripHost {
   bool _externalNavigationReady = false;
-  int _externalRequest = 0;
-  Timer? _externalRetry;
-  ({int request, SelectedPlace selected, WaybiTravelMode mode})?
-  _externalPreview;
 
   late final DriveEngine _driveEngine = widget.driveEngine ?? DriveEngine();
   late final IndependentNavigationEngine _independentNavigation;
@@ -218,7 +209,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   final UsageTelemetryRepository _usageTelemetry = UsageTelemetryRepository();
   final _navigationRewards = NavigationRewardRepository();
   final _navigationFeedback = NavigationFeedbackRepository();
-  Future<String?>? _journeyCountry;
   final ParkingRepository _parkingRepository = ParkingRepository();
   final WorkerSearchProvider _workerSearch = WorkerSearchProvider();
   final IndependentSearchProvider _independentSearch =
@@ -285,7 +275,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   /// What the map redraws for without rebuilding the page: location,
   /// compass, drive ticks and route progress.
-  final _mapTicks = _FrameSafeNotifier();
+  final _mapTicks = FrameSafeNotifier();
   late final Listenable _mapSources = Listenable.merge([
     _location.locationListenable,
     _location.deviceHeadingListenable,
@@ -308,9 +298,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   // Use course only while actually moving on a recent, accurate GPS fix.
   // A phone compass or an old course can snap a parked origin backwards.
-  double? get _routingHeading =>
-      _manualOrigin == null ? _currentRoutingHeading : null;
-
   double? get _currentRoutingHeading {
     final active = _driveEngine.active;
     final position = active
@@ -330,7 +317,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
-  DestinationSuggestion? _manualOrigin;
   final List<DestinationSuggestion> _guestRecent = [];
 
   String _markerSignature = '';
@@ -343,84 +329,16 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _following = true;
   bool _routeOverviewActive = false;
   bool _voiceEnabled = true;
-  bool _keepScreenAwake = true;
   bool _settingsLoaded = false;
   bool _appForeground = true;
   final _systemNavigation = SystemNavigation();
   DateTime? _lastDrivePositionAt;
-  JourneyTracker? _journey;
   late final _journeys = JourneyStore(_account);
   bool _lanesEnabled = true;
   bool _notifySafetyCameras = false;
   bool _notifyRoadIncidents = false;
   bool _notifyCommunityReports = false;
   bool _notifySavedRouteDisruptions = false;
-  late String _destinationTitle = _text('Destination', '目的地');
-  RoutePlan? _routePlan;
-  Map<String, RouteCameraSummary> _routeCameraSummaries = const {};
-  Map<String, RoutePreferenceSummary> _routePreferenceSummaries = const {};
-  WaybiTravelMode _selectedMode = WaybiTravelMode.drive;
-  String? _selectedRouteId;
-  RouteFilter _routeFilter = RouteFilter.recommended;
-  String? _routeRecoveryMessage;
-  final _closureCache =
-      <
-        String,
-        ({
-          RouteOption route,
-          List<RoadEvent> events,
-          DateTime checkedAt,
-          List<RoadEvent> matches,
-        })
-      >{};
-
-  List<RoadEvent> _closuresOnRoute(RouteOption route) {
-    final cached = _closureCache[route.id];
-    final now = DateTime.now();
-    if (cached != null &&
-        identical(cached.route, route) &&
-        identical(cached.events, _driveEngine.roadEvents) &&
-        now.difference(cached.checkedAt).inSeconds < 30) {
-      return cached.matches;
-    }
-    final matches = road_routes.routeClosures(
-      route,
-      _driveEngine.roadEvents,
-      now: now,
-    );
-    if (_closureCache.length >= 12) {
-      _closureCache.remove(_closureCache.keys.first);
-    }
-    _closureCache[route.id] = (
-      route: route,
-      events: _driveEngine.roadEvents,
-      checkedAt: now,
-      matches: matches,
-    );
-    return matches;
-  }
-
-  int _routeRequest = 0;
-  RouteOption? _activeTransitRoute;
-  RouteOption? _activeNavigationRoute;
-  final List<DestinationSuggestion> _routeStops = <DestinationSuggestion>[];
-  final Set<(double, double)> _googleSessionCoordinates = {};
-  List<ParkingPlace> _parkingPlaces = const [];
-  ParkingPlace? _selectedParking;
-  PlaceSummary? _parkingOriginalPlace;
-  bool _parkingLoading = false;
-  PlaceSummary? _parkedCarPlace;
-  DateTime? _parkedCarAt;
-  int _parkingRequest = 0;
-  PlaceSummary? _activeDestinationPlace;
-  PlaceDetails? _arrivalPlaceDetails;
-  List<ParkingPlace> _arrivalParkingPlaces = const [];
-  bool _arrivalPrefetching = false;
-  bool _arrivalPrefetched = false;
-  int _arrivalRequest = 0;
-  DateTime? _lastCorridorCacheAt;
-  bool _offlineCorridorReady = false;
-
   PointOfInterest? get _selectedPoi {
     final place = _selectedPlace?.place;
     if (place == null) return null;
@@ -450,23 +368,73 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       return route;
     },
     language: () => _appLanguage,
-    quickRouteSuppressed: () => _driveEngine.active || _routePlan != null,
+    quickRouteSuppressed: () => _driveEngine.active || _preview.plan != null,
   );
   SelectedPlace? get _selectedPlace => _places.selected;
 
-  GeoPoint? get _quickRouteOrigin {
-    final origin = _manualOrigin?.location ?? _locationForRoute;
-    return origin == null ? null : GeoPoint(origin.latitude, origin.longitude);
-  }
-
   void _loadPlaceQuickRoute() =>
-      unawaited(_places.loadQuickRoute(_quickRouteOrigin));
+      unawaited(_places.loadQuickRoute(_preview.origin));
+
+  /// The route preview: plan, mode, route, filter, stops and parking.
+  late final RoutePreviewController _preview = RoutePreviewController(
+    trip: _trip,
+    places: _places,
+    planner:
+        ({
+          required origin,
+          required destination,
+          required stops,
+          required mode,
+          required headingDegrees,
+          required avoid,
+        }) => _independentRoutes.route(
+          origin: origin,
+          destination: destination,
+          stops: stops,
+          language: _appLanguage,
+          mode: mode,
+          headingDegrees: headingDegrees,
+          avoid: avoid,
+        ),
+    transit: ({required origin, required destination}) =>
+        _independentTransitRoutes.route(
+          origin: origin,
+          destination: destination,
+          language: _appLanguage,
+        ),
+    parking: (destination) => _parkingRepository.nearby(
+      destination: destination,
+      allowGoogleFallback: false,
+      language: _appLanguage,
+    ),
+    routeLocation: () => _location.routeOrigin,
+    gpsLocation: () => _location.location,
+    heading: () => _currentRoutingHeading,
+    cameras: () => _driveEngine.cameras,
+    roadEvents: () => _driveEngine.roadEvents,
+    cameraDataReady: () =>
+        !_driveEngine.loadingCameras && _driveEngine.cameras.isNotEmpty,
+    setDriveRoute: _driveEngine.setRoute,
+    navigationOwnsRoute: () => _independentNavigation.route != null,
+    driveActive: () => _driveEngine.active,
+    notice: _notice,
+    language: () => _appLanguage,
+    showRoute: _renderRoutePreview,
+    beforeLoad: () => FocusManager.instance.primaryFocus?.unfocus(),
+    onLoadStarted: (mode) {
+      _following = false;
+      unawaited(_driveEngine.loadCameras());
+      if (mode == WaybiTravelMode.drive) {
+        unawaited(_driveEngine.loadTrafficFlow());
+      }
+    },
+    recoverLocation: () => unawaited(_recoverRouteLocation()),
+  );
 
   /// The one trip state; the getters below are views of it.
   final _trip = TripMachine();
   TripState get _tripState => _trip.value;
   bool get _guidanceRunning => _tripState.guidanceRunning;
-  bool get _endingNavigation => _tripState is TripEnding;
   bool get _transitTripRunning => _tripState is TripTransit;
   bool get _busy => _tripState.busy;
   bool get _recoveringRoute =>
@@ -480,7 +448,35 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-  String? _message;
+  /// The status banner's message; the banner listens to it.
+  final _notice = ValueNotifier<String?>(null);
+  String? get _message => _notice.value;
+  set _message(String? value) => _notice.value = value;
+
+  /// Guidance, Just Drive, transit trips and navigation links.
+  late final NavigationSessionController _nav = NavigationSessionController(
+    trip: _trip,
+    preview: _preview,
+    places: _places,
+    drive: _driveEngine,
+    guidance: _independentNavigation,
+    system: _systemNavigation,
+    host: this,
+    notice: _notice,
+    roadAlerts: _roadAlerts,
+    journeys: _journeys,
+    rewards: _navigationRewards,
+    feedback: _navigationFeedback,
+    parking: (destination) => _parkingRepository.nearby(
+      destination: destination,
+      allowGoogleFallback: false,
+      language: _appLanguage,
+    ),
+    fetchDetails: _placeDetailsRepository.fetchIndependent,
+    isPlus: () => _account.profile?.isPlus == true,
+    hasAccount: () => _account.profile != null,
+    language: () => _appLanguage,
+  );
 
   /// Background notifications for cameras and road events ahead.
   late final _roadAlerts = RoadAlerts(
@@ -496,7 +492,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _externalNavigation.addListener(_scheduleExternalNavigation);
     _independentNavigation = IndependentNavigationEngine(
       _driveEngine,
       reroute: (origin, previous, stops) => _independentRoutes.reroute(
@@ -508,21 +503,24 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         headingDegrees: _currentRoutingHeading,
         avoid: road_routes.closureExclusions(
           previous,
-          _closuresOnRoute(previous),
+          _preview.closuresOn(previous),
         ),
         // Abort the HTTP request before the engine stops waiting, so a slow
         // reroute never overlaps the next attempt.
         timeout: IndependentRoutingProvider.rerouteTimeout,
       ),
     );
+    // The trip hears the engines before the page does.
+    _nav.addListener(_onTripChanged);
     _independentNavigation.addListener(_onIndependentNavigationChanged);
     _trip.addListener(_onTripChanged);
     _commute.addListener(_onTripChanged);
     _places.addListener(_onTripChanged);
+    _preview.addListener(_onTripChanged);
     _location
       ..onFix = _onLocationFix
       ..onIssue = _onLocationIssue
-      ..reportTransientIssues = () => _externalPreview != null;
+      ..reportTransientIssues = () => _preview.hasPending;
     _location.deviceHeadingListenable.addListener(_queueMapRefresh);
     _mapSources.addListener(_mapTicks.ping);
     unawaited(WaybiNotificationService.instance.initialize());
@@ -547,7 +545,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         }
         if (!mounted) return;
         _externalNavigationReady = true;
-        _scheduleExternalNavigation();
+        _nav.scheduleHandOff();
       }),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -555,73 +553,105 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     });
   }
 
-  void _scheduleExternalNavigation() {
-    if (!mounted ||
-        !_externalNavigationReady ||
-        !_appForeground ||
-        !_externalNavigation.hasPending) {
-      return;
-    }
-    if (_busy || _endingNavigation) {
-      _externalRetry ??= Timer(const Duration(milliseconds: 200), () {
-        _externalRetry = null;
-        _scheduleExternalNavigation();
-      });
-      return;
-    }
-    final value = _externalNavigation.takePending();
-    if (value == null) return;
-    final request = ++_externalRequest;
-    _externalPreview = null;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || request != _externalRequest) return;
-      unawaited(
-        _handleExternalNavigation(value, request).catchError((Object _) {
-          if (mounted && request == _externalRequest) {
-            _showExternalError(
-              _text(
-                'Could not open this destination. Try searching for it.',
-                '无法打开这个目的地，请尝试搜索。',
-              ),
-            );
-          }
-        }),
-      );
+  // ---------------------------------------------------------------------
+  // TripHost: what a trip asks of the page.
+
+  @override
+  void resetTripCamera({required bool drive}) {
+    if (drive) _driveCameraFollow.reset();
+    _independentCamera.reset();
+  }
+
+  @override
+  void followTrip([NavigationCameraMode? mode]) {
+    if (!mounted) return;
+    setState(() {
+      _following = true;
+      _routeOverviewActive = false;
+      if (mode != null) _cameraMode = mode;
     });
-    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
-  void _showExternalError(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+  @override
+  void setTripCameraMode(NavigationCameraMode mode) {
+    if (mounted) setState(() => _cameraMode = mode);
   }
 
-  Future<void> _handleExternalNavigation(String value, int request) async {
-    bool current() => mounted && request == _externalRequest;
-    NavigationLink? parsed;
-    try {
-      parsed = NavigationLink.parse(value);
-    } on FormatException {
-      _showExternalError(
-        _text(
-          'This navigation link has an invalid destination.',
-          '这个导航链接的目的地无效。',
-        ),
-      );
-      return;
+  @override
+  void refreshTripMap() {
+    if (mounted) _queueMapRefresh();
+  }
+
+  @override
+  void resumeTrafficRefresh() {
+    if (mounted && _appForeground && _layers.traffic) {
+      unawaited(_driveEngine.startTrafficFlowRefresh(force: true));
     }
-    final link = parsed;
-    if (link == null || !current()) return;
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    if (_guidanceRunning || _driveEngine.active || _transitTripRunning) {
-      final replace = await showDialog<bool>(
+  }
+
+  @override
+  GeoPoint? get browseLocation => _location.location;
+
+  @override
+  Position? get lastReliablePosition => _location.lastReliablePosition;
+
+  @override
+  Future<bool> ensureLocationPermission() => _location.ensurePermission();
+
+  @override
+  Future<void> pauseBrowseLocation() async {
+    await _location.pauseForDrive();
+    _lastDrivePositionAt = null;
+  }
+
+  @override
+  Future<void> startBrowseLocation() => _startTracking();
+
+  @override
+  Future<void> clearPreview() => _clearRoutePreview();
+
+  @override
+  void showJourneySummary(
+    JourneySummary summary,
+    Future<JourneyMemory?>? reward,
+  ) {
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (sheetContext) => Localizations.override(
+          context: sheetContext,
+          locale: Locale(_appLanguage),
+          child: JourneySummarySheet(
+            summary: summary,
+            language: _appLanguage,
+            reward: reward,
+            feedback: _navigationFeedback,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool get handOffReady =>
+      mounted && _externalNavigationReady && _appForeground;
+
+  @override
+  void popToHome() => Navigator.of(context).popUntil((route) => route.isFirst);
+
+  @override
+  Future<bool> confirmSwitchTrip(String destination) async =>
+      await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: Text(_text('Switch destination?', '切换目的地？')),
           content: Text(
             _text(
-              'End the current trip and open ${link.destination.label}?',
-              '结束当前行程并打开 ${link.destination.label}？',
+              'End the current trip and open $destination?',
+              '结束当前行程并打开 $destination？',
             ),
           ),
           actions: [
@@ -635,131 +665,35 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             ),
           ],
         ),
-      );
-      if (replace != true || !current()) return;
-      if (_guidanceRunning) await _stopNavigation(showSummary: false);
-      if (!current()) return;
-      if (_transitTripRunning) await _stopTransitTrip();
-      if (!current()) return;
-      if (_driveEngine.active) await _stopDriveMode();
-      if (!current()) return;
-    }
-    // Resolve every text location through the selected map provider. Never
-    // silently use the first result or discard an explicit source/waypoint.
-    Future<PlaceSummary?> resolve(
-      NavigationTarget target,
-      String purpose,
-    ) async {
-      if (!current()) return null;
-      final point = target.coordinate;
-      if (point != null) {
-        return PlaceSummary(
-          name: target.label,
-          address: '',
-          location: point,
-          kind: PlaceKind.coordinate,
-        );
-      }
-      return _openSearch(
-        query: target.label,
-        selectResult: false,
-        isCurrent: current,
-        searchPurpose: purpose,
-      );
-    }
+      ) ==
+      true;
 
-    final destination = await resolve(
-      link.destination,
-      _text('Choose destination', '选择目的地'),
-    );
-    if (destination == null || !current()) return;
-    PlaceSummary? source;
-    if (link.source != null) {
-      source = await resolve(
-        link.source!,
-        _text('Choose starting point', '选择起点'),
-      );
-      if (source == null || !current()) return;
-    }
-    final stops = <DestinationSuggestion>[];
-    for (final target in link.waypoints) {
-      final place = await resolve(
-        target,
-        _text('Choose stop ${stops.length + 1}', '选择途经点 ${stops.length + 1}'),
-      );
-      if (place == null || !current()) return;
-      stops.add(
-        DestinationSuggestion(
-          label: place.name,
-          name: place.name,
-          address: place.address,
-          location: LatLng(
-            latitude: place.location.latitude,
-            longitude: place.location.longitude,
-          ),
-        ),
-      );
-    }
-    if (!current()) return;
-    setState(() {
-      ++_routeRequest;
-      _manualOrigin = source == null
-          ? null
-          : DestinationSuggestion(
-              label: source.name,
-              name: source.name,
-              address: source.address,
-              location: LatLng(
-                latitude: source.location.latitude,
-                longitude: source.location.longitude,
-              ),
-            );
-      _routeStops
-        ..clear()
-        ..addAll(stops);
-      _selectedMode = link.mode;
-    });
-    _selectPlace(destination, SelectionSource.search);
-    if (!link.showPlaceOnly && _selectedPoi != null) {
-      if (_manualOrigin == null && _locationForRoute == null) {
-        _externalPreview = (
-          request: request,
-          selected: _selectedPlace!,
-          mode: link.mode,
-        );
-        setState(
-          () => _message = _text(
-            'Waiting for your location to preview the route…',
-            '正在等待定位以预览路线…',
-          ),
-        );
-      } else {
-        await _loadRoutePreview(_selectedPoi!, preferredMode: link.mode);
-      }
-    }
+  @override
+  Future<PlaceSummary?> searchHandOffTarget(
+    String query,
+    String purpose,
+    bool Function() current,
+  ) => _openSearch(
+    query: query,
+    selectResult: false,
+    isCurrent: current,
+    searchPurpose: purpose,
+  );
+
+  @override
+  void showHandOffError(String message) =>
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+
+  @override
+  void selectHandOffPlace(PlaceSummary place) =>
+      _selectPlace(place, SelectionSource.search);
+
+  @override
+  void afterFrame(VoidCallback callback) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => callback());
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
-
-  void _retryExternalPreview() {
-    final pending = _externalPreview;
-    if (pending == null) return;
-    // Reverse geocoding replaces the selection with an enriched copy of the
-    // same place, so match by location rather than identity.
-    if (pending.request != _externalRequest ||
-        !_samePlaceLocation(pending.selected.place, _selectedPlace?.place) ||
-        _driveEngine.active ||
-        _transitTripRunning) {
-      _externalPreview = null;
-      return;
-    }
-    if (_locationForRoute == null || _selectedPoi == null || _busy) return;
-    _externalPreview = null;
-    unawaited(_loadRoutePreview(_selectedPoi!, preferredMode: pending.mode));
-  }
-
-  static bool _samePlaceLocation(PlaceSummary a, PlaceSummary? b) =>
-      b != null &&
-      a.location.latitude == b.location.latitude &&
-      a.location.longitude == b.location.longitude;
 
   Future<void> _maybeShowCoreOnboarding() =>
       maybeShowCoreOnboarding(context, _appLanguage);
@@ -802,13 +736,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     } else {
       unawaited(_location.resume());
     }
-    _scheduleExternalNavigation();
+    _nav.scheduleHandOff();
     _queueMapRefresh();
-    if (_guidanceRunning) {
-      unawaited(
-        _systemNavigation.update(_systemNavigationState(), force: true),
-      );
-    }
+    _nav.onResumed();
     if (_driveEngine.active || _layers.traffic) {
       // Not forced: the snapshot is reused within its 45 s freshness window.
       unawaited(_driveEngine.startTrafficFlowRefresh());
@@ -823,36 +753,17 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   void _onIndependentNavigationChanged() {
-    if (!mounted) return;
-    if (_independentNavigation.route != null) {
-      _activeNavigationRoute = _independentNavigation.route;
-    }
-    // The HUD, the arrival panel and the map listen to the engine themselves.
-    if (_guidanceRunning) {
-      unawaited(_systemNavigation.update(_systemNavigationState()));
-    }
-    _updateArrivalExperience();
-    unawaited(_cacheNavigationCorridor());
-    if (_following) _queueMapRefresh();
+    if (mounted && _following) _queueMapRefresh();
   }
 
   void _onEngineChanged() {
     if (!mounted) return;
-    if (_tripState == const TripJustDrive() && !_driveEngine.active) {
-      // The engine stopped on its own (for example location was revoked).
-      _trip.dispatch(const DriveEnded());
-    }
     _independentNavigation.checkClosureUpdates();
     final position = _driveEngine.latestPosition;
     if (position != null && position.timestamp != _lastDrivePositionAt) {
       _lastDrivePositionAt = position.timestamp;
       _location.handlePosition(position);
     }
-    if (_guidanceRunning) {
-      unawaited(_systemNavigation.update(_systemNavigationState()));
-    }
-    _journey?.cameraPassed(_driveEngine.passedCamera?.id);
-    unawaited(_roadAlerts.check(_driveEngine));
     final reportIds = _visibleRoadEvents.map((event) => event.id).join(',');
     // Everything the page itself draws from the engine (the HUDs listen to it
     // directly). Rebuild only when one of these changed, not on every tick.
@@ -863,27 +774,17 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         '${_driveEngine.transitReviewCorridors.length}';
     if (signature != _markerSignature) {
       _markerSignature = signature;
-      final plan = _routePlan;
-      if (plan != null) {
-        _routeCameraSummaries = _summarizeRouteCameras(plan);
-        _routePreferenceSummaries = _summarizeRoutePreferences(
-          plan,
-          _routeCameraSummaries,
-        );
-      }
-
+      _preview.refreshSummaries();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() {});
       });
     }
-    _updateArrivalExperience();
-    unawaited(_cacheNavigationCorridor());
     if (!_following &&
         _driveEngine.active &&
         !_guidanceRunning &&
         !_independentNavigation.active &&
         _selectedPlace == null &&
-        _routePlan == null &&
+        _preview.plan == null &&
         _driveCameraFollow.shouldResume(
           now: DateTime.now(),
           speedKph: _driveEngine.speedKph,
@@ -893,130 +794,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       setState(() => _following = true);
     }
     if (_following && _driveEngine.active) _queueMapRefresh();
-  }
-
-  double? get _navigationRemainingMeters {
-    if (_independentNavigation.active) {
-      return _independentNavigation.remainingDistanceMeters;
-    }
-    final route = _activeNavigationRoute;
-    final progress = _driveEngine.routeProgress;
-    if (route == null || progress == null || route.points.length < 2) {
-      return null;
-    }
-    final geometry = RouteProgressTracker.geometryLength(route.points);
-    if (geometry <= 0) return route.distanceMeters.toDouble();
-    final fraction = (progress.alongMeters / geometry).clamp(0.0, 1.0);
-    return route.distanceMeters * (1 - fraction);
-  }
-
-  void _updateArrivalExperience() {
-    final remaining = _navigationRemainingMeters;
-    final eligible =
-        _account.profile?.isPlus == true &&
-        _guidanceRunning &&
-        _selectedMode == WaybiTravelMode.drive &&
-        remaining != null;
-    if (!eligible) {
-      _trip.dispatch(const ArrivalChanged(false));
-      return;
-    }
-    if (remaining <= 800 && !_arrivalPrefetching && !_arrivalPrefetched) {
-      unawaited(_prefetchArrivalExperience());
-    }
-    _trip.dispatch(ArrivalChanged(remaining <= 300));
-  }
-
-  Future<void> _prefetchArrivalExperience() async {
-    if (_account.profile?.isPlus != true) return;
-    final destination = _activeDestinationPlace;
-    if (destination == null || _arrivalPrefetching) return;
-    final request = ++_arrivalRequest;
-    _arrivalPrefetching = true;
-    if (mounted) setState(() {});
-    var parking = _arrivalParkingPlaces;
-    var details = _arrivalPlaceDetails;
-    if (_selectedParking == null) {
-      try {
-        parking = await _parkingRepository.nearby(
-          destination: destination.location,
-          allowGoogleFallback: false,
-          language: _appLanguage,
-        );
-      } catch (_) {
-        // Arrival guidance works without parking suggestions.
-      }
-    }
-    try {
-      details = await _placeDetailsRepository.fetchIndependent(destination);
-    } catch (_) {
-      // Arrival guidance and parking remain usable without extra place details.
-    }
-    if (!mounted || request != _arrivalRequest) return;
-    setState(() {
-      _arrivalParkingPlaces = parking;
-      _arrivalPlaceDetails = details;
-      _arrivalPrefetching = false;
-      _arrivalPrefetched = true;
-    });
-  }
-
-  Future<void> _routeToArrivalParking(ParkingPlace parking) async {
-    final destination = _activeDestinationPlace;
-    if (destination == null || _endingNavigation) return;
-    await _stopNavigation(showSummary: false);
-    if (!mounted) return;
-    _trip.dispatch(const PlaceChosen());
-    setState(() {
-      _parkingOriginalPlace = destination;
-      _selectedParking = parking;
-      _places.replace(
-        SelectedPlace(
-          parking.toPlaceSummary(),
-          SelectionSource.map,
-          originMap: _mapProvider,
-        ),
-      );
-      _routeStops.clear();
-    });
-    final poi = _selectedPoi;
-    if (poi == null) return;
-    await _loadRoutePreview(poi);
-    if (mounted && _selectedRoute != null) {
-      await _navigateToSelectedPoi();
-    }
-  }
-
-  Future<void> _cacheNavigationCorridor({bool force = false}) async {
-    if (_account.profile?.isPlus != true) {
-      if (_offlineCorridorReady && mounted) {
-        setState(() => _offlineCorridorReady = false);
-      }
-      return;
-    }
-    final route = _activeNavigationRoute;
-    if (!_guidanceRunning || route == null || route.points.length < 2) return;
-    final now = DateTime.now();
-    if (!force &&
-        _lastCorridorCacheAt != null &&
-        now.difference(_lastCorridorCacheAt!) < const Duration(seconds: 30)) {
-      return;
-    }
-    try {
-      await saveOfflineCorridor(
-        route: route,
-        drive: _driveEngine,
-        destination: _destinationTitle,
-        language: _appLanguage,
-        now: now,
-      );
-      _lastCorridorCacheAt = now;
-      if (mounted && !_offlineCorridorReady) {
-        setState(() => _offlineCorridorReady = true);
-      }
-    } catch (_) {
-      // Navigation remains usable from its in-memory route if persistence fails.
-    }
   }
 
   ({List<RoadEvent> source, bool shown, int minute, List<RoadEvent> value})?
@@ -1101,37 +878,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _quickActions = prefs.getStringList('waybi.quick_actions') ?? _quickActions;
     _restoreGoogleRecent(prefs);
     await _commute.loadSaved();
-    final parkedCarRecord = prefs.getString('waybi.plus.parked_car.v1');
-    if (parkedCarRecord != null) {
-      try {
-        final item = jsonDecode(parkedCarRecord) as Map<String, dynamic>;
-        final parkedAt = DateTime.tryParse(item['parkedAt']?.toString() ?? '');
-        final latitude = item['latitude'];
-        final longitude = item['longitude'];
-        if (parkedAt != null &&
-            latitude is num &&
-            longitude is num &&
-            DateTime.now().difference(parkedAt) < const Duration(hours: 72)) {
-          _parkedCarAt = parkedAt;
-          _parkedCarPlace = PlaceSummary(
-            name: item['name']?.toString() ?? _text('Parked car', '停车位置'),
-            address: item['address']?.toString() ?? '',
-            location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
-          );
-        } else {
-          await prefs.remove('waybi.plus.parked_car.v1');
-        }
-      } catch (_) {
-        await prefs.remove('waybi.plus.parked_car.v1');
-      }
-    }
+    await _nav.restoreSettings(prefs);
     _appLanguage = prefs.getString('waybi.app.language') ?? 'en';
     _voiceLanguage = prefs.getString('waybi.voice.language') ?? 'en-NZ';
     _voiceEnabled = prefs.getBool('waybi.voice.enabled') ?? true;
     _lanesEnabled = prefs.getBool('waybi.nav.lanes') ?? true;
-    _keepScreenAwake = prefs.getBool('waybi.nav.keep_screen_awake') ?? true;
     _driveEngine.navigationLanguage = _appLanguage;
-    await _driveEngine.setKeepScreenAwake(_keepScreenAwake);
     await _applyNativeMapLanguage(_appLanguage);
     _settingsLoaded = true;
     _commute.ready = true;
@@ -1208,9 +960,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    _externalNavigation.removeListener(_scheduleExternalNavigation);
-    _externalRetry?.cancel();
-    ++_externalRequest;
+    _nav.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _location.deviceHeadingListenable.removeListener(_queueMapRefresh);
     _mapSources.removeListener(_mapTicks.ping);
@@ -1227,7 +977,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _independentNavigation.dispose();
     _trip.dispose();
     _commute.dispose();
+    _preview.dispose();
     _places.dispose();
+    _notice.dispose();
     _exploreMarkerFocus.dispose();
     _workerSearch.dispose();
     _independentSearch.dispose();
@@ -1250,9 +1002,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final shown = _shownLocationIssue;
     _shownLocationIssue = message;
     if (message != null) {
-      setState(() => _message = message);
+      _message = message;
     } else if (_message == shown) {
-      setState(() => _message = null);
+      _message = null;
     }
   }
 
@@ -1279,42 +1031,28 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
     // The filter held the last reliable fix (an indoor jump).
     if (accepted == null) {
-      _retryExternalPreview();
+      _preview.retryPending();
       final place = _selectedPlace?.place;
-      if (place != null && !_driveEngine.active && _routePlan == null) {
+      if (place != null && !_driveEngine.active && _preview.plan == null) {
         _loadPlaceQuickRoute();
       }
       return;
     }
-    _retryExternalPreview();
-    if (_tripState is TripNavigating &&
-        DateTime.now().difference(position.timestamp).abs() <=
-            const Duration(seconds: 10)) {
-      final arrived =
-          _journey?.update(
-            accepted.point,
-            accuracyMeters: accepted.accuracyMeters,
-            time: accepted.timestamp,
-          ) ??
-          false;
-      if (arrived) unawaited(_stopNavigation(arrived: true));
-    }
+    _preview.retryPending();
+    _nav.onLocationFix(accepted, position);
     _queueMapRefresh();
     unawaited(_commute.refreshQuick());
     final selected = _selectedPlace?.place;
-    if (selected != null && _routePlan == null && !_driveEngine.active) {
+    if (selected != null && _preview.plan == null && !_driveEngine.active) {
       _loadPlaceQuickRoute();
     }
   }
 
   bool get _selectedPlaceHasCrossTasmanDrive {
     final destination = _selectedPlace?.place.location;
-    final origin = _manualOrigin?.location ?? _locationForRoute;
+    final origin = _preview.origin;
     if (origin == null || destination == null) return false;
-    return isCrossTasmanSurfaceRoute([
-      GeoPoint(origin.latitude, origin.longitude),
-      destination,
-    ]);
+    return isCrossTasmanSurfaceRoute([origin, destination]);
   }
 
   Future<RouteOption?> _bestDriveRoute(
@@ -1350,9 +1088,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final routePreviewOwnsCamera =
         !_driveEngine.active &&
         _journeyPhase == JourneyPhase.routePreview &&
-        _routePlan != null;
+        _preview.plan != null;
     final placeDeckOwnsCamera =
-        !_driveEngine.active && _selectedPlace != null && _routePlan == null;
+        !_driveEngine.active && _selectedPlace != null && _preview.plan == null;
     if (_following &&
         !routePreviewOwnsCamera &&
         !placeDeckOwnsCamera &&
@@ -1372,7 +1110,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               heading: heading,
               speedKph: _driveEngine.speedKph,
               mode: navigating
-                  ? _activeNavigationRoute?.mode ?? _selectedMode
+                  ? _nav.activeRoute?.mode ?? _preview.mode
                   : WaybiTravelMode.drive,
               visibleHeight:
                   MediaQuery.sizeOf(context).height -
@@ -1444,38 +1182,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _queueMapRefresh();
   }
 
-  IconData get _locationControlIcon {
-    if (!_following) return Icons.my_location_outlined;
-    return _cameraMode.northUp ? Icons.north_rounded : Icons.navigation_rounded;
-  }
-
-  String get _locationControlTooltip {
-    if (!_following) return _text('Return to my location', '回到我的位置');
-    if ((!_cameraMode.northUp)) {
-      return _text('Switch to north-up', '切换到北向俯视');
-    }
-    return switch (_cameraMode) {
-      NavigationCameraMode.headingUpFlat => _text(
-        'Switch to perspective view',
-        '切换到透视跟车',
-      ),
-      NavigationCameraMode.headingUpPerspective => _text(
-        'Switch to north-up',
-        '切换到指北俯视',
-      ),
-      NavigationCameraMode.northUpFlat => _text(
-        'Switch to heading-up',
-        '切换到车头朝上俯视',
-      ),
-    };
-  }
-
   LatLng? get _displayLocation => _driveEngine.active
       ? _driveEngine.snappedLocation ?? _gpsLocation
       : _gpsLocation;
 
   double? get _routeInitialBearing {
-    final points = _activeNavigationRoute?.points;
+    final points = _nav.activeRoute?.points;
     if (points == null || points.length < 2) return null;
     final first = points.first;
     final next = points
@@ -1548,11 +1260,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _showRoadReport() async {
     final location = _gpsLocation;
     if (location == null) {
-      setState(
-        () => _message = _text(
-          'Current location is required to report a road issue.',
-          '需要获取当前位置才能上报道路情况。',
-        ),
+      _message = _text(
+        'Current location is required to report a road issue.',
+        '需要获取当前位置才能上报道路情况。',
       );
       return;
     }
@@ -1576,11 +1286,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
     } catch (error) {
       if (mounted) {
-        setState(
-          () => _message = _text(
-            'Could not submit road report. ${friendlyErrorMessage(error, _appLanguage)}',
-            '道路上报失败。${friendlyErrorMessage(error, _appLanguage)}',
-          ),
+        _message = _text(
+          'Could not submit road report. ${friendlyErrorMessage(error, _appLanguage)}',
+          '道路上报失败。${friendlyErrorMessage(error, _appLanguage)}',
         );
       }
     }
@@ -1619,7 +1327,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _focusSelectedPlace({bool expanded = false}) {
     if (!mounted ||
-        _routePlan != null ||
+        _preview.plan != null ||
         _driveEngine.active ||
         _transitTripRunning) {
       return;
@@ -1636,30 +1344,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _clearRoutePreview() async {
-    ++_routeRequest;
-    ++_parkingRequest;
-    // A navigation that is starting owns the drive route: it notices the
-    // cancelled request and stops the engine itself. Clearing the route under
-    // it would leave guidance frozen on its first step.
-    if (_independentNavigation.route == null) _driveEngine.setRoute(null);
     if (!mounted) return;
     // Reset synchronously: a place selected while the map padding animates
     // must not be cleared afterwards.
-    _trip.dispatch(const PlaceCleared());
-    setState(() {
-      _routePlan = null;
-      _selectedRouteId = null;
-      _selectedMode = WaybiTravelMode.drive;
-      _routeRecoveryMessage = null;
-      _routeFilter = RouteFilter.recommended;
-      _places.clear();
-      _routeStops.clear();
-      _parkingPlaces = const [];
-      _parkingOriginalPlace = null;
-      _selectedParking = null;
-      _parkingLoading = false;
-      _following = true;
-    });
+    _following = true;
+    _preview.clear();
     _queueMapRefresh();
     final renderer = _takeCamera();
     if (renderer is PlaceFocusMapRenderer) {
@@ -1673,32 +1362,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   /// Back from a route preview to the place card it was opened from.
   void _closeRoutePreviewToPlace() {
-    final original = _parkingOriginalPlace;
+    final original = _preview.parkingOriginalPlace;
     if (original != null) {
-      if (_independentNavigation.route == null) _driveEngine.setRoute(null);
+      _preview.releaseDriveRoute();
       _selectPlace(original, SelectionSource.map);
       return;
     }
-    final selected = _selectedPlace;
-    if (selected == null) {
+    if (_selectedPlace == null) {
       unawaited(_clearRoutePreview());
       return;
     }
-    ++_routeRequest;
-    ++_parkingRequest;
-    if (_independentNavigation.route == null) _driveEngine.setRoute(null);
-    _trip.dispatch(const PreviewClosed());
-    setState(() {
-      _routePlan = null;
-      _selectedRouteId = null;
-      _selectedMode = WaybiTravelMode.drive;
-      _routeRecoveryMessage = null;
-      _routeFilter = RouteFilter.recommended;
-      _routeStops.clear();
-      _parkingPlaces = const [];
-      _parkingLoading = false;
-      _message = null;
-    });
+    _message = null;
+    _preview.closeToPlace();
     _focusSelectedPlace();
     _loadPlaceQuickRoute();
   }
@@ -1716,7 +1391,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               _text('Keep navigating', '继续导航'),
             ) &&
             mounted) {
-          await _stopNavigation();
+          await _nav.stop();
         }
       case TripTransit():
         if (await _confirmEnd(
@@ -1724,7 +1399,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               _text('Keep trip', '继续行程'),
             ) &&
             mounted) {
-          await _stopTransitTrip();
+          await _nav.stopTransit();
         }
       case TripPreviewing() || TripStarting():
         // Closing a starting preview also cancels the start.
@@ -1736,26 +1411,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           await _clearRoutePreview();
         }
       case TripJustDrive():
-        await _stopDriveMode();
+        await _nav.stopDrive();
       case TripParkingLeg():
-        _dismissParkingLeg();
+        _nav.dismissParkingLeg();
       case TripEnding():
         break;
       case TripIdle():
         if (_driveEngine.active) {
-          await _stopDriveMode();
+          await _nav.stopDrive();
         } else if (_selectedPlace != null) {
           await _clearRoutePreview();
         }
     }
-  }
-
-  void _dismissParkingLeg() {
-    _trip.dispatch(const ParkingLegDismissed());
-    setState(() {
-      _parkingOriginalPlace = null;
-      _selectedParking = null;
-    });
   }
 
   Future<bool> _confirmEnd(String title, String keepLabel) async {
@@ -1778,44 +1445,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     return end == true;
   }
 
-  Future<void> _rememberParkedCar(ParkingPlace parking) async {
-    if (_account.profile?.isPlus != true) return;
-    final parkedAt = DateTime.now();
-    final place = parking.toPlaceSummary();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      'waybi.plus.parked_car.v1',
-      jsonEncode({
-        'name': place.name,
-        'address': place.address,
-        'latitude': place.location.latitude,
-        'longitude': place.location.longitude,
-        'parkedAt': parkedAt.toIso8601String(),
-      }),
-    );
-    if (!mounted) return;
-    setState(() {
-      _parkedCarPlace = place;
-      _parkedCarAt = parkedAt;
-    });
-  }
-
-  String _parkedCarAgeLabel() {
-    final parkedAt = _parkedCarAt;
-    if (parkedAt == null) return _text('Parked car', '停车位置');
-    final age = DateTime.now().difference(parkedAt);
-    if (age.inMinutes < 2) return _text('Parked just now', '刚刚停车');
-    if (age.inHours < 1) {
-      return _text('Parked ${age.inMinutes} min ago', '停车 ${age.inMinutes} 分钟');
-    }
-    if (age.inHours < 24) {
-      return _text('Parked ${age.inHours} h ago', '停车 ${age.inHours} 小时');
-    }
-    return _text('Parked ${age.inDays} d ago', '停车 ${age.inDays} 天');
-  }
-
   void _showParkedCar() {
-    final parked = _parkedCarPlace;
+    final parked = _nav.parkedCar;
     if (parked == null) return;
     _selectPlace(
       PlaceSummary(
@@ -1826,403 +1457,20 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       SelectionSource.frequent,
     );
     if (mounted) {
-      setState(() => _message = _parkedCarAgeLabel());
-    }
-  }
-
-  Future<void> _loadParking(PlaceSummary destination) async {
-    final request = ++_parkingRequest;
-    setState(() {
-      _parkingPlaces = const [];
-      _parkingLoading = true;
-    });
-    try {
-      final places = await _parkingRepository.nearby(
-        destination: destination.location,
-        allowGoogleFallback: false,
-        language: _appLanguage,
-      );
-      if (!mounted || request != _parkingRequest) return;
-      setState(() => _parkingPlaces = places);
-    } catch (_) {
-      if (mounted && request == _parkingRequest) {
-        setState(() => _parkingPlaces = const []);
-      }
-    } finally {
-      if (mounted && request == _parkingRequest) {
-        setState(() => _parkingLoading = false);
-      }
-    }
-  }
-
-  Future<void> _selectParking(ParkingPlace parking) async {
-    final original = _parkingOriginalPlace ?? _selectedPlace?.place;
-    if (original == null) return;
-    ++_parkingRequest;
-    setState(() {
-      _parkingOriginalPlace = original;
-      _selectedParking = parking;
-      _parkingLoading = false;
-      _places.replace(
-        SelectedPlace(
-          parking.toPlaceSummary(),
-          SelectionSource.map,
-          originMap: _mapProvider,
-        ),
-      );
-      _routeStops.clear();
-    });
-    final poi = _selectedPoi;
-    if (poi != null) await _loadRoutePreview(poi);
-  }
-
-  Future<void> _restoreDirectDestination() async {
-    final original = _parkingOriginalPlace;
-    if (original == null) return;
-    setState(() {
-      _parkingOriginalPlace = null;
-      _selectedParking = null;
-      _places.replace(
-        SelectedPlace(original, SelectionSource.map, originMap: _mapProvider),
-      );
-    });
-    final poi = _selectedPoi;
-    if (poi != null) await _loadRoutePreview(poi);
-  }
-
-  Future<void> _continueOnFoot() async {
-    final original = _parkingOriginalPlace;
-    if (original == null) return;
-    _trip.dispatch(const PlaceChosen());
-    setState(() {
-      _parkingOriginalPlace = null;
-      _selectedParking = null;
-      _parkingPlaces = const [];
-      _manualOrigin = null;
-      _routeStops.clear();
-      _places.replace(
-        SelectedPlace(original, SelectionSource.map, originMap: _mapProvider),
-      );
-    });
-    final poi = _selectedPoi;
-    if (poi != null) {
-      await _loadRoutePreview(poi, preferredMode: WaybiTravelMode.walk);
+      _message = _nav.parkedCarLabel();
     }
   }
 
   Future<void> _recoverRouteLocation() async {
     try {
       await _location.recover();
-      _retryExternalPreview();
+      _preview.retryPending();
     } catch (_) {
-      if (mounted && _externalPreview != null) {
-        setState(
-          () => _message = _text(
-            'Location unavailable. Check location access and try again.',
-            '暂时无法定位，请检查定位权限后重试。',
-          ),
+      if (mounted && _preview.hasPending) {
+        _message = _text(
+          'Location unavailable. Check location access and try again.',
+          '暂时无法定位，请检查定位权限后重试。',
         );
-      }
-    }
-  }
-
-  Future<void> _loadRoutePreview(
-    PointOfInterest poi, {
-    WaybiTravelMode preferredMode = WaybiTravelMode.drive,
-  }) async {
-    FocusManager.instance.primaryFocus?.unfocus();
-    _externalPreview = null;
-    final origin = _manualOrigin?.location ?? _locationForRoute;
-    if (origin == null) {
-      final selected = _selectedPlace;
-      if (selected != null) {
-        _externalPreview = (
-          selected: selected,
-          mode: preferredMode,
-          request: _externalRequest,
-        );
-      }
-      setState(
-        () => _message = _text(
-          'Getting your location. The route will appear automatically.',
-          '正在获取位置，定位成功后会自动显示路线。',
-        ),
-      );
-      unawaited(_recoverRouteLocation());
-      return;
-    }
-    if (isCrossTasmanSurfaceRoute([
-      GeoPoint(origin.latitude, origin.longitude),
-      for (final stop in _routeStops)
-        GeoPoint(stop.location.latitude, stop.location.longitude),
-      GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
-    ])) {
-      _trip.dispatch(PreviewSettled(hasPlan: _routePlan != null));
-      setState(
-        () =>
-            _message = const NoSurfaceRouteException().localized(_appLanguage),
-      );
-      return;
-    }
-    final request = ++_routeRequest;
-    // A reload (new stop, language, mode) keeps the loaded plan and mode on
-    // screen until the replacement arrives; a failure leaves them usable.
-    _trip.dispatch(const PreviewRequested());
-    setState(() {
-      _routeRecoveryMessage = null;
-      _following = false;
-      _message = null;
-    });
-    if (preferredMode == WaybiTravelMode.drive &&
-        _selectedParking == null &&
-        _selectedPlace != null) {
-      unawaited(_loadParking(_selectedPlace!.place));
-    }
-    unawaited(_driveEngine.loadCameras());
-    if (preferredMode == WaybiTravelMode.drive) {
-      unawaited(_driveEngine.loadTrafficFlow());
-    }
-    try {
-      final plan = await _independentRoutes.route(
-        origin: GeoPoint(origin.latitude, origin.longitude),
-        destination: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
-        stops: _routeStops
-            .map(
-              (stop) =>
-                  GeoPoint(stop.location.latitude, stop.location.longitude),
-            )
-            .toList(growable: false),
-        language: _appLanguage,
-        mode: preferredMode,
-        headingDegrees: preferredMode == WaybiTravelMode.drive
-            ? _routingHeading
-            : null,
-      );
-
-      final cameraSummaries = _summarizeRouteCameras(plan);
-      final preferenceSummaries = _summarizeRoutePreferences(
-        plan,
-        cameraSummaries,
-      );
-      final preferredRoutes = plan
-          .forMode(preferredMode)
-          .take(3)
-          .toList(growable: false);
-      final routesWithoutKnownClosures = preferredRoutes
-          .where((route) => _closuresOnRoute(route).isEmpty)
-          .toList(growable: false);
-      final preferredRoute = preferredMode == WaybiTravelMode.drive
-          ? recommendedRoute(
-              routesWithoutKnownClosures.isEmpty
-                  ? preferredRoutes
-                  : routesWithoutKnownClosures,
-              preferenceSummaries,
-            )
-          : preferredRoutes.firstOrNull;
-      if (!mounted || request != _routeRequest) return;
-      setState(() {
-        _routePlan = plan;
-        _routeCameraSummaries = cameraSummaries;
-        _routePreferenceSummaries = preferenceSummaries;
-        _routeFilter = RouteFilter.recommended;
-        _selectedMode = preferredMode;
-        _selectedRouteId = preferredRoute?.id;
-      });
-      _driveEngine.setRoute(
-        preferredMode == WaybiTravelMode.drive ? preferredRoute : null,
-      );
-      await _renderRoutePreview();
-    } catch (error) {
-      if (mounted && request == _routeRequest) {
-        setState(() => _message = routeFailureMessage(error, _appLanguage));
-      }
-    } finally {
-      if (mounted && request == _routeRequest) {
-        _trip.dispatch(PreviewSettled(hasPlan: _routePlan != null));
-      }
-    }
-  }
-
-  Map<String, RouteCameraSummary> _summarizeRouteCameras(RoutePlan plan) {
-    final matcher = const RouteCameraMatcher();
-    final summaries = <String, RouteCameraSummary>{};
-    for (final route in plan.options) {
-      if (route.mode != WaybiTravelMode.drive) {
-        summaries[route.id] = const RouteCameraSummary();
-        continue;
-      }
-      final matches = matcher.match(route, _driveEngine.cameras);
-      final types = <String>{};
-      for (final match in matches) {
-        types.add(CameraKindLabel.fromCamera(match.camera).label);
-      }
-      summaries[route.id] = RouteCameraSummary(
-        count: matches.length,
-        types: types.toList(growable: false),
-      );
-    }
-    return summaries;
-  }
-
-  Map<String, RoutePreferenceSummary> _summarizeRoutePreferences(
-    RoutePlan plan,
-    Map<String, RouteCameraSummary> cameraSummaries,
-  ) {
-    final summaries = <String, RoutePreferenceSummary>{};
-    for (final route in plan.options) {
-      if (route.mode != WaybiTravelMode.drive) continue;
-      final congestionScore =
-          (route.trafficDelaySeconds ?? 0) +
-          route.traffic.trafficJam * 300 +
-          route.traffic.slow * 90;
-      summaries[route.id] = RoutePreferenceSummary(
-        cameraCount: cameraSummaries[route.id]?.count ?? 0,
-        congestionScore: congestionScore,
-      );
-    }
-    return summaries;
-  }
-
-  bool get _routeCameraDataReady =>
-      !_driveEngine.loadingCameras && _driveEngine.cameras.isNotEmpty;
-
-  List<RouteOption> get _filteredPreviewRoutes {
-    final routes =
-        _routePlan?.forMode(_selectedMode).toList() ?? <RouteOption>[];
-    if (_selectedMode != WaybiTravelMode.drive) return routes;
-    return filterRoutes(
-      routes,
-      _routeFilter,
-      _routeCameraDataReady ? _routePreferenceSummaries : const {},
-      blockedIds: {
-        for (final route in routes)
-          if (_closuresOnRoute(route)
-              .any((e) => e.observation == RoadEventObservation.official))
-            route.id,
-      },
-    );
-  }
-
-  RouteOption? get _selectedRoute {
-    final routes = _filteredPreviewRoutes;
-    return routes.where((route) => route.id == _selectedRouteId).firstOrNull ??
-        routes.firstOrNull;
-  }
-
-  bool _needsRouteRecovery(RouteOption route) =>
-      route.blockedForDriving ||
-      _closuresOnRoute(route)
-          .any((e) => e.observation == RoadEventObservation.official);
-
-  void _selectRouteFilter(RouteFilter filter) {
-    setState(() {
-      _routeFilter = filter;
-      _selectedRouteId = _filteredPreviewRoutes.firstOrNull?.id;
-      _routeRecoveryMessage = null;
-    });
-    _driveEngine.setRoute(_selectedRoute);
-    unawaited(_renderRoutePreview());
-  }
-
-  Future<void> _recoverBlockedRoute() async {
-    final previous = _selectedRoute;
-    final poi = _selectedPoi;
-    final plan = _routePlan;
-    if (_busy || previous == null || poi == null || plan == null) return;
-    final existing = _filteredPreviewRoutes
-        .where((route) => !_needsRouteRecovery(route))
-        .firstOrNull;
-    if (existing != null) {
-      _selectRoute(existing);
-      setState(
-        () => _routeRecoveryMessage = _text(
-          'A clear alternative is selected. Start when ready.',
-          '已切换到可通行的备选路线，可开始导航。',
-        ),
-      );
-      return;
-    }
-    final origin = _manualOrigin?.location ?? _locationForRoute;
-    if (origin == null) {
-      setState(
-        () => _routeRecoveryMessage = _text(
-          'Waiting for your location. Try again when GPS is ready.',
-          '正在获取位置，请定位成功后重试绕行。',
-        ),
-      );
-      unawaited(_recoverRouteLocation());
-      return;
-    }
-    final request = ++_routeRequest;
-    _trip.dispatch(const DetourStarted());
-    setState(() {
-      _routeRecoveryMessage = _text(
-        'Finding a route around closed roads…',
-        '正在避开封闭路段规划路线…',
-      );
-    });
-    try {
-      final result = await _independentRoutes.route(
-        origin: GeoPoint(origin.latitude, origin.longitude),
-        destination: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
-        stops: _routeStops
-            .map((s) => GeoPoint(s.location.latitude, s.location.longitude))
-            .toList(),
-        language: _appLanguage,
-        mode: WaybiTravelMode.drive,
-        headingDegrees: _routingHeading,
-        avoid: road_routes.closureExclusions(
-          previous,
-          _closuresOnRoute(previous),
-        ),
-      );
-      if (!mounted || request != _routeRequest) return;
-      final clear = result.options
-          .where((route) => !_needsRouteRecovery(route))
-          .toList();
-      if (clear.isEmpty) throw StateError('No verified detour');
-      final updated = RoutePlan(
-        options: [
-          ...clear,
-          ...plan.options.where((route) => route.mode != WaybiTravelMode.drive),
-        ],
-        trafficAvailable: result.trafficAvailable,
-        provider: result.provider,
-        stopsApplied: result.stopsApplied,
-      );
-      final cameras = _summarizeRouteCameras(updated);
-      setState(() {
-        _routePlan = updated;
-        _routeCameraSummaries = cameras;
-        _routePreferenceSummaries = _summarizeRoutePreferences(
-          updated,
-          cameras,
-        );
-        _selectedRouteId = _filteredPreviewRoutes.firstOrNull?.id;
-        _routeRecoveryMessage = _selectedRouteId == null
-            ? _text(
-                'A detour is available. Change your filter to view it.',
-                '已找到绕行路线，请切换筛选条件查看。',
-              )
-            : _text(
-                'Detour ready. Review the route and start navigation.',
-                '已规划绕行路线，确认后可开始导航。',
-              );
-      });
-      _driveEngine.setRoute(_selectedRoute);
-      await _renderRoutePreview();
-    } catch (_) {
-      if (mounted && request == _routeRequest) {
-        setState(
-          () => _routeRecoveryMessage = _text(
-            'No verified detour is available right now. Retry or add a stop to try a different road.',
-            '暂未找到可通行的绕行路线，请重试或添加途经点换一条路。',
-          ),
-        );
-      }
-    } finally {
-      if (mounted && request == _routeRequest) {
-        _trip.dispatch(PreviewSettled(hasPlan: _routePlan != null));
       }
     }
   }
@@ -2233,55 +1481,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       return _independentNavigation.displayPaths;
     }
     if (_driveEngine.active) return _driveEngine.trailPaths;
-    final transit = _activeTransitRoute;
-    if (_transitTripRunning && transit != null) {
-      return _transitTripPaths ??= List.unmodifiable([
-        MapRoutePath(id: transit.id, points: transit.points, active: true),
-      ]);
+    if (_transitTripRunning && _nav.transitRoute != null) {
+      return _nav.transitPaths;
     }
-    final plan = _routePlan;
-    if (plan == null) return const [];
-    final key = (
-      plan,
-      _selectedMode,
-      _selectedRouteId,
-      _routeFilter,
-      _routeCameraDataReady,
-      _driveEngine.roadEvents,
-    );
-    final memo = _previewPathsMemo;
-    if (memo != null &&
-        identical(memo.key.$1, key.$1) &&
-        memo.key.$2 == key.$2 &&
-        memo.key.$3 == key.$3 &&
-        memo.key.$4 == key.$4 &&
-        memo.key.$5 == key.$5 &&
-        identical(memo.key.$6, key.$6)) {
-      return memo.value;
-    }
-    final value = _filteredPreviewRoutes
-        .map(
-          (route) => MapRoutePath(
-            id: route.id,
-            points: route.points,
-            active: route.id == _selectedRouteId,
-          ),
-        )
-        .toList(growable: false);
-    _previewPathsMemo = (key: key, value: value);
-    return value;
+    return _preview.paths;
   }
-
-  /// Preview paths are rebuilt only when the plan, mode, selection, filter
-  /// or closures change, so the map sees the same list between rebuilds.
-  ({
-    (RoutePlan, WaybiTravelMode, String?, RouteFilter, bool, List<RoadEvent>)
-    key,
-    List<MapRoutePath> value,
-  })?
-  _previewPathsMemo;
-
-  List<MapRoutePath>? _transitTripPaths;
 
   String _placeKey(PointOfInterest poi) => poi.placeID.isNotEmpty
       ? (_selectedPlace?.place.reference?.provider == 'osm'
@@ -2306,9 +1510,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           customVoice: _customVoice,
           voiceEnabled: _voiceEnabled,
           lanesEnabled: _lanesEnabled,
-          keepScreenAwake: _keepScreenAwake,
+          keepScreenAwake: _nav.keepScreenAwake,
           onKeepScreenAwakeChanged: (value) =>
-              unawaited(_setKeepScreenAwake(value)),
+              unawaited(_nav.setKeepScreenAwake(value)),
           onNativeLanguageSettings: () =>
               unawaited(NativeMapLanguage.openSettings()),
           appLanguage: _appLanguage,
@@ -2392,11 +1596,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _toggleFavorite(PointOfInterest poi) async {
     if (_selectedPlace?.place.reference?.provider == 'google-ui-kit') {
-      setState(
-        () => _message = _text(
-          'You can navigate here. To save it, first confirm the place on the map.',
-          '可直接导航到此地点。收藏时，请先在地图上确认地点。',
-        ),
+      _message = _text(
+        'You can navigate here. To save it, first confirm the place on the map.',
+        '可直接导航到此地点。收藏时，请先在地图上确认地点。',
       );
       return;
     }
@@ -2414,11 +1616,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       );
     } catch (error) {
       if (mounted) {
-        setState(
-          () => _message = _text(
-            'Could not update your saved places. ${friendlyErrorMessage(error, _appLanguage)}',
-            '无法更新收藏。${friendlyErrorMessage(error, _appLanguage)}',
-          ),
+        _message = _text(
+          'Could not update your saved places. ${friendlyErrorMessage(error, _appLanguage)}',
+          '无法更新收藏。${friendlyErrorMessage(error, _appLanguage)}',
         );
       }
     }
@@ -2449,11 +1649,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       );
     } catch (error) {
       if (mounted) {
-        setState(
-          () => _message = _text(
-            'Could not save your review. ${friendlyErrorMessage(error, _appLanguage)}',
-            '无法保存评价。${friendlyErrorMessage(error, _appLanguage)}',
-          ),
+        _message = _text(
+          'Could not save your review. ${friendlyErrorMessage(error, _appLanguage)}',
+          '无法保存评价。${friendlyErrorMessage(error, _appLanguage)}',
         );
       }
     }
@@ -2462,127 +1660,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _renderRoutePreview() async {
     _following = false;
     final renderer = _takeCamera();
-    final route = _selectedRoute;
+    final route = _preview.selectedRoute;
     if (renderer is RouteMapRenderer && route != null) {
       await renderer.fitRoute(
         route.points,
         bottomInset: (MediaQuery.sizeOf(context).height * .44).clamp(330, 420),
       );
     }
-  }
-
-  Future<List<RouteOption>> _loadIndependentTransitRoutes() async {
-    final poi = _selectedPoi;
-    final origin = _manualOrigin?.location ?? _gpsLocation;
-    if (poi == null || origin == null || _routePlan == null) return const [];
-
-    // Closing the preview or picking another place invalidates this request:
-    // a late answer must not revive a plan with no sheet (a ghost route).
-    final request = _routeRequest;
-    bool current() => mounted && request == _routeRequest;
-    final calculating = _text('Calculating public transport…', '正在计算公交路线…');
-    String noTransit() => _text(
-      'No public transport routes were found for this trip.',
-      '这段行程暂时没有可用的公共交通路线。',
-    );
-    _trip.dispatch(const TransitLoadStarted());
-    setState(() => _message = calculating);
-    try {
-      final transitPlan = await _independentTransitRoutes.route(
-        origin: GeoPoint(origin.latitude, origin.longitude),
-        destination: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
-        language: _appLanguage,
-      );
-      final transit = transitPlan
-          .forMode(WaybiTravelMode.transit)
-          .take(3)
-          .toList(growable: false);
-      final latest = _routePlan;
-      if (!current() || latest == null) return const [];
-      if (transit.isEmpty) {
-        setState(() => _message = noTransit());
-        return transit;
-      }
-      setState(() {
-        _routePlan = RoutePlan(
-          options: [
-            ...latest.options.where(
-              (route) => route.mode != WaybiTravelMode.transit,
-            ),
-            ...transit,
-          ],
-          trafficAvailable: latest.trafficAvailable,
-          provider: latest.provider,
-          stopsApplied: latest.stopsApplied,
-        );
-        _message = null;
-      });
-      return transit;
-    } catch (error) {
-      if (current()) {
-        setState(() {
-          _message = _isNoTransitRoute(error)
-              ? noTransit()
-              : _text(
-                  'Could not calculate public transport. ${friendlyErrorMessage(error, _appLanguage)}',
-                  '公交路线计算失败。${friendlyErrorMessage(error, _appLanguage)}',
-                );
-        });
-      }
-      return const [];
-    } finally {
-      if (current()) {
-        _trip.dispatch(PreviewSettled(hasPlan: _routePlan != null));
-      } else if (mounted && _message == calculating) {
-        setState(() => _message = null);
-      }
-    }
-  }
-
-  /// The transit provider's answer for "the network has no itinerary".
-  static bool _isNoTransitRoute(Object error) =>
-      error is StateError &&
-      error.message.startsWith('No public-transport route');
-
-  int _modeRequest = 0;
-
-  Future<void> _selectMode(WaybiTravelMode mode) async {
-    final plan = _routePlan;
-    if (plan == null) return;
-    // The last tapped mode wins: a slow transit answer must not flip a later
-    // Drive choice back to Transit.
-    final selection = ++_modeRequest;
-    final request = _routeRequest;
-    var routes = plan.forMode(mode).take(3).toList(growable: false);
-    if ((routes.isEmpty && mode == WaybiTravelMode.transit)) {
-      routes = await _loadIndependentTransitRoutes();
-      if (!mounted || selection != _modeRequest || request != _routeRequest) {
-        return;
-      }
-    }
-    if (routes.isEmpty) {
-      final poi = _selectedPoi;
-      if (poi != null && mode != WaybiTravelMode.transit) {
-        await _loadRoutePreview(poi, preferredMode: mode);
-      }
-      return;
-    }
-
-    final selected = mode == WaybiTravelMode.drive
-        ? recommendedRoute(routes, _routePreferenceSummaries) ?? routes.first
-        : routes.first;
-    setState(() {
-      _selectedMode = mode;
-      _selectedRouteId = selected.id;
-    });
-    _driveEngine.setRoute(mode == WaybiTravelMode.drive ? selected : null);
-    await _renderRoutePreview();
-  }
-
-  void _selectRoute(RouteOption route) {
-    setState(() => _selectedRouteId = route.id);
-    _driveEngine.setRoute(route.mode == WaybiTravelMode.drive ? route : null);
-    unawaited(_renderRoutePreview());
   }
 
   Future<void> _addStop() async {
@@ -2605,91 +1689,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
     );
     if (!mounted || stop == null || _selectedPoi == null) return;
-    setState(() => _routeStops.add(stop));
-    await _loadRoutePreview(_selectedPoi!, preferredMode: _selectedMode);
+    await _preview.addStop(stop);
   }
 
   Future<void> _saveCurrentRoute() async {
-    final poi = _selectedPoi;
-    final selected = _selectedRoute;
-    if (poi == null || selected == null) return;
-    GeoPoint savedPoint(GeoPoint point) {
-      if (!_googleSessionCoordinates.contains((
-            point.latitude,
-            point.longitude,
-          )) ||
-          selected.points.isEmpty) {
-        return point;
-      }
-      // Persist Valhalla's independent road geometry rather than Google's input.
-      return selected.points.reduce(
-        (a, b) =>
-            distanceMeters(
-                  a.latitude,
-                  a.longitude,
-                  point.latitude,
-                  point.longitude,
-                ) <
-                distanceMeters(
-                  b.latitude,
-                  b.longitude,
-                  point.latitude,
-                  point.longitude,
-                )
-            ? a
-            : b,
-      );
-    }
-
-    final destinationPoint = savedPoint(
-      GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
+    if (!await _preview.saveCurrentRoute() || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(_text('Route saved on this device', '路线已保存在本机'))),
     );
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getStringList('waybi.saved.routes') ?? <String>[];
-    final record = jsonEncode({
-      'savedAt': DateTime.now().toIso8601String(),
-      'destination': {
-        'name': poi.name,
-        'latitude': destinationPoint.latitude,
-        'longitude': destinationPoint.longitude,
-      },
-      'mode': selected.mode.apiValue,
-      'provider': selected.provider,
-      'durationSeconds': selected.durationSeconds,
-      'distanceMeters': selected.distanceMeters,
-      'stops': _routeStops
-          .map(
-            (stop) => {
-              'label': stop.label,
-              'latitude': savedPoint(
-                GeoPoint(stop.location.latitude, stop.location.longitude),
-              ).latitude,
-              'longitude': savedPoint(
-                GeoPoint(stop.location.latitude, stop.location.longitude),
-              ).longitude,
-            },
-          )
-          .toList(),
-    });
-    saved.removeWhere((item) {
-      try {
-        final existing = jsonDecode(item) as Map<String, dynamic>;
-        final destination = existing['destination'] as Map<String, dynamic>?;
-        return destination?['name'] == poi.name;
-      } catch (_) {
-        return false;
-      }
-    });
-    saved.insert(0, record);
-    if (saved.length > 20) saved.removeRange(20, saved.length);
-    await prefs.setStringList('waybi.saved.routes', saved);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_text('Route saved on this device', '路线已保存在本机')),
-        ),
-      );
-    }
   }
 
   void _toggleVoice() => _setVoiceEnabled(!_voiceEnabled);
@@ -2713,479 +1720,30 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _pauseBrowseLocation() async {
-    await _location.pauseForDrive();
-    _lastDrivePositionAt = null;
-  }
-
-  Future<void> _startTransitTrip(PointOfInterest poi, RouteOption route) async {
-    // The trip shows only its itinerary: drop the preview, its alternatives
-    // and the drive route so none of them stay on the map during or after it.
-    ++_routeRequest;
-    ++_parkingRequest;
-    _driveEngine.setRoute(null);
-    _trip.dispatch(const TransitTripStarted());
-    setState(() {
-      _activeTransitRoute = route;
-      _transitTripPaths = null;
-      _destinationTitle = poi.name;
-      _places.clear();
-      _routePlan = null;
-      _selectedRouteId = null;
-      _routeStops.clear();
-      _routeRecoveryMessage = null;
-      _parkingPlaces = const [];
-      _parkingOriginalPlace = null;
-      _selectedParking = null;
-      _parkingLoading = false;
-      _following = true;
-    });
-    _queueMapRefresh();
-    await _driveEngine.speakUtterance(
-      VoicePrompts.transitTripStarted(_driveEngine.navigationLanguage),
-    );
-  }
-
-  Future<void> _stopTransitTrip() async {
-    if (!_transitTripRunning) return;
-    _trip.dispatch(const TransitTripEnded());
-    setState(() {
-      _activeTransitRoute = null;
-      _transitTripPaths = null;
-      _destinationTitle = _text('Destination', '目的地');
-      _following = true;
-    });
-    _queueMapRefresh();
-  }
-
-  Future<void> _navigateToSelectedPoi() async {
-    final poi = _selectedPoi;
-    final selectedRoute = _selectedRoute;
-    final destinationPlace = _selectedPlace?.place;
-    if (poi == null ||
-        selectedRoute == null ||
-        destinationPlace == null ||
-        _busy) {
-      return;
-    }
-
-    if (_needsRouteRecovery(selectedRoute)) {
-      await _recoverBlockedRoute();
-      return;
-    }
-
-    // Closing the preview, choosing another place or pressing back while the
-    // start awaits location, transit matching or the engine cancels it.
-    // Starting also supersedes a preview reload still in flight.
-    final request = ++_routeRequest;
-    bool cancelled() => !mounted || request != _routeRequest;
-    _trip.dispatch(const StartRequested());
-    setState(() {
-      _message = null;
-      // Navigation always starts in a flat heading-up view. Users can switch
-      // to perspective or north-up after the trip begins.
-      _cameraMode = NavigationCameraMode.headingUpFlat;
-    });
-
-    try {
-      if (_selectedMode == WaybiTravelMode.transit) {
-        await _startTransitTrip(poi, selectedRoute);
-        return;
-      }
-
-      final laneMatches = await _driveEngine.transitMatchesForRoute(
-        selectedRoute,
-      );
-      if (cancelled()) return;
-      final restricted = transitRoadBlocks(
-        selectedRoute,
-        laneMatches,
-        DateTime.now(),
-      );
-      if (restricted.isNotEmpty) {
-        setState(
-          () => _message = _text(
-            'Bus-only access on ${restricted.first.lane.roadName}. Choose another route.',
-            '${restricted.first.lane.roadName} 当前禁止普通汽车通行，请选择其他路线。',
-          ),
-        );
-        return;
-      }
-
-      await _roadAlerts.prepare();
-      if (cancelled()) return;
-      if (!await _location.ensurePermission() || cancelled()) return;
-      await _pauseBrowseLocation();
-      if (cancelled()) return;
-      _independentCamera.reset();
-      await _independentNavigation.start(
-        selectedRoute,
-        initialPosition: _lastReliableBrowsePosition,
-      );
-      if (cancelled()) {
-        // The engine installed the route after the user backed out.
-        await _independentNavigation.stop();
-        return;
-      }
-      // Independent guidance has no paid navigation SKU.
-      _trip.dispatch(const NavigationStarted());
-      setState(() {
-        _destinationTitle = poi.name;
-        _activeNavigationRoute = selectedRoute;
-        _routePlan = null;
-        _selectedRouteId = null;
-        _places.clear();
-        _routeStops.clear();
-        _following = true;
-        _routeOverviewActive = false;
-        _cameraMode = NavigationCameraMode.headingUpFlat;
-        _activeDestinationPlace = destinationPlace;
-        _arrivalPrefetching = false;
-        _arrivalPrefetched = false;
-        _arrivalParkingPlaces = const [];
-        _arrivalPlaceDetails = null;
-        _offlineCorridorReady = false;
-      });
-      _beginJourney(poi);
-      _updateArrivalExperience();
-      await _startSystemNavigation();
-      unawaited(_cacheNavigationCorridor(force: true));
-      _queueMapRefresh();
-    } catch (error) {
-      if (!mounted) return;
-      if (!_guidanceRunning && _independentNavigation.route != null) {
-        // A half-started engine must not keep the drive route or GPS feed.
-        try {
-          await _independentNavigation.stop();
-        } catch (_) {
-          // The page is leaving navigation regardless.
-        }
-      }
-      if (!mounted || cancelled()) return;
-      setState(
-        () => _message = _text(
-          'Could not start navigation. ${friendlyErrorMessage(error, _appLanguage)}',
-          '无法开始导航。${friendlyErrorMessage(error, _appLanguage)}',
-        ),
-      );
-    } finally {
-      // A start that did not reach guidance (failed, bus-only road, no
-      // permission) returns to its preview; a cancelled one already left it.
-      _trip.dispatch(const StartAborted());
-      if (mounted && !_driveEngine.active) unawaited(_startTracking());
-    }
-  }
-
-  Future<void> _startSystemNavigation() async {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      await Permission.notification.request();
-    }
-    await _systemNavigation.start(_systemNavigationState());
-  }
-
-  Map<String, Object?> _systemNavigationState() {
-    final independent = _independentNavigation.active;
-    final step = independent ? _independentNavigation.nextStep : null;
-    final instruction = routeStepInstruction(step, _appLanguage);
-    final type = '${step?.maneuverType} ${step?.maneuverModifier}';
-    final offRoute =
-        independent &&
-        (_independentNavigation.offRoute || _independentNavigation.rerouting);
-    final distance = independent
-        ? _independentNavigation.distanceToStepMeters
-        : null;
-    final remaining = _navigationRemainingMeters;
-    final gpsReliable = !independent || _driveEngine.hasReliableLocation;
-    final seconds = independent
-        ? _independentNavigation.remainingSeconds
-        : _activeNavigationRoute?.durationSeconds ?? 0;
-    return {
-      'destination': _destinationTitle,
-      'language': _appLanguage,
-      'provider': 'independent',
-      'gpsReliable': gpsReliable,
-      'instruction': !gpsReliable
-          ? _text('Waiting for accurate GPS', '正在等待准确定位')
-          : offRoute
-          ? _text('Updating route...', '正在重新规划路线…')
-          : instruction,
-      'distance': !gpsReliable
-          ? '—'
-          : offRoute
-          ? ''
-          : distance == null
-          ? '—'
-          : navigationMetres(distance, _appLanguage),
-      'remaining': remaining == null
-          ? '—'
-          : navigationMetres(remaining, _appLanguage),
-      'seconds': seconds,
-      'offRoute': offRoute,
-      'maneuver': offRoute
-          ? 'arrow.triangle.swap'
-          : type.contains('arrive')
-          ? 'flag.fill'
-          : type.contains('uturn')
-          ? 'arrow.uturn.left'
-          : type.contains('roundabout')
-          ? 'arrow.triangle.2.circlepath'
-          : type.contains('right')
-          ? 'arrow.turn.up.right'
-          : type.contains('left')
-          ? 'arrow.turn.up.left'
-          : 'arrow.up',
-    };
-  }
-
-  Future<void> _stopNavigation({
-    bool arrived = false,
-    bool showSummary = true,
-  }) async {
-    if (_tripState is! TripNavigating) return;
-    _trip.dispatch(const EndRequested());
-    final parkingTarget = _selectedParking;
-    final parkingFix = _gpsLocation;
-    final reachedParking =
-        parkingTarget != null &&
-        (arrived ||
-            (_driveEngine.hasReliableLocation &&
-                parkingFix != null &&
-                distanceMeters(
-                      parkingFix.latitude,
-                      parkingFix.longitude,
-                      parkingTarget.location.latitude,
-                      parkingTarget.location.longitude,
-                    ) <=
-                    75));
-    final route = _activeNavigationRoute;
-    final summary = _journey?.finish(arrived: arrived);
-    final reward = summary?.arrived == true
-        ? _navigationRewards
-              .complete(summary!, country: _journeyCountry)
-              .catchError((Object _) => null)
-        : null;
-    _journeyCountry = null;
-    _journey = null;
-    // Ending always ends: whatever fails below, the page leaves guidance and
-    // returns to browsing instead of a "zombie" trip that cannot be stopped.
-    try {
-      try {
-        await _systemNavigation.stop();
-      } catch (_) {
-        // The Live Activity / notification expires on its own.
-      }
-      try {
-        if (_independentNavigation.route != null) {
-          await _independentNavigation.stop();
-        } else {
-          await _driveEngine.stop();
-        }
-      } catch (_) {
-        try {
-          if (_driveEngine.active) await _driveEngine.stop();
-        } catch (_) {
-          // The engine is disposed with the page; nothing else can be done.
-        }
-      }
-      // Only count GPS-tracked travel, never the entire planned route.
-      if (summary != null &&
-          summary.distanceMeters.isFinite &&
-          summary.distanceMeters > 0) {
-        if (_account.profile != null &&
-            route != null &&
-            route.points.isNotEmpty) {
-          final destination = route.points.last;
-          try {
-            await _journeys.queueAccountJourney(
-              destinationName: _destinationTitle,
-              latitude: destination.latitude,
-              longitude: destination.longitude,
-              mode: _selectedMode.apiValue,
-              distanceMeters: summary.distanceMeters.round(),
-              durationSeconds: summary.elapsed.inSeconds.clamp(0, 2000000),
-            );
-          } catch (_) {
-            // Navigation still ends if local persistence is unavailable.
-          }
-        } else {
-          try {
-            await _journeys.recordGuestJourney(summary);
-          } catch (_) {
-            // Navigation still ends if local persistence is unavailable.
-          }
-        }
-      }
-    } finally {
-      final parkingLeg =
-          reachedParking &&
-          _parkingOriginalPlace != null &&
-          _selectedMode == WaybiTravelMode.drive;
-      _trip.dispatch(NavigationEnded(parkingLeg: parkingLeg));
-      ++_arrivalRequest;
-      _roadAlerts.newTrip();
-      if (mounted) {
-        setState(() {
-          _activeNavigationRoute = null;
-          _activeDestinationPlace = null;
-          _lastCorridorCacheAt = null;
-          _destinationTitle = _text('Destination', '目的地');
-          _cameraMode = NavigationCameraMode.northUpFlat;
-          _following = true;
-          _routeOverviewActive = false;
-          _arrivalPrefetching = false;
-          _arrivalPrefetched = false;
-          _arrivalParkingPlaces = const [];
-          _arrivalPlaceDetails = null;
-          _offlineCorridorReady = false;
-        });
-        // DriveEngine.stop() also stopped the traffic refresh.
-        if (_appForeground && _layers.traffic) {
-          unawaited(_driveEngine.startTrafficFlowRefresh(force: true));
-        }
-        if (!_driveEngine.active) unawaited(_startTracking());
-      }
-    }
-    if (!mounted) return;
-    final parked = _parkingLegFinished ? _selectedParking : null;
-    if (parked != null) {
-      unawaited(_rememberParkedCar(parked));
-    }
-    if (arrived) {
-      unawaited(
-        _driveEngine.speakUtterance(
-          VoicePrompts.arrival(_driveEngine.navigationLanguage),
-        ),
-      );
-    }
-    if (summary != null && showSummary) {
-      unawaited(
-        showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          showDragHandle: true,
-          builder: (sheetContext) => Localizations.override(
-            context: sheetContext,
-            locale: Locale(_appLanguage),
-            child: JourneySummarySheet(
-              summary: summary,
-              language: _appLanguage,
-              reward: reward,
-              feedback: _navigationFeedback,
-            ),
-          ),
-        ),
-      );
-    }
-  }
-
-  Future<void> _startDriveMode() async {
-    if (_busy || _guidanceRunning || _transitTripRunning) return;
-    setState(() => _message = null);
-    try {
-      await _roadAlerts.prepare();
-      if (_gpsLocation == null) {
-        await _startTracking();
-      }
-      if (!mounted) return;
-      if (_gpsLocation == null) {
-        setState(
-          () => _message = _text(
-            'Waiting for your current GPS position before opening Drive Mode.',
-            '正在等待当前定位，定位成功后即可打开驾驶模式。',
-          ),
-        );
-        return;
-      }
-      _trip.dispatch(const DriveRequested());
-      // A preview or place focus must not retain camera ownership in Drive.
-      await _clearRoutePreview();
-      _driveCameraFollow.reset();
-      _independentCamera.reset();
-      await _pauseBrowseLocation();
-      await _driveEngine.startLocal(
-        initialPosition: _lastReliableBrowsePosition,
-      );
-      _trip.dispatch(
-        _driveEngine.active ? const DriveStarted() : const DriveEnded(),
-      );
-      if (mounted) {
-        setState(() {
-          _following = true;
-          _cameraMode = NavigationCameraMode.headingUpFlat;
-        });
-      }
-      _queueMapRefresh();
-    } catch (error) {
-      _trip.dispatch(const DriveEnded());
-      if (mounted) {
-        setState(
-          () => _message = _text(
-            'Could not start Drive Mode. ${friendlyErrorMessage(error, _appLanguage)}',
-            '无法打开驾驶模式。${friendlyErrorMessage(error, _appLanguage)}',
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        // The browse feed was paused for Drive; a failed start must not
-        // leave the map without location.
-        if (!_driveEngine.active) unawaited(_startTracking());
-      }
-    }
-  }
-
-  Future<void> _stopDriveMode() async {
-    if (_guidanceRunning) await _stopNavigation();
-    await _driveEngine.stop();
-    _trip.dispatch(const DriveEnded());
-    if (mounted) setState(() => _cameraMode = NavigationCameraMode.northUpFlat);
-    if ((mounted && _appForeground) && _layers.traffic) {
-      unawaited(_driveEngine.startTrafficFlowRefresh(force: true));
-    }
-    if (mounted) unawaited(_startTracking());
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
   void _selectPlace(
     PlaceSummary place,
     SelectionSource source, {
     PlaceDetails? seedDetails,
   }) {
     if (_driveEngine.active || _transitTripRunning) return;
-    _externalPreview = null;
+    _preview.cancelPending();
     if ((!const ProviderPolicy(MapProvider.independent)
         .canDisplay(place.reference))) {
-      setState(
-        () => _message = _text(
-          'This place belongs to another map provider.',
-          '这个地点来自其他地图服务，无法在 Waybi 中打开。',
-        ),
+      _message = _text(
+        'This place belongs to another map provider.',
+        '这个地点来自其他地图服务，无法在 Waybi 中打开。',
       );
       return;
     }
-    setState(() {
-      // A new place supersedes the last place's preview, ETA and start.
-      ++_routeRequest;
-      _trip.dispatch(const PlaceChosen());
-      _routeRecoveryMessage = null;
-      _places.select(
-        place,
-        source,
-        originMap: _mapProvider,
-        seedDetails: seedDetails,
-      );
-      ++_parkingRequest;
-      _parkingPlaces = const [];
-      _parkingOriginalPlace = null;
-      _selectedParking = null;
-      _parkingLoading = false;
-      _routePlan = null;
-      _selectedRouteId = null;
-      _message = null;
-    });
+    // A new place supersedes the last place's preview, ETA and start.
+    _message = null;
+    _preview.beginPlace();
+    _places.select(
+      place,
+      source,
+      originMap: _mapProvider,
+      seedDetails: seedDetails,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _focusSelectedPlace();
@@ -3361,15 +1919,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     widget.onAppLanguageChanged?.call(next);
     final applied = await _applyNativeMapLanguage(next);
     if (!applied && mounted) {
-      setState(
-        () => _message = _text(
-          'Navigation text updated. Change the app language in system Settings for Google map labels, then reopen Waybi.',
-          '导航文字已更新。Google 地图标签请在系统设置中选择应用语言，然后重新打开 Waybi。',
-        ),
+      _message = _text(
+        'Navigation text updated. Change the app language in system Settings for Google map labels, then reopen Waybi.',
+        '导航文字已更新。Google 地图标签请在系统设置中选择应用语言，然后重新打开 Waybi。',
       );
     }
-    if (_routePlan != null && _selectedPoi != null) {
-      unawaited(_loadRoutePreview(_selectedPoi!, preferredMode: _selectedMode));
+    if (_preview.plan != null && _selectedPoi != null) {
+      unawaited(_preview.load(mode: _preview.mode));
     }
   }
 
@@ -3381,31 +1937,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _setKeepScreenAwake(bool value) async {
-    setState(() => _keepScreenAwake = value);
-    await _driveEngine.setKeepScreenAwake(value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('waybi.nav.keep_screen_awake', value);
-  }
-
-  void _beginJourney(PointOfInterest poi) {
-    _journeyCountry = _navigationRewards.countryAt(
-      GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
-    );
-    unawaited(_navigationFeedback.flush());
-    _journey = JourneyTracker(
-      target: GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
-      destination: poi.name,
-    );
-  }
-
   String _text(String english, String chinese) =>
       _appLanguage == 'zh' ? chinese : english;
 
   void _showNavigationSettings() => _showProfile();
 
   Future<void> _showDirections() async {
-    final route = _activeNavigationRoute;
+    final route = _nav.activeRoute;
     if (route == null) return;
 
     final size = MediaQuery.sizeOf(context);
@@ -3430,28 +1968,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _shareTripSnapshot() async {
-    final active = _independentNavigation.active;
-    final remaining = active
-        ? _independentNavigation.remainingDistanceMeters
-        : null;
-    final arrival = active ? _independentNavigation.remainingSeconds : null;
-    final unknown = _text('unknown', '未知');
-    final distance = remaining == null
-        ? unknown
-        : formatDistance(remaining, _appLanguage);
-    final eta = arrival == null
-        ? unknown
-        : DateTime.now()
-              .add(Duration(seconds: arrival))
-              .toLocal()
-              .toString()
-              .substring(0, 16);
-    final details = _text(
-      'Waybi trip to $_destinationTitle. Remaining: $distance. ETA: $eta. '
-          'This is an ETA snapshot, not live location sharing.',
-      'Waybi 行程：前往 $_destinationTitle。剩余：$distance。预计到达：$eta。'
-          '这是一次到达时间快照，不是实时位置共享。',
-    );
+    final details = _nav.tripSnapshot();
     if (!mounted) return;
     try {
       await const MethodChannel('waybi/share')
@@ -3529,151 +2046,38 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _recenter();
     } catch (_) {
       if (mounted) {
-        setState(
-          () => _message = _text(
-            'Could not add this stop. Your current route is still active.',
-            '无法添加途经点，当前导航路线继续有效。',
-          ),
+        _message = _text(
+          'Could not add this stop. Your current route is still active.',
+          '无法添加途经点，当前导航路线继续有效。',
         );
       }
     }
   }
 
-  Future<TripsSnapshot> _readTripsSnapshot({
-    Map<String, RouteWatchItem> routeWatches = const {},
-  }) async {
-    final quickPlaces = <String, TripDestination>{};
-    for (final label in const ['Home', 'Work']) {
-      final place = _commute.places[label];
-      if (place == null) continue;
-      quickPlaces[label] = TripDestination(
-        name: place.name,
-        address: place.address,
-        location: place.location,
-      );
-    }
-
-    final recent = _recentDestinations
-        .map(
-          (item) => TripDestination(
-            name: item.name ?? item.label,
-            address: item.address ?? '',
-            location: GeoPoint(item.location.latitude, item.location.longitude),
-          ),
-        )
-        .toList(growable: false);
-
-    final history = <TripHistoryItem>[];
-    for (final record
-        in _account.profile?.routes ?? const <Map<String, dynamic>>[]) {
-      final latitude = record['latitude'];
-      final longitude = record['longitude'];
-      final distance = record['distanceMeters'];
-      final duration = record['durationSeconds'];
-      if (latitude is! num ||
-          longitude is! num ||
-          distance is! num ||
-          duration is! num) {
-        continue;
-      }
-      history.add(
-        TripHistoryItem(
-          destination: TripDestination(
-            name:
-                record['destinationName']?.toString() ??
-                _text('Recent trip', '最近行程'),
-            location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
-          ),
-          mode: record['mode']?.toString() ?? 'drive',
-          distanceMeters: distance.toInt(),
-          durationSeconds: duration.toInt(),
-          createdAt: record['startedAt'] is num
-              ? DateTime.fromMillisecondsSinceEpoch(
-                  (record['startedAt'] as num).toInt(),
-                )
-              : DateTime.tryParse(
-                  (record['createdAt'] ?? record['startedAt'])?.toString() ??
-                      '',
-                ),
+  /// The Trips and Discover pages' data.
+  late final _trips = TripsSnapshots(
+    account: _account,
+    commute: _commute,
+    journeys: _journeys,
+    recent: () => [
+      for (final item in _recentDestinations)
+        TripDestination(
+          name: item.name ?? item.label,
+          address: item.address ?? '',
+          location: GeoPoint(item.location.latitude, item.location.longitude),
         ),
-      );
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    const guestPrefix = 'waybi.companion.guest.v1.';
-    return TripsSnapshot(
-      lifetimeDistanceMeters: _account.profile?.companionTotals?.distanceMeters,
-      lifetimeTripCount: _account.profile?.companionTotals?.tripCount,
-      lifetimeDurationSeconds:
-          _account.profile?.companionTotals?.durationSeconds,
-      guestDistanceMeters: prefs.getInt('${guestPrefix}distance') ?? 0,
-      guestTripCount: prefs.getInt('${guestPrefix}trips') ?? 0,
-      guestDurationSeconds: prefs.getInt('${guestPrefix}duration') ?? 0,
-      quickPlaces: quickPlaces,
-      quickRoutes: _commute.quickRoutes,
-      recent: recent,
-      history: history,
-      routeWatches: routeWatches,
-      smartCommuteRoutes: _commute.smartRoutes,
-      signedIn: _account.signedIn,
-      isPlus: _account.profile?.isPlus == true,
-    );
-  }
-
-  Stream<TripsSnapshot> _loadTripsProgressively() {
-    final session = _account.sessionToken;
-    final watches = <String, RouteWatchItem>{};
-    return loadTripsInStages(
-      readSnapshot: () => _readTripsSnapshot(
-        routeWatches: _account.sessionToken == session
-            ? Map.of(watches)
-            : const {},
-      ),
-      refreshers: [
-        if (_account.signedIn)
-          (publish) async {
-            try {
-              await _account.refresh();
-            } catch (_) {
-              /* Keep cached profile. */
-            }
-            publish();
-            if (!mounted || _account.sessionToken != session) return;
-            await _journeys.syncGuestCompanionJourneys();
-            publish();
-            if (!mounted || _account.sessionToken != session) return;
-            await _journeys.syncPendingAccountJourneys();
-          },
-        (_) => _commute.refreshQuick(),
-        if (_account.signedIn && _account.profile?.isPlus == true)
-          (publish) async {
-            for (final item in await _account.routeWatches()) {
-              if (!mounted || _account.sessionToken != session) return;
-              final watch = RouteWatchItem.fromJson(item);
-              if (watch.id.isNotEmpty && watch.label.isNotEmpty) {
-                watches[watch.label] = watch;
-              }
-            }
-            publish();
-            if (watches.isNotEmpty) {
-              await _commute.refreshSmart();
-            } else {
-              _commute.clearSmart();
-            }
-          },
-      ],
-    );
-  }
-
-  Future<TripsSnapshot> _loadTripsSnapshot() => _loadTripsProgressively().last;
+    ],
+    active: () => mounted,
+    language: () => _appLanguage,
+  );
 
   Future<void> _showTrips() async {
     final result = await Navigator.of(context).push<TripsResult>(
       MaterialPageRoute(
         builder: (_) => TripsPage(
           language: _appLanguage,
-          loader: _loadTripsSnapshot,
-          progressiveLoader: _loadTripsProgressively,
+          loader: _trips.load,
+          progressiveLoader: _trips.progressive,
           onRouteWatchChanged: _commute.setRouteWatch,
         ),
       ),
@@ -3706,7 +2110,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       MaterialPageRoute(
         builder: (_) => DiscoverPage(
           language: _appLanguage,
-          loader: _loadTripsSnapshot,
+          loader: _trips.load,
           roadLoader: () async {
             await _driveEngine.loadCameras(force: true, center: origin);
             return DiscoverRoadSnapshot(
@@ -3770,7 +2174,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       savedRoutes: savedRoutes,
       favoritePlaces: favoritePlaces,
       onPlace: (place) => _selectPlace(place, SelectionSource.saved),
-      onNotice: (message) => setState(() => _message = message),
+      onNotice: (message) => _message = message,
     );
   }
 
@@ -3866,7 +2270,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
               .toList(growable: false),
           initialQuery: query,
           purpose: searchPurpose,
-          onDriveMode: selectResult ? () => unawaited(_startDriveMode()) : null,
+          onDriveMode: selectResult ? () => unawaited(_nav.startDrive()) : null,
         ),
         transitionsBuilder: (_, animation, secondaryAnimation, child) {
           final curved = CurvedAnimation(
@@ -3890,10 +2294,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (!mounted || (isCurrent != null && !isCurrent())) return null;
     if (place == null) return null;
     if (place.reference?.provider == 'google-ui-kit') {
-      _googleSessionCoordinates.add((
-        place.location.latitude,
-        place.location.longitude,
-      ));
+      _preview.rememberSessionCoordinate(place.location);
     }
     if (!selectResult) return place;
     if (place.reference?.provider == 'google-ui-kit') {
@@ -3935,11 +2336,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             _mapProvider,
           );
         } else {
-          setState(
-            () => _message = _text(
-              'Place selected. To save Home or Work, first confirm it on the map.',
-              '地点已选中。保存家或公司时，请先在地图上确认地点。',
-            ),
+          _message = _text(
+            'Place selected. To save Home or Work, first confirm it on the map.',
+            '地点已选中。保存家或公司时，请先在地图上确认地点。',
           );
         }
       }
@@ -4125,26 +2524,26 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (!_settingsLoaded) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final arrivalPhotos = _arrivalPlaceDetails?.photos ?? const <PlacePhoto>[];
-    final arrivalDestination = _activeDestinationPlace;
+    final arrivalPhotos = _nav.arrivalDetails?.photos ?? const <PlacePhoto>[];
+    final arrivalDestination = _nav.destination;
     // The remaining distance changes every tick: only the panel listens.
     final arrivalPanel =
         _arrivalMode &&
-            _navigationRemainingMeters != null &&
+            _nav.remainingMeters != null &&
             arrivalDestination != null
         ? ListenableBuilder(
             listenable: _independentNavigation,
             builder: (context, _) => ArrivalExperiencePanel(
               language: _appLanguage,
-              destinationTitle: _destinationTitle,
+              destinationTitle: _nav.destinationTitle,
               destinationAddress: arrivalDestination.address,
-              remainingMeters: _navigationRemainingMeters ?? 0,
+              remainingMeters: _nav.remainingMeters ?? 0,
               photoUrl: arrivalPhotos.isEmpty ? null : arrivalPhotos.first.url,
-              selectedParkingTitle: _selectedParking?.name,
-              parkingPlaces: _arrivalParkingPlaces,
-              parkingLoading: _arrivalPrefetching,
+              selectedParkingTitle: _preview.selectedParking?.name,
+              parkingPlaces: _nav.arrivalParking,
+              parkingLoading: _nav.arrivalPrefetching,
               onParkingSelected: (parking) =>
-                  unawaited(_routeToArrivalParking(parking)),
+                  unawaited(_nav.routeToArrivalParking(parking)),
             ),
           )
         : null;
@@ -4231,7 +2630,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     );
                   },
                   onBlankTap: () {
-                    if (_selectedPlace != null || _routePlan != null) {
+                    if (_selectedPlace != null || _preview.plan != null) {
                       unawaited(_clearRoutePreview());
                     }
                   },
@@ -4247,77 +2646,20 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     (_showSearchArea ? 190 : 130),
                 right: 16,
                 child: PointerInterceptor(
-                  child: Column(
-                    children: [
-                      if (_account.profile?.isPlus == true &&
-                          _parkedCarPlace != null) ...[
-                        Material(
-                          color: Theme.of(context).colorScheme.surface,
-                          elevation: 5,
-                          borderRadius: BorderRadius.circular(14),
-                          child: IconButton(
-                            tooltip: _parkedCarAgeLabel(),
-                            icon: const Icon(
-                              Icons.directions_car_filled_rounded,
-                              color: WaybiColors.ocean,
-                            ),
-                            onPressed: _showParkedCar,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                      Material(
-                        color: Theme.of(context).colorScheme.surface,
-                        elevation: 5,
-                        borderRadius: BorderRadius.circular(14),
-                        child: IconButton(
-                          tooltip: _text('Saved places', '收藏地点'),
-                          icon: const Icon(Icons.bookmark_outline_rounded),
-                          onPressed: () => unawaited(_showSaved()),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Material(
-                        color: Theme.of(context).colorScheme.surface,
-                        elevation: 5,
-                        borderRadius: BorderRadius.circular(14),
-                        child: IconButton(
-                          tooltip: _text('Map layers', '地图图层'),
-                          icon: const Icon(Icons.layers_rounded),
-                          onPressed: _showMapLayers,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Material(
-                        color: Theme.of(context).colorScheme.surface,
-                        elevation: 5,
-                        borderRadius: BorderRadius.circular(14),
-                        child: IconButton(
-                          tooltip: _text('Report road issue', '上报道路情况'),
-                          icon: const Icon(
-                            Icons.add_alert_rounded,
-                            color: WaybiColors.ocean,
-                          ),
-                          onPressed: () => unawaited(_showRoadReport()),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Material(
-                        color: Theme.of(context).colorScheme.surface,
-                        elevation: 5,
-                        borderRadius: BorderRadius.circular(14),
-                        child: IconButton(
-                          tooltip: _locationControlTooltip,
-                          icon: Icon(
-                            _locationControlIcon,
-                            color: _following
-                                ? WaybiColors.ocean
-                                : WaybiColors.deepOcean,
-                          ),
-                          onPressed: _cycleLocationCamera,
-                        ),
-                      ),
-                    ],
+                  child: HomeMapControls(
+                    language: _appLanguage,
+                    following: _following,
+                    cameraMode: _cameraMode,
+                    parkedCarLabel:
+                        _account.profile?.isPlus == true &&
+                            _nav.parkedCar != null
+                        ? _nav.parkedCarLabel()
+                        : null,
+                    onParkedCar: _showParkedCar,
+                    onSaved: () => unawaited(_showSaved()),
+                    onLayers: _showMapLayers,
+                    onReport: () => unawaited(_showRoadReport()),
+                    onLocation: _cycleLocationCamera,
                   ),
                 ),
               ),
@@ -4329,35 +2671,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 left: 16,
                 right: 16,
                 child: PointerInterceptor(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ValueListenableBuilder<GeoPoint?>(
-                        valueListenable: _location.locationListenable,
-                        builder: (context, location, _) =>
-                            CompanionSearchPrompt(
-                              marker: _locationMarker,
-                              language: _appLanguage,
-                              currentLocation: location ?? _viewport.center,
-                              loadSuggestions: _loadMapSearchSuggestions,
-                              cachedSuggestions: _cachedMapSearchSuggestions,
-                              onSuggestionSelected: _selectMapSearchSuggestion,
-                              onSearch: (query) =>
-                                  unawaited(_openSearch(query: query)),
-                            ),
-                      ),
-                      const SizedBox(height: 9),
-                      _buildQuickActions(),
-                      if (_showSearchArea)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: FilledButton.icon(
-                            onPressed: _searchThisArea,
-                            icon: const Icon(Icons.refresh_rounded, size: 17),
-                            label: Text(_text('Search this area', '搜索此区域')),
-                          ),
-                        ),
-                    ],
+                  child: HomeSearchHeader(
+                    language: _appLanguage,
+                    marker: _locationMarker,
+                    location: _location.locationListenable,
+                    fallbackLocation: _viewport.center,
+                    loadSuggestions: _loadMapSearchSuggestions,
+                    cachedSuggestions: _cachedMapSearchSuggestions,
+                    onSuggestionSelected: _selectMapSearchSuggestion,
+                    onSearch: (query) => unawaited(_openSearch(query: query)),
+                    quickActions: _buildQuickActions(),
+                    showSearchArea: _showSearchArea,
+                    onSearchArea: _searchThisArea,
                   ),
                 ),
               ),
@@ -4375,9 +2700,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                         onBottomInsetChanged: _updateNavigationBottomInset,
                         engine: _independentNavigation,
                         drive: _driveEngine,
-                        destination: _destinationTitle,
+                        destination: _nav.destinationTitle,
                         language: _appLanguage,
-                        onEnd: () => unawaited(_stopNavigation()),
+                        onEnd: () => unawaited(_nav.stop()),
                         onRecenter: _recenter,
                         onOverview: _showRouteOverview,
                         following: _following,
@@ -4399,8 +2724,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                         arrivalPanel: arrivalPanel,
                         offlineReady:
                             _account.profile?.isPlus == true &&
-                            _offlineCorridorReady,
-                        offlineCachedAt: _lastCorridorCacheAt,
+                            _nav.offlineReady,
+                        offlineCachedAt: _nav.corridorCachedAt,
                       ),
                 ),
               ),
@@ -4411,44 +2736,51 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   following: _following,
                   onRecenter: _recenter,
                   engine: _driveEngine,
-                  onStop: () => unawaited(_stopDriveMode()),
+                  onStop: () => unawaited(_nav.stopDrive()),
                 ),
               ),
-            if (_message != null)
-              WaybiStatusBanner(
-                key: ValueKey(_message),
-                message: _message!,
-                dismissLabel: _text('Dismiss', '关闭'),
-                actionLabel: switch (_location.issueAction) {
-                  LocationNoticeAction.appSettings ||
-                  LocationNoticeAction.locationSettings => _text(
-                    'Open settings',
-                    '打开设置',
-                  ),
-                  _ => _text('Retry location', '重试定位'),
-                },
-                onAction:
-                    _message == _location.issueMessage &&
-                        _location.issueAction != null
-                    ? () => unawaited(_resolveLocationIssue())
-                    : null,
-                onDismiss: () {
-                  if (mounted) setState(() => _message = null);
-                },
+            // Positioned: an empty banner must not size the stack.
+            Positioned.fill(
+              child: ValueListenableBuilder<String?>(
+                valueListenable: _notice,
+                builder: (context, message, _) => message == null
+                    ? const SizedBox.shrink()
+                    : WaybiStatusBanner(
+                        key: ValueKey(message),
+                        message: message,
+                        dismissLabel: _text('Dismiss', '关闭'),
+                        actionLabel: switch (_location.issueAction) {
+                          LocationNoticeAction.appSettings ||
+                          LocationNoticeAction.locationSettings => _text(
+                            'Open settings',
+                            '打开设置',
+                          ),
+                          _ => _text('Retry location', '重试定位'),
+                        },
+                        onAction:
+                            message == _location.issueMessage &&
+                                _location.issueAction != null
+                            ? () => unawaited(_resolveLocationIssue())
+                            : null,
+                        onDismiss: () {
+                          if (mounted) _message = null;
+                        },
+                      ),
               ),
+            ),
             if (_parkingLegFinished &&
-                _parkingOriginalPlace != null &&
-                _selectedParking != null &&
+                _preview.parkingOriginalPlace != null &&
+                _preview.selectedParking != null &&
                 !_guidanceRunning)
               Align(
                 alignment: Alignment.bottomCenter,
                 child: ParkingContinuationCard(
-                  destinationTitle: _parkingOriginalPlace!.name,
-                  parkingTitle: _selectedParking!.name,
+                  destinationTitle: _preview.parkingOriginalPlace!.name,
+                  parkingTitle: _preview.selectedParking!.name,
                   isChinese: _appLanguage == 'zh',
                   carRemembered: _account.profile?.isPlus == true,
-                  onContinue: () => unawaited(_continueOnFoot()),
-                  onEnd: _dismissParkingLeg,
+                  onContinue: () => unawaited(_preview.continueOnFoot()),
+                  onEnd: _nav.dismissParkingLeg,
                 ),
               ),
             if (!_driveEngine.active &&
@@ -4463,19 +2795,19 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 !_driveEngine.active &&
                 !_guidanceRunning &&
                 !_transitTripRunning &&
-                _routePlan == null)
+                _preview.plan == null)
               Align(
                 alignment: Alignment.bottomCenter,
                 child: SafeArea(
                   minimum: const EdgeInsets.fromLTRB(14, 14, 14, 14),
                   child: PointerInterceptor(
-                    child: _PlaceCard(
+                    child: PlaceDetailsContent(
                       selectedPlace: _selectedPlace!.place,
                       details: _places.details,
                       detailsLoading: _places.detailsLoading,
                       detailsError: _places.detailsError,
                       onRetryDetails: _places.retryDetails,
-                      busy: _routePreviewLoading,
+                      routeBusy: _routePreviewLoading,
                       quickRoute: _places.quickRoute,
                       quickRouteLoading: _places.quickRouteLoading,
                       quickRouteIssue: _places.quickRouteIssue,
@@ -4489,8 +2821,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                             )
                           : null,
                       onClose: () => unawaited(_clearRoutePreview()),
-                      onNavigate: () =>
-                          unawaited(_loadRoutePreview(_selectedPoi!)),
+                      onNavigate: () => unawaited(_preview.load()),
                       isFavorite: _isFavorite(_selectedPoi!),
                       onFavorite: () =>
                           unawaited(_toggleFavorite(_selectedPoi!)),
@@ -4498,29 +2829,31 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                       language: _appLanguage,
                       onExpandedChanged: (expanded) =>
                           _focusSelectedPlace(expanded: expanded),
+                      warnFarDestination:
+                          _selectedPlace!.source == SelectionSource.search,
                     ),
                   ),
                 ),
               ),
-            if (_transitTripRunning && _activeTransitRoute != null)
+            if (_transitTripRunning && _nav.transitRoute != null)
               Positioned.fill(
                 child: ValueListenableBuilder<int?>(
                   valueListenable: _gpsAccuracyShown,
                   builder: (context, accuracy, _) => TransitTripOverlay(
                     language: _appLanguage,
-                    destinationTitle: _destinationTitle,
-                    route: _activeTransitRoute!,
+                    destinationTitle: _nav.destinationTitle,
+                    route: _nav.transitRoute!,
                     gpsAccuracy: accuracy?.toDouble(),
-                    onEnd: () => unawaited(_stopTransitTrip()),
+                    onEnd: () => unawaited(_nav.stopTransit()),
                     onRecenter: _recenter,
                   ),
                 ),
               ),
             if (_selectedPoi != null &&
-                _routePlan != null &&
+                _preview.plan != null &&
                 !_driveEngine.active &&
                 !_guidanceRunning &&
-                !_transitTripRunning)
+                !_transitTripRunning) ...[
               Align(
                 alignment: Alignment.bottomCenter,
                 child: RoutePreviewSheet(
@@ -4532,42 +2865,42 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   warnFarDestination:
                       _selectedPlace!.source == SelectionSource.search,
                   originTitle:
-                      _manualOrigin?.label ?? _text('Current location', '当前位置'),
-                  plan: _routePlan!,
-                  selectedMode: _selectedMode,
-                  selectedRouteId: _selectedRouteId,
+                      _preview.manualOrigin?.label ??
+                      _text('Current location', '当前位置'),
+                  plan: _preview.plan!,
+                  selectedMode: _preview.mode,
+                  selectedRouteId: _preview.selectedRouteId,
                   busy: _busy,
-                  stopCount: _routeStops.length,
+                  stopCount: _preview.stops.length,
                   cameraCount: _driveEngine.routeCameraCount,
-                  routeCameraSummaries: _routeCameraSummaries,
-                  routePreferenceSummaries: _routePreferenceSummaries,
-                  filter: _routeFilter,
-                  onFilterChanged: _selectRouteFilter,
-                  cameraDataReady: _routeCameraDataReady,
-                  statusMessage: _routeRecoveryMessage,
-                  onRetry: () => unawaited(_recoverBlockedRoute()),
-                  routeClosures: {
-                    for (final route in _routePlan!.forMode(_selectedMode))
-                      route.id: _closuresOnRoute(route),
-                  },
+                  routeCameraSummaries: _preview.cameraSummaries,
+                  routePreferenceSummaries: _preview.preferenceSummaries,
+                  filter: _preview.filter,
+                  onFilterChanged: _preview.selectFilter,
+                  cameraDataReady:
+                      !_driveEngine.loadingCameras &&
+                      _driveEngine.cameras.isNotEmpty,
+                  statusMessage: _preview.recoveryMessage,
+                  onRetry: () => unawaited(_preview.recoverBlockedRoute()),
+                  routeClosures: _preview.closuresByRoute,
                   onRoadEvent: (event) =>
                       unawaited(_showRoadEventDetails(event)),
                   canRequestTransit: true,
                   canRequestModes: true,
-                  customOrigin: _manualOrigin != null,
-                  parkingPlaces: _parkingPlaces,
-                  selectedParkingId: _selectedParking?.id,
-                  finalDestinationTitle: _parkingOriginalPlace?.name,
-                  parkingLoading: _parkingLoading,
+                  customOrigin: _preview.manualOrigin != null,
+                  parkingPlaces: _preview.parkingPlaces,
+                  selectedParkingId: _preview.selectedParking?.id,
+                  finalDestinationTitle: _preview.parkingOriginalPlace?.name,
+                  parkingLoading: _preview.parkingLoading,
                   isChinese: _appLanguage == 'zh',
                   onParkingSelected: (parking) =>
-                      unawaited(_selectParking(parking)),
-                  onDirectDestination: _parkingOriginalPlace == null
+                      unawaited(_preview.selectParking(parking)),
+                  onDirectDestination: _preview.parkingOriginalPlace == null
                       ? null
-                      : () => unawaited(_restoreDirectDestination()),
-                  onModeChanged: (mode) => unawaited(_selectMode(mode)),
-                  onRouteSelected: _selectRoute,
-                  onStart: () => unawaited(_navigateToSelectedPoi()),
+                      : () => unawaited(_preview.restoreDirectDestination()),
+                  onModeChanged: (mode) => unawaited(_preview.selectMode(mode)),
+                  onRouteSelected: _preview.selectRoute,
+                  onStart: () => unawaited(_nav.start()),
                   onAddStop: () => unawaited(_addStop()),
                   onSave: () => unawaited(_saveCurrentRoute()),
                   isFavorite: _isFavorite(_selectedPoi!),
@@ -4576,144 +2909,29 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   onClose: () => unawaited(_clearRoutePreview()),
                 ),
               ),
-            if (_selectedPoi != null &&
-                _routePlan != null &&
-                !_driveEngine.active &&
-                !_guidanceRunning &&
-                !_transitTripRunning)
               Positioned(
                 right: 18,
                 bottom: MediaQuery.paddingOf(context).bottom + 18,
                 child: PointerInterceptor(
-                  child: FloatingActionButton.extended(
-                    key: const Key('routeStartFloatingButton'),
-                    heroTag: 'route-start-floating',
-                    elevation: 9,
-                    onPressed: _busy
-                        ? null
-                        : _selectedRoute == null
-                        ? () => _selectRouteFilter(RouteFilter.recommended)
-                        : () => unawaited(_navigateToSelectedPoi()),
-                    backgroundColor: WaybiColors.ocean,
-                    foregroundColor: Colors.white,
-                    icon: _busy
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.navigation_rounded),
-                    label: Text(
-                      _busy
-                          ? (_recoveringRoute
-                                ? _text('Planning…', '正在规划…')
-                                : _text('Starting…', '正在开始…'))
-                          : _selectedRoute == null
-                          ? _text('Show all routes', '查看全部路线')
-                          : _selectedMode == WaybiTravelMode.transit
-                          ? _text('Start trip', '开始行程')
-                          : _selectedRoute != null &&
-                                _needsRouteRecovery(_selectedRoute!)
-                          ? _text('Find detour', '规划绕行')
-                          : _text('Start', '开始导航'),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                  child: RouteStartButton(
+                    language: _appLanguage,
+                    busy: _busy,
+                    planning: _recoveringRoute,
+                    hasRoute: _preview.selectedRoute != null,
+                    transit: _preview.mode == WaybiTravelMode.transit,
+                    needsDetour:
+                        _preview.selectedRoute != null &&
+                        _preview.needsRecovery(_preview.selectedRoute!),
+                    onShowAllRoutes: () =>
+                        _preview.selectFilter(RouteFilter.recommended),
+                    onStart: () => unawaited(_nav.start()),
                   ),
                 ),
               ),
+            ],
           ],
         ),
       ),
-    );
-  }
-}
-
-/// Notifies listeners, but never while widgets are building: a source that
-/// changes during a build (the drive engine starting a camera reload from a
-/// page's initState) is passed on after that frame instead.
-class _FrameSafeNotifier extends ChangeNotifier {
-  bool _scheduled = false;
-
-  void ping() {
-    final binding = SchedulerBinding.instance;
-    if (binding.schedulerPhase != SchedulerPhase.persistentCallbacks) {
-      notifyListeners();
-      return;
-    }
-    if (_scheduled) return;
-    _scheduled = true;
-    binding.addPostFrameCallback((_) {
-      _scheduled = false;
-      if (hasListeners) notifyListeners();
-    });
-  }
-}
-
-class _PlaceCard extends StatelessWidget {
-  const _PlaceCard({
-    required this.selectedPlace,
-    required this.details,
-    required this.detailsLoading,
-    required this.detailsError,
-    required this.onRetryDetails,
-    required this.busy,
-    required this.quickRoute,
-    required this.quickRouteLoading,
-    required this.quickRouteIssue,
-    required this.navigationUnavailableReason,
-    required this.navigationAvailable,
-    required this.onClose,
-    required this.onNavigate,
-    required this.isFavorite,
-    required this.onFavorite,
-    required this.onReview,
-    required this.language,
-    required this.onExpandedChanged,
-  });
-
-  final PlaceSummary selectedPlace;
-  final PlaceDetails? details;
-  final bool detailsLoading;
-  final String? detailsError;
-  final VoidCallback onRetryDetails;
-  final bool busy;
-  final RouteOption? quickRoute;
-  final bool quickRouteLoading;
-  final String? quickRouteIssue;
-  final String? navigationUnavailableReason;
-  final bool navigationAvailable;
-  final VoidCallback onClose;
-  final VoidCallback onNavigate;
-  final bool isFavorite;
-  final VoidCallback onFavorite;
-  final VoidCallback onReview;
-  final String language;
-  final ValueChanged<bool> onExpandedChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return PlaceDetailsContent(
-      selectedPlace: selectedPlace,
-      details: details,
-      detailsLoading: detailsLoading,
-      detailsError: detailsError,
-      onRetryDetails: onRetryDetails,
-      routeBusy: busy,
-      quickRoute: quickRoute,
-      quickRouteLoading: quickRouteLoading,
-      quickRouteIssue: quickRouteIssue,
-      navigationUnavailableReason: navigationUnavailableReason,
-      navigationAvailable: navigationAvailable,
-      isFavorite: isFavorite,
-      onClose: onClose,
-      onNavigate: onNavigate,
-      onFavorite: onFavorite,
-      onReview: onReview,
-      language: language,
-      onExpandedChanged: onExpandedChanged,
     );
   }
 }

@@ -28,6 +28,9 @@
     "apps/mobile/lib/app/home_chrome.dart": {
       "minimumLinePercent": 90
     },
+    "apps/mobile/lib/app/home_overlays.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/app/home_sheets.dart": {
       "minimumLinePercent": 85
     },
@@ -36,6 +39,9 @@
     },
     "apps/mobile/lib/app/location_controller.dart": {
       "minimumLinePercent": 90
+    },
+    "apps/mobile/lib/app/navigation_session_controller.dart": {
+      "minimumLinePercent": 95
     },
     "apps/mobile/lib/app/offline_corridor.dart": {
       "minimumLinePercent": 95
@@ -49,7 +55,13 @@
     "apps/mobile/lib/app/road_alerts.dart": {
       "minimumLinePercent": 95
     },
+    "apps/mobile/lib/app/route_preview_controller.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/app/trip_state.dart": {
+      "minimumLinePercent": 95
+    },
+    "apps/mobile/lib/app/trips_snapshots.dart": {
       "minimumLinePercent": 95
     },
     "apps/mobile/lib/data/account_repository.dart": {
@@ -299,7 +311,7 @@
       "minimumLinePercent": 90
     },
     "apps/mobile/lib/main.dart": {
-      "minimumLinePercent": 90
+      "minimumLinePercent": 91
     },
     "apps/mobile/lib/providers/camera_marker_art.dart": {
       "minimumLinePercent": 100

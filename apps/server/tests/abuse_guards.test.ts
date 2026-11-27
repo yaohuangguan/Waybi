@@ -156,6 +156,10 @@ test('malformed stops are rejected instead of silently dropped', async () => {
 test('API errors get a request id and a generic body; client encoding errors are 400', async () => {
   assert.equal(classifyError(new URIError('URI malformed')).status, 400);
   assert.equal(classifyError(new UpstreamError('Nominatim HTTP 500')).status, 502);
+  assert.equal(classifyError(new TypeError('fetch failed')).status, 502);
+  assert.equal(classifyError(Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' })).status, 502);
+  assert.equal(classifyError(new TypeError("Cannot read properties of undefined (reading 'fetch')")).status, 500,
+    'a bug in our own code is not reported as an upstream outage');
   assert.equal(classifyError(new HttpError(503, 'Busy', { code: 'BUSY' })).message, 'Busy');
   const secret = classifyError(new Error('D1_ERROR: UNIQUE constraint failed: users.email'));
   assert.deepEqual([secret.status, secret.message], [500, 'Internal error']);

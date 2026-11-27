@@ -26,7 +26,8 @@ function upstreamFailure(error: unknown): boolean {
   if (error instanceof UpstreamError) return true;
   const name = (error as { name?: string })?.name;
   if (name === 'TimeoutError' || name === 'AbortError') return true;
-  return error instanceof TypeError && /fetch|network|connect/i.test(String((error as Error).message || ''));
+  // Runtime network failures only; a TypeError from our own code stays a 500.
+  return error instanceof TypeError && /fetch failed|failed to fetch|network connection|connection (?:lost|refused|reset)/i.test(String((error as Error).message || ''));
 }
 
 export function classifyError(error: unknown): { status: number; message: string; code?: string; headers: Record<string, string> } {

@@ -466,7 +466,8 @@ async function handleApi(request: Request, env, ctx) {
     }
     const exclusions = parseRouteExclusions(url.searchParams.get('avoid'));
     if (exclusions == null) return json({ error: 'avoid requires up to 32 lon,lat,heading entries' }, 400);
-    const ownedEngine = Boolean(nzRoutingEndpoint(env, [from, ...stops, to]));
+    let ownedEngine = false;
+    try { ownedEngine = Boolean(nzRoutingEndpoint(env, [from, ...stops, to])); } catch { /* misconfigured engine: routeOptions falls back */ }
     return json(await routeOptions(
       from,
       to,

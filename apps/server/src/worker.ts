@@ -5,7 +5,7 @@ import { loadSearchEnrichments, mergeAndRankSearchResults } from './search/searc
 import { clientKind } from './brand_compat.ts';
 import { saveNavigationFeedback } from './navigation_feedback.ts';
 import { handleTrafficTile } from './traffic_tiles.ts';
-import { parseLonLat, parseNzLonLat } from './geo.ts';
+import { distanceMeters, parseLonLat, parseNzLonLat } from './geo.ts';
 import { rankPlaces } from './place_search_rank.ts';
 import seed from '../data/cameras.json' with { type: 'json' };
 import { fetchNztaCameras, SOURCE_URL } from './sync.ts';
@@ -129,6 +129,37 @@ async function upstreamJson(url, headers = {}) {
   if (!response.ok) throw new UpstreamError(`Map service HTTP ${response.status}`);
   try { return await response.json<ProviderPayload>(); }
   catch (error) { throw new UpstreamError('Map service returned invalid JSON', { cause: error }); }
+}
+
+/**
+ * Optional area filter for /api/road-events. Without `bbox` or `radiusMeters`
+ * the response is unchanged (`near` alone still only selects the region).
+ * Returns null for an invalid area.
+ */
+export function parseRoadEventArea(url: URL) {
+  const rawBox = url.searchParams.get('bbox');
+  const rawRadius = url.searchParams.get('radiusMeters');
+  if (rawBox != null) {
+    const box = rawBox.split(',').map((value) => Number(value));
+    if (box.length !== 4 || !box.every(Number.isFinite)) return null;
+    const [west, south, east, north] = box;
+    if (west < -180 || east > 180 || south < -90 || north > 90 || west >= east || south >= north ||
+        east - west > 10 || north - south > 10) return null;
+    const inside = (p) => p && p.longitude >= west && p.longitude <= east && p.latitude >= south && p.latitude <= north;
+    return { bounds: { west, south, east, north }, center: [(west + east) / 2, (south + north) / 2] as [number, number],
+      matches: (event) => inside(event?.location) || (Array.isArray(event?.geometry) && event.geometry.some(inside)) };
+  }
+  if (rawRadius != null) {
+    const near = parseLonLat(url.searchParams.get('near'));
+    const radius = Number(rawRadius);
+    if (!near || !Number.isFinite(radius) || radius < 100 || radius > 300_000) return null;
+    const latPad = radius / 111_320, lonPad = radius / (111_320 * Math.max(0.01, Math.cos(near[1] * Math.PI / 180)));
+    const close = (p) => p && Number.isFinite(p.longitude) && Number.isFinite(p.latitude) &&
+      distanceMeters(near, [p.longitude, p.latitude]) <= radius;
+    return { bounds: { west: near[0] - lonPad, south: near[1] - latPad, east: near[0] + lonPad, north: near[1] + latPad },
+      center: near, matches: (event) => close(event?.location) || (Array.isArray(event?.geometry) && event.geometry.some(close)) };
+  }
+  return { bounds: null, center: null, matches: null };
 }
 
 /** Signed-in callers share by account; anonymous callers by a pseudonymous
@@ -290,12 +321,17 @@ async function handleApi(request: Request, env, ctx) {
     return result;
   }
   if (url.pathname === '/api/road-events') {
-    const reports = await readRoadReports(env);
+    const area = parseRoadEventArea(url);
+    if (!area) {
+      return json({ error: 'bbox must be west,south,east,north (at most 10°), or near with radiusMeters 100–300000' }, 400);
+    }
+    const reports = await readRoadReports(env, new Date(), area.bounds);
     let state;
     try { state = await loadRegionalRoadEvents(env,
-      parseLonLat(url.searchParams.get('near')), url.searchParams.get('country') || 'NZ'); }
+      parseLonLat(url.searchParams.get('near')) || area.center, url.searchParams.get('country') || 'NZ'); }
     catch { state = { events: [], syncStatus: 'unavailable' }; }
-    return json({ ...state, events: [...reports, ...state.events] });
+    const events = [...reports, ...state.events];
+    return json({ ...state, events: area.matches ? events.filter(area.matches) : events });
   }
   if (url.pathname.startsWith('/api/map/traffic/tiles/')) return handleTrafficTile(request, env);
   if (url.pathname === '/api/traffic-flow') {
@@ -332,7 +368,13 @@ async function handleApi(request: Request, env, ctx) {
       return json({ speedLimitKph: null, available: false, coverage: ['NZ'], source: null });
     }
 
-    const [longitude, latitude] = at;
+    // Speed zones change rarely; share one upstream lookup per ~11 m cell
+    // for an hour at this PoP instead of one ArcGIS query per GPS fix.
+    const longitude = Math.round(at[0] * 1e4) / 1e4;
+    const latitude = Math.round(at[1] * 1e4) / 1e4;
+    const cacheKey = `${url.origin}/__edge-cache/speed-limit/v1/${longitude.toFixed(4)},${latitude.toFixed(4)}`;
+    const cached = await readPublicEdgeJson<Record<string, unknown>>(cacheKey);
+    if (cached && 'speedLimitKph' in cached) return json(cached);
     const params = new URLSearchParams({
       f: 'json',
       geometry: `${longitude},${latitude}`,
@@ -360,21 +402,25 @@ async function handleApi(request: Request, env, ctx) {
       })
       .sort((a, b) => Number(b.whenEffective || 0) - Number(a.whenEffective || 0))[0];
 
-    if (!current) {
-      return json({
-        speedLimitKph: null,
-        source: 'NZTA National Speed Limit Register',
-        sourceUrl: 'https://www.nzta.govt.nz/partners/speed-management/national-speed-limit-register'
-      });
-    }
-
-    const parsed = Number.parseInt(String(current.speedLimitZoneValue || current.speedLimitZoneMaxValue || ''), 10);
-    return json({
+    const parsed = current
+      ? Number.parseInt(String(current.speedLimitZoneValue || current.speedLimitZoneMaxValue || ''), 10)
+      : NaN;
+    const body = current ? {
       speedLimitKph: Number.isFinite(parsed) ? parsed : null,
       zoneName: current.speedLimitZoneName || null,
       source: 'NZTA National Speed Limit Register',
       sourceUrl: 'https://www.nzta.govt.nz/partners/speed-management/national-speed-limit-register'
-    });
+    } : {
+      speedLimitKph: null,
+      source: 'NZTA National Speed Limit Register',
+      sourceUrl: 'https://www.nzta.govt.nz/partners/speed-management/national-speed-limit-register'
+    };
+    // A zone that starts or ends within the hour must not be cached past it.
+    const boundaries = (result.features || []).flatMap((feature) => [feature.attributes?.whenEffective, feature.attributes?.whenIneffective])
+      .map(Number).filter((time) => Number.isFinite(time) && time > now);
+    const ttl = Math.max(60, Math.min(3600, Math.floor((Math.min(now + 3_600_000, ...boundaries) - now) / 1000)));
+    await writePublicEdgeJson(cacheKey, body, ttl);
+    return json(body);
   }
   if (url.pathname === '/api/route-options') {
     const from = validateCoordinatePair(url.searchParams.get('from'));

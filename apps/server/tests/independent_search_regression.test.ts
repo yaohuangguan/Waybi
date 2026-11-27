@@ -285,3 +285,39 @@ test('a partial street name never interpolates a house across different nearby s
   ]], '42 ver', [174.79, -36.98]);
   assert.ok(results.every(result => !result.interpolated));
 });
+
+test('Sky Tower near Auckland ranks the Auckland tower first, not a same-named landuse area in Wrocław', async () => {
+  // Shape of the real Photon response for "Sky Tower" (trimmed): Photon labels
+  // the Wrocław landuse polygon `type: locality`, which used to be treated as a
+  // geographic destination that outranks every nearby result.
+  const features = [
+    { properties: { osm_type: 'W', osm_id: 54510846, osm_key: 'landuse', osm_value: 'commercial', type: 'locality',
+      name: 'Sky Tower', district: 'Powstańców Śląskich', city: 'Wrocław', country: 'Poland', countrycode: 'PL' },
+    geometry: { coordinates: [17.0195533, 51.0945185] } },
+    { properties: { osm_type: 'W', osm_id: 168554211, osm_key: 'building', osm_value: 'yes', type: 'house',
+      name: 'Sky Tower', city: 'Al Reem Island', country: 'United Arab Emirates', countrycode: 'AE' },
+    geometry: { coordinates: [54.40852, 24.4961734] } },
+    { properties: { osm_type: 'R', osm_id: 19745928, osm_key: 'man_made', osm_value: 'tower', type: 'house',
+      name: 'Sky Tower', street: 'Victoria Street Cycleway', city: 'Waitematā', state: 'Auckland',
+      country: 'New Zealand', countrycode: 'NZ' }, geometry: { coordinates: [174.762183, -36.8484632] } },
+  ];
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname !== 'photon.komoot.io') return Response.json({ results: [] });
+    // The geographic lookup only returns OSM place=* features; this query has none.
+    return Response.json({ features: url.searchParams.getAll('osm_tag').length ? [] : features });
+  };
+  try {
+    const { default: worker } = await import('../src/worker.ts');
+    const response = await worker.fetch(new Request(
+      'https://waybi.test/api/suggest?q=Sky%20Tower&near=174.76,-36.85&provider=independent'), {}, { waitUntil() {} });
+    assert.equal(response.status, 200);
+    const results = await response.json();
+    assert.equal(results[0].countryCode, 'NZ');
+    assert.ok(results[0].distanceMeters < 1000);
+    const wroclaw = results.find((place) => place.countryCode === 'PL');
+    assert.ok(wroclaw, 'the overseas namesake is still offered');
+    assert.notEqual(wroclaw.resultType, 'locality', 'a landuse area is not a geographic destination');
+  } finally { globalThis.fetch = previous; }
+});

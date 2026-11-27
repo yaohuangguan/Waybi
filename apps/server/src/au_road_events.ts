@@ -1,6 +1,7 @@
 import type { OfficialRoadEvent, RoadEventState, GeoPoint } from './types.ts';
 import { validCoordinate } from './geo.ts';
 import { currentOrUpcoming, SCHEDULED_WINDOW_MS } from './road_events.ts';
+import { readMemoizedJson, rememberJson } from './snapshot_memo.ts';
 
 /** Transport for NSW's published GeoJSON feed. AU coverage starts with NSW;
  * additional state sources join this adapter registry as they are validated.
@@ -114,7 +115,7 @@ export async function refreshNswRoadEventState(env: Env, fetcher: typeof fetch =
   const existing = pending.get(env.CAMERA_DATA);
   if (existing) return current(await existing, now);
   const job = (async () => {
-    const stored = await env.CAMERA_DATA.get<RoadEventState>(KEY, 'json');
+    const stored = await readMemoizedJson<RoadEventState>(env.CAMERA_DATA, KEY);
     let state: RoadEventState;
     try { state = await fetchNswRoadEvents(fetcher, now, stored); }
     catch (error) {
@@ -125,6 +126,7 @@ export async function refreshNswRoadEventState(env: Env, fetcher: typeof fetch =
         syncStatus: usable ? 'stale' : 'unavailable', syncError: String(error.message || error) }, now);
     }
     await env.CAMERA_DATA.put(KEY, JSON.stringify(state));
+    rememberJson(env.CAMERA_DATA, KEY, state);
     return state;
   })();
   pending.set(env.CAMERA_DATA, job);
@@ -133,11 +135,11 @@ export async function refreshNswRoadEventState(env: Env, fetcher: typeof fetch =
 }
 
 export async function readNswRoadEventState(env: Env): Promise<RoadEventState | null> {
-  return env.CAMERA_DATA.get<RoadEventState>(KEY, 'json');
+  return readMemoizedJson<RoadEventState>(env.CAMERA_DATA, KEY);
 }
 
 export async function loadNswRoadEventState(env: Env, fetcher: typeof fetch = fetch, now = new Date()): Promise<RoadEventState> {
-  const stored = await env.CAMERA_DATA.get<RoadEventState>(KEY, 'json');
+  const stored = await readMemoizedJson<RoadEventState>(env.CAMERA_DATA, KEY);
   const age = now.getTime() - Date.parse(stored?.checkedAt || '');
   // NSW is refreshed by the 10-minute Cron; avoid extra writes on hot paths.
   if (Number.isFinite(age) && age >= 0 && age < 12 * 60000) return current(stored, now);

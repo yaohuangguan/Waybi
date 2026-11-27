@@ -1,4 +1,5 @@
 import type { OfficialRoadEvent, OfficialRoadEventType, RoadEventState } from './types.ts';
+import { readMemoizedJson, rememberJson } from './snapshot_memo.ts';
 
 interface NztaEvent {
   id?: unknown; status?: unknown; geometry?: unknown; impact?: unknown;
@@ -200,7 +201,12 @@ export async function fetchNztaRoadEvents(fetcher: typeof fetch = fetch, now = n
 }
 
 export async function readRoadEventState(env: RoadEventEnv): Promise<RoadEventState | null> {
-  return await env.CAMERA_DATA.get<RoadEventState>(CACHE_KEY, 'json');
+  return readMemoizedJson<RoadEventState>(env.CAMERA_DATA, CACHE_KEY);
+}
+
+async function writeRoadEventState(env: RoadEventEnv, state: RoadEventState) {
+  await env.CAMERA_DATA.put(CACHE_KEY, JSON.stringify(state));
+  rememberJson(env.CAMERA_DATA, CACHE_KEY, state);
 }
 
 /** Active now, or scheduled to start within SCHEDULED_WINDOW_MS. */
@@ -254,7 +260,7 @@ export async function refreshRoadEventState(env: RoadEventEnv, fetcher: typeof f
     const stored = await readRoadEventState(env);
     try {
       const live = await fetchNztaRoadEvents(fetcher, now);
-      await env.CAMERA_DATA.put(CACHE_KEY, JSON.stringify(live));
+      await writeRoadEventState(env, live);
       return currentSnapshot(live, now);
     } catch (error) {
       const retrievedAt = stored?.retrievedAt ??
@@ -271,7 +277,7 @@ export async function refreshRoadEventState(env: RoadEventEnv, fetcher: typeof f
       };
       // Cache failure attempts too, so an outage does not trigger a retry per
       // user. The original retrieval timestamp is never moved forward.
-      await env.CAMERA_DATA.put(CACHE_KEY, JSON.stringify(state));
+      await writeRoadEventState(env, state);
       return currentSnapshot(state, now);
     }
   })();

@@ -39,6 +39,19 @@ async function catalog(stripe, env) {
   }));
 }
 
+// The public catalog changes rarely; cache validated prices per isolate so
+// /api/billing/plans does not make two Stripe calls on every page view.
+const PLAN_CACHE_MS = 10 * 60 * 1000;
+let planCache: { key: string; at: number; plans: Awaited<ReturnType<typeof catalog>> } | null = null;
+
+async function cachedCatalog(stripe, env, now: number) {
+  const key = [env.STRIPE_PRICE_MONTHLY, env.STRIPE_PRICE_ANNUAL, String(env.STRIPE_SECRET_KEY || '').slice(-8)].join('|');
+  if (planCache?.key === key && now >= planCache.at && now - planCache.at < PLAN_CACHE_MS) return planCache.plans;
+  const plans = await catalog(stripe, env);
+  planCache = { key, at: now, plans };
+  return plans;
+}
+
 async function customerForUser(db, stripe, user, now) {
   let row = await db.prepare('SELECT customer_id FROM billing_customers WHERE user_id = ?').bind(user.id).first();
   if (!row) {
@@ -146,7 +159,7 @@ export async function handleBilling(request: Request, env, dependencies: { now?:
       { id: 'annual', amount: 3999, currency: 'nzd', interval: 'year' }
     ] });
     try {
-      return respond({ ready: true, plans: (await catalog(stripe, env)).map(({ priceId, ...publicPrice }) => publicPrice) });
+      return respond({ ready: true, plans: (await cachedCatalog(stripe, env, now)).map(({ priceId, ...publicPrice }) => publicPrice) });
     } catch { return respond({ ready: false, error: 'Subscriptions are temporarily unavailable. Please try again later.', plans: [] }, 503); }
   }
   if (!env.USER_DB) return respond({ error: 'Account storage is not configured' }, 503);

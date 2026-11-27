@@ -247,6 +247,11 @@ function mapPhotonPlaces(data) {
     const isPoi = ['shop', 'amenity', 'tourism', 'leisure', 'office', 'craft'].includes(
       String(props.osm_key || '')
     );
+    // Photon's `type` is its address layer, not a place class: a landuse area
+    // or building named "Sky Tower" is `type: locality`/`house`. Only OSM
+    // place=* and administrative boundaries are geographic destinations;
+    // anything else must not outrank nearby results as if it were a town.
+    const placeLike = ['place', 'boundary'].includes(String(props.osm_key || ''));
     return [
       {
         id: isStreetOnly
@@ -258,9 +263,9 @@ function mapPhotonPlaces(data) {
         address,
         label: address || name,
         isPoi,
-        resultType: isGeographicPlace({ resultType: props.osm_value })
+        resultType: placeLike && isGeographicPlace({ resultType: props.osm_value })
           ? props.osm_value
-          : isGeographicPlace({ resultType: props.type }) ? props.type : props.osm_value || '',
+          : placeLike && isGeographicPlace({ resultType: props.type }) ? props.type : props.osm_value || '',
         countryCode: text(props.countrycode),
         latitude: Number(coordinates[1]),
         longitude: Number(coordinates[0]),

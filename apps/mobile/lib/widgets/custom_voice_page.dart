@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import '../drive/custom_voice.dart';
 import '../drive/voice_clip_player.dart';
 import '../drive/voice_recorder.dart';
+import '../drive/voice_take_session.dart';
+import '../theme/waybi_theme.dart';
+import 'custom_voice_guided_page.dart';
 
 /// Waybi Plus: record, preview, re-record and delete custom guidance clips.
 class CustomVoicePage extends StatefulWidget {
@@ -35,14 +38,54 @@ class CustomVoicePage extends StatefulWidget {
   State<CustomVoicePage> createState() => _CustomVoicePageState();
 }
 
+/// Localized wording for a take problem.
+String voiceTakeIssueText(VoiceTakeIssue issue, bool zh) {
+  String t(String en, String cn) => zh ? cn : en;
+  return switch (issue) {
+    VoiceTakeIssue.microphoneDenied => t(
+      'Microphone access is off. Allow it for Waybi in Settings to record.',
+      '麦克风权限已关闭。请在系统设置中允许 Waybi 使用麦克风后再录音。',
+    ),
+    VoiceTakeIssue.couldNotStart => t('Recording could not start.', '无法开始录音。'),
+    VoiceTakeIssue.nothingRecorded => t(
+      'Nothing was recorded. Try again.',
+      '没有录到声音，请重试。',
+    ),
+    VoiceTakeIssue.tooShort => t(
+      'That take was too short to use. Please record again.',
+      '这段录音太短，请重新录制。',
+    ),
+    VoiceTakeIssue.unplayable => t(
+      'This recording can’t be played. Please record it again.',
+      '这段录音无法播放，请重新录制。',
+    ),
+  };
+}
+
+/// Section titles of the recording page.
+String voicePhraseGroupTitle(VoicePhraseGroup group, bool zh) {
+  String t(String en, String cn) => zh ? cn : en;
+  return switch (group) {
+    VoicePhraseGroup.distance => t('Distances', '距离'),
+    VoicePhraseGroup.maneuver => t('Turns', '转弯与车道'),
+    VoicePhraseGroup.connector => t('Connecting words', '连接词'),
+    VoicePhraseGroup.camera => t('Cameras', '摄像头提醒'),
+    VoicePhraseGroup.roadAlert => t('Road alerts', '道路提醒'),
+    VoicePhraseGroup.trip => t('Trip messages', '行程消息'),
+    VoicePhraseGroup.arrival => t('Arrival', '到达'),
+  };
+}
+
 class _CustomVoicePageState extends State<CustomVoicePage> {
   late String _pack = widget.initialPack == 'zh' ? 'zh' : 'en';
-  VoiceRecorder? _recorder;
-  VoiceClipPlayer? _player;
-  String? _recordingId;
-  Timer? _autoStop;
-  ({String id, String path})? _draft;
-  String? _playingId;
+  late final VoiceTakeSession _takes = VoiceTakeSession(
+    voice: _voice,
+    language: _pack,
+    recorder: widget.recorder,
+    player: widget.player,
+    maxRecording: CustomVoicePage.maxRecording,
+    onIssue: (issue) => _message(voiceTakeIssueText(issue, _zh)),
+  );
 
   CustomVoiceController get _voice => widget.controller;
   bool get _zh => widget.language == 'zh';
@@ -52,29 +95,20 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
   void initState() {
     super.initState();
     _voice.addListener(_changed);
+    _takes.addListener(_changed);
   }
 
   void _changed() {
     if (!mounted) return;
-    if (!_voice.plus && _recordingId != null) unawaited(_cancelRecording());
+    if (!_voice.plus && _takes.busy) unawaited(_takes.cancelRecording());
     setState(() {});
   }
 
   @override
   void dispose() {
     _voice.removeListener(_changed);
-    _autoStop?.cancel();
-    final draft = _draft;
-    if (draft != null) unawaited(_voice.discardDraft(draft.path));
-    final recorder = _recorder;
-    if (recorder != null) {
-      unawaited(
-        (_recordingId != null ? recorder.cancel() : Future<void>.value())
-            .catchError((Object _) {})
-            .whenComplete(() => recorder.dispose().catchError((Object _) {})),
-      );
-    }
-    unawaited(_player?.dispose().catchError((Object _) {}));
+    _takes.removeListener(_changed);
+    _takes.dispose();
     super.dispose();
   }
 
@@ -85,117 +119,8 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
       ..showSnackBar(SnackBar(content: Text(text)));
   }
 
-  Future<void> _record(VoicePhrase phrase) async {
-    if (!_voice.plus) return;
-    if (_recordingId == phrase.id) return _stopRecording();
-    if (_recordingId != null) await _cancelRecording();
-    await _discardDraft();
-    await _stopPlayback();
-    final recorder = _recorder ??= (widget.recorder ?? RecordVoiceRecorder.new)
-        .call();
-    try {
-      if (!await recorder.requestPermission()) {
-        _message(
-          _t(
-            'Microphone access is off. Allow it for Waybi in Settings to record.',
-            '麦克风权限已关闭。请在系统设置中允许 Waybi 使用麦克风后再录音。',
-          ),
-        );
-        return;
-      }
-      final path = await _voice.draftPath(_pack);
-      await recorder.start(path);
-      if (!mounted) return;
-      setState(() => _recordingId = phrase.id);
-      _autoStop = Timer(CustomVoicePage.maxRecording, _stopRecording);
-    } catch (_) {
-      _message(_t('Recording could not start.', '无法开始录音。'));
-    }
-  }
-
-  Future<void> _stopRecording() async {
-    _autoStop?.cancel();
-    final id = _recordingId;
-    if (id == null) return;
-    String? path;
-    try {
-      path = await _recorder?.stop();
-    } catch (_) {}
-    if (!mounted) return;
-    setState(() {
-      _recordingId = null;
-      _draft = path == null ? null : (id: id, path: path);
-    });
-    if (path == null) {
-      _message(_t('Nothing was recorded. Try again.', '没有录到声音，请重试。'));
-    }
-  }
-
-  Future<void> _cancelRecording() async {
-    _autoStop?.cancel();
-    try {
-      await _recorder?.cancel();
-    } catch (_) {}
-    if (mounted) setState(() => _recordingId = null);
-  }
-
-  Future<void> _discardDraft() async {
-    final draft = _draft;
-    if (draft == null) return;
-    _draft = null;
-    await _voice.discardDraft(draft.path);
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _keepDraft() async {
-    final draft = _draft;
-    if (draft == null) return;
-    await _stopPlayback();
-    final saved = await _voice.saveClip(_pack, draft.id, draft.path);
-    if (!mounted) return;
-    setState(() => _draft = null);
-    if (!saved) {
-      _message(
-        _t(
-          'That take was too short to use. Please record again.',
-          '这段录音太短，请重新录制。',
-        ),
-      );
-    }
-  }
-
-  Future<void> _play(String id, String? path, {bool draft = false}) async {
-    if (path == null) return;
-    await _stopPlayback();
-    final player = _player ??= (widget.player ?? AudioplayersClipPlayer.new)
-        .call();
-    setState(() => _playingId = id);
-    try {
-      await player.play(path);
-    } catch (_) {
-      if (_playingId != id) return; // Stopped by the user.
-      if (!draft) _voice.reportBroken(_pack, id);
-      _message(
-        _t(
-          'This recording can’t be played. Please record it again.',
-          '这段录音无法播放，请重新录制。',
-        ),
-      );
-    } finally {
-      if (mounted && _playingId == id) setState(() => _playingId = null);
-    }
-  }
-
-  Future<void> _stopPlayback() async {
-    if (_playingId == null) return;
-    setState(() => _playingId = null);
-    try {
-      await _player?.stop();
-    } catch (_) {}
-  }
-
   Future<void> _delete(VoicePhrase phrase) async {
-    await _stopPlayback();
+    await _takes.stopPlayback();
     await _voice.deleteClip(_pack, phrase.id);
   }
 
@@ -223,25 +148,39 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
       ),
     );
     if (confirmed != true) return;
-    await _stopPlayback();
-    await _discardDraft();
+    await _takes.reset();
     await _voice.deleteAll();
   }
 
-  String _groupTitle(VoicePhraseGroup group) => switch (group) {
-    VoicePhraseGroup.distance => _t('Distances', '距离'),
-    VoicePhraseGroup.maneuver => _t('Turns', '转弯与车道'),
-    VoicePhraseGroup.connector => _t('Connecting words', '连接词'),
-    VoicePhraseGroup.camera => _t('Cameras', '摄像头提醒'),
-    VoicePhraseGroup.roadAlert => _t('Road alerts', '道路提醒'),
-    VoicePhraseGroup.trip => _t('Trip messages', '行程消息'),
-    VoicePhraseGroup.arrival => _t('Arrival', '到达'),
-  };
+  List<VoicePhrase> get _missing => [
+    for (final phrase in voicePhrasesFor(_pack))
+      if (!_voice.recorded(_pack).contains(phrase.id) ||
+          _voice.isBroken(_pack, phrase.id))
+        phrase,
+  ];
+
+  Future<void> _recordMissing() async {
+    final missing = _missing;
+    if (missing.isEmpty || !_voice.plus) return;
+    await _takes.reset();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => CustomVoiceGuidedPage(
+          controller: _voice,
+          language: widget.language,
+          pack: _pack,
+          phrases: missing,
+          recorder: widget.recorder,
+          player: widget.player,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final plus = _voice.plus;
-    final recorded = _voice.recorded(_pack);
     final hasAny = CustomVoiceController.languages.any(
       (language) => _voice.recorded(language).isNotEmpty,
     );
@@ -261,47 +200,7 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          if (!plus)
-            Card(
-              key: const ValueKey('custom-voice-upsell'),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.lock_rounded),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _t(
-                              'Custom navigation voice is part of Waybi Plus',
-                              '自定义导航语音是 Waybi Plus 功能',
-                            ),
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _t(
-                        'Guidance uses the standard voice. Any recordings you made earlier stay on this device and can be deleted here.',
-                        '目前使用标准语音播报。之前的录音仍保存在本机，可以在这里删除。',
-                      ),
-                    ),
-                    if (widget.onOpenPlus != null) ...[
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: widget.onOpenPlus,
-                        child: Text(_t('See Waybi Plus', '了解 Waybi Plus')),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
+          if (!plus) _upsell(context),
           SwitchListTile(
             key: const ValueKey('custom-voice-enabled'),
             contentPadding: EdgeInsets.zero,
@@ -315,22 +214,21 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
             value: plus && _voice.enabled,
             onChanged: plus ? (value) => _voice.setEnabled(value) : null,
           ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.phone_iphone_rounded, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  _t(
-                    'Recordings stay on this device. Waybi never uploads them.',
-                    '录音只保存在本机，Waybi 不会上传。',
-                  ),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+          SwitchListTile(
+            key: const ValueKey('custom-voice-omit-roads'),
+            contentPadding: EdgeInsets.zero,
+            title: Text(_t('Don’t read road names', '不播报路名')),
+            subtitle: Text(
+              _t(
+                'Leaves out road names and the words before them, so a fully recorded voice is the only voice you hear.',
+                '省略路名及前面的连接词；录完全部短语后，导航只会用你的声音。',
               ),
-            ],
+            ),
+            value: _voice.omitRoadNames,
+            onChanged: plus ? (value) => _voice.setOmitRoadNames(value) : null,
           ),
+          const SizedBox(height: 4),
+          _privacyNote(context),
           const SizedBox(height: 12),
           SegmentedButton<String>(
             segments: const [
@@ -339,42 +237,181 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
             ],
             selected: {_pack},
             onSelectionChanged: (value) async {
-              if (_recordingId != null) await _cancelRecording();
-              await _discardDraft();
-              await _stopPlayback();
-              setState(() => _pack = value.first);
+              await _takes.reset();
+              setState(() {
+                _pack = value.first;
+                _takes.language = _pack;
+              });
             },
           ),
-          const SizedBox(height: 8),
-          Text(
-            _t(
-              '${recorded.length} of ${voicePhrasesFor(_pack).length} phrases recorded',
-              '已录 ${recorded.length} / ${voicePhrasesFor(_pack).length} 条短语',
-            ),
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          for (final group in VoicePhraseGroup.values) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 16, bottom: 4),
-              child: Text(
-                _groupTitle(group),
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+          const SizedBox(height: 12),
+          _completeness(context, plus),
+          for (final group in VoicePhraseGroup.values)
+            if (voicePhrasesFor(_pack, group).isNotEmpty) ...[
+              _groupHeader(context, group),
+              for (final phrase in voicePhrasesFor(_pack, group))
+                _phraseRow(
+                  phrase,
+                  _voice.recorded(_pack).contains(phrase.id),
+                  plus,
                 ),
-              ),
-            ),
-            for (final phrase in voicePhrasesFor(_pack, group))
-              _phraseRow(phrase, recorded.contains(phrase.id), plus),
-          ],
+            ],
         ],
       ),
     );
   }
 
+  Widget _upsell(BuildContext context) => Card(
+    key: const ValueKey('custom-voice-upsell'),
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.lock_rounded),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _t(
+                    'Custom navigation voice is part of Waybi Plus',
+                    '自定义导航语音是 Waybi Plus 功能',
+                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _t(
+              'Guidance uses the standard voice. Any recordings you made earlier stay on this device and can be deleted here.',
+              '目前使用标准语音播报。之前的录音仍保存在本机，可以在这里删除。',
+            ),
+          ),
+          if (widget.onOpenPlus != null) ...[
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: widget.onOpenPlus,
+              child: Text(_t('See Waybi Plus', '了解 Waybi Plus')),
+            ),
+          ],
+        ],
+      ),
+    ),
+  );
+
+  Widget _privacyNote(BuildContext context) => Row(
+    children: [
+      const Icon(Icons.phone_iphone_rounded, size: 18),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(
+          _t(
+            'Recordings stay on this device. Waybi never uploads them.',
+            '录音只保存在本机，Waybi 不会上传。',
+          ),
+          style: context.textStyles.bodySmall,
+        ),
+      ),
+    ],
+  );
+
+  Widget _completeness(BuildContext context, bool plus) {
+    final total = voicePhrasesFor(_pack).length;
+    final missing = _missing.length;
+    final done = total - missing;
+    return Card(
+      key: const ValueKey('custom-voice-progress'),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              missing == 0
+                  ? _t(
+                      'All $total phrases recorded — every fixed word is in your voice',
+                      '已录全部 $total 条短语，所有固定播报都是你的声音',
+                    )
+                  : _t(
+                      '$done of $total recorded — unrecorded phrases use the standard voice',
+                      '已录 $done / $total 条，没录的短语使用标准语音',
+                    ),
+              style: context.textStyles.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            Semantics(
+              label: _t('Recording progress', '录制进度'),
+              value: '$done / $total',
+              child: LinearProgressIndicator(
+                value: total == 0 ? 0 : done / total,
+                minHeight: 6,
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            if (missing > 0 && plus) ...[
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                key: const ValueKey('custom-voice-record-missing'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(WaybiTouch.minTarget),
+                ),
+                onPressed: _recordMissing,
+                icon: const Icon(Icons.mic_rounded),
+                label: Text(
+                  _t('Record missing phrases ($missing)', '录制缺少的短语（$missing）'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _groupHeader(BuildContext context, VoicePhraseGroup group) {
+    final phrases = voicePhrasesFor(_pack, group);
+    final recorded = phrases
+        .where((phrase) => _voice.recorded(_pack).contains(phrase.id))
+        .length;
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 4),
+      child: Semantics(
+        header: true,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                voicePhraseGroupTitle(group, _zh),
+                style: context.textStyles.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              _t(
+                '$recorded of ${phrases.length}',
+                '$recorded / ${phrases.length}',
+              ),
+              key: ValueKey('custom-voice-group-${group.name}'),
+              style: context.textStyles.bodySmall?.copyWith(
+                color: recorded == phrases.length
+                    ? context.status.success
+                    : context.colors.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _phraseRow(VoicePhrase phrase, bool recorded, bool plus) {
-    final recording = _recordingId == phrase.id;
-    final draft = _draft?.id == phrase.id ? _draft : null;
+    final recording = _takes.recordingId == phrase.id;
+    final draft = _takes.draft?.id == phrase.id ? _takes.draft : null;
     final broken = recorded && _voice.isBroken(_pack, phrase.id);
     final status = recording
         ? _t('Recording… tap stop when done', '录音中…读完点停止')
@@ -395,9 +432,9 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
             ? Icons.check_circle_rounded
             : Icons.radio_button_unchecked_rounded,
         color: broken
-            ? Theme.of(context).colorScheme.error
+            ? context.status.danger
             : recorded
-            ? Theme.of(context).colorScheme.primary
+            ? context.status.success
             : null,
       ),
       title: Text('“${phrase.prompt(_pack)}”'),
@@ -410,19 +447,19 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
               key: ValueKey('custom-voice-play-draft-${phrase.id}'),
               tooltip: _t('Play new take', '试听新录音'),
               icon: const Icon(Icons.play_arrow_rounded),
-              onPressed: () => _play(phrase.id, draft.path, draft: true),
+              onPressed: () => _takes.play(phrase.id, draft.path, draft: true),
             ),
             IconButton(
               key: ValueKey('custom-voice-keep-${phrase.id}'),
               tooltip: _t('Keep', '保留'),
               icon: const Icon(Icons.check_rounded),
-              onPressed: _keepDraft,
+              onPressed: _takes.keepDraft,
             ),
             IconButton(
               key: ValueKey('custom-voice-discard-${phrase.id}'),
               tooltip: _t('Discard', '放弃'),
               icon: const Icon(Icons.close_rounded),
-              onPressed: _discardDraft,
+              onPressed: _takes.discardDraft,
             ),
           ] else ...[
             if (recorded && !recording)
@@ -430,13 +467,16 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
                 key: ValueKey('custom-voice-play-${phrase.id}'),
                 tooltip: _t('Play', '试听'),
                 icon: Icon(
-                  _playingId == phrase.id
+                  _takes.playingId == phrase.id
                       ? Icons.stop_rounded
                       : Icons.play_arrow_rounded,
                 ),
-                onPressed: _playingId == phrase.id
-                    ? _stopPlayback
-                    : () => _play(phrase.id, _voice.clipPath(_pack, phrase.id)),
+                onPressed: _takes.playingId == phrase.id
+                    ? _takes.stopPlayback
+                    : () => _takes.play(
+                        phrase.id,
+                        _voice.recordingPath(_pack, phrase.id),
+                      ),
               ),
             if (recorded && !recording)
               IconButton(
@@ -453,8 +493,8 @@ class _CustomVoicePageState extends State<CustomVoicePage> {
                   ? _t('Re-record', '重新录制')
                   : _t('Record', '录制'),
               icon: Icon(recording ? Icons.stop_circle_rounded : Icons.mic),
-              color: recording ? Theme.of(context).colorScheme.error : null,
-              onPressed: plus ? () => _record(phrase) : null,
+              color: recording ? context.status.danger : null,
+              onPressed: plus ? () => _takes.record(phrase.id) : null,
             ),
           ],
         ],

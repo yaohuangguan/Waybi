@@ -122,6 +122,14 @@ List<String> describe(List<VoiceSegment> segments) => [
     },
 ];
 
+/// A tall test screen, so the first phrase rows are on screen below the
+/// settings and progress card.
+void tallView(WidgetTester tester) {
+  tester.view.physicalSize = const Size(900, 2400);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
 Future<String> writeDraft(Directory dir, String name, int bytes) async {
   final file = File('${dir.path}/$name');
   await file.writeAsBytes(List.filled(bytes, 7));
@@ -521,6 +529,7 @@ void main() {
     });
 
     testWidgets('free users see the upsell and cannot record', (tester) async {
+      tallView(tester);
       var openedPlus = false;
       await tester.pumpWidget(
         MaterialApp(
@@ -548,6 +557,7 @@ void main() {
     testWidgets('Plus members record, keep, re-record and delete a phrase', (
       tester,
     ) async {
+      tallView(tester);
       voice.setPlus(true);
       final recorder = FakeRecorder();
       await tester.pumpWidget(
@@ -598,6 +608,7 @@ void main() {
     testWidgets('declined microphone permission explains how to allow it', (
       tester,
     ) async {
+      tallView(tester);
       voice.setPlus(true);
       final recorder = FakeRecorder()..permission = false;
       await tester.pumpWidget(

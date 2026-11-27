@@ -13,7 +13,7 @@ import 'package:waybi_mobile/drive/voice_recorder.dart';
 import 'package:waybi_mobile/widgets/custom_voice_page.dart';
 
 import 'custom_voice_test.dart'
-    show FakeClipPlayer, FakeClips, FakeRecorder, RecordingTts;
+    show FakeClipPlayer, FakeClips, FakeRecorder, RecordingTts, tallView;
 
 class ThrowingClips extends FakeClips {
   ThrowingClips() : super({'turn_left'});
@@ -217,6 +217,7 @@ void main() {
     );
 
     Future<void> open(WidgetTester tester, Widget app) async {
+      tallView(tester);
       await tester.pumpWidget(app);
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();

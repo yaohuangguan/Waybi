@@ -327,7 +327,11 @@ class CustomVoiceController extends ChangeNotifier implements CustomVoiceClips {
   }
 
   @override
-  String? clipPath(String language, String phraseId) {
+  String? clipPath(String language, String phraseId) =>
+      recordingPath(language, phraseId);
+
+  /// The member's own recording of [phraseId], for previews.
+  String? recordingPath(String language, String phraseId) {
     final root = _root;
     if (root == null || !(_recorded[language]?.contains(phraseId) ?? false)) {
       return null;

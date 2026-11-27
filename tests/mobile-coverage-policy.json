@@ -247,6 +247,9 @@
     "apps/mobile/lib/drive/voice_prompts.dart": {
       "minimumLinePercent": 95
     },
+    "apps/mobile/lib/drive/voice_take_session.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/drive/voice_utterance.dart": {
       "minimumLinePercent": 95
     },
@@ -392,6 +395,9 @@
     },
     "apps/mobile/lib/widgets/profile_page.dart": {
       "minimumLinePercent": 65
+    },
+    "apps/mobile/lib/widgets/custom_voice_guided_page.dart": {
+      "minimumLinePercent": 95
     },
     "apps/mobile/lib/widgets/custom_voice_page.dart": {
       "minimumLinePercent": 90

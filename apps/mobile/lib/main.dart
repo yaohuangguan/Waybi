@@ -57,6 +57,7 @@ import 'widgets/journey_summary_sheet.dart';
 
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'app/trip_state.dart';
 import 'drive/custom_voice.dart';
 import 'drive/drive_engine.dart';
 import 'drive/system_navigation.dart';
@@ -391,7 +392,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _voiceEnabled = true;
   bool _keepScreenAwake = true;
   bool _settingsLoaded = false;
-  bool _endingNavigation = false;
   bool _appForeground = true;
   final _systemNavigation = SystemNavigation();
   DateTime? _lastDrivePositionAt;
@@ -408,10 +408,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Map<String, RoutePreferenceSummary> _routePreferenceSummaries = const {};
   WaybiTravelMode _selectedMode = WaybiTravelMode.drive;
   String? _selectedRouteId;
-  bool _routePreviewLoading = false;
   RouteFilter _routeFilter = RouteFilter.recommended;
   String? _routeRecoveryMessage;
-  bool _recoveringRoute = false;
   final _closureCache =
       <
         String,
@@ -450,7 +448,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   int _routeRequest = 0;
-  bool _transitTripRunning = false;
   RouteOption? _activeTransitRoute;
   RouteOption? _activeNavigationRoute;
   final List<DestinationSuggestion> _routeStops = <DestinationSuggestion>[];
@@ -459,14 +456,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   ParkingPlace? _selectedParking;
   PlaceSummary? _parkingOriginalPlace;
   bool _parkingLoading = false;
-  bool _parkingLegFinished = false;
   PlaceSummary? _parkedCarPlace;
   DateTime? _parkedCarAt;
   int _parkingRequest = 0;
   PlaceSummary? _activeDestinationPlace;
   PlaceDetails? _arrivalPlaceDetails;
   List<ParkingPlace> _arrivalParkingPlaces = const [];
-  bool _arrivalMode = false;
   bool _arrivalPrefetching = false;
   bool _arrivalPrefetched = false;
   int _arrivalRequest = 0;
@@ -474,7 +469,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _offlineCorridorReady = false;
 
   SelectedPlace? _selectedPlace;
-  JourneyPhase _journeyPhase = JourneyPhase.idle;
   PointOfInterest? get _selectedPoi {
     final place = _selectedPlace?.place;
     if (place == null) return null;
@@ -494,8 +488,25 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _placeDetailsLoading = false;
   String? _placeDetailsError;
   int _placeDetailsRequest = 0;
-  bool _guidanceRunning = false;
-  bool _busy = false;
+
+  /// The one trip state; the getters below are views of it.
+  final _trip = TripMachine();
+  TripState get _tripState => _trip.value;
+  bool get _guidanceRunning => _tripState.guidanceRunning;
+  bool get _endingNavigation => _tripState is TripEnding;
+  bool get _transitTripRunning => _tripState is TripTransit;
+  bool get _busy => _tripState.busy;
+  bool get _recoveringRoute =>
+      _tripState == const TripPreviewing(PreviewActivity.findingDetour);
+  bool get _routePreviewLoading => _tripState.previewLoading;
+  bool get _parkingLegFinished => _tripState is TripParkingLeg;
+  bool get _arrivalMode => _tripState == const TripNavigating(arrival: true);
+  JourneyPhase get _journeyPhase => _tripState.journeyPhase;
+
+  void _onTripChanged() {
+    if (mounted) setState(() {});
+  }
+
   bool _checkingRouteWatchAlerts = false;
   String? _message;
   final Set<String> _notifiedRoadEventIds = <String>{};
@@ -527,6 +538,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
     );
     _independentNavigation.addListener(_onIndependentNavigationChanged);
+    _trip.addListener(_onTripChanged);
     unawaited(WaybiNotificationService.instance.initialize());
     _account.addListener(_onAccountChanged);
     _driveEngine.addListener(_onEngineChanged);
@@ -705,7 +717,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (!current()) return;
     setState(() {
       ++_routeRequest;
-      _routePreviewLoading = false;
       _manualOrigin = source == null
           ? null
           : DestinationSuggestion(
@@ -1079,6 +1090,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   void _onEngineChanged() {
     if (!mounted) return;
+    if (_tripState == const TripJustDrive() && !_driveEngine.active) {
+      // The engine stopped on its own (for example location was revoked).
+      _trip.dispatch(const DriveEnded());
+    }
     _independentNavigation.checkClosureUpdates();
     final position = _driveEngine.latestPosition;
     if (position != null && position.timestamp != _lastDrivePositionAt) {
@@ -1159,16 +1174,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _selectedMode == WaybiTravelMode.drive &&
         remaining != null;
     if (!eligible) {
-      if (_arrivalMode && mounted) setState(() => _arrivalMode = false);
+      _trip.dispatch(const ArrivalChanged(false));
       return;
     }
     if (remaining <= 800 && !_arrivalPrefetching && !_arrivalPrefetched) {
       unawaited(_prefetchArrivalExperience());
     }
-    final active = remaining <= 300;
-    if (active != _arrivalMode && mounted) {
-      setState(() => _arrivalMode = active);
-    }
+    _trip.dispatch(ArrivalChanged(remaining <= 300));
   }
 
   Future<void> _prefetchArrivalExperience() async {
@@ -1208,10 +1220,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (destination == null || _endingNavigation) return;
     await _stopNavigation(showSummary: false);
     if (!mounted) return;
+    _trip.dispatch(const PlaceChosen());
     setState(() {
       _parkingOriginalPlace = destination;
       _selectedParking = parking;
-      _parkingLegFinished = false;
       _selectedPlace = SelectedPlace(
         parking.toPlaceSummary(),
         SelectionSource.map,
@@ -1809,6 +1821,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     unawaited(_systemNavigation.stop());
     _systemNavigation.dispose();
     _independentNavigation.dispose();
+    _trip.dispose();
     _exploreMarkerFocus.dispose();
     _workerSearch.dispose();
     _independentSearch.dispose();
@@ -2035,8 +2048,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _travelHeading = null;
     }
     _retryExternalPreview();
-    if (_guidanceRunning &&
-        !_endingNavigation &&
+    if (_tripState is TripNavigating &&
         DateTime.now().difference(position.timestamp).abs() <=
             const Duration(seconds: 10)) {
       final arrived =
@@ -2773,19 +2785,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     if (!mounted) return;
     // Reset synchronously: a place selected while the map padding animates
     // must not be cleared afterwards.
+    _trip.dispatch(const PlaceCleared());
     setState(() {
       _routePlan = null;
       _selectedRouteId = null;
       _selectedMode = WaybiTravelMode.drive;
-      _routePreviewLoading = false;
-      if (_recoveringRoute) {
-        _busy = false;
-        _recoveringRoute = false;
-      }
       _routeRecoveryMessage = null;
       _routeFilter = RouteFilter.recommended;
       _selectedPlace = null;
-      _journeyPhase = JourneyPhase.idle;
       _placeDetails = null;
       _placeDetailsLoading = false;
       _placeDetailsError = null;
@@ -2799,7 +2806,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _parkingOriginalPlace = null;
       _selectedParking = null;
       _parkingLoading = false;
-      _parkingLegFinished = false;
       _following = true;
     });
     _queueMapRefresh();
@@ -2829,18 +2835,13 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     ++_routeRequest;
     ++_parkingRequest;
     if (_independentNavigation.route == null) _driveEngine.setRoute(null);
+    _trip.dispatch(const PreviewClosed());
     setState(() {
       _routePlan = null;
       _selectedRouteId = null;
       _selectedMode = WaybiTravelMode.drive;
-      _routePreviewLoading = false;
-      if (_recoveringRoute) {
-        _busy = false;
-        _recoveringRoute = false;
-      }
       _routeRecoveryMessage = null;
       _routeFilter = RouteFilter.recommended;
-      _journeyPhase = JourneyPhase.placeSelected;
       _routeStops.clear();
       _parkingPlaces = const [];
       _parkingLoading = false;
@@ -2853,54 +2854,56 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   /// Android back: unwind one layer (preview, place card, Drive Mode) and
   /// confirm before ending guidance or a transit trip.
   bool get _canPopHome =>
-      !_busy &&
-      !_driveEngine.active &&
-      !_guidanceRunning &&
-      !_transitTripRunning &&
-      !_parkingLegFinished &&
-      _selectedPlace == null &&
-      _routePlan == null;
+      _tripState is TripIdle && !_driveEngine.active && _selectedPlace == null;
 
   Future<void> _handleBack() async {
-    if (_guidanceRunning) {
-      if (_endingNavigation) return;
-      if (await _confirmEnd(
-            _text('End navigation?', '结束导航？'),
-            _text('Keep navigating', '继续导航'),
-          ) &&
-          mounted) {
-        await _stopNavigation();
-      }
-      return;
+    switch (_tripState) {
+      case TripNavigating():
+        if (await _confirmEnd(
+              _text('End navigation?', '结束导航？'),
+              _text('Keep navigating', '继续导航'),
+            ) &&
+            mounted) {
+          await _stopNavigation();
+        }
+      case TripTransit():
+        if (await _confirmEnd(
+              _text('End this transit trip?', '结束这次公交行程？'),
+              _text('Keep trip', '继续行程'),
+            ) &&
+            mounted) {
+          await _stopTransitTrip();
+        }
+      case TripPreviewing() || TripStarting():
+        // Closing a starting preview also cancels the start.
+        _closeRoutePreviewToPlace();
+      case TripPlaceSelected(:final routing):
+        if (routing) {
+          _closeRoutePreviewToPlace();
+        } else {
+          await _clearRoutePreview();
+        }
+      case TripJustDrive():
+        await _stopDriveMode();
+      case TripParkingLeg():
+        _dismissParkingLeg();
+      case TripEnding():
+        break;
+      case TripIdle():
+        if (_driveEngine.active) {
+          await _stopDriveMode();
+        } else if (_selectedPlace != null) {
+          await _clearRoutePreview();
+        }
     }
-    if (_transitTripRunning) {
-      if (await _confirmEnd(
-            _text('End this transit trip?', '结束这次公交行程？'),
-            _text('Keep trip', '继续行程'),
-          ) &&
-          mounted) {
-        await _stopTransitTrip();
-      }
-      return;
-    }
-    if (_routePlan != null || (_busy && _selectedPlace != null)) {
-      // Also cancels a navigation that is still starting.
-      _closeRoutePreviewToPlace();
-      return;
-    }
-    if (_driveEngine.active) {
-      await _stopDriveMode();
-      return;
-    }
-    if (_parkingLegFinished) {
-      setState(() {
-        _parkingLegFinished = false;
-        _parkingOriginalPlace = null;
-        _selectedParking = null;
-      });
-      return;
-    }
-    if (_selectedPlace != null) await _clearRoutePreview();
+  }
+
+  void _dismissParkingLeg() {
+    _trip.dispatch(const ParkingLegDismissed());
+    setState(() {
+      _parkingOriginalPlace = null;
+      _selectedParking = null;
+    });
   }
 
   Future<bool> _confirmEnd(String title, String keepLabel) async {
@@ -3007,7 +3010,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() {
       _parkingOriginalPlace = original;
       _selectedParking = parking;
-      _parkingLegFinished = false;
       _parkingLoading = false;
       _selectedPlace = SelectedPlace(
         parking.toPlaceSummary(),
@@ -3026,7 +3028,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     setState(() {
       _parkingOriginalPlace = null;
       _selectedParking = null;
-      _parkingLegFinished = false;
       _selectedPlace = SelectedPlace(
         original,
         SelectionSource.map,
@@ -3040,10 +3041,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _continueOnFoot() async {
     final original = _parkingOriginalPlace;
     if (original == null) return;
+    _trip.dispatch(const PlaceChosen());
     setState(() {
       _parkingOriginalPlace = null;
       _selectedParking = null;
-      _parkingLegFinished = false;
       _parkingPlaces = const [];
       _manualOrigin = null;
       _routeStops.clear();
@@ -3159,21 +3160,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         GeoPoint(stop.location.latitude, stop.location.longitude),
       GeoPoint(poi.latLng.latitude, poi.latLng.longitude),
     ])) {
-      setState(() {
-        _routePreviewLoading = false;
-        _message = const NoSurfaceRouteException().localized(_appLanguage);
-      });
+      _trip.dispatch(PreviewSettled(hasPlan: _routePlan != null));
+      setState(
+        () =>
+            _message = const NoSurfaceRouteException().localized(_appLanguage),
+      );
       return;
     }
     final request = ++_routeRequest;
     // A reload (new stop, language, mode) keeps the loaded plan and mode on
     // screen until the replacement arrives; a failure leaves them usable.
+    _trip.dispatch(const PreviewRequested());
     setState(() {
-      if (_recoveringRoute) {
-        _busy = false;
-        _recoveringRoute = false;
-      }
-      _routePreviewLoading = true;
       _routeRecoveryMessage = null;
       _following = false;
       _message = null;
@@ -3232,7 +3230,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         _routeFilter = RouteFilter.recommended;
         _selectedMode = preferredMode;
         _selectedRouteId = preferredRoute?.id;
-        _journeyPhase = JourneyPhase.routePreview;
       });
       _driveEngine.setRoute(
         preferredMode == WaybiTravelMode.drive ? preferredRoute : null,
@@ -3244,7 +3241,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
     } finally {
       if (mounted && request == _routeRequest) {
-        setState(() => _routePreviewLoading = false);
+        _trip.dispatch(PreviewSettled(hasPlan: _routePlan != null));
       }
     }
   }
@@ -3360,9 +3357,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       return;
     }
     final request = ++_routeRequest;
+    _trip.dispatch(const DetourStarted());
     setState(() {
-      _busy = true;
-      _recoveringRoute = true;
       _routeRecoveryMessage = _text(
         'Finding a route around closed roads…',
         '正在避开封闭路段规划路线…',
@@ -3429,10 +3425,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
     } finally {
       if (mounted && request == _routeRequest) {
-        setState(() {
-          _busy = false;
-          _recoveringRoute = false;
-        });
+        _trip.dispatch(PreviewSettled(hasPlan: _routePlan != null));
       }
     }
   }
@@ -3732,10 +3725,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       'No public transport routes were found for this trip.',
       '这段行程暂时没有可用的公共交通路线。',
     );
-    setState(() {
-      _routePreviewLoading = true;
-      _message = calculating;
-    });
+    _trip.dispatch(const TransitLoadStarted());
+    setState(() => _message = calculating);
     try {
       final transitPlan = await _independentTransitRoutes.route(
         origin: GeoPoint(origin.latitude, origin.longitude),
@@ -3781,7 +3772,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       return const [];
     } finally {
       if (current()) {
-        setState(() => _routePreviewLoading = false);
+        _trip.dispatch(PreviewSettled(hasPlan: _routePlan != null));
       } else if (mounted && _message == calculating) {
         setState(() => _message = null);
       }
@@ -3990,8 +3981,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     ++_routeRequest;
     ++_parkingRequest;
     _driveEngine.setRoute(null);
+    _trip.dispatch(const TransitTripStarted());
     setState(() {
-      _transitTripRunning = true;
       _activeTransitRoute = route;
       _transitTripPaths = null;
       _destinationTitle = poi.name;
@@ -4004,7 +3995,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _parkingOriginalPlace = null;
       _selectedParking = null;
       _parkingLoading = false;
-      _journeyPhase = JourneyPhase.idle;
       _following = true;
     });
     _queueMapRefresh();
@@ -4015,12 +4005,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
   Future<void> _stopTransitTrip() async {
     if (!_transitTripRunning) return;
+    _trip.dispatch(const TransitTripEnded());
     setState(() {
-      _transitTripRunning = false;
       _activeTransitRoute = null;
       _transitTripPaths = null;
       _destinationTitle = _text('Destination', '目的地');
-      _journeyPhase = JourneyPhase.idle;
       _following = true;
     });
     _queueMapRefresh();
@@ -4044,10 +4033,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
 
     // Closing the preview, choosing another place or pressing back while the
     // start awaits location, transit matching or the engine cancels it.
-    final request = _routeRequest;
+    // Starting also supersedes a preview reload still in flight.
+    final request = ++_routeRequest;
     bool cancelled() => !mounted || request != _routeRequest;
+    _trip.dispatch(const StartRequested());
     setState(() {
-      _busy = true;
       _message = null;
       // Navigation always starts in a flat heading-up view. Users can switch
       // to perspective or north-up after the trip begins.
@@ -4095,20 +4085,18 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         return;
       }
       // Independent guidance has no paid navigation SKU.
+      _trip.dispatch(const NavigationStarted());
       setState(() {
-        _guidanceRunning = true;
         _destinationTitle = poi.name;
         _activeNavigationRoute = selectedRoute;
         _routePlan = null;
         _selectedRouteId = null;
         _selectedPlace = null;
-        _journeyPhase = JourneyPhase.navigating;
         _routeStops.clear();
         _following = true;
         _routeOverviewActive = false;
         _cameraMode = NavigationCameraMode.headingUpFlat;
         _activeDestinationPlace = destinationPlace;
-        _arrivalMode = false;
         _arrivalPrefetching = false;
         _arrivalPrefetched = false;
         _arrivalParkingPlaces = const [];
@@ -4136,7 +4124,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         ),
       );
     } finally {
-      if (mounted) setState(() => _busy = false);
+      // A start that did not reach guidance (failed, bus-only road, no
+      // permission) returns to its preview; a cancelled one already left it.
+      _trip.dispatch(const StartAborted());
       if (mounted && !_driveEngine.active) unawaited(_startTracking());
     }
   }
@@ -4213,8 +4203,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     bool arrived = false,
     bool showSummary = true,
   }) async {
-    if (!_guidanceRunning || _endingNavigation) return;
-    _endingNavigation = true;
+    if (_tripState is! TripNavigating) return;
+    _trip.dispatch(const EndRequested());
     final parkingTarget = _selectedParking;
     final parkingFix = _gpsLocation;
     final reachedParking =
@@ -4288,8 +4278,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         }
       }
     } finally {
-      _endingNavigation = false;
-      _guidanceRunning = false;
+      final parkingLeg =
+          reachedParking &&
+          _parkingOriginalPlace != null &&
+          _selectedMode == WaybiTravelMode.drive;
+      _trip.dispatch(NavigationEnded(parkingLeg: parkingLeg));
       ++_arrivalRequest;
       ++_roadNotificationSession;
       _notifiedRoadEventIds.clear();
@@ -4301,20 +4294,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           _activeDestinationPlace = null;
           _lastCorridorCacheAt = null;
           _destinationTitle = _text('Destination', '目的地');
-          _journeyPhase = JourneyPhase.idle;
           _cameraMode = NavigationCameraMode.northUpFlat;
           _following = true;
           _routeOverviewActive = false;
-          _arrivalMode = false;
           _arrivalPrefetching = false;
           _arrivalPrefetched = false;
           _arrivalParkingPlaces = const [];
           _arrivalPlaceDetails = null;
           _offlineCorridorReady = false;
-          _parkingLegFinished =
-              reachedParking &&
-              _parkingOriginalPlace != null &&
-              _selectedMode == WaybiTravelMode.drive;
         });
         // DriveEngine.stop() also stopped the traffic refresh.
         if (_appForeground && _layers.traffic) {
@@ -4358,10 +4345,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _startDriveMode() async {
-    setState(() {
-      _busy = true;
-      _message = null;
-    });
+    if (_busy || _guidanceRunning || _transitTripRunning) return;
+    setState(() => _message = null);
     try {
       await _prepareRoadNotifications();
       if (_gpsLocation == null) {
@@ -4377,6 +4362,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         );
         return;
       }
+      _trip.dispatch(const DriveRequested());
       // A preview or place focus must not retain camera ownership in Drive.
       await _clearRoutePreview();
       _driveCameraFollow.reset();
@@ -4384,6 +4370,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       await _pauseBrowseLocation();
       await _driveEngine.startLocal(
         initialPosition: _lastReliableBrowsePosition,
+      );
+      _trip.dispatch(
+        _driveEngine.active ? const DriveStarted() : const DriveEnded(),
       );
       if (mounted) {
         setState(() {
@@ -4393,6 +4382,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
       _queueMapRefresh();
     } catch (error) {
+      _trip.dispatch(const DriveEnded());
       if (mounted) {
         setState(
           () => _message = _text(
@@ -4403,7 +4393,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       }
     } finally {
       if (mounted) {
-        setState(() => _busy = false);
         // The browse feed was paused for Drive; a failed start must not
         // leave the map without location.
         if (!_driveEngine.active) unawaited(_startTracking());
@@ -4414,6 +4403,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _stopDriveMode() async {
     if (_guidanceRunning) await _stopNavigation();
     await _driveEngine.stop();
+    _trip.dispatch(const DriveEnded());
     if (mounted) setState(() => _cameraMode = NavigationCameraMode.northUpFlat);
     if ((mounted && _appForeground) && _layers.traffic) {
       unawaited(_driveEngine.startTrafficFlowRefresh(force: true));
@@ -4482,20 +4472,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       // A new place supersedes the last place's preview, ETA and start.
       ++_routeRequest;
       ++_placeQuickRouteRequest;
-      _routePreviewLoading = false;
-      if (_recoveringRoute) {
-        _busy = false;
-        _recoveringRoute = false;
-      }
+      _trip.dispatch(const PlaceChosen());
       _routeRecoveryMessage = null;
       _selectedPlace = SelectedPlace(place, source, originMap: _mapProvider);
-      _journeyPhase = JourneyPhase.placeSelected;
       ++_parkingRequest;
       _parkingPlaces = const [];
       _parkingOriginalPlace = null;
       _selectedParking = null;
       _parkingLoading = false;
-      _parkingLegFinished = false;
       _routePlan = null;
       _selectedRouteId = null;
       _placeQuickRoute = null;
@@ -5779,7 +5763,6 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     bool Function()? isCurrent,
     String? searchPurpose,
   }) async {
-    setState(() => _journeyPhase = JourneyPhase.searching);
     final SearchProvider provider = _independentSearch;
     final place = await Navigator.of(context).push<PlaceSummary>(
       PageRouteBuilder<PlaceSummary>(
@@ -5844,28 +5827,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       ),
     );
     if (!mounted || (isCurrent != null && !isCurrent())) return null;
-    if (place == null) {
-      setState(
-        () => _journeyPhase = _selectedPlace == null
-            ? JourneyPhase.idle
-            : JourneyPhase.placeSelected,
-      );
-      return null;
-    }
+    if (place == null) return null;
     if (place.reference?.provider == 'google-ui-kit') {
       _googleSessionCoordinates.add((
         place.location.latitude,
         place.location.longitude,
       ));
     }
-    if (!selectResult) {
-      setState(
-        () => _journeyPhase = _selectedPlace == null
-            ? JourneyPhase.idle
-            : JourneyPhase.placeSelected,
-      );
-      return place;
-    }
+    if (!selectResult) return place;
     if (place.reference?.provider == 'google-ui-kit') {
       // The selected UI Kit coordinate is used for this navigation session.
       // Persist only independently retrieved addresses, never Google content.
@@ -6759,11 +6728,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                   isChinese: _appLanguage == 'zh',
                   carRemembered: _account.profile?.isPlus == true,
                   onContinue: () => unawaited(_continueOnFoot()),
-                  onEnd: () => setState(() {
-                    _parkingLegFinished = false;
-                    _parkingOriginalPlace = null;
-                    _selectedParking = null;
-                  }),
+                  onEnd: _dismissParkingLeg,
                 ),
               ),
             if (!_driveEngine.active &&

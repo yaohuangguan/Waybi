@@ -1,4 +1,5 @@
 import { t, type Language } from './i18n';
+import { parseRetryAfter } from './api';
 export type { Language } from './i18n';
 export type RecentDestination = { label: string; latitude: number; longitude: number };
 export type SavedPlace = {
@@ -23,6 +24,27 @@ export type AccountProfile = {
   reviews: OwnReview[];
 };
 
+class AccountError extends Error {
+  constructor(message: string, readonly status: number, readonly code: unknown, readonly retryAfterMs: number | null) { super(message); }
+}
+
+/**
+ * What to tell the user about a failed account request: rate limits and
+ * lockouts get a localised wait time, server errors (generic 5xx bodies) a
+ * localised message; only 4xx validation messages are shown as sent.
+ */
+export function accountErrorMessage(error: unknown, language: Language) {
+  if (error instanceof AccountError) {
+    if (error.status === 429) {
+      const minutes = Math.max(1, Math.ceil((error.retryAfterMs ?? 60_000) / 60_000));
+      return t(language, error.code === 'LOGIN_LOCKED' ? 'accountLocked' : 'accountRateLimited', { minutes });
+    }
+    if (error.status >= 500) return t(language, 'accountError');
+    return error.message || t(language, 'accountError');
+  }
+  return t(language, 'accountError');
+}
+
 let profile: AccountProfile | null = null;
 let mode: 'code' | 'password' = 'code';
 let challenge: { email: string; id: string; resendAt: number } | null = null;
@@ -41,7 +63,7 @@ async function accountApi<T>(path: string, method = 'GET', body?: object): Promi
     signal: AbortSignal.timeout(12_000)
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  if (!response.ok) throw new AccountError(data.error || `HTTP ${response.status}`, response.status, data.code, parseRetryAfter(response.headers.get('retry-after')));
   return data as T;
 }
 
@@ -141,7 +163,7 @@ export function renderAccount() {
       renderAccount();
       window.dispatchEvent(new Event('kiwi-account-change'));
     } catch (error) {
-      status.textContent = (error as Error).message || text('accountError');
+      status.textContent = accountErrorMessage(error, language);
       submit.disabled = false;
     } finally {
       accountBusy = false;
@@ -178,7 +200,7 @@ export function renderAccount() {
         const sent = await accountApi<{challengeId: string; retryAfter: number}>('/api/auth/email/request', 'POST', {email: challenge.email, language: getLanguage()});
         challenge = {...challenge, id: sent.challengeId, resendAt: Date.now() + sent.retryAfter * 1000};
         credential.value = ''; status.textContent = text('accountCodeSent');
-      } catch (error) { status.textContent = (error as Error).message || text('accountError'); }
+      } catch (error) { status.textContent = accountErrorMessage(error, language); }
       finally { accountBusy = false; resend.disabled = false; submit.disabled = false; }
     };
     accountRoot.append(resend, document.createTextNode(' · '), changeEmail);

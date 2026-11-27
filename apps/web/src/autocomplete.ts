@@ -214,7 +214,7 @@ export function initAutocomplete(options: {
       const failure = describeError(error);
       // Tell the user why nothing appears instead of silently hiding the list.
       if (failure.offline) showMessage(input, t(options.language(), 'suggestionsOffline'));
-      else if (failure.rateLimited) showMessage(input, t(options.language(), 'suggestionsBusy'));
+      else if (failure.busy) showMessage(input, t(options.language(), 'suggestionsBusy'));
       else close();
     } finally {
       if (isCurrent(token)) pending = null;

@@ -379,8 +379,11 @@ async function refreshSpeedLimit(coordinate: Coordinate) {
     );
     speedLimitKph = Number.isFinite(result.speedLimitKph) ? result.speedLimitKph : null;
     renderSpeedHud();
-  } catch {
-    // Keep the last known legal limit if the network lookup temporarily fails.
+  } catch (error) {
+    // Keep the last known legal limit if the lookup fails; when rate limited,
+    // do not ask again before retry-after.
+    const failure = describeError(error);
+    if (failure.rateLimited) lastSpeedLimitLookupAt = Date.now() + (failure.retryAfterMs || 60_000);
   } finally {
     speedLimitLookupPending = false;
   }
@@ -888,9 +891,10 @@ async function search(target: 'origin' | 'destination' | 'stop') {
     if (isAbortError(error) || !autocomplete.isCurrent(token)) return;
     const failure = describeError(error);
     const retry = () => void search(target);
+    // Server error text is never shown (5xx bodies are generic and English); use localised copy.
     if (failure.offline) autocomplete.showMessage(input, t(language, 'searchOffline'), retry);
-    else if (failure.rateLimited) autocomplete.showMessage(input, t(language, 'searchBusy', { seconds: Math.ceil((failure.retryAfterMs || 30000) / 1000) }), retry);
-    else autocomplete.showMessage(input, `${t(language, 'searchFailed')}: ${failure.message}`, retry);
+    else if (failure.busy) autocomplete.showMessage(input, t(language, 'searchBusy', { seconds: Math.ceil((failure.retryAfterMs || 30000) / 1000) }), retry);
+    else autocomplete.showMessage(input, t(language, 'searchFailedRetry'), retry);
   }
 }
 
@@ -991,7 +995,7 @@ async function planRoute(modeOverride?: TravelMode, trigger: PlanTrigger = 'user
     if (navigating) {
       // Never end a trip because a reroute failed: keep guiding along the last
       // known route and retry quietly until the user ends navigation.
-      setRerouteStatus({ kind: failure.offline ? 'offline' : failure.rateLimited ? 'busy' : 'retry', until: Date.now() + delay });
+      setRerouteStatus({ kind: failure.offline ? 'offline' : failure.busy ? 'busy' : 'retry', until: Date.now() + delay });
       scheduleRerouteRetry(delay);
       return;
     }
@@ -1006,9 +1010,9 @@ async function planRoute(modeOverride?: TravelMode, trigger: PlanTrigger = 'user
     $('tripTitle').textContent = t(language, 'routeError');
     // One message per failure streak; GPS-triggered retries stay silent.
     if (notify) {
-      if (failure.rateLimited) toast(t(language, 'routeBusy', { seconds: Math.ceil(delay / 1000) }));
+      if (failure.busy) toast(t(language, 'routeBusy', { seconds: Math.ceil(delay / 1000) }));
       else if (failure.offline) toast(t(language, 'routeOffline'));
-      else toast(`${t(language, 'routeFailed')}: ${failure.message}`);
+      else toast(t(language, failure.status >= 400 && failure.status < 500 ? 'noRouteAvailable' : 'routeFailedRetry'));
     }
   }
 }

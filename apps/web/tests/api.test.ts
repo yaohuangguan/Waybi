@@ -48,6 +48,16 @@ describe('api errors', () => {
     await expect(apiFetch('/api/search?q=a')).rejects.toMatchObject({ name: 'AbortError' });
   });
 
+  it('reads machine codes so SEARCH_BUSY and RATE_LIMITED are treated as busy, not broken', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":"Search is busy","code":"SEARCH_BUSY"}', { status: 503 })));
+    const busy = await apiFetch('/api/search?q=a').catch((e) => e) as ApiError;
+    expect(busy.code).toBe('SEARCH_BUSY');
+    expect(describeError(busy)).toMatchObject({ busy: true, rateLimited: false, status: 503 });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":"Slow down","code":"RATE_LIMITED"}', { status: 429, headers: { 'retry-after': '5' } })));
+    const limited = await apiFetch('/api/route-options?x=1').catch((e) => e) as ApiError;
+    expect(describeError(limited)).toMatchObject({ busy: true, rateLimited: true, code: 'RATE_LIMITED', retryAfterMs: 5000 });
+  });
+
   it('keeps the server message for other HTTP failures', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":"No open road"}', { status: 503 })));
     const error = await apiFetch('/api/route-options?x=1').catch((e) => e) as ApiError;

@@ -8,6 +8,7 @@ import baseStyle from '../../mobile/assets/maps/positron_base.json?raw';
 import { cameraLabel, distanceMeters, type Camera, type Coordinate, type Route } from '@waybi/core';
 import type { ParkingPlace } from './parking';
 import type { TrafficInterval } from './route-planner';
+import { apiFetch } from './api';
 
 // Share the native app's NZ archive, global fallback, style and legal credits.
 export const NZ_TILES = 'pmtiles://https://maps.waybi.co/regions/nz.pmtiles';
@@ -260,9 +261,8 @@ export class WaybiMapAdapter {
 
   async searchParking(center: Coordinate): Promise<ParkingPlace[]> {
     const params = new URLSearchParams({ q: 'parking', near: center.join(','), provider: 'independent', lang: this.language });
-    const response = await fetch(`/api/search?${params}`, { signal: AbortSignal.timeout(10000) });
-    if (!response.ok) throw new Error('Parking search is unavailable');
-    const places = await response.json() as { id: string; label: string; name?: string; latitude: number; longitude: number }[];
+    // Shares the search rate-limit gate, so a 429 pauses this too.
+    const places = await apiFetch<{ id: string; label: string; name?: string; latitude: number; longitude: number }[]>(`/api/search?${params}`, { signal: AbortSignal.timeout(10000) });
     return places.flatMap(place => {
       const coordinate: Coordinate = [place.longitude, place.latitude];
       const distance = distanceMeters(center, coordinate);

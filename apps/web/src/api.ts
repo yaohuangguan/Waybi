@@ -10,14 +10,19 @@ export class ApiError extends Error {
   readonly status: number;
   readonly retryAfterMs: number | null;
   readonly offline: boolean;
-  constructor(message: string, status: number, options: { retryAfterMs?: number | null; offline?: boolean } = {}) {
+  /** Machine-readable server code, e.g. RATE_LIMITED, LOGIN_LOCKED, SEARCH_BUSY. */
+  readonly code: string | null;
+  constructor(message: string, status: number, options: { retryAfterMs?: number | null; offline?: boolean; code?: string | null } = {}) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.retryAfterMs = options.retryAfterMs ?? null;
     this.offline = options.offline ?? false;
+    this.code = options.code ?? null;
   }
   get rateLimited() { return this.status === 429; }
+  /** The server is temporarily overloaded (503 SEARCH_BUSY and similar). */
+  get busy() { return this.status === 429 || this.code === 'SEARCH_BUSY' || this.status === 503; }
   /** Server-side trouble or throttling: worth retrying later, not the user's fault. */
   get transient() { return this.offline || this.status === 429 || this.status === 503 || this.status === 502 || this.status === 504; }
 }
@@ -81,20 +86,24 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   if (!response.ok) {
     const retryAfterMs = parseRetryAfter(response.headers.get('retry-after'));
     if (response.status === 429) rateLimits.block(group, retryAfterMs ?? DEFAULT_RATE_LIMIT_MS);
-    const body = await response.json().catch(() => ({})) as { error?: string };
+    const body = await response.json().catch(() => ({})) as { error?: string; code?: string };
+    // 5xx bodies are generic ({error, code, requestId}); callers show localised copy instead.
     throw new ApiError(body.error || `HTTP ${response.status}`, response.status, {
-      retryAfterMs: response.status === 429 ? retryAfterMs ?? DEFAULT_RATE_LIMIT_MS : retryAfterMs
+      retryAfterMs: response.status === 429 ? retryAfterMs ?? DEFAULT_RATE_LIMIT_MS : retryAfterMs,
+      code: typeof body.code === 'string' ? body.code : null
     });
   }
   return response.json() as Promise<T>;
 }
 
 /** Normalises any thrown value into an ApiError-like description. */
-export function describeError(error: unknown): { offline: boolean; rateLimited: boolean; retryAfterMs: number | null; status: number; message: string } {
+export type ErrorDescription = { offline: boolean; rateLimited: boolean; busy: boolean; retryAfterMs: number | null; status: number; code: string | null; message: string };
+
+export function describeError(error: unknown): ErrorDescription {
   if (error instanceof ApiError) {
-    return { offline: error.offline || isOffline(), rateLimited: error.rateLimited, retryAfterMs: error.retryAfterMs, status: error.status, message: error.message };
+    return { offline: error.offline || isOffline(), rateLimited: error.rateLimited, busy: error.busy, retryAfterMs: error.retryAfterMs, status: error.status, code: error.code, message: error.message };
   }
   const message = (error as Error | null)?.message || String(error);
   const offline = isOffline() || error instanceof TypeError;
-  return { offline, rateLimited: false, retryAfterMs: null, status: 0, message };
+  return { offline, rateLimited: false, busy: false, retryAfterMs: null, status: 0, code: null, message };
 }

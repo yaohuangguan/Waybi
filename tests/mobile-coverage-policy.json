@@ -37,6 +37,9 @@
     "apps/mobile/lib/app/location_controller.dart": {
       "minimumLinePercent": 90
     },
+    "apps/mobile/lib/app/navigation_session_controller.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/app/offline_corridor.dart": {
       "minimumLinePercent": 95
     },

@@ -58,6 +58,7 @@ Plus is for proactive road intelligence and convenience rather than access to th
 
 - **Route Watch** — persistent Home → Work / Work → Home monitoring
 - **Manual NZTA camera sync** — check for the latest camera dataset immediately instead of waiting for the automatic refresh cycle
+- **My navigation voice** — record turn, distance, camera and arrival phrases in your own voice (English and Chinese). Recordings stay on the device; anything not recorded (road names, other distances) uses the standard voice, and guidance falls back to the standard voice if a clip is missing, unplayable or Plus lapses
 
 Automatic camera refresh remains available to everyone.
 

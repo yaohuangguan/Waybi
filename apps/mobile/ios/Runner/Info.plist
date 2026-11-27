@@ -58,6 +58,8 @@
 	<string>Waybi uses background location during active navigation so guidance can continue when the screen is locked.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Waybi uses your location to show your position, calculate routes, and provide driving guidance.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Waybi Plus uses the microphone only when you record phrases for your custom navigation voice. Recordings stay on this device.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Waybi uses motion data to improve navigation guidance while you are driving.</string>
 	<key>UIApplicationSceneManifest</key>

@@ -211,6 +211,15 @@
       ]
     },
     {
+      "id": "custom-voice",
+      "label": "Plus custom voice phrase pack: planning, clip fallback, Plus gating, on-device recording and deletion",
+      "tests": [
+        "apps/mobile/test/custom_voice_test.dart",
+        "apps/mobile/test/custom_voice_flows_test.dart",
+        "apps/mobile/test/custom_voice_profile_entry_test.dart"
+      ]
+    },
+    {
       "id": "system-navigation",
       "label": "Lockscreen status, retry, native serialization and stop",
       "tests": [

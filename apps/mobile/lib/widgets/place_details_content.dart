@@ -316,6 +316,11 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                 : Image.network(
                     photo.url,
                     fit: BoxFit.cover,
+                    // Decode at display size, not the original photo size.
+                    // One bound only keeps the aspect ratio; place photos
+                    // are landscape, so the height bound still covers.
+                    cacheHeight: (88 * MediaQuery.devicePixelRatioOf(context))
+                        .ceil(),
                     errorBuilder: (_, _, _) => ColoredBox(
                       color: scheme.primaryContainer,
                       child: Icon(
@@ -797,12 +802,15 @@ class _PhotoStrip extends StatelessWidget {
         itemCount: photos.length.clamp(1, 4),
         itemBuilder: (context, index) {
           final photo = photos[index];
+          final dpr = MediaQuery.devicePixelRatioOf(context);
           return Stack(
             fit: StackFit.expand,
             children: [
               Image.network(
                 photo.url,
                 fit: BoxFit.cover,
+                // Width-bound decode keeps the aspect ratio for BoxFit.cover.
+                cacheWidth: (MediaQuery.sizeOf(context).width * dpr).ceil(),
                 loadingBuilder: (context, child, progress) => progress == null
                     ? child
                     : ColoredBox(
@@ -1012,6 +1020,8 @@ class _ReviewTile extends StatelessWidget {
                       review.authorPhoto!,
                       width: 32,
                       height: 32,
+                      cacheWidth: (32 * MediaQuery.devicePixelRatioOf(context))
+                          .ceil(),
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => Icon(
                         Icons.person_rounded,

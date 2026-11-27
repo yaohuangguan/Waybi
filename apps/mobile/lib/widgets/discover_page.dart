@@ -9,6 +9,7 @@ import '../theme/waybi_theme.dart';
 import 'companion_journey_stats.dart';
 import 'discover_memory.dart';
 import 'trips_page.dart';
+import 'waybi_format.dart';
 
 enum DiscoverActionKind { search, trips, destination, direction, roadEvent }
 
@@ -133,24 +134,37 @@ class _DiscoverPageState extends State<DiscoverPage> {
         .reduce(math.min);
   }
 
+  // Nearby events and their distances, computed once per road snapshot and
+  // origin instead of inside every sort comparison on every build.
+  (DiscoverRoadSnapshot?, GeoPoint?)? _nearbyKey;
+  List<RoadEvent> _nearbyCache = const [];
+  final Map<RoadEvent, double> _nearbyDistance = {};
+
   List<RoadEvent> get _nearbyEvents {
+    final key = (_roads, widget.origin);
+    if (_nearbyKey == key) return _nearbyCache;
+    _nearbyKey = key;
+    _nearbyDistance.clear();
     final now = DateTime.now();
-    final events = (_roads?.events ?? const <RoadEvent>[])
-        .where(
-          (event) =>
-              event.type != RoadEventType.safetyCamera &&
-              event.observation != RoadEventObservation.inferred &&
-              event.isCurrent(now) &&
-              _eventDistance(event) <= 30000,
-        )
-        .toList();
+    final events = <RoadEvent>[];
+    for (final event in _roads?.events ?? const <RoadEvent>[]) {
+      if (event.type == RoadEventType.safetyCamera ||
+          event.observation == RoadEventObservation.inferred ||
+          !event.isCurrent(now)) {
+        continue;
+      }
+      final distance = _eventDistance(event);
+      if (distance > 30000) continue;
+      _nearbyDistance[event] = distance;
+      events.add(event);
+    }
     events.sort((a, b) {
       final severity = b.severity.index.compareTo(a.severity.index);
       return severity != 0
           ? severity
-          : _eventDistance(a).compareTo(_eventDistance(b));
+          : _nearbyDistance[a]!.compareTo(_nearbyDistance[b]!);
     });
-    return events;
+    return _nearbyCache = events;
   }
 
   String _eventTitle(RoadEvent event) => switch (event.type) {
@@ -270,7 +284,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 subtitle: Text(
-                  '${_eventTitle(event)} · ${(_eventDistance(event) / 1000).toStringAsFixed(1)} km',
+                  '${_eventTitle(event)} · ${formatDistance(_nearbyDistance[event] ?? _eventDistance(event), widget.language)}',
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _choose(DiscoverAction.road(event)),

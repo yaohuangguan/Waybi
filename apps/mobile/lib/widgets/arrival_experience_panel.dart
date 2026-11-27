@@ -80,7 +80,8 @@ class ArrivalExperiencePanel extends StatelessWidget {
                     : Image.network(
                         photoUrl!,
                         fit: BoxFit.cover,
-                        cacheWidth: (_photoWidth * dpr).ceil(),
+                        // Decode at display size; a single (height) bound
+                        // keeps the aspect ratio and still covers the tile.
                         cacheHeight: (_photoHeight * dpr).ceil(),
                         excludeFromSemantics: true,
                         errorBuilder: (_, _, _) => _ArrivalIcon(scheme: scheme),

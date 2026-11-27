@@ -9,6 +9,8 @@ import type { ClosureLocation } from './routing_closures.ts';
 import { readTransitSnapshot, transitRoadBlocks } from './transit_lanes.ts';
 import { applyRouteConditions } from './route_conditions.ts';
 import { HttpError } from './http_errors.ts';
+import { AMAP_ATTRIBUTION } from './amap_client.ts';
+import { amapRouteOptions, amapRoutingApplies } from './amap_routing.ts';
 /// Waybi offers surface navigation, not international flights. Only reject
 /// the NZ <-> AU sea gap; land borders and Australian states remain routable.
 export function crossesTasmanSea(points: LonLat[]): boolean {
@@ -296,6 +298,10 @@ export async function routeOptions(
   options: RouteRequestOptions = {}
 ) {
   const forceIndependent = options.forceIndependent === true || Boolean(options.exclusions?.length);
+  if (!options.skipAmap && amapRoutingApplies(env, [from, ...stops, to])) {
+    const china = await mainlandChinaRouteOptions(from, to, env, stops, requestedModes, trackUsage, options, forceIndependent);
+    if (china) return china;
+  }
   const defaultModes = stops.length
     ? ['DRIVE', 'WALK', 'BICYCLE']
     : ['DRIVE', 'TRANSIT', 'WALK', 'BICYCLE'];
@@ -424,6 +430,34 @@ export async function routeOptions(
     // No precise traffic-adjusted ETA is claimed for qualitative NZTA levels.
     options: await applyTransitRoadRestrictions(assessed, env),
     ...(roadAwareness ? { roadAwareness } : {}),
+  };
+}
+
+/**
+ * Trips entirely inside mainland China route on Amap (GCJ-02 converted to
+ * WGS-84, live traffic from `tmcs`). Modes Amap cannot answer, and every mode
+ * when Amap is unconfigured, out of budget or failing, use the engines below.
+ * Routes keep provider "independent" when Waybi routing was requested, so the
+ * app's own navigation engine accepts them; routingEngine is "amap".
+ */
+async function mainlandChinaRouteOptions(from: LonLat, to: LonLat, env, stops: LonLat[], requestedModes: string[] | null,
+  trackUsage: UsageRecorder, options: RouteRequestOptions, forceIndependent: boolean) {
+  const modes = requestedModes?.length ? requestedModes : forceIndependent ? ['DRIVE'] : ['DRIVE', 'WALK', 'BICYCLE'];
+  const { routes, missing } = await amapRouteOptions(env, [from, ...stops, to], modes, options, trackUsage);
+  if (!routes.length) return null;
+  let others = [];
+  if (missing.length) {
+    try {
+      others = (await routeOptions(from, to, env, stops, missing, trackUsage, { ...options, skipAmap: true })).options;
+    } catch { /* The Amap modes still answer. */ }
+  }
+  const provider = forceIndependent ? 'independent' : 'amap';
+  return {
+    provider,
+    trafficAvailable: routes.some(route => route.mode === 'drive' && route.trafficIntervals.length > 0),
+    stopsApplied: stops.length,
+    attribution: AMAP_ATTRIBUTION,
+    options: [...routes.map(route => ({ ...route, provider })), ...others],
   };
 }
 

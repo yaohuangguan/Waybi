@@ -1,0 +1,197 @@
+{
+  "status": "1",
+  "info": "OK",
+  "infocode": "10000",
+  "count": "2",
+  "route": {
+    "origin": "114.506033,38.030666",
+    "destination": "114.565827,38.070506",
+    "taxi_cost": "26",
+    "paths": [
+      {
+        "distance": "8666",
+        "restriction": "0",
+        "cost": {
+          "duration": "1180",
+          "tolls": "0",
+          "toll_distance": "0",
+          "traffic_lights": "1"
+        },
+        "steps": [
+          {
+            "instruction": "沿中山东路向东行驶1489米左转进入建设北大街",
+            "orientation": "东",
+            "road_name": "中山东路",
+            "step_distance": "1489",
+            "cost": {
+              "duration": "260",
+              "tolls": "0",
+              "toll_distance": "0",
+              "traffic_lights": "1"
+            },
+            "tmcs": [
+              {
+                "tmc_status": "畅通",
+                "tmc_distance": "876",
+                "tmc_polyline": "114.506033,38.030666;114.515992,38.030636"
+              },
+              {
+                "tmc_status": "缓行",
+                "tmc_distance": "613",
+                "tmc_polyline": "114.515992,38.030636;114.522964,38.030616"
+              }
+            ],
+            "navi": {
+              "action": "左转",
+              "assistant_action": []
+            },
+            "polyline": "114.506033,38.030666;114.515992,38.030636;114.522964,38.030616"
+          },
+          {
+            "instruction": "沿建设北大街向北行驶2224米右转进入北二环东路",
+            "orientation": "北",
+            "road_name": "建设北大街",
+            "step_distance": "2224",
+            "cost": {
+              "duration": "420",
+              "tolls": "0",
+              "toll_distance": "0",
+              "traffic_lights": "1"
+            },
+            "tmcs": [
+              {
+                "tmc_status": "拥堵",
+                "tmc_distance": "1112",
+                "tmc_polyline": "114.522964,38.030616;114.522965,38.040613"
+              },
+              {
+                "tmc_status": "严重拥堵",
+                "tmc_distance": "1112",
+                "tmc_polyline": "114.522965,38.040613;114.522966,38.050611"
+              }
+            ],
+            "navi": {
+              "action": "右转",
+              "assistant_action": []
+            },
+            "polyline": "114.522964,38.030616;114.522965,38.040613;114.522966,38.050611"
+          },
+          {
+            "instruction": "沿北二环东路向东行驶2453米向右前方行驶进入胜利北大街",
+            "orientation": "东",
+            "road_name": "北二环东路",
+            "step_distance": "2453",
+            "cost": {
+              "duration": "300",
+              "tolls": "0",
+              "toll_distance": "0",
+              "traffic_lights": "1"
+            },
+            "tmcs": [
+              {
+                "tmc_status": "畅通",
+                "tmc_distance": "1139",
+                "tmc_polyline": "114.522966,38.050611;114.535916,38.050575"
+              },
+              {
+                "tmc_status": "未知",
+                "tmc_distance": "1314",
+                "tmc_polyline": "114.535916,38.050575;114.550865,38.050539"
+              }
+            ],
+            "navi": {
+              "action": "向右前方行驶",
+              "assistant_action": []
+            },
+            "polyline": "114.522966,38.050611;114.535916,38.050575;114.550865,38.050539"
+          },
+          {
+            "instruction": "沿胜利北大街向东北行驶2500米到达目的地",
+            "orientation": "东北",
+            "road_name": "胜利北大街",
+            "step_distance": "2500",
+            "cost": {
+              "duration": "280",
+              "tolls": "0",
+              "toll_distance": "0",
+              "traffic_lights": "1"
+            },
+            "tmcs": [
+              {
+                "tmc_status": "畅通",
+                "tmc_distance": "2500",
+                "tmc_polyline": "114.550865,38.050539;114.565827,38.070506"
+              }
+            ],
+            "navi": {
+              "action": [],
+              "assistant_action": "到达目的地"
+            },
+            "polyline": "114.550865,38.050539;114.565827,38.070506"
+          }
+        ]
+      },
+      {
+        "distance": "9710",
+        "restriction": "1",
+        "cost": {
+          "duration": "1500",
+          "tolls": "5",
+          "toll_distance": "3000",
+          "traffic_lights": "1",
+          "toll_road": "石家庄绕城高速"
+        },
+        "steps": [
+          {
+            "instruction": "沿体育北大街向北行驶4450米进入环岛，从第2个出口离开",
+            "orientation": "北",
+            "road_name": "体育北大街",
+            "step_distance": "4450",
+            "cost": {
+              "duration": "600",
+              "tolls": "0",
+              "toll_distance": "0",
+              "traffic_lights": "1"
+            },
+            "tmcs": [
+              {
+                "tmc_status": "畅通",
+                "tmc_distance": "4450",
+                "tmc_polyline": "114.506033,38.030666;114.506038,38.070657"
+              }
+            ],
+            "navi": {
+              "action": "进入环岛",
+              "assistant_action": []
+            },
+            "polyline": "114.506033,38.030666;114.506038,38.070657"
+          },
+          {
+            "instruction": "沿北三环东路向东行驶5260米到达目的地",
+            "orientation": "东",
+            "road_name": "北三环东路",
+            "step_distance": "5260",
+            "cost": {
+              "duration": "900",
+              "tolls": "0",
+              "toll_distance": "0",
+              "traffic_lights": "1"
+            },
+            "tmcs": [
+              {
+                "tmc_status": "缓行",
+                "tmc_distance": "5260",
+                "tmc_polyline": "114.506038,38.070657;114.565827,38.070506"
+              }
+            ],
+            "navi": {
+              "action": [],
+              "assistant_action": "到达目的地"
+            },
+            "polyline": "114.506038,38.070657;114.565827,38.070506"
+          }
+        ]
+      }
+    ]
+  }
+}

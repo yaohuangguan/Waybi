@@ -18,6 +18,8 @@ export interface RouteRequestOptions {
   routingClientKey?: string;
   /** Reserve paid Google units before calling Google; false falls back to independent routing. */
   reserveGoogle?: (sku: string, units: number) => Promise<boolean>;
+  /** Internal: modes Amap could not answer are retried on the existing engines. */
+  skipAmap?: boolean;
 }
 export interface PlacePhoto {
   url: string;

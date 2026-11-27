@@ -13,6 +13,8 @@ import '../data/app_store_billing.dart';
 import '../data/plus_billing.dart';
 import 'plus_page.dart';
 import 'account_sign_in.dart';
+import 'friendly_error.dart';
+import 'waybi_format.dart';
 import '../data/camera_repository.dart';
 import '../domain/map_provider.dart';
 
@@ -178,52 +180,70 @@ class _ProfilePageState extends State<ProfilePage> {
               style: const TextStyle(height: 1.45),
             ),
             const SizedBox(height: 20),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.public_rounded),
+              leading: const Icon(Icons.public_rounded),
               title: Text('OpenStreetMap'),
               subtitle: Text(
-                'Map data © OpenStreetMap contributors · Open Database License (ODbL)',
+                _text(
+                  'Map data © OpenStreetMap contributors · Open Database License (ODbL)',
+                  '地图数据 © OpenStreetMap 贡献者 · 开放数据库许可（ODbL）',
+                ),
               ),
             ),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.location_city_rounded),
+              leading: const Icon(Icons.location_city_rounded),
               title: Text('Toitū Te Whenua LINZ'),
               subtitle: Text(
-                'New Zealand address data · Creative Commons Attribution 4.0',
+                _text(
+                  'New Zealand address data · Creative Commons Attribution 4.0',
+                  '新西兰地址数据 · 知识共享署名 4.0（CC BY 4.0）',
+                ),
               ),
             ),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.layers_outlined),
+              leading: const Icon(Icons.layers_outlined),
               title: Text('OpenMapTiles'),
               subtitle: Text(
-                'Vector tile schema © OpenMapTiles · CC BY. Waybi-hosted regional tiles currently use this transitional schema.',
+                _text(
+                  'Vector tile schema © OpenMapTiles · CC BY. Waybi-hosted regional tiles currently use this transitional schema.',
+                  '矢量瓦片结构 © OpenMapTiles · CC BY。Waybi 自托管的区域瓦片目前沿用这一过渡结构。',
+                ),
               ),
             ),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.map_outlined),
-              title: Text('Waybi Map basemap'),
+              leading: const Icon(Icons.map_outlined),
+              title: Text(_text('Waybi Map basemap', 'Waybi 地图底图')),
               subtitle: Text(
-                'MapLibre rendering with Waybi-controlled style and regional tile hosting. Global coverage still uses a fallback while Waybi-hosted regions expand.',
+                _text(
+                  'MapLibre rendering with Waybi-controlled style and regional tile hosting. Global coverage still uses a fallback while Waybi-hosted regions expand.',
+                  '使用 MapLibre 渲染，样式与区域瓦片由 Waybi 托管。在 Waybi 托管区域扩展期间，全球范围仍使用备用底图。',
+                ),
               ),
             ),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.route_rounded),
-              title: Text('Routing'),
+              leading: const Icon(Icons.route_rounded),
+              title: Text(_text('Routing', '路线规划')),
               subtitle: Text(
-                'OSRM routing over OpenStreetMap road data. Waybi-hosted regional routing is being introduced before public launch.',
+                _text(
+                  'OSRM routing over OpenStreetMap road data. Waybi-hosted regional routing is being introduced before public launch.',
+                  '基于 OpenStreetMap 道路数据的 OSRM 路线规划。Waybi 自托管的区域路线规划将在正式发布前上线。',
+                ),
               ),
             ),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.directions_bus_rounded),
-              title: Text('Auckland special vehicle lanes'),
+              leading: const Icon(Icons.directions_bus_rounded),
+              title: Text(_text('Auckland special vehicle lanes', '奥克兰专用车道')),
               subtitle: Text(
-                '© Auckland Transport · Creative Commons Attribution 4.0. Published lane geometry and operating hours, adapted by Waybi. Source: AT Open GIS Transit Lanes. Operating times use Pacific/Auckland. Licence: creativecommons.org/licenses/by/4.0/',
+                _text(
+                  '© Auckland Transport · Creative Commons Attribution 4.0. Published lane geometry and operating hours, adapted by Waybi. Source: AT Open GIS Transit Lanes. Operating times use Pacific/Auckland. Licence: creativecommons.org/licenses/by/4.0/',
+                  '© Auckland Transport · 知识共享署名 4.0。车道几何与运营时段来自公开数据，由 Waybi 改编。来源：AT Open GIS Transit Lanes。运营时间按奥克兰时间计算。许可：creativecommons.org/licenses/by/4.0/',
+                ),
               ),
             ),
           ],
@@ -255,9 +275,7 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('Bad state: ', '')),
-        ),
+        SnackBar(content: Text(friendlyErrorMessage(error, _appLanguage))),
       );
     } finally {
       if (mounted) setState(() => _cameraSyncing = false);
@@ -287,13 +305,15 @@ class _ProfilePageState extends State<ProfilePage> {
     } on GoogleSignInException catch (error) {
       if (error.code != GoogleSignInExceptionCode.canceled && mounted) {
         setState(
-          () => _error =
-              'Google sign-in: ${error.description ?? error.code.name}',
+          () => _error = _text(
+            'Google sign-in failed. Please try again.',
+            'Google 登录失败，请重试。',
+          ),
         );
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _error = '$error'.replaceFirst('Bad state: ', ''));
+        setState(() => _error = friendlyErrorMessage(error, _appLanguage));
       }
     }
   }
@@ -319,7 +339,7 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _error = '$error'.replaceFirst('Bad state: ', ''));
+        setState(() => _error = friendlyErrorMessage(error, _appLanguage));
       }
     }
   }
@@ -353,13 +373,44 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       await widget.account.updateDisplayName(name);
     } catch (error) {
-      if (mounted) setState(() => _error = '$error');
+      if (mounted) {
+        setState(() => _error = friendlyErrorMessage(error, _appLanguage));
+      }
     }
+  }
+
+  static final _appStoreSubscriptions = Uri.parse(
+    'https://apps.apple.com/account/subscriptions',
+  );
+
+  Future<void> _openAppStoreSubscriptions() async {
+    try {
+      if (await launchUrl(
+        _appStoreSubscriptions,
+        mode: LaunchMode.externalApplication,
+      )) {
+        return;
+      }
+    } catch (_) {
+      // Fall through to the message below.
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _text(
+            'Open Settings › Apple ID › Subscriptions to manage it.',
+            '请在“设置 › Apple ID › 订阅”中管理。',
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _deleteAccount() async {
     final profile = widget.account.profile;
     if (profile == null) return;
+    final appleActive = _appleSubscriptionActive(profile);
     var confirmation = '';
     final confirmed = await showDialog<bool>(
       context: context,
@@ -378,12 +429,56 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  _text(
-                    'Deleting Waybi does NOT cancel an Apple subscription. Cancel separately in iOS Settings > Subscriptions to avoid further charges.',
-                    '删除 Waybi 账号不会取消 Apple 自动续费。请在 iOS 设置 > 订阅中单独取消，避免继续扣费。',
+                if (appleActive)
+                  Container(
+                    key: const Key('deleteAppleSubscriptionWarning'),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                    decoration: BoxDecoration(
+                      color: context.status.warningContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          _text(
+                            'Your App Store subscription is still active. Deleting your Waybi account does not cancel it — cancel it in the App Store first to avoid further charges.',
+                            '你的 App Store 订阅仍在生效。删除 Waybi 账号不会取消订阅，请先在 App Store 取消，以免继续扣费。',
+                          ),
+                          style: TextStyle(
+                            color: context.status.onWarningContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            key: const Key('manageAppStoreSubscription'),
+                            style: TextButton.styleFrom(
+                              foregroundColor:
+                                  context.status.onWarningContainer,
+                              minimumSize: const Size(0, WaybiTouch.minTarget),
+                            ),
+                            onPressed: _openAppStoreSubscriptions,
+                            icon: const Icon(Icons.open_in_new_rounded),
+                            label: Text(
+                              _text(
+                                'Manage App Store subscription',
+                                '管理 App Store 订阅',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Text(
+                    _text(
+                      'Deleting Waybi does NOT cancel an Apple subscription. Cancel separately in iOS Settings > Subscriptions to avoid further charges.',
+                      '删除 Waybi 账号不会取消 Apple 自动续费。请在 iOS 设置 > 订阅中单独取消，避免继续扣费。',
+                    ),
                   ),
-                ),
                 const SizedBox(height: 14),
                 Text(
                   _text('Type your account email to confirm:', '输入当前账号邮箱确认：'),
@@ -424,19 +519,93 @@ class _ProfilePageState extends State<ProfilePage> {
     );
     if (confirmed != true) return;
     try {
-      await widget.account.deleteAccount(email: profile.email);
+      // The deletion response may report a still-renewing App Store
+      // subscription; read it without depending on the repository's type.
+      final Future<Object?> deletion = widget.account.deleteAccount(
+        email: profile.email,
+      );
+      final result = await deletion;
       await widget.friendsBackup?.forgetDeletedAccount(profile.id);
       if (!mounted) return;
       setState(() => _error = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_text('Waybi account deleted.', 'Waybi 账号已删除。')),
-        ),
-      );
+      final stillRenewing = _flag(result, 'appleSubscriptionActive') == true;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              stillRenewing
+                  ? _text(
+                      'Waybi account deleted. Your App Store subscription is still active.',
+                      'Waybi 账号已删除，但 App Store 订阅仍在生效。',
+                    )
+                  : _text('Waybi account deleted.', 'Waybi 账号已删除。'),
+            ),
+            action: stillRenewing
+                ? SnackBarAction(
+                    label: _text('Manage', '管理'),
+                    onPressed: _openAppStoreSubscriptions,
+                  )
+                : null,
+          ),
+        );
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
+      final message = friendlyErrorMessage(error, _appLanguage);
+      setState(() => _error = message);
+      final status = errorStatus(error) ?? 0;
+      final retryable =
+          errorCode(error) == WaybiErrorCode.subscriptionCancelFailed ||
+          status >= 500;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(message),
+            action: retryable
+                ? SnackBarAction(
+                    label: _text('Retry', '重试'),
+                    onPressed: _deleteAccount,
+                  )
+                : null,
+          ),
+        );
     }
+  }
+
+  /// Reads a field from a typed object or a JSON map without depending on
+  /// the data layer's class (it may add these fields in parallel).
+  static Object? _flag(Object? source, String name) {
+    if (source is Map) return source[name];
+    if (source == null) return null;
+    try {
+      final dynamic value = source;
+      return switch (name) {
+        'appleSubscriptionActive' => value.appleSubscriptionActive,
+        'raw' => value.raw,
+        'json' => value.json,
+        _ => null,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Whether the account has an App Store subscription that keeps renewing:
+  /// the server's `subscription.appleSubscriptionActive` when the profile
+  /// exposes it, otherwise an active Plus plan bought through Apple.
+  static bool _appleSubscriptionActive(AccountProfile profile) {
+    final direct = _flag(profile, 'appleSubscriptionActive');
+    if (direct is bool) return direct;
+    for (final key in const ['raw', 'json']) {
+      final map = _flag(profile, key);
+      final subscription = map is Map ? map['subscription'] : null;
+      final flag = subscription is Map
+          ? subscription['appleSubscriptionActive']
+          : null;
+      if (flag is bool) return flag;
+    }
+    return profile.isPlus && profile.subscriptionSource == 'apple';
   }
 
   void _voiceChanged(bool value) {
@@ -960,10 +1129,13 @@ class _ProfilePageState extends State<ProfilePage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            subtitle: item['createdAt'] == null
+                            subtitle: parseApiTime(item['createdAt']) == null
                                 ? null
                                 : Text(
-                                    item['createdAt'].toString(),
+                                    formatRelativeTime(
+                                      parseApiTime(item['createdAt']),
+                                      _appLanguage,
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -1616,13 +1788,6 @@ class _PlusCard extends StatelessWidget {
               _PlusChip(
                 icon: Icons.notifications_active_rounded,
                 label: t('Proactive alerts · live', '主动预警 · 已启用'),
-              ),
-              _PlusChip(
-                icon: Icons.directions_car_filled_rounded,
-                label: t(
-                  'CarPlay · Apple entitlement',
-                  'CarPlay · 等待 Apple entitlement',
-                ),
               ),
             ],
           ),

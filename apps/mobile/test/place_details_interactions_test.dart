@@ -324,7 +324,9 @@ void main() {
         details: rich(photos: false, status: 'CLOSED_TEMPORARILY'),
         expanded: expanded.add,
       );
-      expect(find.text('CLOSED TEMPORARILY'), findsOneWidget);
+      // People-facing wording, not Google's raw status code.
+      expect(find.text('Temporarily closed'), findsOneWidget);
+      expect(find.textContaining('CLOSED'), findsNothing);
       await t.drag(
         find.byKey(const Key('placeDeckHandle')),
         const Offset(0, -70),

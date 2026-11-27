@@ -170,7 +170,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   String _eventTitle(RoadEvent event) => switch (event.type) {
     RoadEventType.roadClosure => _text('Road closed', '道路封闭'),
     RoadEventType.roadworks => _text('Roadworks', '道路施工'),
-    RoadEventType.flooding => _text('Flooding', '积水 / 洪水'),
+    RoadEventType.flooding => _text('Flooding', '积水'),
     RoadEventType.slip => _text('Slip / debris', '滑坡 / 道路杂物'),
     _ => _text('Road incident', '道路事件'),
   };
@@ -426,7 +426,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     )
                   : _text(
                       'Every new trip is a memory we make together.',
-                      '从下一段旅程开始，一起积累新的回忆。',
+                      '每一段新旅程，都是我们一起留下的回忆。',
                     ),
               style: theme.textTheme.bodySmall,
             ),
@@ -441,7 +441,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     )
                   : _text(
                       'Account totals keep growing; guest journeys stay on this device until synced. Earlier deleted trips cannot be recovered.',
-                      '账号累计不再受 100 条限制；访客记录保存在本机，历史已删除行程无法恢复。',
+                      '账号累计会持续增加；访客旅程在同步前只保存在本机。之前删除的行程无法恢复。',
                     ),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -486,10 +486,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     children: [
                       Expanded(
                         child: Text(
-                          _text(
-                            'Find your next little trip.',
-                            '下一段小旅程，\n一起出发。',
-                          ),
+                          _text('Find your next little trip.', '找到你的\n下一段小旅程。'),
                           style: theme.textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                             height: 1.2,

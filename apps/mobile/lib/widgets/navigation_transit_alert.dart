@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/transit_lane.dart';
 import '../theme/waybi_theme.dart';
+import 'waybi_format.dart';
 
 class NavigationTransitAlert extends StatelessWidget {
   const NavigationTransitAlert({
@@ -24,7 +25,7 @@ class NavigationTransitAlert extends StatelessWidget {
         : lane.label(language);
     final distance = notice.distanceMeters <= 5
         ? (zh ? '当前路段' : 'This section')
-        : '${notice.distanceMeters.round()} m';
+        : formatDistance(notice.distanceMeters, language);
     return Semantics(
       container: true,
       child: Container(

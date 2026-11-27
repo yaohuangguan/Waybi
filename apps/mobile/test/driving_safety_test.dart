@@ -2,6 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_navigation_flutter/google_navigation_flutter.dart'
+    show
+        NavInfo,
+        StepInfo,
+        DrivingSide,
+        Lane,
+        LaneDirection,
+        LaneShape,
+        Maneuver,
+        NavState;
+import 'package:waybi_mobile/domain/road_event.dart';
+import 'package:waybi_mobile/domain/safety_camera.dart';
+import 'package:waybi_mobile/drive/camera_alert_lifecycle.dart';
 import 'package:waybi_mobile/data/parking_repository.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/navigation_lanes.dart';
@@ -393,5 +406,97 @@ void main() {
     );
     expect(find.byKey(const Key('arrivalParkNearest')), findsOneWidget);
     expect(find.text('停车后可查看更多停车选项。'), findsOneWidget);
+  });
+
+  testWidgets('native guidance HUD shows the step, lanes, passed camera and '
+      'road events in the driving scale', (t) async {
+    final engine = DriveEngine()
+      ..speedKph = 40
+      ..speedLimitKph = 50
+      ..navInfo = NavInfo(
+        currentStep: StepInfo(
+          distanceFromPrevStepMeters: 0,
+          timeFromPrevStepSeconds: 0,
+          drivingSide: DrivingSide.left,
+          exitNumber: null,
+          fullInstructions: '左转进入 Queen Street',
+          fullRoadName: 'Queen Street',
+          simpleRoadName: 'Queen St',
+          roundaboutTurnNumber: null,
+          stepNumber: 1,
+          lanes: [
+            Lane(
+              laneDirections: [
+                LaneDirection(
+                  laneShape: LaneShape.normalLeft,
+                  isRecommended: true,
+                ),
+              ],
+            ),
+            Lane(
+              laneDirections: [
+                LaneDirection(
+                  laneShape: LaneShape.straight,
+                  isRecommended: false,
+                ),
+              ],
+            ),
+          ],
+          maneuver: Maneuver.values.first,
+          maneuverImage: null,
+          lanesImage: null,
+        ),
+        remainingSteps: const [],
+        routeChanged: false,
+        distanceToCurrentStepMeters: 180,
+        distanceToFinalDestinationMeters: 4200,
+        distanceToNextDestinationMeters: 4200,
+        timeToCurrentStepSeconds: 20,
+        timeToFinalDestinationSeconds: 600,
+        timeToNextDestinationSeconds: 600,
+        navState: NavState.enroute,
+      )
+      ..passedCamera = const SafetyCamera(
+        id: 'c',
+        name: 'Camera',
+        region: 'Auckland',
+        suburb: 'CBD',
+        location: 'Hobson Street',
+        type: 'Red light',
+        latitude: -36.85,
+        longitude: 174.76,
+      )
+      ..cameraAlertState = const CameraAlertState(CameraAlertPhase.passed)
+      ..upcomingRoadEvents = const [
+        RoadEvent(
+          id: 'works',
+          type: RoadEventType.roadworks,
+          location: GeoPoint(-36.85, 174.76),
+          source: RoadEventSource(
+            provider: 'NZTA',
+            country: 'NZ',
+            sourceId: 'w',
+          ),
+          distanceFromDriver: 600,
+        ),
+      ];
+    addTearDown(engine.dispose);
+    await t.pumpWidget(
+      host(
+        DriveHud(engine: engine, onStop: () {}),
+        lang: 'zh',
+      ),
+    );
+    await t.pumpAndSettle();
+    expect(fontSizeOf(t, find.text('180 米')), greaterThanOrEqualTo(28));
+    expect(
+      fontSizeOf(t, find.text('左转进入 Queen Street')),
+      greaterThanOrEqualTo(18),
+    );
+    expect(find.text('已通过摄像头 · Hobson Street'), findsOneWidget);
+    expect(find.text('剩余'), findsOneWidget);
+    expect(find.text('4.2 公里'), findsOneWidget);
+    expect(find.text('道路施工'), findsOneWidget);
+    expect(find.bySemanticsLabel('限速 50 公里/时'), findsOneWidget);
   });
 }

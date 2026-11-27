@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../theme/waybi_theme.dart';
+import 'friendly_error.dart';
 import 'load_error.dart';
+import 'waybi_format.dart';
 
 class TripDestination {
   const TripDestination({
@@ -340,7 +342,8 @@ class _TripsPageState extends State<TripsPage> {
     if (delta.inDays < 7) {
       return _text('${delta.inDays}d ago', '${delta.inDays} 天前');
     }
-    return '${time.toLocal().month}/${time.toLocal().day}';
+    // Day-month, as New Zealand writes dates (not US month/day).
+    return formatShortDate(time, widget.language);
   }
 
   IconData _modeIcon(String mode) => switch (mode) {
@@ -464,7 +467,7 @@ class _TripsPageState extends State<TripsPage> {
     } catch (error) {
       if (mounted) {
         setState(() {
-          _error = '$error'.replaceFirst('Bad state: ', '');
+          _error = friendlyErrorMessage(error, widget.language);
         });
       }
     } finally {
@@ -900,11 +903,12 @@ class _TripsPageState extends State<TripsPage> {
               _TripInsightStat(
                 label: _text('Distance', '距离'),
                 value:
-                    '${distanceKm.toStringAsFixed(distanceKm < 100 ? 1 : 0)} km',
+                    '${distanceKm.toStringAsFixed(distanceKm < 100 ? 1 : 0)} ${_text('km', '公里')}',
               ),
               _TripInsightStat(
                 label: _text('Travel time', '出行时间'),
-                value: '${hours.toStringAsFixed(hours < 10 ? 1 : 0)} h',
+                value:
+                    '${hours.toStringAsFixed(hours < 10 ? 1 : 0)} ${_text('h', '小时')}',
               ),
             ],
           ),
@@ -1274,7 +1278,7 @@ class _TripsPageState extends State<TripsPage> {
                     _SectionTitle(
                       title: _text('Trip Intelligence', '行程洞察'),
                       subtitle: snapshot.isPlus == true
-                          ? 'Plus · 30 days'
+                          ? _text('Plus · 30 days', 'Plus · 近 30 天')
                           : _text('Plus locked', 'Plus 专属'),
                     ),
                     const SizedBox(height: 10),

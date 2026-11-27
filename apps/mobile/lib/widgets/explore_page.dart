@@ -9,6 +9,7 @@ import '../theme/waybi_theme.dart';
 import 'load_error.dart';
 import 'waybi_bird.dart';
 import 'place_sources_sheet.dart';
+import 'waybi_format.dart';
 
 class ExplorePage extends StatefulWidget {
   const ExplorePage({
@@ -166,10 +167,7 @@ class _ExplorePageState extends State<ExplorePage> {
       place.latitude,
       place.longitude,
     );
-    if (metres < 1000) return '${metres.round()} m';
-    final km = metres / 1000;
-    final value = km < 10 ? km.toStringAsFixed(1) : km.round().toString();
-    return '$value km';
+    return formatDistance(metres, widget.language);
   }
 
   String _priceLabel(String? priceLevel) {

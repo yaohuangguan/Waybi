@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 
 import '../data/api_config.dart';
 import '../domain/geo_math.dart';
+import 'waybi_format.dart';
 
 class DestinationSuggestion {
   const DestinationSuggestion({
@@ -69,7 +70,8 @@ class _ExploreSearchState extends State<ExploreSearch> {
   List<DestinationSuggestion> _results = const [];
   String? _error;
   int _request = 0;
-  String _locationLabel = 'Locating current position…';
+  // Null until a reverse lookup names the current place.
+  String? _locationLabel;
   LatLng? _lastReverseLocation;
   bool _reverseLookupPending = false;
 
@@ -86,11 +88,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
       result.location.latitude,
       result.location.longitude,
     );
-    if (metres < 1000) return '${metres.round()} m';
-    final kilometres = metres / 1000;
-    return kilometres < 10
-        ? '${kilometres.toStringAsFixed(1)} km'
-        : '${kilometres.round()} km';
+    return formatDistance(metres, widget.language);
   }
 
   @override
@@ -114,9 +112,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
     final current = widget.currentLocation;
     final previous = _lastReverseLocation;
     if (current == null) {
-      if (_locationLabel != 'Locating current position…') {
-        setState(() => _locationLabel = 'Locating current position…');
-      }
+      if (_locationLabel != null) setState(() => _locationLabel = null);
       return;
     }
     final moved = previous == null
@@ -333,9 +329,9 @@ class _ExploreSearchState extends State<ExploreSearch> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final location = widget.currentLocation;
-    final locationText = location == null
+    final locationText = location == null || _locationLabel == null
         ? _text('Locating current position…', '正在定位当前位置…')
-        : _locationLabel;
+        : _locationLabel!;
     return Material(
       color: scheme.surface,
       elevation: 11,

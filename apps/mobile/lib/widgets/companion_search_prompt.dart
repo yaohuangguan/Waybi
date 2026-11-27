@@ -7,6 +7,7 @@ import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import '../theme/waybi_theme.dart';
 import 'waybi_bird.dart';
+import 'waybi_format.dart';
 
 String companionName(LocationMarkerStyle marker) => switch (marker) {
   LocationMarkerStyle.cat => 'Clover',
@@ -133,9 +134,7 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
       point.latitude,
       point.longitude,
     );
-    return metres < 1000
-        ? '${metres.round()} m'
-        : '${(metres / 1000).toStringAsFixed(1)} km';
+    return formatDistance(metres, widget.language);
   }
 
   void _select(PlaceCandidate candidate) {

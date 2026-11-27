@@ -58,6 +58,14 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
 
   String _text(String en, String zh) => widget.language == 'zh' ? zh : en;
 
+  /// Google business status codes as people say them.
+  String _businessStatus(String status) => switch (status) {
+    'OPERATIONAL' => _text('Open / operational', '营业中'),
+    'CLOSED_TEMPORARILY' => _text('Temporarily closed', '暂停营业'),
+    'CLOSED_PERMANENTLY' => _text('Permanently closed', '已永久停业'),
+    _ => _text('Opening status unknown', '营业状态未知'),
+  };
+
   bool _samePlace(PlaceSummary a, PlaceSummary b) {
     final aRef = a.reference;
     final bRef = b.reference;
@@ -571,12 +579,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                place.businessStatus == 'OPERATIONAL'
-                                    ? _text('Open / operational', '营业中')
-                                    : place.businessStatus!.replaceAll(
-                                        '_',
-                                        ' ',
-                                      ),
+                                _businessStatus(place.businessStatus!),
                                 style: TextStyle(
                                   color: place.businessStatus == 'OPERATIONAL'
                                       ? context.status.success

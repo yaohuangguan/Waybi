@@ -369,8 +369,8 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
                         title: Text(_text('Bus & transit lanes', '公交与专用车道')),
                         subtitle: Text(
                           _text(
-                            '${widget.transitLaneCount} Auckland lanes · ${widget.reviewCorridorCount} Christchurch/Wellington centreline hints (amber, not verified lane bounds). Tap for details.',
-                            '奥克兰 ${widget.transitLaneCount} 段 · 基督城/惠灵顿 ${widget.reviewCorridorCount} 段候选道路中心线（橙色，非车道边界），点击了解。',
+                            '${widget.transitLaneCount} Auckland lanes · ${widget.reviewCorridorCount} Christchurch/Wellington centreline hints (amber, not verified lane bounds).',
+                            '奥克兰 ${widget.transitLaneCount} 段 · 基督城/惠灵顿 ${widget.reviewCorridorCount} 段候选道路中心线（橙色，非车道边界）。',
                           ),
                         ),
                         value: current.transitLanes,

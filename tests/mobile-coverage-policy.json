@@ -312,6 +312,9 @@
     "apps/mobile/lib/widgets/explore_sheet.dart": {
       "minimumLinePercent": 90
     },
+    "apps/mobile/lib/widgets/friendly_error.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/widgets/full_screen_search.dart": {
       "minimumLinePercent": 85
     },

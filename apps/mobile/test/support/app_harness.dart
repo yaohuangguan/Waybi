@@ -439,6 +439,7 @@ class AppHarness {
     bool plus = false,
     DriveEngine Function(TransitLaneRepository lanes)? engine,
     bool initialFix = true,
+    ThemeData? theme,
   }) async {
     this.signedIn = signedIn;
     this.plus = plus;
@@ -560,7 +561,12 @@ class AppHarness {
         messenger.setMockMessageHandler(name, null);
       }
     });
-    await tester.pumpWidget(MaterialApp(home: MapHomePage(driveEngine: drive)));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: theme,
+        home: MapHomePage(driveEngine: drive),
+      ),
+    );
     await frames();
     if (!initialFix) return;
     gps.emit(longitude: 174.9, speed: 0);

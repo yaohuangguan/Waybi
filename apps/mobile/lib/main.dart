@@ -87,6 +87,7 @@ import 'widgets/route_preview_sheet.dart';
 import 'widgets/road_event_details_sheet.dart';
 import 'widgets/transit_trip_overlay.dart';
 import 'widgets/trips_page.dart';
+import 'widgets/waybi_format.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -159,6 +160,7 @@ class _WaybiAppState extends State<WaybiApp> {
       darkTheme: WaybiTheme.darkFor(_locale.languageCode),
       themeMode: _themeMode,
       home: SplashGate(
+        language: _locale.languageCode,
         child: MapHomePage(
           themeMode: _themeMode,
           onAppLanguageChanged: (value) =>
@@ -400,7 +402,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   bool _notifyRoadIncidents = false;
   bool _notifyCommunityReports = false;
   bool _notifySavedRouteDisruptions = false;
-  String _destinationTitle = 'Destination';
+  late String _destinationTitle = _text('Destination', '目的地');
   RoutePlan? _routePlan;
   Map<String, RouteCameraSummary> _routeCameraSummaries = const {};
   Map<String, RoutePreferenceSummary> _routePreferenceSummaries = const {};
@@ -1698,7 +1700,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             DateTime.now().difference(parkedAt) < const Duration(hours: 72)) {
           _parkedCarAt = parkedAt;
           _parkedCarPlace = PlaceSummary(
-            name: item['name']?.toString() ?? 'Parked car',
+            name: item['name']?.toString() ?? _text('Parked car', '停车位置'),
             address: item['address']?.toString() ?? '',
             location: GeoPoint(latitude.toDouble(), longitude.toDouble()),
           );
@@ -1778,7 +1780,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           final longitude = item['longitude'];
           if (latitude is! num || longitude is! num) return null;
           return DestinationSuggestion(
-            label: item['label']?.toString() ?? 'Recent destination',
+            label:
+                item['label']?.toString() ??
+                _text('Recent destination', '最近目的地'),
             location: LatLng(
               latitude: latitude.toDouble(),
               longitude: longitude.toDouble(),
@@ -2699,8 +2703,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       if (mounted) {
         setState(
           () => _message = _text(
-            'Could not submit road report: $error',
-            '道路上报失败：$error',
+            'Could not submit road report. ${friendlyErrorMessage(error, _appLanguage)}',
+            '道路上报失败。${friendlyErrorMessage(error, _appLanguage)}',
           ),
         );
       }
@@ -3570,7 +3574,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   Future<void> _toggleFavorite(PointOfInterest poi) async {
     if (_selectedPlace?.place.reference?.provider == 'google-ui-kit') {
       setState(
-        () => _message = _appLanguage == 'zh' ? '可直接导航到此地点。收藏时，请先在地图上确认地点。' : 'You can navigate here. To save it, first confirm the place on the map.',
+        () => _message = _text(
+          'You can navigate here. To save it, first confirm the place on the map.',
+          '可直接导航到此地点。收藏时，请先在地图上确认地点。',
+        ),
       );
       return;
     }
@@ -3587,7 +3594,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         favorite: !_isFavorite(poi),
       );
     } catch (error) {
-      if (mounted) setState(() => _message = '$error');
+      if (mounted) {
+        setState(
+          () => _message = _text(
+            'Could not update your saved places. ${friendlyErrorMessage(error, _appLanguage)}',
+            '无法更新收藏。${friendlyErrorMessage(error, _appLanguage)}',
+          ),
+        );
+      }
     }
   }
 
@@ -3608,7 +3622,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
           title: Text(
-            'My review · ${poi.name}',
+            _text('My review · ${poi.name}', '我的评价 · ${poi.name}'),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -3617,7 +3631,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             children: [
               DropdownButtonFormField<int>(
                 initialValue: rating,
-                decoration: const InputDecoration(labelText: 'Rating'),
+                decoration: InputDecoration(labelText: _text('Rating', '评分')),
                 items: [
                   for (var value = 1; value <= 5; value++)
                     DropdownMenuItem(
@@ -3634,25 +3648,31 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 controller: comment,
                 maxLines: 4,
                 maxLength: 2000,
-                decoration: const InputDecoration(
-                  labelText: 'Private comment',
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: _text('Private comment', '私人备注'),
+                  border: const OutlineInputBorder(),
                 ),
               ),
-              const Text(
-                'Saved to Waybi only; not published to Google.',
-                style: TextStyle(fontSize: 11, color: Colors.black54),
+              Text(
+                _text(
+                  'Saved to Waybi only; not published to Google.',
+                  '仅保存在 Waybi，不会发布到 Google。',
+                ),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
+              child: Text(_text('Cancel', '取消')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Save'),
+              child: Text(_text('Save', '保存')),
             ),
           ],
         ),
@@ -3667,7 +3687,14 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           comment: comment.text.trim(),
         );
       } catch (error) {
-        if (mounted) setState(() => _message = '$error');
+        if (mounted) {
+          setState(
+            () => _message = _text(
+              'Could not save your review. ${friendlyErrorMessage(error, _appLanguage)}',
+              '无法保存评价。${friendlyErrorMessage(error, _appLanguage)}',
+            ),
+          );
+        }
       }
     }
     comment.dispose();
@@ -3907,7 +3934,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     await prefs.setStringList('waybi.saved.routes', saved);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Route saved on this device')),
+        SnackBar(
+          content: Text(_text('Route saved on this device', '路线已保存在本机')),
+        ),
       );
     }
   }
@@ -4441,7 +4470,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     _externalPreview = null;
     if ((!const ProviderPolicy(MapProvider.independent)
         .canDisplay(place.reference))) {
-      setState(() => _message = 'This place belongs to another map provider.');
+      setState(
+        () => _message = _text(
+          'This place belongs to another map provider.',
+          '这个地点来自其他地图服务，无法在 Waybi 中打开。',
+        ),
+      );
       return;
     }
     setState(() {
@@ -4999,9 +5033,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                               ),
                             ),
                             trailing: Text(
-                              step.distanceMeters >= 1000
-                                  ? '${(step.distanceMeters / 1000).toStringAsFixed(1)} km'
-                                  : '${step.distanceMeters} m',
+                              formatDistance(step.distanceMeters, _appLanguage),
                               style: TextStyle(
                                 color: secondaryColor,
                                 fontWeight: FontWeight.w700,
@@ -5029,11 +5061,23 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final arrival = _independentNavigation.active
         ? _independentNavigation.remainingSeconds
         : nav?.timeToFinalDestinationSeconds;
-    final details =
-        'Waybi trip to $_destinationTitle. '
-        'Remaining: ${remaining == null ? 'unknown' : '${(remaining / 1000).toStringAsFixed(1)} km'}. '
-        'ETA: ${arrival == null ? 'unknown' : DateTime.now().add(Duration(seconds: arrival)).toLocal().toString().substring(0, 16)}. '
-        'This is an ETA snapshot, not live location sharing.';
+    final unknown = _text('unknown', '未知');
+    final distance = remaining == null
+        ? unknown
+        : formatDistance(remaining, _appLanguage);
+    final eta = arrival == null
+        ? unknown
+        : DateTime.now()
+              .add(Duration(seconds: arrival))
+              .toLocal()
+              .toString()
+              .substring(0, 16);
+    final details = _text(
+      'Waybi trip to $_destinationTitle. Remaining: $distance. ETA: $eta. '
+          'This is an ETA snapshot, not live location sharing.',
+      'Waybi 行程：前往 $_destinationTitle。剩余：$distance。预计到达：$eta。'
+          '这是一次到达时间快照，不是实时位置共享。',
+    );
     if (!mounted) return;
     try {
       await const MethodChannel('waybi/share')
@@ -5042,7 +5086,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       await Clipboard.setData(ClipboardData(text: details));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('ETA snapshot copied to clipboard')),
+          SnackBar(
+            content: Text(
+              _text('ETA snapshot copied to clipboard', '到达时间快照已复制'),
+            ),
+          ),
         );
       }
     }
@@ -5058,7 +5106,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           provider: _independentSearch,
           resolve: (candidate) async {
             if (candidate.location == null) {
-              throw StateError('Place has no location');
+              throw StateError(
+                _text('This place has no location.', '这个地点没有位置信息。'),
+              );
             }
             return candidate.toPlace(candidate.location!);
           },
@@ -5141,7 +5191,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     RouteWatchItem? current,
     bool enabled,
   ) async {
-    if (!_account.signedIn) throw StateError('Sign in to use Route Watch');
+    if (!_account.signedIn) {
+      throw StateError(_text('Sign in to use Route Watch.', '请先登录后使用路线监控。'));
+    }
     if (_account.profile?.isPlus != true) {
       throw StateError(
         _text('Smart Commute is a Waybi Plus feature.', '智能通勤是 Waybi Plus 功能。'),
@@ -5155,7 +5207,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     final pair = switch (label) {
       'home-work' => ('Home', 'Work'),
       'work-home' => ('Work', 'Home'),
-      _ => throw StateError('Unknown Route Watch'),
+      _ => throw StateError(
+        _text('This Route Watch is not available.', '这条路线监控不可用。'),
+      ),
     };
     final origin = _quickLocations[pair.$1];
     final destination = _quickLocations[pair.$2];
@@ -5575,7 +5629,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             for (final place in favoritePlaces)
               ListTile(
                 leading: const Icon(Icons.bookmark_rounded),
-                title: Text(place['name']?.toString() ?? 'Saved place'),
+                title: Text(
+                  place['name']?.toString() ?? _text('Saved place', '收藏地点'),
+                ),
                 onTap: () {
                   final latitude = place['latitude'],
                       longitude = place['longitude'];
@@ -5586,14 +5642,19 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                       !id.startsWith('osm:')) {
                     Navigator.of(sheetContext).pop();
                     setState(
-                      () => _message = 'This saved Google place is available on Google Maps.',
+                      () => _message = _text(
+                        'This saved Google place is available on Google Maps.',
+                        '这个收藏的 Google 地点请在 Google 地图中查看。',
+                      ),
                     );
                     return;
                   }
                   Navigator.of(sheetContext).pop();
                   _selectPlace(
                     PlaceSummary(
-                      name: place['name']?.toString() ?? 'Saved place',
+                      name:
+                          place['name']?.toString() ??
+                          _text('Saved place', '收藏地点'),
                       address: place['address']?.toString() ?? '',
                       location: GeoPoint(
                         latitude.toDouble(),
@@ -5615,20 +5676,27 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     final place = data['destination'] as Map<String, dynamic>;
                     return ListTile(
                       leading: const Icon(Icons.route_rounded),
-                      title: Text(place['name']?.toString() ?? 'Saved route'),
+                      title: Text(
+                        place['name']?.toString() ??
+                            _text('Saved route', '收藏路线'),
+                      ),
                       onTap: () {
                         if ((data['provider'] != 'independent')) {
                           Navigator.of(sheetContext).pop();
                           setState(
-                            () => _message =
-                                'This saved route belongs to Google Maps.',
+                            () => _message = _text(
+                              'This saved route belongs to Google Maps.',
+                              '这条收藏路线来自 Google 地图。',
+                            ),
                           );
                           return;
                         }
                         Navigator.of(sheetContext).pop();
                         _selectPlace(
                           PlaceSummary(
-                            name: place['name']?.toString() ?? 'Saved route',
+                            name:
+                                place['name']?.toString() ??
+                                _text('Saved route', '收藏路线'),
                             location: GeoPoint(
                               (place['latitude'] as num).toDouble(),
                               (place['longitude'] as num).toDouble(),
@@ -5726,7 +5794,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
             }
             final reference = candidate.reference;
             if (reference == null) {
-              throw StateError('Place has no location');
+              throw StateError(
+                _text('This place has no location.', '这个地点没有位置信息。'),
+              );
             }
             return _independentSearch.resolve(
               reference,
@@ -5853,8 +5923,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           unawaited(_refreshQuickCommutes(force: true));
         } else {
           setState(
-            () =>
-                _message = _appLanguage == 'zh' ? '地点已选中。保存家或公司时，请先在地图上确认地点。' : 'Place selected. To save Home or Work, first confirm it on the map.',
+            () => _message = _text(
+              'Place selected. To save Home or Work, first confirm it on the map.',
+              '地点已选中。保存家或公司时，请先在地图上确认地点。',
+            ),
           );
         }
       }
@@ -5904,6 +5976,26 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
     return place;
   }
 
+  /// Shortcut keys stay English in preferences; this is what people read.
+  String _quickActionTitle(String action) => switch (action) {
+    'Home' => _text('Home', '家'),
+    'Work' => _text('Work', '公司'),
+    'Frequent' => _text('Frequent', '常去'),
+    'Restaurants' => _text('Restaurants', '餐厅'),
+    'Shopping' => _text('Shopping', '购物'),
+    // New Zealand calls it petrol.
+    'Gas' => _text('Petrol', '加油站'),
+    _ => action,
+  };
+
+  /// The search a shortcut runs, in the app language.
+  String _quickActionQuery(String action) => switch (action) {
+    'Restaurants' => _text('restaurants', '餐厅'),
+    'Shopping' => _text('shopping', '购物'),
+    'Gas' => _text('petrol station', '加油站'),
+    _ => _quickActionTitle(action),
+  };
+
   IconData _quickActionIcon(String action) => switch (action) {
     'Home' => Icons.home_rounded,
     'Work' => Icons.work_rounded,
@@ -5939,7 +6031,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          action,
+          _quickActionTitle(action),
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
@@ -6039,7 +6131,9 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         return;
       }
     }
-    unawaited(_openSearch(query: action == 'Frequent' ? '' : action));
+    unawaited(
+      _openSearch(query: action == 'Frequent' ? '' : _quickActionQuery(action)),
+    );
   }
 
   void _maybeShowSearchArea() {
@@ -6087,7 +6181,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                       for (final action in actions)
                         ListTile(
                           key: ValueKey(action),
-                          title: Text(action),
+                          title: Text(_quickActionTitle(action)),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -6126,7 +6220,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                     ])
                       if (!actions.contains(action))
                         ActionChip(
-                          label: Text('+ $action'),
+                          label: Text('+ ${_quickActionTitle(action)}'),
                           onPressed: () =>
                               updateSheet(() => actions.add(action)),
                         ),

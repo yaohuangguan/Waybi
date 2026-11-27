@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../data/account_repository.dart';
 import 'account_sign_in.dart';
 import '../data/plus_billing.dart';
+import '../theme/waybi_theme.dart';
 import 'waybi_bird.dart';
 
 /// Native Plus discovery and subscription flow, shared by account and upsell entries.
@@ -232,10 +233,10 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: const Color(0xffd0f58a),
+            color: WaybiColors.sky,
             borderRadius: BorderRadius.circular(13),
           ),
-          child: Icon(icon, size: 23, color: const Color(0xff152510)),
+          child: Icon(icon, size: 23, color: WaybiColors.midnightOcean),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -326,14 +327,14 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xffd0f58a),
+                              color: WaybiColors.sky,
                               borderRadius: BorderRadius.circular(99),
                             ),
                             child: Text(
                               t('Save $saving%', '省 $saving%'),
                               style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xff152510),
+                                fontSize: WaybiTextSize.caption,
+                                color: WaybiColors.midnightOcean,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -354,7 +355,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                           ? t('Charged once per year', '每年扣款一次')
                           : t('Charged once per month', '每月扣款一次'),
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: WaybiTextSize.caption,
                         color: scheme.onSurfaceVariant,
                       ),
                     ),
@@ -409,7 +410,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0xff152510),
+              color: WaybiColors.midnightOcean,
               borderRadius: BorderRadius.circular(27),
             ),
             child: Column(
@@ -418,15 +419,18 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      t('YOUR LITTLE UPGRADE', '每天出行的小升级'),
-                      style: const TextStyle(
-                        color: Color(0xffd0f58a),
-                        fontSize: 10,
-                        letterSpacing: 1.2,
-                        fontWeight: FontWeight.w700,
+                    Flexible(
+                      child: Text(
+                        t('YOUR LITTLE UPGRADE', '每天出行的小升级'),
+                        style: const TextStyle(
+                          color: WaybiColors.sky,
+                          fontSize: WaybiTextSize.caption,
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     const WaybiBird(size: 74),
                   ],
                 ),
@@ -434,7 +438,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                 Text(
                   t('A little more ahead.', '提前一点，\n从容一点。'),
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: WaybiInk.text,
                     fontSize: 33,
                     height: 1.15,
                     fontWeight: FontWeight.w700,
@@ -448,7 +452,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                     '出发前少一点猜测，到达时多一点顺畅。你的小小 Waybi，拥有更多贴心本领。',
                   ),
                   style: const TextStyle(
-                    color: Color(0xffc4d3b8),
+                    color: WaybiInk.muted,
                     fontSize: 13,
                     height: 1.6,
                   ),
@@ -459,14 +463,14 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                     children: [
                       const Icon(
                         Icons.verified_rounded,
-                        color: Color(0xffd0f58a),
+                        color: WaybiColors.sky,
                         size: 20,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         t('Plus is active', 'Plus 已启用'),
                         style: const TextStyle(
-                          color: Color(0xffd0f58a),
+                          color: WaybiColors.sky,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -508,7 +512,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                   'Maps · search · navigation · camera updates',
                   '地图 · 搜索 · 导航 · 摄像头自动更新',
                 ),
-                style: const TextStyle(fontSize: 11),
+                style: const TextStyle(fontSize: WaybiTextSize.caption),
               ),
               children: [
                 Padding(
@@ -568,7 +572,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
                       '当前版本暂未开放订阅，你可以继续使用免费地图。',
                     ),
               style: TextStyle(
-                fontSize: 11,
+                fontSize: WaybiTextSize.caption,
                 height: 1.5,
                 color: scheme.onSurfaceVariant,
               ),
@@ -602,7 +606,7 @@ class _PlusPageState extends State<PlusPage> with WidgetsBindingObserver {
               'CarPlay 仍在等待 Apple 授权，目前不作为已可用的 Plus 功能提供。',
             ),
             style: TextStyle(
-              fontSize: 10,
+              fontSize: WaybiTextSize.caption,
               height: 1.5,
               color: scheme.onSurfaceVariant,
             ),

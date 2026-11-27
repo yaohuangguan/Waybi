@@ -102,7 +102,7 @@ Future<void> showSouvenir(BuildContext context, JourneyMemory memory) async {
                       '收藏一点旅途的惊喜',
                     ),
                     style: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       letterSpacing: .5,
                       color: WwhColors.muted,
                     ),

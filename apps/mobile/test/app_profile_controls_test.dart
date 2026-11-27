@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:waybi_mobile/widgets/profile_page.dart';
+import 'package:waybi_mobile/widgets/waybi_format.dart';
 
 import 'support/app_harness.dart';
 
@@ -149,7 +150,12 @@ void main() {
           find.text(language == 'zh' ? '最近目的地' : 'Recent destinations'),
           findsOneWidget,
         );
-        expect(find.text('2026-10-15'), findsOneWidget);
+        // A relative, localized time instead of the raw ISO string.
+        expect(find.text('2026-10-15'), findsNothing);
+        expect(
+          find.text(formatRelativeTime(DateTime(2026, 10, 15), language)),
+          findsOneWidget,
+        );
         final licences = find.text(
           language == 'zh' ? '地图数据与许可' : 'Map data & licences',
         );

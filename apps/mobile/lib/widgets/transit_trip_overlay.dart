@@ -4,24 +4,29 @@ import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../domain/route_option.dart';
+import 'hold_to_end_button.dart';
+import 'waybi_format.dart';
 
-const _ink = WaybiColors.darkOcean;
-const _accent = WaybiColors.sky;
+const _ink = WaybiInk.surface;
+const _accent = WaybiInk.accent;
 
-String _duration(int seconds) {
+String _duration(int seconds, String language) {
+  final zh = language == 'zh';
   final duration = Duration(seconds: seconds);
   if (duration.inHours >= 1) {
     final minutes = duration.inMinutes.remainder(60);
+    if (zh) {
+      return minutes == 0
+          ? '${duration.inHours} 小时'
+          : '${duration.inHours} 小时 $minutes 分钟';
+    }
     return minutes == 0
         ? '${duration.inHours} hr'
         : '${duration.inHours} hr $minutes min';
   }
-  return '${duration.inMinutes.clamp(1, 999)} min';
+  final minutes = duration.inMinutes.clamp(1, 999);
+  return zh ? '$minutes 分钟' : '$minutes min';
 }
-
-String _distance(int metres) => metres >= 1000
-    ? '${(metres / 1000).toStringAsFixed(metres < 10000 ? 1 : 0)} km'
-    : '$metres m';
 
 class TransitTripOverlay extends StatelessWidget {
   const TransitTripOverlay({
@@ -31,16 +36,29 @@ class TransitTripOverlay extends StatelessWidget {
     required this.gpsAccuracy,
     required this.onEnd,
     required this.onRecenter,
+    this.language,
   });
 
   final String destinationTitle;
   final RouteOption route;
   final double? gpsAccuracy;
+
+  /// Called after the rider holds "End trip" (or confirms it with a screen
+  /// reader); a short tap never ends the trip.
   final VoidCallback onEnd;
   final VoidCallback onRecenter;
 
+  /// `en` or `zh`; defaults to the app locale.
+  final String? language;
+
   @override
   Widget build(BuildContext context) {
+    final lang = waybiLanguageOf(context, language);
+    String text(String en, String zh) => lang == 'zh' ? zh : en;
+    final scheme = Theme.of(context).colorScheme;
+    final gps = gpsAccuracy == null
+        ? 'GPS —'
+        : 'GPS ±${formatDistance(gpsAccuracy!, lang)}';
     final arrival = TimeOfDay.fromDateTime(
       DateTime.now().add(Duration(seconds: route.durationSeconds)),
     ).format(context);
@@ -72,11 +90,11 @@ class TransitTripOverlay extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'TRANSIT TRIP',
-                              style: TextStyle(
+                            Text(
+                              text('TRANSIT TRIP', '公交行程'),
+                              style: const TextStyle(
                                 color: _accent,
-                                fontSize: 11,
+                                fontSize: WaybiTextSize.caption,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -85,7 +103,7 @@ class TransitTripOverlay extends StatelessWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: WaybiInk.text,
                                 fontSize: 17,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -95,10 +113,10 @@ class TransitTripOverlay extends StatelessWidget {
                       ),
                       IconButton(
                         onPressed: onRecenter,
-                        tooltip: 'Recenter',
+                        tooltip: text('Recenter', '回到当前位置'),
                         icon: const Icon(
                           Icons.my_location_rounded,
-                          color: Colors.white,
+                          color: WaybiInk.text,
                         ),
                       ),
                     ],
@@ -113,7 +131,7 @@ class TransitTripOverlay extends StatelessWidget {
             bottom: 0,
             child: PointerInterceptor(
               child: Material(
-                color: Colors.white,
+                color: scheme.surface,
                 elevation: 18,
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(27),
@@ -132,79 +150,103 @@ class TransitTripOverlay extends StatelessWidget {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    _duration(route.durationSeconds),
+                                    _duration(route.durationSeconds, lang),
                                     style: const TextStyle(
                                       fontSize: 24,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                   Text(
-                                    '${_distance(route.distanceMeters)} · arrive $arrival · GPS ${gpsAccuracy == null ? '—' : '±${gpsAccuracy!.round()} m'}',
-                                    style: const TextStyle(
-                                      color: Color(0xFF6D7A73),
-                                      fontSize: 11,
+                                    text(
+                                      '${formatDistance(route.distanceMeters, lang)} · arrive $arrival · $gps',
+                                      '${formatDistance(route.distanceMeters, lang)} · 预计 $arrival 到达 · $gps',
+                                    ),
+                                    style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      fontSize: WaybiTextSize.caption,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            FilledButton.icon(
-                              onPressed: onEnd,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: _accent,
-                                foregroundColor: _ink,
+                            const SizedBox(width: 10),
+                            HoldToEndButton(
+                              key: const Key('transitEndButton'),
+                              label: text('End trip', '结束行程'),
+                              holdHint: text('Hold to end', '长按结束'),
+                              confirmTitle: text(
+                                'End this transit trip?',
+                                '结束本次公交行程？',
                               ),
-                              icon: const Icon(Icons.stop_rounded),
-                              label: const Text('End trip'),
+                              confirmAction: text('End trip', '结束行程'),
+                              cancelAction: text('Keep going', '继续行程'),
+                              onEnd: onEnd,
                             ),
                           ],
                         ),
                         if (route.transit.isNotEmpty) ...[
                           const Divider(height: 22),
-                          SizedBox(
-                            height: 92,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: route.transit.length,
-                              separatorBuilder: (_, _) =>
-                                  const Icon(Icons.chevron_right_rounded),
-                              itemBuilder: (context, index) {
-                                final leg = route.transit[index];
-                                return Container(
-                                  width: 190,
-                                  padding: const EdgeInsets.all(11),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF2F4F8),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        [leg.lineName, leg.headsign]
-                                            .where((v) => v.isNotEmpty)
-                                            .join(' → '),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${leg.departureStop} → ${leg.arrivalStop}',
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Color(0xFF67736D),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                          // Legs size to their text so large text scales
+                          // grow the cards instead of overflowing them.
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (
+                                    var index = 0;
+                                    index < route.transit.length;
+                                    index++
+                                  ) ...[
+                                    if (index > 0)
+                                      const Icon(Icons.chevron_right_rounded),
+                                    Builder(
+                                      builder: (context) {
+                                        final leg = route.transit[index];
+                                        return Container(
+                                          width: 190,
+                                          padding: const EdgeInsets.all(11),
+                                          decoration: BoxDecoration(
+                                            color: scheme.surfaceContainerHigh,
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                [leg.lineName, leg.headsign]
+                                                    .where((v) => v.isNotEmpty)
+                                                    .join(' → '),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${leg.departureStop} → ${leg.arrivalStop}',
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize:
+                                                      WaybiTextSize.caption,
+                                                  color:
+                                                      scheme.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ),
                         ],

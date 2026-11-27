@@ -308,10 +308,8 @@ class RoutePreviewSheet extends StatelessWidget {
                       ),
                       const WaybiBird(size: 30),
                       IconButton(
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints.tightFor(
-                          width: 36,
-                          height: 36,
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size.square(WaybiTouch.minTarget),
                         ),
                         tooltip: isFavorite
                             ? (isChinese ? '取消收藏' : 'Remove favorite')
@@ -327,21 +325,18 @@ class RoutePreviewSheet extends StatelessWidget {
                         ),
                       ),
                       IconButton(
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints.tightFor(
-                          width: 36,
-                          height: 36,
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size.square(WaybiTouch.minTarget),
                         ),
                         tooltip: isChinese ? '我的评价' : 'My review',
                         onPressed: onReview,
                         icon: const Icon(Icons.rate_review_outlined),
                       ),
                       IconButton(
-                        visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints.tightFor(
-                          width: 36,
-                          height: 36,
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size.square(WaybiTouch.minTarget),
                         ),
+                        tooltip: isChinese ? '关闭' : 'Close',
                         onPressed: onClose,
                         icon: const Icon(Icons.close_rounded),
                       ),
@@ -410,75 +405,80 @@ class RoutePreviewSheet extends StatelessWidget {
                                   !available ||
                                   (selectedParkingId != null &&
                                       mode != WaybiTravelMode.drive);
-                              return InkWell(
-                                onTap: disabled || busy
-                                    ? null
-                                    : () => onModeChanged(mode),
-                                borderRadius: BorderRadius.circular(14),
-                                child: Opacity(
-                                  opacity: disabled ? .35 : 1,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 6,
-                                      horizontal: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: selectedMode == mode
-                                          ? Theme.of(context)
-                                                .colorScheme
-                                                .primaryContainer
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: Column(
-                                      children: [
-                                        Icon(
-                                          _icon(mode),
-                                          color: selectedMode == mode
-                                              ? Theme.of(context)
-                                                    .colorScheme
-                                                    .onPrimaryContainer
-                                              : Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurfaceVariant,
-                                          size: 18,
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          _modeLabel(
-                                            mode,
-                                            isChinese: isChinese,
+                              return Semantics(
+                                button: true,
+                                selected: selectedMode == mode,
+                                enabled: !disabled,
+                                child: InkWell(
+                                  onTap: disabled || busy
+                                      ? null
+                                      : () => onModeChanged(mode),
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Opacity(
+                                    opacity: disabled ? .35 : 1,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 6,
+                                        horizontal: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: selectedMode == mode
+                                            ? Theme.of(context)
+                                                  .colorScheme
+                                                  .primaryContainer
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Icon(
+                                            _icon(mode),
+                                            color: selectedMode == mode
+                                                ? Theme.of(context)
+                                                      .colorScheme
+                                                      .onPrimaryContainer
+                                                : Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                            size: 18,
                                           ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w700,
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            _modeLabel(
+                                              mode,
+                                              isChinese: isChinese,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: WaybiTextSize.caption,
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                           ),
-                                        ),
-                                        Text(
-                                          !hasRoute
-                                              ? (mode ==
-                                                            WaybiTravelMode
-                                                                .transit &&
-                                                        canRequestTransit
-                                                    ? (isChinese
-                                                          ? '加载'
-                                                          : 'Load')
-                                                    : '—')
-                                              : _duration(
-                                                  plan
-                                                      .forMode(mode)
-                                                      .first
-                                                      .durationSeconds,
-                                                  isChinese: isChinese,
-                                                ),
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
+                                          Text(
+                                            !hasRoute
+                                                ? (mode ==
+                                                              WaybiTravelMode
+                                                                  .transit &&
+                                                          canRequestTransit
+                                                      ? (isChinese
+                                                            ? '加载'
+                                                            : 'Load')
+                                                      : '—')
+                                                : _duration(
+                                                    plan
+                                                        .forMode(mode)
+                                                        .first
+                                                        .durationSeconds,
+                                                    isChinese: isChinese,
+                                                  ),
+                                            style: const TextStyle(
+                                              fontSize: WaybiTextSize.caption,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -533,7 +533,7 @@ class RoutePreviewSheet extends StatelessWidget {
                       Text(
                         isChinese ? '摄像头数据暂不可用' : 'Camera data unavailable',
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: WaybiTextSize.caption,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
@@ -719,7 +719,7 @@ class RoutePreviewSheet extends StatelessWidget {
                           maxLines: 2,
                           style: TextStyle(
                             color: Theme.of(context).colorScheme.tertiary,
-                            fontSize: 10,
+                            fontSize: WaybiTextSize.caption,
                             height: 1.2,
                           ),
                         ),
@@ -818,11 +818,12 @@ class _RouteOptionTile extends StatelessWidget {
     return isChinese ? '路况顺畅' : 'Light traffic';
   }
 
-  Color _trafficColor() {
-    if (!route.hasTrafficData) return Colors.grey;
-    if (route.hasHeavyTraffic) return WaybiColors.danger;
-    if (route.hasSlowTraffic) return WaybiColors.warning;
-    return WaybiColors.ocean;
+  Color _trafficColor(BuildContext context) {
+    final status = context.status;
+    if (!route.hasTrafficData) return context.colors.onSurfaceVariant;
+    if (route.hasHeavyTraffic) return status.danger;
+    if (route.hasSlowTraffic) return status.warning;
+    return context.colors.primary;
   }
 
   List<String> get _preferenceLabels {
@@ -843,8 +844,11 @@ class _RouteOptionTile extends StatelessWidget {
     return labels.take(3).toList(growable: false);
   }
 
-  List<Color> _trafficBars() {
-    if (!route.hasTrafficData) return List.filled(5, Colors.grey);
+  List<Color> _trafficBars(BuildContext context) {
+    final status = context.status;
+    final clear = context.colors.primary;
+    final none = context.colors.outlineVariant;
+    if (!route.hasTrafficData) return List.filled(5, none);
     final conditions = route.conditions;
     if (conditions != null) {
       final covered =
@@ -854,37 +858,25 @@ class _RouteOptionTile extends StatelessWidget {
               .ceil()
               .clamp(1, 5);
       final color = route.hasHeavyTraffic
-          ? WaybiColors.danger
+          ? status.danger
           : route.hasSlowTraffic
-          ? WaybiColors.warning
-          : WaybiColors.ocean;
-      return [for (var i = 0; i < 5; i++) i < covered ? color : Colors.grey];
+          ? status.warning
+          : clear;
+      return [for (var i = 0; i < 5; i++) i < covered ? color : none];
     }
     if (route.traffic.trafficJam > 0) {
-      return const [
-        WaybiColors.ocean,
-        WaybiColors.warning,
-        WaybiColors.warning,
-        WaybiColors.danger,
-        WaybiColors.danger,
+      return [
+        clear,
+        status.warning,
+        status.warning,
+        status.danger,
+        status.danger,
       ];
     }
     if (route.traffic.slow > 0) {
-      return const [
-        WaybiColors.ocean,
-        WaybiColors.ocean,
-        WaybiColors.ocean,
-        WaybiColors.warning,
-        WaybiColors.warning,
-      ];
+      return [clear, clear, clear, status.warning, status.warning];
     }
-    return const [
-      WaybiColors.ocean,
-      WaybiColors.ocean,
-      WaybiColors.ocean,
-      WaybiColors.ocean,
-      WaybiColors.ocean,
-    ];
+    return List.filled(5, clear);
   }
 
   @override
@@ -899,201 +891,208 @@ class _RouteOptionTile extends StatelessWidget {
         ? (isChinese ? '推荐路线' : 'Best route')
         : (isChinese ? '备选路线' : 'Alternative');
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        decoration: BoxDecoration(
-          color: active
-              ? scheme.primaryContainer.withValues(alpha: .72)
-              : scheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: active ? scheme.primary : theme.dividerColor,
-            width: active ? 1.6 : 1,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: active ? scheme.primary : scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                _icon(route.mode),
-                size: 17,
-                color: active ? scheme.onPrimary : scheme.primary,
-              ),
+    return Semantics(
+      button: true,
+      selected: active,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          decoration: BoxDecoration(
+            color: active
+                ? scheme.primaryContainer.withValues(alpha: .72)
+                : scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: active ? scheme.primary : theme.dividerColor,
+              width: active ? 1.6 : 1,
             ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _duration(route.durationSeconds, isChinese: isChinese),
-                    style: TextStyle(
-                      color: active ? scheme.primary : scheme.onSurface,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  if (closureCount > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 3),
-                      child: Text(
-                        isChinese
-                            ? '$closureCount 处封路报告'
-                            : '$closureCount reported closure${closureCount == 1 ? '' : 's'}',
-                        style: TextStyle(
-                          color: scheme.error,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: active
+                      ? scheme.primary
+                      : scheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  _icon(route.mode),
+                  size: 17,
+                  color: active ? scheme.onPrimary : scheme.primary,
+                ),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _duration(route.durationSeconds, isChinese: isChinese),
+                      style: TextStyle(
+                        color: active ? scheme.primary : scheme.onSurface,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  Text(
-                    '${_distance(route.distanceMeters, isChinese: isChinese)} · $description'
-                    '${delay != null && delay > 60 ? (isChinese ? ' · 拥堵 ${_duration(delay, isChinese: true)}' : ' · ${_duration(delay)} traffic') : ''}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w600,
+                    const SizedBox(height: 1),
+                    if (closureCount > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Text(
+                          isChinese
+                              ? '$closureCount 处封路报告'
+                              : '$closureCount reported closure${closureCount == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            color: scheme.error,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    Text(
+                      '${_distance(route.distanceMeters, isChinese: isChinese)} · $description'
+                      '${delay != null && delay > 60 ? (isChinese ? ' · 拥堵 ${_duration(delay, isChinese: true)}' : ' · ${_duration(delay)} traffic') : ''}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: WaybiTextSize.caption,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  if (_preferenceLabels.isNotEmpty) ...[
-                    const SizedBox(height: 5),
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: [
-                        for (final label in _preferenceLabels)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color:
-                                  label == (isChinese ? '综合推荐' : 'Recommended')
-                                  ? scheme.primaryContainer
-                                  : scheme.surfaceContainerHighest,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              label,
-                              style: TextStyle(
+                    if (_preferenceLabels.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: [
+                          for (final label in _preferenceLabels)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
                                 color:
                                     label ==
                                         (isChinese ? '综合推荐' : 'Recommended')
-                                    ? scheme.primary
-                                    : scheme.onSurfaceVariant,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
+                                    ? scheme.primaryContainer
+                                    : scheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                label,
+                                style: TextStyle(
+                                  color:
+                                      label ==
+                                          (isChinese ? '综合推荐' : 'Recommended')
+                                      ? scheme.primary
+                                      : scheme.onSurfaceVariant,
+                                  fontSize: WaybiTextSize.caption,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
-                          ),
-                      ],
-                    ),
-                  ],
-                  if (route.mode == WaybiTravelMode.drive) ...[
-                    const SizedBox(height: 5),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: cameraSummary.count > 0
-                            ? scheme.primaryContainer
-                            : scheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(9),
-                        border: Border.all(
-                          color: cameraSummary.count > 0
-                              ? scheme.primary.withValues(alpha: .38)
-                              : theme.dividerColor,
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.photo_camera_rounded,
-                            size: 13,
-                            color: cameraSummary.count > 0
-                                ? scheme.primary
-                                : scheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              cameraSummary.count > 0
-                                  ? (isChinese
-                                        ? '${cameraSummary.count} 个摄像头${cameraSummary.types.isEmpty ? '' : ' · ${cameraSummary.types.take(2).map((type) => _cameraTypeLabel(type, isChinese: true)).join(' + ')}'}'
-                                        : '${cameraSummary.count} camera${cameraSummary.count == 1 ? '' : 's'}${cameraSummary.types.isEmpty ? '' : ' · ${cameraSummary.types.take(2).join(' + ')}'}')
-                                  : (isChinese
-                                        ? '未匹配到摄像头'
-                                        : 'No cameras matched'),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: cameraSummary.count > 0
-                                    ? scheme.primary
-                                    : scheme.onSurfaceVariant,
-                                fontSize: 9.5,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
                         ],
                       ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 84,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    _trafficLabel,
-                    style: TextStyle(
-                      color: _trafficColor(),
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      for (final color in _trafficBars()) ...[
-                        Container(
-                          width: 10,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(4),
+                    ],
+                    if (route.mode == WaybiTravelMode.drive) ...[
+                      const SizedBox(height: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: cameraSummary.count > 0
+                              ? scheme.primaryContainer
+                              : scheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(
+                            color: cameraSummary.count > 0
+                                ? scheme.primary.withValues(alpha: .38)
+                                : theme.dividerColor,
                           ),
                         ),
-                        const SizedBox(width: 2),
-                      ],
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.photo_camera_rounded,
+                              size: 13,
+                              color: cameraSummary.count > 0
+                                  ? scheme.primary
+                                  : scheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                cameraSummary.count > 0
+                                    ? (isChinese
+                                          ? '${cameraSummary.count} 个摄像头${cameraSummary.types.isEmpty ? '' : ' · ${cameraSummary.types.take(2).map((type) => _cameraTypeLabel(type, isChinese: true)).join(' + ')}'}'
+                                          : '${cameraSummary.count} camera${cameraSummary.count == 1 ? '' : 's'}${cameraSummary.types.isEmpty ? '' : ' · ${cameraSummary.types.take(2).join(' + ')}'}')
+                                    : (isChinese
+                                          ? '未匹配到摄像头'
+                                          : 'No cameras matched'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: cameraSummary.count > 0
+                                      ? scheme.primary
+                                      : scheme.onSurfaceVariant,
+                                  fontSize: WaybiTextSize.caption,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 84,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      _trafficLabel,
+                      style: TextStyle(
+                        color: _trafficColor(context),
+                        fontSize: WaybiTextSize.caption,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        for (final color in _trafficBars(context)) ...[
+                          Container(
+                            width: 10,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          const SizedBox(width: 2),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1181,19 +1180,23 @@ class _JourneyBrief extends StatelessWidget {
             children: [
               Icon(Icons.auto_awesome_rounded, size: 16, color: scheme.primary),
               const SizedBox(width: 6),
-              Text(
-                isChinese ? '行前摘要' : 'Journey brief',
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
+              Expanded(
+                child: Text(
+                  isChinese ? '行前摘要' : 'Journey brief',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 6),
               Text(
                 _distance(route.distanceMeters, isChinese: isChinese),
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
-                  fontSize: 10.5,
+                  fontSize: WaybiTextSize.caption,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1236,7 +1239,7 @@ class _JourneyBrief extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
-                fontSize: 10.5,
+                fontSize: WaybiTextSize.caption,
                 height: 1.25,
               ),
             ),
@@ -1274,18 +1277,29 @@ class _BriefStat extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: scheme.primary),
           const SizedBox(width: 5),
-          Text(
-            '$label ',
-            style: TextStyle(
-              color: scheme.onSurfaceVariant,
-              fontSize: 9.5,
-              fontWeight: FontWeight.w600,
+          // One flexible paragraph: long Chinese values or large text wrap
+          // inside the chip instead of overflowing the row.
+          Flexible(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$label ',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextSpan(
+                    text: value,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: WaybiTextSize.caption),
             ),
-          ),
-          Text(
-            value,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800),
           ),
         ],
       ),
@@ -1334,7 +1348,7 @@ class _TrafficCard extends StatelessWidget {
                   ? '$text · ${isChinese && route.warnings.first == 'This route includes a highway.' ? '路线包含高速公路路段' : route.warnings.first}'
                   : text,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: WaybiTextSize.caption,
                 fontWeight: FontWeight.w700,
                 color: Theme.of(context).colorScheme.onTertiaryContainer,
               ),
@@ -1390,7 +1404,7 @@ class _TransitDetails extends StatelessWidget {
                         '${route.transit[index].stopCount > 0 ? (isChinese ? ' · ${route.transit[index].stopCount} 站' : ' · ${route.transit[index].stopCount} stops') : ''}',
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 10,
+                          fontSize: WaybiTextSize.caption,
                         ),
                       ),
                     ],
@@ -1482,7 +1496,10 @@ class _ParkingChoices extends StatelessWidget {
                 : '$finalDestinationTitle · Drive, park, then continue on foot',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
+            style: TextStyle(
+              fontSize: WaybiTextSize.caption,
+              color: scheme.onSurfaceVariant,
+            ),
           ),
           if (onDirect != null)
             Align(
@@ -1505,86 +1522,101 @@ class _ParkingChoices extends StatelessWidget {
             ),
           if (places.isNotEmpty) ...[
             const SizedBox(height: 10),
-            SizedBox(
-              height: 92,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: places.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final place = places[index];
-                  final active = selectedId == place.id;
-                  return InkWell(
-                    onTap: () => onSelected?.call(place),
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      width: 200,
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: active
-                            ? scheme.primaryContainer
-                            : scheme.surface,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: active
-                              ? scheme.primary
-                              : scheme.outlineVariant,
-                          width: active ? 1.5 : 1,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            place.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            isChinese
-                                ? '距终点 ${_walkDistance(place.distanceMeters)} · ${place.source}'
-                                : '${_walkDistance(place.distanceMeters)} from destination · ${place.source}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: scheme.onSurfaceVariant,
-                              fontSize: 11,
-                            ),
-                          ),
-                          if (place.address.isNotEmpty)
-                            Text(
-                              place.address,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: scheme.onSurfaceVariant,
-                                fontSize: 11,
+            // Cards size to their text (no fixed height), so large text
+            // scales wrap instead of overflowing; IntrinsicHeight keeps the
+            // row of cards level.
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var index = 0; index < places.length; index++) ...[
+                      if (index > 0) const SizedBox(width: 8),
+                      Builder(
+                        builder: (context) {
+                          final place = places[index];
+                          final active = selectedId == place.id;
+                          return InkWell(
+                            onTap: () => onSelected?.call(place),
+                            borderRadius: BorderRadius.circular(14),
+                            child: Container(
+                              width: 200,
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: active
+                                    ? scheme.primaryContainer
+                                    : scheme.surface,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: active
+                                      ? scheme.primary
+                                      : scheme.outlineVariant,
+                                  width: active ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    place.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    isChinese
+                                        ? '距终点 ${_walkDistance(place.distanceMeters)} · ${place.source}'
+                                        : '${_walkDistance(place.distanceMeters)} from destination · ${place.source}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      fontSize: WaybiTextSize.caption,
+                                    ),
+                                  ),
+                                  if (place.address.isNotEmpty)
+                                    Text(
+                                      place.address,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: scheme.onSurfaceVariant,
+                                        fontSize: WaybiTextSize.caption,
+                                      ),
+                                    ),
+                                  const Spacer(),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    place.totalSpaces == null
+                                        ? (isChinese
+                                              ? '选择停车点'
+                                              : 'Select parking')
+                                        : isChinese
+                                        ? '总车位 ${place.totalSpaces}'
+                                              '${place.mobilitySpaces == null ? '' : ' · 无障碍 ${place.mobilitySpaces}'}'
+                                        : '${place.totalSpaces} total spaces'
+                                              '${place.mobilitySpaces == null ? '' : ' · ${place.mobilitySpaces} accessible'}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: scheme.primary,
+                                      fontSize: WaybiTextSize.caption,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          const Spacer(),
-                          Text(
-                            place.totalSpaces == null
-                                ? (isChinese ? '选择停车点' : 'Select parking')
-                                : isChinese
-                                ? '总车位 ${place.totalSpaces}'
-                                      '${place.mobilitySpaces == null ? '' : ' · 无障碍 ${place.mobilitySpaces}'}'
-                                : '${place.totalSpaces} total spaces'
-                                      '${place.mobilitySpaces == null ? '' : ' · ${place.mobilitySpaces} accessible'}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: scheme.primary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
+                          );
+                        },
                       ),
-                    ),
-                  );
-                },
+                    ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -1662,7 +1694,7 @@ class ParkingContinuationCard extends StatelessWidget {
                           isChinese ? '已记住停车位置，可从地图右侧小车按钮返回' : 'Car location remembered · use the car button on the map to return',
                           style: TextStyle(
                             color: scheme.onSurfaceVariant,
-                            fontSize: 10.5,
+                            fontSize: WaybiTextSize.caption,
                             fontWeight: FontWeight.w600,
                           ),
                         ),

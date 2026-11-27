@@ -96,14 +96,16 @@ void main() {
         await t.tap(toggle);
         await t.pumpAndSettle();
         expect(calls, [false]);
-        await reveal(t, find.text('Watch unavailable'), delta: -200);
-        expect(find.text('Watch unavailable'), findsOneWidget);
+        // English server text is never shown in the Chinese UI.
+        final failure = zh ? '暂时无法完成，请稍后重试。' : 'Watch unavailable';
+        await reveal(t, find.text(failure), delta: -200);
+        expect(find.text(failure), findsOneWidget);
         await reveal(t, info);
         fail = false;
         await t.tap(toggle);
         await t.pumpAndSettle();
         expect(calls, [false, false]);
-        expect(find.text('Watch unavailable'), findsNothing);
+        expect(find.text(failure), findsNothing);
         expect(t.takeException(), isNull);
       },
     );
@@ -228,11 +230,13 @@ void main() {
         ),
       );
       await t.pumpAndSettle();
-      expect(find.text('Could not refresh trips right now.'), findsOneWidget);
+      // A first load that fails shows the full error state, not content.
+      expect(find.text('Trips couldn’t load'), findsOneWidget);
+      expect(find.text('Smart Commute'), findsNothing);
       fail = false;
       await t.tap(find.byTooltip('Refresh'));
       await t.pumpAndSettle();
-      expect(find.text('Could not refresh trips right now.'), findsNothing);
+      expect(find.text('Trips couldn’t load'), findsNothing);
       expect(find.text('Smart Commute'), findsOneWidget);
       expect(t.takeException(), isNull);
     },

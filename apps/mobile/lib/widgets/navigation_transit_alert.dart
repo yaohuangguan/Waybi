@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/transit_lane.dart';
 import '../theme/waybi_theme.dart';
+import 'waybi_format.dart';
 
 class NavigationTransitAlert extends StatelessWidget {
   const NavigationTransitAlert({
@@ -17,29 +18,27 @@ class NavigationTransitAlert extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lane = notice.lane, zh = language == 'zh';
+    final status = context.status;
+    final ink = status.onWarningContainer;
     final title = lane.wholeRoad
         ? (zh ? '公交专用路段' : 'Bus-only road')
         : lane.label(language);
     final distance = notice.distanceMeters <= 5
         ? (zh ? '当前路段' : 'This section')
-        : '${notice.distanceMeters.round()} m';
+        : formatDistance(notice.distanceMeters, language);
     return Semantics(
       container: true,
       child: Container(
         key: const ValueKey('navigationTransitAlert'),
         padding: EdgeInsets.all(compact ? 10 : 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFE8AB),
+          color: status.warningContainer,
           borderRadius: BorderRadius.circular(18),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(
-              Icons.directions_bus_rounded,
-              color: WaybiColors.darkOcean,
-              size: 28,
-            ),
+            Icon(Icons.directions_bus_rounded, color: ink, size: 28),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -52,7 +51,7 @@ class NavigationTransitAlert extends StatelessWidget {
                         child: Text(
                           title,
                           style: TextStyle(
-                            color: WaybiColors.darkOcean,
+                            color: ink,
                             fontSize: compact ? 15 : 17,
                             fontWeight: FontWeight.w800,
                           ),
@@ -60,8 +59,8 @@ class NavigationTransitAlert extends StatelessWidget {
                       ),
                       Text(
                         distance,
-                        style: const TextStyle(
-                          color: WaybiColors.darkOcean,
+                        style: TextStyle(
+                          color: ink,
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                         ),
@@ -70,8 +69,8 @@ class NavigationTransitAlert extends StatelessWidget {
                   ),
                   Text(
                     lane.schedule.label(language),
-                    style: const TextStyle(
-                      color: WaybiColors.darkOcean,
+                    style: TextStyle(
+                      color: ink,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -79,10 +78,7 @@ class NavigationTransitAlert extends StatelessWidget {
                   if (!compact)
                     Text(
                       notice.instruction(language),
-                      style: const TextStyle(
-                        color: WaybiColors.darkOcean,
-                        fontSize: 14,
-                      ),
+                      style: TextStyle(color: ink, fontSize: 14),
                     ),
                 ],
               ),

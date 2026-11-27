@@ -17,7 +17,12 @@ IconData independentManeuverIcon(RouteStepInfo? step) {
   return navigationManeuverIcon(type, step?.maneuverModifier ?? '');
 }
 
-class IndependentNavigationOverlay extends StatelessWidget {
+/// Independent-engine guidance on the shared navigation HUD.
+///
+/// Engine ticks update a [ValueNotifier] of [NavigationGuidance]; only the
+/// turn banner and trip stats rebuild, and only when guidance actually
+/// changed. The rest of the overlay rebuilds with its parent.
+class IndependentNavigationOverlay extends StatefulWidget {
   const IndependentNavigationOverlay({
     super.key,
     required this.engine,
@@ -79,6 +84,60 @@ class IndependentNavigationOverlay extends StatelessWidget {
       onVoiceToggle,
       onLanesToggle;
 
+  @override
+  State<IndependentNavigationOverlay> createState() =>
+      _IndependentNavigationOverlayState();
+}
+
+class _IndependentNavigationOverlayState
+    extends State<IndependentNavigationOverlay> {
+  late final ValueNotifier<NavigationGuidance> _guidance = ValueNotifier(
+    _compute(),
+  );
+  late bool _offline = widget.engine.error != null;
+
+  IndependentNavigationEngine get engine => widget.engine;
+  DriveEngine get drive => widget.drive;
+  String get language => widget.language;
+  String get destination => widget.destination;
+
+  @override
+  void initState() {
+    super.initState();
+    engine.addListener(_changed);
+    drive.addListener(_changed);
+  }
+
+  @override
+  void didUpdateWidget(covariant IndependentNavigationOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.engine, widget.engine)) {
+      oldWidget.engine.removeListener(_changed);
+      widget.engine.addListener(_changed);
+    }
+    if (!identical(oldWidget.drive, widget.drive)) {
+      oldWidget.drive.removeListener(_changed);
+      widget.drive.addListener(_changed);
+    }
+    _offline = engine.error != null;
+    _guidance.value = _compute();
+  }
+
+  @override
+  void dispose() {
+    engine.removeListener(_changed);
+    drive.removeListener(_changed);
+    _guidance.dispose();
+    super.dispose();
+  }
+
+  void _changed() {
+    if (!mounted) return;
+    _guidance.value = _compute();
+    final offline = engine.error != null;
+    if (offline != _offline) setState(() => _offline = offline);
+  }
+
   String _text(String en, String zh) => language == 'zh' ? zh : en;
 
   String get _gpsStatus => switch (drive.gpsIssue) {
@@ -105,81 +164,82 @@ class IndependentNavigationOverlay extends StatelessWidget {
     _ => _text('Getting an accurate GPS fix…', '正在获取准确位置…'),
   };
 
+  NavigationGuidance _compute() {
+    final next = engine.nextStep;
+    final status = engine.arrived
+        ? _text('Arrived at $destination', '已抵达 $destination')
+        : drive.locationIssue != null
+        ? _gpsStatus
+        : engine.rerouting
+        ? _text('Updating route…', '正在重新规划路线…')
+        : engine.offRoute
+        ? _text('Off route · finding your way', '已偏离路线，正在更新')
+        : engine.transitRestrictionAhead
+        ? _text(
+            'Bus-only road ahead · choose another route',
+            '前方为公交专用路段，请选择其他路线',
+          )
+        : engine.error != null
+        ? _text('Route update unavailable · retrying', '路线更新暂不可用，正在重试')
+        : null;
+    return NavigationGuidance(
+      instruction: status ?? routeStepInstruction(next, language),
+      thenInstruction: status == null && engine.followingStep != null
+          ? routeStepInstruction(engine.followingStep, language)
+          : null,
+      maneuverIcon: engine.arrived
+          ? Icons.flag_rounded
+          : engine.rerouting || engine.offRoute
+          ? Icons.alt_route_rounded
+          : independentManeuverIcon(next),
+      stepMeters: engine.offRoute || drive.locationIssue != null
+          ? null
+          : engine.distanceToStepMeters,
+      remainingMeters: engine.remainingDistanceMeters,
+      remainingSeconds: engine.remainingSeconds,
+      lanes:
+          engine.distanceToStepMeters <= 300 &&
+              !engine.offRoute &&
+              !engine.arrived
+          ? routeNavigationLanes(next)
+          : const [],
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: Listenable.merge([engine, drive]),
-    builder: (context, _) {
-      final next = engine.nextStep;
-      final status = engine.arrived
-          ? _text('Arrived at $destination', '已抵达 $destination')
-          : drive.locationIssue != null
-          ? _gpsStatus
-          : engine.rerouting
-          ? _text('Updating route…', '正在重新规划路线…')
-          : engine.offRoute
-          ? _text('Off route · finding your way', '已偏离路线，正在更新')
-          : engine.transitRestrictionAhead
-          ? _text(
-              'Bus-only road ahead · choose another route',
-              '前方为公交专用路段，请选择其他路线',
-            )
-          : engine.error != null
-          ? _text('Route update unavailable · retrying', '路线更新暂不可用，正在重试')
-          : null;
-      return NavigationOverlay(
-        onTopInsetChanged: onTopInsetChanged,
-        onBottomInsetChanged: onBottomInsetChanged,
-        engine: drive,
-        language: language,
-        guidance: NavigationGuidance(
-          instruction: status ?? routeStepInstruction(next, language),
-          thenInstruction: status == null && engine.followingStep != null
-              ? routeStepInstruction(engine.followingStep, language)
-              : null,
-          maneuverIcon: engine.arrived
-              ? Icons.flag_rounded
-              : engine.rerouting || engine.offRoute
-              ? Icons.alt_route_rounded
-              : independentManeuverIcon(next),
-          stepMeters: engine.offRoute || drive.locationIssue != null
-              ? null
-              : engine.distanceToStepMeters,
-          remainingMeters: engine.remainingDistanceMeters,
-          remainingSeconds: engine.remainingSeconds,
-          lanes:
-              engine.distanceToStepMeters <= 300 &&
-                  !engine.offRoute &&
-                  !engine.arrived
-              ? routeNavigationLanes(next)
-              : const [],
-        ),
-        destinationTitle: destination,
-        gpsAccuracy: gpsAccuracy,
-        voiceEnabled: voiceEnabled,
-        lanesEnabled: lanesEnabled,
-        onEnd: onEnd,
-        onRecenter: onRecenter,
-        onOverview: onOverview,
-        following: following,
-        overviewMode: overviewMode,
-        northUp: northUp,
-        perspectiveTilted: perspectiveTilted,
-        perspectiveAvailable: true,
-        onCompassToggle: onCompassToggle,
-        onReport: onReport,
-        onSearchAlongRoute: onSearchAlongRoute,
-        onDirections: onDirections,
-        onShare: onShare,
-        onSettings: onSettings,
-        onLayers: onLayers,
-        onVoiceToggle: onVoiceToggle,
-        onLanesToggle: onLanesToggle,
-        arrivalPanel: arrivalPanel,
-        offlineReady: offlineReady,
-        usingOfflineGuidance: engine.error != null,
-        offlineCachedAt: offlineCachedAt,
-        systemStatus: systemStatus,
-      );
-    },
-  );
+  Widget build(BuildContext context) {
+    return NavigationOverlay(
+      onTopInsetChanged: widget.onTopInsetChanged,
+      onBottomInsetChanged: widget.onBottomInsetChanged,
+      engine: drive,
+      language: language,
+      guidanceListenable: _guidance,
+      destinationTitle: destination,
+      gpsAccuracy: widget.gpsAccuracy,
+      voiceEnabled: widget.voiceEnabled,
+      lanesEnabled: widget.lanesEnabled,
+      onEnd: widget.onEnd,
+      onRecenter: widget.onRecenter,
+      onOverview: widget.onOverview,
+      following: widget.following,
+      overviewMode: widget.overviewMode,
+      northUp: widget.northUp,
+      perspectiveTilted: widget.perspectiveTilted,
+      perspectiveAvailable: true,
+      onCompassToggle: widget.onCompassToggle,
+      onReport: widget.onReport,
+      onSearchAlongRoute: widget.onSearchAlongRoute,
+      onDirections: widget.onDirections,
+      onShare: widget.onShare,
+      onSettings: widget.onSettings,
+      onLayers: widget.onLayers,
+      onVoiceToggle: widget.onVoiceToggle,
+      onLanesToggle: widget.onLanesToggle,
+      arrivalPanel: widget.arrivalPanel,
+      offlineReady: widget.offlineReady,
+      usingOfflineGuidance: _offline,
+      offlineCachedAt: widget.offlineCachedAt,
+      systemStatus: widget.systemStatus,
+    );
+  }
 }

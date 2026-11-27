@@ -95,7 +95,7 @@ void main() {
       expect(find.text('有警告'), findsOneWidget);
       expect(find.text('当前 15 分钟 · 比平时多 5 分钟 · 建议提前 5 分钟出发'), findsOneWidget);
       expect(find.text('行程洞察'), findsOneWidget);
-      expect(find.text('7.8 km'), findsOneWidget);
+      expect(find.text('7.8 公里'), findsOneWidget);
       expect(find.text('平均 · 18 分钟'), findsOneWidget);
       expect(find.text('最长 · 19 分钟'), findsOneWidget);
       expect(find.textContaining('Mission Bay'), findsWidgets);

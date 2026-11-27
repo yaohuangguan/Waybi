@@ -19,6 +19,7 @@ class TestAccount extends AccountRepository {
   bool fail = false, malformed = false, preferencesFail = false;
   int retryAfter = 60;
   Object? socialError;
+  Object? passwordError;
   Completer<void>? pending;
   @override
   Future<Map<String, dynamic>> requestEmailCode(
@@ -56,6 +57,7 @@ class TestAccount extends AccountRepository {
   }) async {
     passwords++;
     expect(register, isFalse);
+    if (passwordError != null) throw passwordError!;
     if (fail) throw StateError('Invalid credentials');
   }
 
@@ -271,7 +273,8 @@ void main() {
       ]);
       launches = false;
       await tap(t, '隐私政策');
-      expect(find.text('暂时无法继续，请检查输入或稍后重试。'), findsOneWidget);
+      // Already-localized app messages are shown as they are.
+      expect(find.text('暂时无法打开页面。'), findsOneWidget);
       await t.enterText(find.byType(TextFormField), 'driver@example.test');
       await tap(t, '使用邮箱继续');
       expect(find.text('暂时无法继续，请检查输入或稍后重试。'), findsOneWidget);
@@ -331,5 +334,58 @@ void main() {
       'waybi_session': 'a' * 64,
     });
     expect(requests.last.headers['x-waybi-client'], 'mobile');
+  });
+
+  for (final language in ['en', 'zh']) {
+    testWidgets(
+      'a locked password sign-in offers the email-code path ($language)',
+      (t) async {
+        final account = TestAccount()
+          ..passwordError = StateError(
+            'Too many attempts. Try again in 15 minutes, or sign in with an email code.',
+          );
+        addTearDown(account.dispose);
+        await mount(t, account, language: language);
+        final zh = language == 'zh';
+        await tap(t, zh ? '使用密码登录' : 'Sign in with a password');
+        await t.enterText(
+          find.byType(TextFormField).first,
+          'driver@example.test',
+        );
+        await t.enterText(find.byType(TextFormField).last, 'long-password');
+        await t.testTextInput.receiveAction(TextInputAction.done);
+        await t.pumpAndSettle();
+        expect(account.passwords, 1);
+        expect(
+          find.text(
+            zh ? '登录尝试次数过多。请 15 分钟后再试，或改用邮箱验证码登录。' : 'Too many sign-in attempts. Wait 15 minutes, or sign in with an email code instead.',
+          ),
+          findsOneWidget,
+        );
+        await t.tap(find.byKey(const Key('signInUseEmailCode')));
+        await t.pumpAndSettle();
+        expect(find.byKey(const Key('signInUseEmailCode')), findsNothing);
+        expect(find.text(zh ? '密码' : 'Password'), findsNothing);
+        await t.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
+  testWidgets('server failures never show raw server text', (t) async {
+    final account = TestAccount()..passwordError = StateError('Internal error');
+    addTearDown(account.dispose);
+    await mount(t, account);
+    await tap(t, 'Sign in with a password');
+    await t.enterText(find.byType(TextFormField).first, 'driver@example.test');
+    await t.enterText(find.byType(TextFormField).last, 'long-password');
+    await t.testTextInput.receiveAction(TextInputAction.done);
+    await t.pumpAndSettle();
+    expect(find.text('Internal error'), findsNothing);
+    expect(
+      find.text('Waybi is having trouble right now. Please try again shortly.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('signInUseEmailCode')), findsNothing);
+    await t.pumpWidget(const SizedBox());
   });
 }

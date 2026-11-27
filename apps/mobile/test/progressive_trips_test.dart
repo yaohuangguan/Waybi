@@ -171,7 +171,10 @@ void main() {
       await t.pump();
       expect(find.text('Saved Home'), findsOneWidget);
       expect(find.text('Obsolete Home'), findsNothing);
-      expect(find.text('Could not refresh trips right now.'), findsOneWidget);
+      expect(
+        find.text('Couldn’t refresh — showing your last loaded trips.'),
+        findsOneWidget,
+      );
       streams[1].add(snapshot('Recovered Home'));
       await t.pump();
       expect(find.text('Recovered Home'), findsOneWidget);

@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../theme/waybi_theme.dart';
+import 'friendly_error.dart';
+import 'load_error.dart';
+import 'waybi_format.dart';
 
 class TripDestination {
   const TripDestination({
@@ -291,10 +294,15 @@ class _TripsPageState extends State<TripsPage> {
       onError: (Object error, StackTrace stack) {
         if (!mounted || request != _request) return;
         setState(
-          () => _error = _text(
-            'Could not refresh trips right now.',
-            '暂时无法刷新行程信息。',
-          ),
+          () => _error = _snapshot == null
+              ? _text(
+                  'Your saved places and trips are safe. Check your connection and try again.',
+                  '已保存的地点和行程不会丢失。请检查网络后重试。',
+                )
+              : _text(
+                  'Couldn’t refresh — showing your last loaded trips.',
+                  '刷新失败，正在显示上次加载的行程。',
+                ),
         );
       },
       onDone: () {
@@ -334,7 +342,8 @@ class _TripsPageState extends State<TripsPage> {
     if (delta.inDays < 7) {
       return _text('${delta.inDays}d ago', '${delta.inDays} 天前');
     }
-    return '${time.toLocal().month}/${time.toLocal().day}';
+    // Day-month, as New Zealand writes dates (not US month/day).
+    return formatShortDate(time, widget.language);
   }
 
   IconData _modeIcon(String mode) => switch (mode) {
@@ -345,22 +354,56 @@ class _TripsPageState extends State<TripsPage> {
   };
 
   Color _trafficColor(RouteOption route) {
+    final status = context.status;
     final delay = route.trafficDelaySeconds ?? 0;
     if (delay >= 600 || route.traffic.trafficJam > 0) {
-      return WaybiColors.danger;
+      return status.danger;
     }
     if (delay >= 180 || route.traffic.slow > 0) {
-      return WaybiColors.warning;
+      return status.warning;
     }
-    return WaybiColors.success;
+    return status.success;
+  }
+
+  /// Traffic state as icon + word so it does not rely on colour alone.
+  Widget _trafficBadge(RouteOption route, Color color) {
+    final delay = route.trafficDelaySeconds ?? 0;
+    final (
+      IconData icon,
+      String label,
+    ) = delay >= 600 || route.traffic.trafficJam > 0
+        ? (Icons.error_rounded, _text('Heavy', '拥堵'))
+        : delay >= 180 || route.traffic.slow > 0
+        ? (Icons.warning_rounded, _text('Slow', '缓行'))
+        : (Icons.check_circle_rounded, _text('Clear', '顺畅'));
+    return Row(
+      key: const ValueKey('commuteTrafficBadge'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: WaybiTextSize.caption,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Color _watchColor(RouteWatchItem? watch) => switch (watch?.status) {
-    'disrupted' => WaybiColors.danger,
-    'warning' => WaybiColors.warning,
-    'advisory' => WaybiColors.ocean,
-    'healthy' => WaybiColors.success,
-    _ => Theme.of(context).colorScheme.outline,
+    'disrupted' => context.status.danger,
+    'warning' => context.status.warning,
+    'advisory' => context.status.info,
+    'healthy' => context.status.success,
+    _ => Theme.of(context).colorScheme.onSurfaceVariant,
   };
 
   String _watchRouteLabel(String label) => switch (label) {
@@ -457,7 +500,7 @@ class _TripsPageState extends State<TripsPage> {
     } catch (error) {
       if (mounted) {
         setState(() {
-          _error = '$error'.replaceFirst('Bad state: ', '');
+          _error = friendlyErrorMessage(error, widget.language);
         });
       }
     } finally {
@@ -473,96 +516,108 @@ class _TripsPageState extends State<TripsPage> {
       context: context,
       useSafeArea: true,
       showDragHandle: true,
+      // Many events or large text must scroll rather than overflow.
+      isScrollControlled: true,
       builder: (sheetContext) {
         final scheme = Theme.of(sheetContext).colorScheme;
         final color = _watchColor(watch);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.radar_rounded, color: color),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      '${_watchRouteLabel(label)} · ${_watchStatus(watch)}',
-                      style: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                watch.lastCheckedAt == null
-                    ? _text('Waiting for the first check', '等待首次检查')
-                    : _text(
-                        'Checked ${_relativeTime(watch.lastCheckedAt)}',
-                        '检查于 ${_relativeTime(watch.lastCheckedAt)}',
-                      ),
-                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-              ),
-              const SizedBox(height: 16),
-              if (watch.events.isEmpty)
-                Text(
-                  _text(
-                    'No active NZTA road disruption is currently matched to this route.',
-                    '当前没有 NZTA 官方道路异常与这条路线匹配。',
-                  ),
-                  style: TextStyle(color: scheme.onSurfaceVariant),
-                )
-              else
-                for (final event in watch.events) ...[
-                  Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 9),
-                    padding: const EdgeInsets.all(13),
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Theme.of(context).dividerColor),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          event.roadName?.isNotEmpty == true
-                              ? event.roadName!
-                              : _text('Road event', '道路事件'),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * .85,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.radar_rounded, color: color),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${_watchRouteLabel(label)} · ${_watchStatus(watch)}',
+                        style: const TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
                         ),
-                        if (event.impact.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            event.impact,
-                            style: TextStyle(
-                              color: color,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                        if (event.description.isNotEmpty) ...[
-                          const SizedBox(height: 5),
-                          Text(
-                            event.description,
-                            style: TextStyle(
-                              color: scheme.onSurfaceVariant,
-                              fontSize: 12,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  watch.lastCheckedAt == null
+                      ? _text('Waiting for the first check', '等待首次检查')
+                      : _text(
+                          'Checked ${_relativeTime(watch.lastCheckedAt)}',
+                          '检查于 ${_relativeTime(watch.lastCheckedAt)}',
+                        ),
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 12,
                   ),
-                ],
-            ],
+                ),
+                const SizedBox(height: 16),
+                if (watch.events.isEmpty)
+                  Text(
+                    _text(
+                      'No active NZTA road disruption is currently matched to this route.',
+                      '当前没有 NZTA 官方道路异常与这条路线匹配。',
+                    ),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
+                  )
+                else
+                  for (final event in watch.events) ...[
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 9),
+                      padding: const EdgeInsets.all(13),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: Theme.of(context).dividerColor,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            event.roadName?.isNotEmpty == true
+                                ? event.roadName!
+                                : _text('Road event', '道路事件'),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          if (event.impact.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              event.impact,
+                              style: TextStyle(
+                                color: color,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                          if (event.description.isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            Text(
+                              event.description,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 12,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+              ],
+            ),
           ),
         );
       },
@@ -621,12 +676,16 @@ class _TripsPageState extends State<TripsPage> {
                       ),
                     ),
                     const SizedBox(width: 7),
-                    Text(
-                      _watchStatus(watch),
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
+                    Flexible(
+                      child: Text(
+                        _watchStatus(watch),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: WaybiTextSize.caption,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ],
@@ -638,7 +697,7 @@ class _TripsPageState extends State<TripsPage> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: scheme.onSurfaceVariant,
-                    fontSize: 11.5,
+                    fontSize: WaybiTextSize.caption,
                     height: 1.25,
                   ),
                 ),
@@ -722,14 +781,7 @@ class _TripsPageState extends State<TripsPage> {
                     ),
                     const Spacer(),
                     if (route != null)
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
+                      Flexible(child: _trafficBadge(route, color)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -772,7 +824,7 @@ class _TripsPageState extends State<TripsPage> {
                     _distance(route.distanceMeters),
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
-                      fontSize: 11,
+                      fontSize: WaybiTextSize.caption,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -782,6 +834,22 @@ class _TripsPageState extends State<TripsPage> {
           ),
         ),
       ),
+    );
+  }
+
+  // The 30-day aggregation runs once per loaded snapshot, not on every
+  // rebuild (every keystroke in the history search used to redo it).
+  TripsSnapshot? _insightsFor;
+  _TripInsights? _insightsCache;
+
+  _TripInsights _insights(TripsSnapshot snapshot) {
+    if (identical(snapshot, _insightsFor) && _insightsCache != null) {
+      return _insightsCache!;
+    }
+    _insightsFor = snapshot;
+    return _insightsCache = _TripInsights.from(
+      snapshot.history,
+      DateTime.now(),
     );
   }
 
@@ -797,12 +865,8 @@ class _TripsPageState extends State<TripsPage> {
       );
     }
 
-    final cutoff = DateTime.now().subtract(const Duration(days: 30));
-    final recent = snapshot.history
-        .where(
-          (item) => item.createdAt != null && item.createdAt!.isAfter(cutoff),
-        )
-        .toList(growable: false);
+    final insights = _insights(snapshot);
+    final recent = insights.recent;
     if (recent.isEmpty) {
       return _EmptyCard(
         icon: Icons.insights_rounded,
@@ -812,52 +876,15 @@ class _TripsPageState extends State<TripsPage> {
         ),
       );
     }
-
-    final totalDistance = recent.fold<int>(
-      0,
-      (sum, item) => sum + item.distanceMeters,
-    );
-    final totalSeconds = recent.fold<int>(
-      0,
-      (sum, item) => sum + item.durationSeconds,
-    );
-    final counts = <String, int>{};
-    for (final item in recent) {
-      final name = item.destination.name.trim();
-      if (name.isNotEmpty) counts[name] = (counts[name] ?? 0) + 1;
-    }
-    final favorite = counts.entries.isEmpty
-        ? null
-        : (counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))
-              .first;
-    final distanceKm = totalDistance / 1000;
-    final hours = totalSeconds / 3600;
-    final averageMinutes = (totalSeconds / recent.length / 60).round();
-    final weekdayCounts = <int, int>{};
-    var morningTrips = 0;
-    var eveningTrips = 0;
-    var otherTrips = 0;
-    TripHistoryItem? longest;
-    for (final item in recent) {
-      final created = item.createdAt!.toLocal();
-      weekdayCounts[created.weekday] =
-          (weekdayCounts[created.weekday] ?? 0) + 1;
-      if (created.hour >= 6 && created.hour < 10) {
-        morningTrips++;
-      } else if (created.hour >= 15 && created.hour < 19) {
-        eveningTrips++;
-      } else {
-        otherTrips++;
-      }
-      if (longest == null || item.durationSeconds > longest.durationSeconds) {
-        longest = item;
-      }
-    }
-    final busiestWeekday = weekdayCounts.entries.isEmpty
-        ? null
-        : (weekdayCounts.entries.toList()
-                ..sort((a, b) => b.value.compareTo(a.value)))
-              .first;
+    final favorite = insights.favorite;
+    final distanceKm = insights.totalDistance / 1000;
+    final hours = insights.totalSeconds / 3600;
+    final averageMinutes = (insights.totalSeconds / recent.length / 60).round();
+    final busiestWeekday = insights.busiestWeekday;
+    final longest = insights.longest;
+    final morningTrips = insights.morning;
+    final eveningTrips = insights.evening;
+    final otherTrips = insights.other;
     const weekdaysEn = <int, String>{
       DateTime.monday: 'Mon',
       DateTime.tuesday: 'Tue',
@@ -902,11 +929,12 @@ class _TripsPageState extends State<TripsPage> {
               _TripInsightStat(
                 label: _text('Distance', '距离'),
                 value:
-                    '${distanceKm.toStringAsFixed(distanceKm < 100 ? 1 : 0)} km',
+                    '${distanceKm.toStringAsFixed(distanceKm < 100 ? 1 : 0)} ${_text('km', '公里')}',
               ),
               _TripInsightStat(
                 label: _text('Travel time', '出行时间'),
-                value: '${hours.toStringAsFixed(hours < 10 ? 1 : 0)} h',
+                value:
+                    '${hours.toStringAsFixed(hours < 10 ? 1 : 0)} ${_text('h', '小时')}',
               ),
             ],
           ),
@@ -933,7 +961,7 @@ class _TripsPageState extends State<TripsPage> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: scheme.onSurface,
-                        fontSize: 11.5,
+                        fontSize: WaybiTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1046,9 +1074,15 @@ class _TripsPageState extends State<TripsPage> {
     );
   }
 
+  (TripsSnapshot?, String, String)? _filterKey;
+  List<TripHistoryItem> _filtered = const [];
+
   List<TripHistoryItem> _filteredHistory(TripsSnapshot? snapshot) {
     final query = _historyQuery.trim().toLowerCase();
-    return (snapshot?.history ?? const <TripHistoryItem>[])
+    final key = (snapshot, _historyMode, query);
+    if (key == _filterKey) return _filtered;
+    _filterKey = key;
+    return _filtered = (snapshot?.history ?? const <TripHistoryItem>[])
         .where((item) {
           final mode = switch (item.mode) {
             'walk' || 'walking' => 'walk',
@@ -1140,191 +1174,229 @@ class _TripsPageState extends State<TripsPage> {
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
-        child: ListView(
+        child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
-          children: [
-            Text(
-              _text('Leave faster', '更快出发'),
-              style: const TextStyle(
-                fontSize: 27,
-                height: 1.05,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _text(
-                'Live commute times, recent destinations and your latest trips.',
-                '实时通勤、最近目的地和最近行程都放在这里。',
-              ),
-              style: TextStyle(color: scheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 18),
-            if (_loading && snapshot == null)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 30),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else ...[
-              IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _quickCard(
-                      context,
-                      'Home',
-                      snapshot?.quickPlaces['Home'],
-                      snapshot?.quickRoutes['Home'],
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              sliver: SliverList.list(
+                children: [
+                  Text(
+                    _text('Leave faster', '更快出发'),
+                    style: const TextStyle(
+                      fontSize: 27,
+                      height: 1.05,
+                      fontWeight: FontWeight.w800,
                     ),
-                    const SizedBox(width: 10),
-                    _quickCard(
-                      context,
-                      'Work',
-                      snapshot?.quickPlaces['Work'],
-                      snapshot?.quickRoutes['Work'],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _text(
+                      'Live commute times, recent destinations and your latest trips.',
+                      '实时通勤、最近目的地和最近行程都放在这里。',
                     ),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 18),
+                  if (_loading && snapshot == null)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 30),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (snapshot == null)
+                    // Nothing loaded: never fall back to "Set location", a Plus
+                    // upsell or empty sections that would misdescribe the account.
+                    WaybiLoadError(
+                      key: const ValueKey('trips-load-error'),
+                      title: _text('Trips couldn’t load', '行程暂时无法加载'),
+                      message:
+                          _error ??
+                          _text(
+                            'Your saved places and trips are safe. Check your connection and try again.',
+                            '已保存的地点和行程不会丢失。请检查网络后重试。',
+                          ),
+                      retryLabel: _text('Try again', '重试'),
+                      onRetry: _loading ? null : _refresh,
+                    )
+                  else ...[
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _quickCard(
+                            context,
+                            'Home',
+                            snapshot.quickPlaces['Home'],
+                            snapshot.quickRoutes['Home'],
+                          ),
+                          const SizedBox(width: 10),
+                          _quickCard(
+                            context,
+                            'Work',
+                            snapshot.quickPlaces['Work'],
+                            snapshot.quickRoutes['Work'],
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_loading) ...[
+                      const SizedBox(height: 12),
+                      const LinearProgressIndicator(minHeight: 2),
+                    ],
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      WaybiInlineError(
+                        key: const ValueKey('trips-refresh-error'),
+                        message: _error!,
+                        retryLabel: _text('Retry', '重试'),
+                        onRetry: _loading ? null : _refresh,
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    _SectionTitle(
+                      title: _text('Smart Commute', '智能通勤'),
+                      subtitle: snapshot.isPlus == true
+                          ? 'Plus'
+                          : _text('Plus locked', 'Plus 专属'),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      _text(
+                        'Waybi compares today’s live Home ↔ Work time with your saved baseline and keeps watching official NZTA road disruptions in the background.',
+                        'Waybi 会把今天家 ↔ 公司的实时通勤与平时基准对比，并持续后台监控 NZTA 官方道路异常。',
+                      ),
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: WaybiTextSize.caption,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 11),
+                    if (!snapshot.isPlus)
+                      _EmptyCard(
+                        icon: Icons.workspace_premium_rounded,
+                        text: _text(
+                          'Plus unlocks live commute-vs-usual timing, leave-earlier advice and background Route Watch.',
+                          'Plus 可解锁“当前 vs 平时”通勤对比、提前出发建议和后台路线监控。',
+                        ),
+                      )
+                    else if (!snapshot.signedIn)
+                      _EmptyCard(
+                        icon: Icons.lock_outline_rounded,
+                        text: _text(
+                          'Sign in from My Waybi to save Smart Commute to your account.',
+                          '请先在“我的 Waybi”登录，再把智能通勤保存到账号。',
+                        ),
+                      )
+                    else if (!(snapshot.quickPlaces.containsKey('Home') &&
+                        snapshot.quickPlaces.containsKey('Work')))
+                      _commuteSetup(snapshot)
+                    else ...[
+                      for (final label in const ['home-work', 'work-home'])
+                        _routeWatchTile(
+                          context,
+                          label,
+                          snapshot.routeWatches[label],
+                          currentRoute: snapshot.smartCommuteRoutes[label],
+                        ),
+                    ],
+                    const SizedBox(height: 24),
+                    _SectionTitle(
+                      title: _text('Trip Intelligence', '行程洞察'),
+                      subtitle: snapshot.isPlus == true
+                          ? _text('Plus · 30 days', 'Plus · 近 30 天')
+                          : _text('Plus locked', 'Plus 专属'),
+                    ),
+                    const SizedBox(height: 10),
+                    _tripIntelligenceCard(snapshot),
+                    const SizedBox(height: 24),
+                    _SectionTitle(
+                      title: _text('Recent destinations', '最近目的地'),
+                      subtitle: _text('Continue with one tap', '一键继续出发'),
+                    ),
+                    const SizedBox(height: 10),
+                    if (snapshot.recent.isEmpty)
+                      _EmptyCard(
+                        icon: Icons.history_rounded,
+                        text: _text(
+                          'Places you navigate to will appear here.',
+                          '你导航过的地点会自动出现在这里。',
+                        ),
+                      )
+                    else
+                      for (final place in snapshot.recent.take(6))
+                        _DestinationTile(
+                          place: place,
+                          onTap: () =>
+                              Navigator.of(context)
+                                  .pop(TripsResult.select(place)),
+                        ),
+                    const SizedBox(height: 22),
+                    _SectionTitle(
+                      title: _text('Trip history', '行程记录'),
+                      subtitle: _text(
+                        'Your latest completed routes',
+                        '最近完成的路线',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (snapshot.history.isEmpty)
+                      _EmptyCard(
+                        icon: Icons.route_rounded,
+                        text: _text(
+                          'Finished trips will build your travel history.',
+                          '完成导航后，这里会逐步形成你的出行记录。',
+                        ),
+                      )
+                    else ...[
+                      _historyFilters(),
+                      const SizedBox(height: 10),
+                      Text(
+                        _text(
+                          '${filteredHistory.length} trips',
+                          '${filteredHistory.length} 段行程',
+                        ),
+                        style: TextStyle(
+                          fontSize: WaybiTextSize.caption,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (filteredHistory.isEmpty)
+                        _EmptyCard(
+                          icon: Icons.search_off_rounded,
+                          text: _text(
+                            'No matching trips. Try another destination or travel mode.',
+                            '没有找到匹配的行程，试试其他目的地或出行方式。',
+                          ),
+                        ),
+                    ],
                   ],
+                ],
+              ),
+            ),
+            // History can hold hundreds of trips: build tiles on demand.
+            if (snapshot != null && snapshot.history.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverList.builder(
+                  itemCount: filteredHistory.length,
+                  itemBuilder: (context, index) {
+                    final item = filteredHistory[index];
+                    return _HistoryTile(
+                      item: item,
+                      modeIcon: _modeIcon(item.mode),
+                      duration: _duration(item.durationSeconds),
+                      distance: _distance(item.distanceMeters),
+                      relativeTime: _relativeTime(item.createdAt),
+                      onTap: () =>
+                          Navigator.of(context)
+                              .pop(TripsResult.select(item.destination)),
+                    );
+                  },
                 ),
               ),
-              if (_loading) ...[
-                const SizedBox(height: 12),
-                const LinearProgressIndicator(minHeight: 2),
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: TextStyle(color: scheme.error, fontSize: 12),
-                ),
-              ],
-              const SizedBox(height: 24),
-              _SectionTitle(
-                title: _text('Smart Commute', '智能通勤'),
-                subtitle: snapshot?.isPlus == true
-                    ? 'Plus'
-                    : _text('Plus locked', 'Plus 专属'),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                _text(
-                  'Waybi compares today’s live Home ↔ Work time with your saved baseline and keeps watching official NZTA road disruptions in the background.',
-                  'Waybi 会把今天家 ↔ 公司的实时通勤与平时基准对比，并持续后台监控 NZTA 官方道路异常。',
-                ),
-                style: TextStyle(
-                  color: scheme.onSurfaceVariant,
-                  fontSize: 11.5,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 11),
-              if (!(snapshot?.isPlus ?? false))
-                _EmptyCard(
-                  icon: Icons.workspace_premium_rounded,
-                  text: _text(
-                    'Plus unlocks live commute-vs-usual timing, leave-earlier advice and background Route Watch.',
-                    'Plus 可解锁“当前 vs 平时”通勤对比、提前出发建议和后台路线监控。',
-                  ),
-                )
-              else if (!(snapshot?.signedIn ?? false))
-                _EmptyCard(
-                  icon: Icons.lock_outline_rounded,
-                  text: _text(
-                    'Sign in from My Waybi to save Smart Commute to your account.',
-                    '请先在“我的 Waybi”登录，再把智能通勤保存到账号。',
-                  ),
-                )
-              else if (!(snapshot!.quickPlaces.containsKey('Home') &&
-                  snapshot.quickPlaces.containsKey('Work')))
-                _commuteSetup(snapshot)
-              else ...[
-                for (final label in const ['home-work', 'work-home'])
-                  _routeWatchTile(
-                    context,
-                    label,
-                    snapshot.routeWatches[label],
-                    currentRoute: snapshot.smartCommuteRoutes[label],
-                  ),
-              ],
-              const SizedBox(height: 24),
-              _SectionTitle(
-                title: _text('Trip Intelligence', '行程洞察'),
-                subtitle: snapshot?.isPlus == true
-                    ? 'Plus · 30 days'
-                    : _text('Plus locked', 'Plus 专属'),
-              ),
-              const SizedBox(height: 10),
-              if (snapshot != null) _tripIntelligenceCard(snapshot),
-              const SizedBox(height: 24),
-              _SectionTitle(
-                title: _text('Recent destinations', '最近目的地'),
-                subtitle: _text('Continue with one tap', '一键继续出发'),
-              ),
-              const SizedBox(height: 10),
-              if (snapshot?.recent.isEmpty ?? true)
-                _EmptyCard(
-                  icon: Icons.history_rounded,
-                  text: _text(
-                    'Places you navigate to will appear here.',
-                    '你导航过的地点会自动出现在这里。',
-                  ),
-                )
-              else
-                for (final place in snapshot!.recent.take(6))
-                  _DestinationTile(
-                    place: place,
-                    onTap: () =>
-                        Navigator.of(context).pop(TripsResult.select(place)),
-                  ),
-              const SizedBox(height: 22),
-              _SectionTitle(
-                title: _text('Trip history', '行程记录'),
-                subtitle: _text('Your latest completed routes', '最近完成的路线'),
-              ),
-              const SizedBox(height: 10),
-              if (snapshot?.history.isEmpty ?? true)
-                _EmptyCard(
-                  icon: Icons.route_rounded,
-                  text: _text(
-                    'Finished trips will build your travel history.',
-                    '完成导航后，这里会逐步形成你的出行记录。',
-                  ),
-                )
-              else ...[
-                _historyFilters(),
-                const SizedBox(height: 10),
-                Text(
-                  _text(
-                    '${filteredHistory.length} trips',
-                    '${filteredHistory.length} 段行程',
-                  ),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                if (filteredHistory.isEmpty)
-                  _EmptyCard(
-                    icon: Icons.search_off_rounded,
-                    text: _text(
-                      'No matching trips. Try another destination or travel mode.',
-                      '没有找到匹配的行程，试试其他目的地或出行方式。',
-                    ),
-                  ),
-                for (final item in filteredHistory)
-                  _HistoryTile(
-                    item: item,
-                    modeIcon: _modeIcon(item.mode),
-                    duration: _duration(item.durationSeconds),
-                    distance: _distance(item.distanceMeters),
-                    relativeTime: _relativeTime(item.createdAt),
-                    onTap: () =>
-                        Navigator.of(context)
-                            .pop(TripsResult.select(item.destination)),
-                  ),
-              ],
-            ],
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         ),
       ),
@@ -1356,7 +1428,7 @@ class _TripInsightStat extends StatelessWidget {
             label,
             style: TextStyle(
               color: scheme.onSurfaceVariant,
-              fontSize: 10.5,
+              fontSize: WaybiTextSize.caption,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -1391,12 +1463,16 @@ class _TripPatternChip extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: scheme.primary),
           const SizedBox(width: 5),
-          Text(
-            '$label · $value',
-            style: TextStyle(
-              color: scheme.onSurface,
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
+          Flexible(
+            child: Text(
+              '$label · $value',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontSize: WaybiTextSize.caption,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -1423,9 +1499,18 @@ class _SectionTitle extends StatelessWidget {
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
           ),
         ),
-        Text(
-          subtitle,
-          style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10.5),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            subtitle,
+            maxLines: 2,
+            textAlign: TextAlign.end,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: WaybiTextSize.caption,
+            ),
+          ),
         ),
       ],
     );
@@ -1544,4 +1629,76 @@ class _EmptyCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TripInsights {
+  _TripInsights._({
+    required this.recent,
+    required this.totalDistance,
+    required this.totalSeconds,
+    required this.favorite,
+    required this.busiestWeekday,
+    required this.longest,
+    required this.morning,
+    required this.evening,
+    required this.other,
+  });
+
+  factory _TripInsights.from(List<TripHistoryItem> history, DateTime now) {
+    final cutoff = now.subtract(const Duration(days: 30));
+    final recent = history
+        .where(
+          (item) => item.createdAt != null && item.createdAt!.isAfter(cutoff),
+        )
+        .toList(growable: false);
+    var totalDistance = 0, totalSeconds = 0;
+    var morning = 0, evening = 0, other = 0;
+    final counts = <String, int>{};
+    final weekdayCounts = <int, int>{};
+    TripHistoryItem? longest;
+    for (final item in recent) {
+      totalDistance += item.distanceMeters;
+      totalSeconds += item.durationSeconds;
+      final name = item.destination.name.trim();
+      if (name.isNotEmpty) counts[name] = (counts[name] ?? 0) + 1;
+      final created = item.createdAt!.toLocal();
+      weekdayCounts[created.weekday] =
+          (weekdayCounts[created.weekday] ?? 0) + 1;
+      if (created.hour >= 6 && created.hour < 10) {
+        morning++;
+      } else if (created.hour >= 15 && created.hour < 19) {
+        evening++;
+      } else {
+        other++;
+      }
+      if (longest == null || item.durationSeconds > longest.durationSeconds) {
+        longest = item;
+      }
+    }
+    MapEntry<K, int>? top<K>(Map<K, int> values) => values.entries.isEmpty
+        ? null
+        : (values.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))
+              .first;
+    return _TripInsights._(
+      recent: recent,
+      totalDistance: totalDistance,
+      totalSeconds: totalSeconds,
+      favorite: top(counts),
+      busiestWeekday: top(weekdayCounts),
+      longest: longest,
+      morning: morning,
+      evening: evening,
+      other: other,
+    );
+  }
+
+  final List<TripHistoryItem> recent;
+  final int totalDistance;
+  final int totalSeconds;
+  final MapEntry<String, int>? favorite;
+  final MapEntry<int, int>? busiestWeekday;
+  final TripHistoryItem? longest;
+  final int morning;
+  final int evening;
+  final int other;
 }

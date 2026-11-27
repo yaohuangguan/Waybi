@@ -85,10 +85,22 @@ void main() {
     expect(find.text('路况顺畅'), findsOneWidget);
     expect(find.textContaining('2 个摄像头 · 定点测速 + 红灯'), findsOneWidget);
     expect(find.text('行前摘要'), findsOneWidget);
-    expect(find.text('预计到达 '), findsOneWidget);
-    expect(find.text('交通 '), findsOneWidget);
-    expect(find.text('摄像头 '), findsOneWidget);
-    expect(find.text('停车 '), findsOneWidget);
+    expect(
+      find.textContaining(RegExp(r'^预计到达 '), findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(RegExp(r'^交通 '), findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(RegExp(r'^摄像头 '), findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(RegExp(r'^停车 '), findRichText: true),
+      findsOneWidget,
+    );
     expect(find.text('添加途经点'), findsOneWidget);
     expect(find.text('保存'), findsOneWidget);
   });
@@ -128,7 +140,14 @@ void main() {
       expect(find.text('奥克兰美术馆'), findsOneWidget);
       expect(find.textContaining('入口 · Wellesley Street East'), findsOneWidget);
       expect(find.textContaining('终点停车楼 · 90 米'), findsOneWidget);
-      expect(find.textContaining('到达后会自动接续最后步行'), findsOneWidget);
+      expect(find.textContaining('之后接续步行到入口'), findsOneWidget);
+      // Parking options are full-width 48 dp targets when stopped.
+      expect(
+        tester
+            .getSize(find.widgetWithText(OutlinedButton, '终点停车楼 · 90 米'))
+            .height,
+        greaterThanOrEqualTo(48),
+      );
       expect(tester.takeException(), isNull);
     },
   );

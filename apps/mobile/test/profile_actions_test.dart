@@ -274,4 +274,94 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'deletion warns about a renewing App Store subscription, retries a cancel failure and copes with removed sign-in links',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      FlutterSecureStorage.setMockInitialValues({'waybi_session': 'a' * 64});
+      var providers = ['email', 'google', 'apple'];
+      final account = AccountRepository(
+        client: MockClient((r) async {
+          if (r.url.path == '/api/auth/delete') {
+            return http.Response(
+              jsonEncode({
+                'error': 'Your subscription could not be cancelled. Please retry account deletion.',
+                'code': 'SUBSCRIPTION_CANCEL_FAILED',
+              }),
+              503,
+            );
+          }
+          return http.Response(
+            jsonEncode({
+              'user': {
+                'id': 'driver',
+                'email': 'driver@example.test',
+                'displayName': 'Driver',
+                'providers': providers,
+              },
+              'subscription': {
+                'plan': 'plus',
+                'source': 'apple',
+                'appleSubscriptionActive': true,
+              },
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(account.dispose);
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const channel = MethodChannel('plugins.flutter.io/url_launcher');
+      final urls = <String>[];
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        if (call.method == 'launch') {
+          urls.add((call.arguments as Map)['url'] as String);
+        }
+        return true;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      await account.restore();
+      await tester.pumpWidget(screen(account));
+      await tester.pumpAndSettle();
+      expect(find.text('Link Google account'), findsNothing);
+
+      await reveal(tester, find.text('Delete account'));
+      await tester.tap(find.text('Delete account'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('deleteAppleSubscriptionWarning')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('manageAppStoreSubscription')));
+      await tester.pumpAndSettle();
+      expect(urls, ['https://apps.apple.com/account/subscriptions']);
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Account email'),
+        'driver@example.test',
+      );
+      await tester.pump();
+      await tester.tap(find.text('Delete permanently'));
+      await tester.pumpAndSettle();
+      expect(account.signedIn, isTrue);
+      const message =
+          'Your subscription couldn’t be cancelled, so your account was not deleted. Please try again.';
+      expect(find.text(message), findsWidgets);
+      expect(find.widgetWithText(SnackBarAction, 'Retry'), findsOneWidget);
+      expect(find.textContaining('SUBSCRIPTION_CANCEL_FAILED'), findsNothing);
+
+      // After an email-code sign-in the server may drop pre-existing
+      // Google/Apple links; the page re-offers linking without failing.
+      providers = ['email'];
+      await account.restore();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await reveal(tester, find.text('Link Google account'), delta: -250);
+      expect(find.text('Link Google account'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

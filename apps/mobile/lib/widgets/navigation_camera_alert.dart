@@ -50,7 +50,7 @@ class NavigationCameraAlert extends StatelessWidget {
     key: const ValueKey('navigationCameraAlert'),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
     decoration: BoxDecoration(
-      color: const Color(0xFFD0F58A),
+      color: WaybiColors.sky,
       borderRadius: BorderRadius.circular(18),
       boxShadow: const [
         BoxShadow(
@@ -71,7 +71,7 @@ class NavigationCameraAlert extends StatelessWidget {
           ),
           child: const Icon(
             Icons.radar_rounded,
-            color: Color(0xFFD0F58A),
+            color: WaybiColors.sky,
             size: 27,
           ),
         ),
@@ -101,7 +101,7 @@ class NavigationCameraAlert extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFF394A35),
+                    color: WaybiColors.deepOcean,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),

@@ -13,8 +13,13 @@ import '../data/app_store_billing.dart';
 import '../data/plus_billing.dart';
 import 'plus_page.dart';
 import 'account_sign_in.dart';
+import 'friendly_error.dart';
+import 'waybi_format.dart';
 import '../data/camera_repository.dart';
 import '../domain/map_provider.dart';
+
+/// Secondary text on the always-dark brand gradient (≥4.5:1 on both stops).
+const _inkSecondary = Color(0xE6FFFFFF);
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({
@@ -175,52 +180,70 @@ class _ProfilePageState extends State<ProfilePage> {
               style: const TextStyle(height: 1.45),
             ),
             const SizedBox(height: 20),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.public_rounded),
+              leading: const Icon(Icons.public_rounded),
               title: Text('OpenStreetMap'),
               subtitle: Text(
-                'Map data © OpenStreetMap contributors · Open Database License (ODbL)',
+                _text(
+                  'Map data © OpenStreetMap contributors · Open Database License (ODbL)',
+                  '地图数据 © OpenStreetMap 贡献者 · 开放数据库许可（ODbL）',
+                ),
               ),
             ),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.location_city_rounded),
+              leading: const Icon(Icons.location_city_rounded),
               title: Text('Toitū Te Whenua LINZ'),
               subtitle: Text(
-                'New Zealand address data · Creative Commons Attribution 4.0',
+                _text(
+                  'New Zealand address data · Creative Commons Attribution 4.0',
+                  '新西兰地址数据 · 知识共享署名 4.0（CC BY 4.0）',
+                ),
               ),
             ),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.layers_outlined),
+              leading: const Icon(Icons.layers_outlined),
               title: Text('OpenMapTiles'),
               subtitle: Text(
-                'Vector tile schema © OpenMapTiles · CC BY. Waybi-hosted regional tiles currently use this transitional schema.',
+                _text(
+                  'Vector tile schema © OpenMapTiles · CC BY. Waybi-hosted regional tiles currently use this transitional schema.',
+                  '矢量瓦片结构 © OpenMapTiles · CC BY。Waybi 自托管的区域瓦片目前沿用这一过渡结构。',
+                ),
               ),
             ),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.map_outlined),
-              title: Text('Waybi Map basemap'),
+              leading: const Icon(Icons.map_outlined),
+              title: Text(_text('Waybi Map basemap', 'Waybi 地图底图')),
               subtitle: Text(
-                'MapLibre rendering with Waybi-controlled style and regional tile hosting. Global coverage still uses a fallback while Waybi-hosted regions expand.',
+                _text(
+                  'MapLibre rendering with Waybi-controlled style and regional tile hosting. Global coverage still uses a fallback while Waybi-hosted regions expand.',
+                  '使用 MapLibre 渲染，样式与区域瓦片由 Waybi 托管。在 Waybi 托管区域扩展期间，全球范围仍使用备用底图。',
+                ),
               ),
             ),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.route_rounded),
-              title: Text('Routing'),
+              leading: const Icon(Icons.route_rounded),
+              title: Text(_text('Routing', '路线规划')),
               subtitle: Text(
-                'OSRM routing over OpenStreetMap road data. Waybi-hosted regional routing is being introduced before public launch.',
+                _text(
+                  'OSRM routing over OpenStreetMap road data. Waybi-hosted regional routing is being introduced before public launch.',
+                  '基于 OpenStreetMap 道路数据的 OSRM 路线规划。Waybi 自托管的区域路线规划将在正式发布前上线。',
+                ),
               ),
             ),
-            const ListTile(
+            ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.directions_bus_rounded),
-              title: Text('Auckland special vehicle lanes'),
+              leading: const Icon(Icons.directions_bus_rounded),
+              title: Text(_text('Auckland special vehicle lanes', '奥克兰专用车道')),
               subtitle: Text(
-                '© Auckland Transport · Creative Commons Attribution 4.0. Published lane geometry and operating hours, adapted by Waybi. Source: AT Open GIS Transit Lanes. Operating times use Pacific/Auckland. Licence: creativecommons.org/licenses/by/4.0/',
+                _text(
+                  '© Auckland Transport · Creative Commons Attribution 4.0. Published lane geometry and operating hours, adapted by Waybi. Source: AT Open GIS Transit Lanes. Operating times use Pacific/Auckland. Licence: creativecommons.org/licenses/by/4.0/',
+                  '© Auckland Transport · 知识共享署名 4.0。车道几何与运营时段来自公开数据，由 Waybi 改编。来源：AT Open GIS Transit Lanes。运营时间按奥克兰时间计算。许可：creativecommons.org/licenses/by/4.0/',
+                ),
               ),
             ),
           ],
@@ -252,9 +275,7 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('Bad state: ', '')),
-        ),
+        SnackBar(content: Text(friendlyErrorMessage(error, _appLanguage))),
       );
     } finally {
       if (mounted) setState(() => _cameraSyncing = false);
@@ -284,13 +305,15 @@ class _ProfilePageState extends State<ProfilePage> {
     } on GoogleSignInException catch (error) {
       if (error.code != GoogleSignInExceptionCode.canceled && mounted) {
         setState(
-          () => _error =
-              'Google sign-in: ${error.description ?? error.code.name}',
+          () => _error = _text(
+            'Google sign-in failed. Please try again.',
+            'Google 登录失败，请重试。',
+          ),
         );
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _error = '$error'.replaceFirst('Bad state: ', ''));
+        setState(() => _error = friendlyErrorMessage(error, _appLanguage));
       }
     }
   }
@@ -316,7 +339,7 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     } catch (error) {
       if (mounted) {
-        setState(() => _error = '$error'.replaceFirst('Bad state: ', ''));
+        setState(() => _error = friendlyErrorMessage(error, _appLanguage));
       }
     }
   }
@@ -350,13 +373,44 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       await widget.account.updateDisplayName(name);
     } catch (error) {
-      if (mounted) setState(() => _error = '$error');
+      if (mounted) {
+        setState(() => _error = friendlyErrorMessage(error, _appLanguage));
+      }
     }
+  }
+
+  static final _appStoreSubscriptions = Uri.parse(
+    'https://apps.apple.com/account/subscriptions',
+  );
+
+  Future<void> _openAppStoreSubscriptions() async {
+    try {
+      if (await launchUrl(
+        _appStoreSubscriptions,
+        mode: LaunchMode.externalApplication,
+      )) {
+        return;
+      }
+    } catch (_) {
+      // Fall through to the message below.
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _text(
+            'Open Settings › Apple ID › Subscriptions to manage it.',
+            '请在“设置 › Apple ID › 订阅”中管理。',
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _deleteAccount() async {
     final profile = widget.account.profile;
     if (profile == null) return;
+    final appleActive = _appleSubscriptionActive(profile);
     var confirmation = '';
     final confirmed = await showDialog<bool>(
       context: context,
@@ -375,12 +429,56 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  _text(
-                    'Deleting Waybi does NOT cancel an Apple subscription. Cancel separately in iOS Settings > Subscriptions to avoid further charges.',
-                    '删除 Waybi 账号不会取消 Apple 自动续费。请在 iOS 设置 > 订阅中单独取消，避免继续扣费。',
+                if (appleActive)
+                  Container(
+                    key: const Key('deleteAppleSubscriptionWarning'),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                    decoration: BoxDecoration(
+                      color: context.status.warningContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          _text(
+                            'Your App Store subscription is still active. Deleting your Waybi account does not cancel it — cancel it in the App Store first to avoid further charges.',
+                            '你的 App Store 订阅仍在生效。删除 Waybi 账号不会取消订阅，请先在 App Store 取消，以免继续扣费。',
+                          ),
+                          style: TextStyle(
+                            color: context.status.onWarningContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            key: const Key('manageAppStoreSubscription'),
+                            style: TextButton.styleFrom(
+                              foregroundColor:
+                                  context.status.onWarningContainer,
+                              minimumSize: const Size(0, WaybiTouch.minTarget),
+                            ),
+                            onPressed: _openAppStoreSubscriptions,
+                            icon: const Icon(Icons.open_in_new_rounded),
+                            label: Text(
+                              _text(
+                                'Manage App Store subscription',
+                                '管理 App Store 订阅',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Text(
+                    _text(
+                      'Deleting Waybi does NOT cancel an Apple subscription. Cancel separately in iOS Settings > Subscriptions to avoid further charges.',
+                      '删除 Waybi 账号不会取消 Apple 自动续费。请在 iOS 设置 > 订阅中单独取消，避免继续扣费。',
+                    ),
                   ),
-                ),
                 const SizedBox(height: 14),
                 Text(
                   _text('Type your account email to confirm:', '输入当前账号邮箱确认：'),
@@ -421,19 +519,93 @@ class _ProfilePageState extends State<ProfilePage> {
     );
     if (confirmed != true) return;
     try {
-      await widget.account.deleteAccount(email: profile.email);
+      // The deletion response may report a still-renewing App Store
+      // subscription; read it without depending on the repository's type.
+      final Future<Object?> deletion = widget.account.deleteAccount(
+        email: profile.email,
+      );
+      final result = await deletion;
       await widget.friendsBackup?.forgetDeletedAccount(profile.id);
       if (!mounted) return;
       setState(() => _error = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_text('Waybi account deleted.', 'Waybi 账号已删除。')),
-        ),
-      );
+      final stillRenewing = _flag(result, 'appleSubscriptionActive') == true;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              stillRenewing
+                  ? _text(
+                      'Waybi account deleted. Your App Store subscription is still active.',
+                      'Waybi 账号已删除，但 App Store 订阅仍在生效。',
+                    )
+                  : _text('Waybi account deleted.', 'Waybi 账号已删除。'),
+            ),
+            action: stillRenewing
+                ? SnackBarAction(
+                    label: _text('Manage', '管理'),
+                    onPressed: _openAppStoreSubscriptions,
+                  )
+                : null,
+          ),
+        );
     } catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
+      final message = friendlyErrorMessage(error, _appLanguage);
+      setState(() => _error = message);
+      final status = errorStatus(error) ?? 0;
+      final retryable =
+          errorCode(error) == WaybiErrorCode.subscriptionCancelFailed ||
+          status >= 500;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(message),
+            action: retryable
+                ? SnackBarAction(
+                    label: _text('Retry', '重试'),
+                    onPressed: _deleteAccount,
+                  )
+                : null,
+          ),
+        );
     }
+  }
+
+  /// Reads a field from a typed object or a JSON map without depending on
+  /// the data layer's class (it may add these fields in parallel).
+  static Object? _flag(Object? source, String name) {
+    if (source is Map) return source[name];
+    if (source == null) return null;
+    try {
+      final dynamic value = source;
+      return switch (name) {
+        'appleSubscriptionActive' => value.appleSubscriptionActive,
+        'raw' => value.raw,
+        'json' => value.json,
+        _ => null,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Whether the account has an App Store subscription that keeps renewing:
+  /// the server's `subscription.appleSubscriptionActive` when the profile
+  /// exposes it, otherwise an active Plus plan bought through Apple.
+  static bool _appleSubscriptionActive(AccountProfile profile) {
+    final direct = _flag(profile, 'appleSubscriptionActive');
+    if (direct is bool) return direct;
+    for (final key in const ['raw', 'json']) {
+      final map = _flag(profile, key);
+      final subscription = map is Map ? map['subscription'] : null;
+      final flag = subscription is Map
+          ? subscription['appleSubscriptionActive']
+          : null;
+      if (flag is bool) return flag;
+    }
+    return profile.isPlus && profile.subscriptionSource == 'apple';
   }
 
   void _voiceChanged(bool value) {
@@ -463,8 +635,8 @@ class _ProfilePageState extends State<ProfilePage> {
     final isPlus = widget.account.profile?.isPlus == true;
     final status = snapshot?.syncStatus ?? 'unknown';
     final statusColor = switch (status) {
-      'live' => WaybiColors.success,
-      'stale' => WaybiColors.warning,
+      'live' => context.status.success,
+      'stale' => context.status.warning,
       'seed' => scheme.primary,
       _ => scheme.onSurfaceVariant,
     };
@@ -530,7 +702,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                       style: TextStyle(
                         color: scheme.onSurfaceVariant,
-                        fontSize: 11.5,
+                        fontSize: WaybiTextSize.caption,
                       ),
                     ),
                   ],
@@ -546,7 +718,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   statusLabel,
                   style: TextStyle(
                     color: statusColor,
-                    fontSize: 10.5,
+                    fontSize: WaybiTextSize.caption,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -575,7 +747,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
-                fontSize: 11.5,
+                fontSize: WaybiTextSize.caption,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -593,14 +765,17 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                 style: TextStyle(
                   color: scheme.onSurfaceVariant,
-                  fontSize: 11.5,
+                  fontSize: WaybiTextSize.caption,
                 ),
               ),
             ],
             const SizedBox(height: 3),
             Text(
               _cameraFetchMode(snapshot.fetchMode),
-              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10.5),
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: WaybiTextSize.caption,
+              ),
             ),
             if (snapshot.changeAdded > 0 || snapshot.changeRemoved > 0) ...[
               const SizedBox(height: 3),
@@ -611,7 +786,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 style: TextStyle(
                   color: scheme.primary,
-                  fontSize: 10.5,
+                  fontSize: WaybiTextSize.caption,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -625,7 +800,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             style: TextStyle(
               color: scheme.onSurfaceVariant,
-              fontSize: 10.5,
+              fontSize: WaybiTextSize.caption,
               height: 1.35,
             ),
           ),
@@ -657,7 +832,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
-                      fontSize: 10.5,
+                      fontSize: WaybiTextSize.caption,
                       height: 1.35,
                     ),
                   ),
@@ -702,8 +877,8 @@ class _ProfilePageState extends State<ProfilePage> {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          backgroundColor: WaybiColors.darkOcean,
-          foregroundColor: Colors.white,
+          backgroundColor: WaybiInk.surface,
+          foregroundColor: WaybiInk.text,
           title: Text(
             _text('My Waybi', '我的 Waybi'),
             style: const TextStyle(fontWeight: FontWeight.w700),
@@ -760,7 +935,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: WaybiInk.text,
                                 fontSize: 17,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -770,8 +945,8 @@ class _ProfilePageState extends State<ProfilePage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
+                                color: _inkSecondary,
+                                fontSize: WaybiTextSize.caption,
                               ),
                             ),
                           ],
@@ -925,7 +1100,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             .toSet()
                             .join(' · '),
                         style: TextStyle(
-                          fontSize: 11,
+                          fontSize: WaybiTextSize.caption,
                           fontWeight: FontWeight.w600,
                           color: Theme.of(context).colorScheme.primary,
                         ),
@@ -954,10 +1129,13 @@ class _ProfilePageState extends State<ProfilePage> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            subtitle: item['createdAt'] == null
+                            subtitle: parseApiTime(item['createdAt']) == null
                                 ? null
                                 : Text(
-                                    item['createdAt'].toString(),
+                                    formatRelativeTime(
+                                      parseApiTime(item['createdAt']),
+                                      _appLanguage,
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -1424,7 +1602,7 @@ class _CameraDataPill extends StatelessWidget {
         '$label $value',
         style: TextStyle(
           color: scheme.onSurface,
-          fontSize: 10.5,
+          fontSize: WaybiTextSize.caption,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -1465,7 +1643,7 @@ class _Stat extends StatelessWidget {
             value,
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
           ),
-          Text(label, style: const TextStyle(fontSize: 11)),
+          Text(label, style: const TextStyle(fontSize: WaybiTextSize.caption)),
         ],
       ),
     ),
@@ -1553,10 +1731,10 @@ class _PlusCard extends StatelessWidget {
       child: ExpansionTile(
         key: const PageStorageKey('waybi-plus-card'),
         initiallyExpanded: false,
-        collapsedIconColor: Colors.white70,
-        iconColor: WaybiColors.sky,
-        collapsedTextColor: Colors.white,
-        textColor: Colors.white,
+        collapsedIconColor: _inkSecondary,
+        iconColor: WaybiInk.accent,
+        collapsedTextColor: WaybiInk.text,
+        textColor: WaybiInk.text,
         leading: const Icon(Icons.radar_rounded, color: WaybiColors.sky),
         title: const Text(
           'Waybi Plus',
@@ -1566,7 +1744,10 @@ class _PlusCard extends StatelessWidget {
           isPlus
               ? t('Plus is active', 'Plus 已启用')
               : t('More help for your everyday trips', '给日常出行多一点帮助'),
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
+          style: const TextStyle(
+            color: _inkSecondary,
+            fontSize: WaybiTextSize.caption,
+          ),
         ),
         childrenPadding: const EdgeInsets.fromLTRB(17, 0, 17, 17),
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
@@ -1578,7 +1759,7 @@ class _PlusCard extends StatelessWidget {
               '地图、搜索和逐向导航保持免费。Plus 增加主动通勤情报、到达辅助、弱网保障和更深入的行程洞察。',
             ),
             style: const TextStyle(
-              color: Colors.white,
+              color: WaybiInk.text,
               height: 1.35,
               fontSize: 13,
             ),
@@ -1608,13 +1789,6 @@ class _PlusCard extends StatelessWidget {
                 icon: Icons.notifications_active_rounded,
                 label: t('Proactive alerts · live', '主动预警 · 已启用'),
               ),
-              _PlusChip(
-                icon: Icons.directions_car_filled_rounded,
-                label: t(
-                  'CarPlay · Apple entitlement',
-                  'CarPlay · 等待 Apple entitlement',
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -1623,8 +1797,8 @@ class _PlusCard extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: onOpen,
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xffd0f58a),
-                foregroundColor: const Color(0xff152510),
+                backgroundColor: WaybiInk.accent,
+                foregroundColor: WaybiColors.midnightOcean,
               ),
               icon: const Icon(Icons.auto_awesome_rounded, size: 18),
               label: Text(
@@ -1657,9 +1831,9 @@ class _PlusChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .1),
+          color: WaybiInk.text.withValues(alpha: .1),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white12),
+          border: Border.all(color: WaybiInk.text.withValues(alpha: .12)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1672,8 +1846,8 @@ class _PlusChip extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11.5,
+                  color: WaybiInk.text,
+                  fontSize: WaybiTextSize.caption,
                   fontWeight: FontWeight.w600,
                 ),
               ),

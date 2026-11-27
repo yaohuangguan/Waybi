@@ -89,15 +89,18 @@ class RoadEventTimeline extends StatelessWidget {
     final surface = dark
         ? WaybiColors.darkOcean.withValues(alpha: .94)
         : WaybiColors.lightSurface.withValues(alpha: .96);
+    final status = dark ? WaybiStatusColors.dark : WaybiStatusColors.light;
+    Color tone(RoadEvent event) =>
+        event.severity.index >= RoadEventSeverity.warning.index
+        ? status.warning
+        : event.type == RoadEventType.safetyCamera
+        ? (dark ? WaybiColors.horizon : WaybiColors.deepTeal)
+        : (dark ? WaybiColors.sky : WaybiColors.ocean);
     if (compact && visible.isNotEmpty) {
       final event = visible.first;
       final distance = _distance(event);
       final more = events.length - 1;
-      final color = event.severity.index >= RoadEventSeverity.warning.index
-          ? WaybiColors.warning
-          : event.type == RoadEventType.safetyCamera
-          ? WaybiColors.teal
-          : WaybiColors.coastal;
+      final color = tone(event);
       return Semantics(
         label: _text('Upcoming road event', '前方道路事件'),
         child: Container(
@@ -146,7 +149,7 @@ class RoadEventTimeline extends StatelessWidget {
                   '+$more',
                   style: TextStyle(
                     color: muted,
-                    fontSize: 10,
+                    fontSize: WaybiTextSize.caption,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -171,11 +174,7 @@ class RoadEventTimeline extends StatelessWidget {
           icon: _icon(event.type),
           label: _label(event),
           detail: _distance(event),
-          color: event.severity.index >= RoadEventSeverity.warning.index
-              ? WaybiColors.warning
-              : event.type == RoadEventType.safetyCamera
-              ? WaybiColors.teal
-              : WaybiColors.coastal,
+          color: tone(event),
           foreground: foreground,
           muted: muted,
         ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../tool/navigation_preview.dart';
+import 'support/hold.dart';
 
 void main() {
   testWidgets('Chinese lanes and journey summary fit a compact phone', (
@@ -51,7 +52,8 @@ void main() {
     expect(find.text('2.4 公里'), findsNWidgets(2));
     expect(find.byTooltip('路线全览'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('结束'));
+    // Ending needs a deliberate hold, not a tap.
+    await holdToEnd(tester, find.byKey(const Key('navigationEndButton')));
     await tester.pumpAndSettle();
     expect(find.text('到啦！'), findsOneWidget);
     expect(find.text('8.2 公里'), findsOneWidget);

@@ -6202,6 +6202,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           if ((_driveEngine.active) && !_guidanceRunning)
             Positioned.fill(
               child: DriveHud(
+                language: _appLanguage,
                 following: _following,
                 onRecenter: _recenter,
                 engine: _driveEngine,
@@ -6301,6 +6302,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
           if (_transitTripRunning && _activeTransitRoute != null)
             Positioned.fill(
               child: TransitTripOverlay(
+                language: _appLanguage,
                 destinationTitle: _destinationTitle,
                 route: _activeTransitRoute!,
                 gpsAccuracy: _gpsAccuracy,

@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'waybi_format.dart';
 import '../data/search_history_store.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
@@ -261,9 +262,7 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
       point.latitude,
       point.longitude,
     );
-    return metres < 1000
-        ? '${metres.round()} m'
-        : '${(metres / 1000).toStringAsFixed(1)} km';
+    return formatDistance(metres, widget.language);
   }
 
   Widget _resultTile(

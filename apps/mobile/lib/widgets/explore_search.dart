@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 
 import '../data/api_config.dart';
 import '../domain/geo_math.dart';
+import 'waybi_format.dart';
 
 class DestinationSuggestion {
   const DestinationSuggestion({
@@ -69,7 +70,8 @@ class _ExploreSearchState extends State<ExploreSearch> {
   List<DestinationSuggestion> _results = const [];
   String? _error;
   int _request = 0;
-  String _locationLabel = 'Locating current position…';
+  // Null until a reverse lookup names the current place.
+  String? _locationLabel;
   LatLng? _lastReverseLocation;
   bool _reverseLookupPending = false;
 
@@ -86,11 +88,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
       result.location.latitude,
       result.location.longitude,
     );
-    if (metres < 1000) return '${metres.round()} m';
-    final kilometres = metres / 1000;
-    return kilometres < 10
-        ? '${kilometres.toStringAsFixed(1)} km'
-        : '${kilometres.round()} km';
+    return formatDistance(metres, widget.language);
   }
 
   @override
@@ -114,9 +112,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
     final current = widget.currentLocation;
     final previous = _lastReverseLocation;
     if (current == null) {
-      if (_locationLabel != 'Locating current position…') {
-        setState(() => _locationLabel = 'Locating current position…');
-      }
+      if (_locationLabel != null) setState(() => _locationLabel = null);
       return;
     }
     final moved = previous == null
@@ -331,12 +327,13 @@ class _ExploreSearchState extends State<ExploreSearch> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final location = widget.currentLocation;
-    final locationText = location == null
+    final locationText = location == null || _locationLabel == null
         ? _text('Locating current position…', '正在定位当前位置…')
-        : _locationLabel;
+        : _locationLabel!;
     return Material(
-      color: Colors.white,
+      color: scheme.surface,
       elevation: 11,
       borderRadius: BorderRadius.circular(21),
       clipBehavior: Clip.antiAlias,
@@ -350,10 +347,10 @@ class _ExploreSearchState extends State<ExploreSearch> {
                 if (!widget.destinationOnly)
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.my_location_rounded,
                         size: 19,
-                        color: WaybiColors.deepOcean,
+                        color: scheme.primary,
                       ),
                       const SizedBox(width: 11),
                       Expanded(
@@ -369,11 +366,14 @@ class _ExploreSearchState extends State<ExploreSearch> {
                               },
                               decoration: InputDecoration(
                                 isDense: true,
+                                filled: false,
                                 border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
                                 hintText: widget.origin?.label ?? locationText,
-                                hintStyle: const TextStyle(
-                                  color: Color(0xFF788780),
-                                  fontSize: 12,
+                                hintStyle: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontSize: WaybiTextSize.caption,
                                 ),
                                 suffixIconConstraints: const BoxConstraints(
                                   minWidth: 34,
@@ -414,7 +414,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                           color: WaybiColors.sky,
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                            color: const Color(0xFF477B36),
+                            color: WaybiColors.ocean,
                             width: 1.5,
                           ),
                         ),
@@ -442,17 +442,20 @@ class _ExploreSearchState extends State<ExploreSearch> {
                         },
                         decoration: InputDecoration(
                           isDense: true,
+                          filled: false,
                           border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
                           hintText: _text('Where to?', '想去哪？'),
-                          hintStyle: const TextStyle(color: Color(0xFF8A968E)),
+                          hintStyle: TextStyle(color: scheme.onSurfaceVariant),
                           suffixIconConstraints: const BoxConstraints(
                             minWidth: 36,
                             minHeight: 36,
                           ),
                           suffixIcon: _controller.text.isEmpty
-                              ? const Icon(
+                              ? Icon(
                                   Icons.search_rounded,
-                                  color: Color(0xFF285747),
+                                  color: scheme.primary,
                                 )
                               : IconButton(
                                   key: const Key('destinationClearButton'),
@@ -477,7 +480,10 @@ class _ExploreSearchState extends State<ExploreSearch> {
               padding: const EdgeInsets.all(12),
               child: Text(
                 _error!,
-                style: const TextStyle(color: Color(0xFFB64B3A), fontSize: 12),
+                style: TextStyle(
+                  color: scheme.error,
+                  fontSize: WaybiTextSize.caption,
+                ),
               ),
             ),
           if (_results.isNotEmpty ||
@@ -505,10 +511,7 @@ class _ExploreSearchState extends State<ExploreSearch> {
                       horizontal: 14,
                       vertical: 4,
                     ),
-                    leading: const Icon(
-                      Icons.place_outlined,
-                      color: Color(0xFF527C60),
-                    ),
+                    leading: Icon(Icons.place_outlined, color: scheme.primary),
                     title: Text(
                       title,
                       maxLines: 2,
@@ -534,8 +537,8 @@ class _ExploreSearchState extends State<ExploreSearch> {
                                   padding: const EdgeInsets.only(top: 2),
                                   child: Text(
                                     distance,
-                                    style: const TextStyle(
-                                      color: Color(0xFF477B36),
+                                    style: TextStyle(
+                                      color: scheme.primary,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
@@ -563,93 +566,6 @@ class _ExploreSearchState extends State<ExploreSearch> {
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class DestinationSearchPage extends StatelessWidget {
-  const DestinationSearchPage({
-    super.key,
-    required this.currentLocation,
-    required this.recent,
-    required this.language,
-    this.initialQuery,
-    this.onDriveMode,
-  });
-
-  final LatLng? currentLocation;
-  final List<DestinationSuggestion> recent;
-  final String language;
-  final String? initialQuery;
-  final VoidCallback? onDriveMode;
-
-  @override
-  Widget build(BuildContext context) {
-    final height = MediaQuery.sizeOf(context).height;
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F4),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-          child: Column(
-            children: [
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(top: 5, right: 8),
-                      child: Material(
-                        color: Colors.white,
-                        elevation: 4,
-                        shape: const CircleBorder(),
-                        child: IconButton(
-                          tooltip: MaterialLocalizations.of(context)
-                              .backButtonTooltip,
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.arrow_back_rounded),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: ExploreSearch(
-                        currentLocation: currentLocation,
-                        recent: recent,
-                        language: language,
-                        destinationOnly: true,
-                        autofocus: true,
-                        initialQuery: initialQuery,
-                        resultsMaxHeight:
-                            height - (onDriveMode == null ? 150 : 230),
-                        onSelected: (selection) =>
-                            Navigator.of(context).pop(selection),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (onDriveMode != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: ListTile(
-                    tileColor: const Color(0xFFF0F6E8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    leading: const Icon(Icons.directions_car_filled_rounded),
-                    title: const Text(
-                      'Just Drive',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    subtitle: const Text('Camera alerts without a destination'),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: onDriveMode,
-                  ),
-                ),
-            ],
-          ),
-        ),
       ),
     );
   }

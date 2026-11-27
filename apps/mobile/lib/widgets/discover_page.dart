@@ -9,6 +9,7 @@ import '../theme/waybi_theme.dart';
 import 'companion_journey_stats.dart';
 import 'discover_memory.dart';
 import 'trips_page.dart';
+import 'waybi_format.dart';
 
 enum DiscoverActionKind { search, trips, destination, direction, roadEvent }
 
@@ -133,30 +134,43 @@ class _DiscoverPageState extends State<DiscoverPage> {
         .reduce(math.min);
   }
 
+  // Nearby events and their distances, computed once per road snapshot and
+  // origin instead of inside every sort comparison on every build.
+  (DiscoverRoadSnapshot?, GeoPoint?)? _nearbyKey;
+  List<RoadEvent> _nearbyCache = const [];
+  final Map<RoadEvent, double> _nearbyDistance = {};
+
   List<RoadEvent> get _nearbyEvents {
+    final key = (_roads, widget.origin);
+    if (_nearbyKey == key) return _nearbyCache;
+    _nearbyKey = key;
+    _nearbyDistance.clear();
     final now = DateTime.now();
-    final events = (_roads?.events ?? const <RoadEvent>[])
-        .where(
-          (event) =>
-              event.type != RoadEventType.safetyCamera &&
-              event.observation != RoadEventObservation.inferred &&
-              event.isCurrent(now) &&
-              _eventDistance(event) <= 30000,
-        )
-        .toList();
+    final events = <RoadEvent>[];
+    for (final event in _roads?.events ?? const <RoadEvent>[]) {
+      if (event.type == RoadEventType.safetyCamera ||
+          event.observation == RoadEventObservation.inferred ||
+          !event.isCurrent(now)) {
+        continue;
+      }
+      final distance = _eventDistance(event);
+      if (distance > 30000) continue;
+      _nearbyDistance[event] = distance;
+      events.add(event);
+    }
     events.sort((a, b) {
       final severity = b.severity.index.compareTo(a.severity.index);
       return severity != 0
           ? severity
-          : _eventDistance(a).compareTo(_eventDistance(b));
+          : _nearbyDistance[a]!.compareTo(_nearbyDistance[b]!);
     });
-    return events;
+    return _nearbyCache = events;
   }
 
   String _eventTitle(RoadEvent event) => switch (event.type) {
     RoadEventType.roadClosure => _text('Road closed', '道路封闭'),
     RoadEventType.roadworks => _text('Roadworks', '道路施工'),
-    RoadEventType.flooding => _text('Flooding', '积水 / 洪水'),
+    RoadEventType.flooding => _text('Flooding', '积水'),
     RoadEventType.slip => _text('Slip / debris', '滑坡 / 道路杂物'),
     _ => _text('Road incident', '道路事件'),
   };
@@ -252,15 +266,15 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 contentPadding: EdgeInsets.zero,
                 leading: CircleAvatar(
                   backgroundColor: event.type == RoadEventType.roadClosure
-                      ? const Color(0xffffe7e5)
-                      : const Color(0xfffff0d7),
+                      ? context.status.dangerContainer
+                      : context.status.warningContainer,
                   child: Icon(
                     event.type == RoadEventType.roadClosure
                         ? Icons.block_rounded
                         : Icons.construction_rounded,
                     color: event.type == RoadEventType.roadClosure
-                        ? const Color(0xffb52e35)
-                        : const Color(0xff946214),
+                        ? context.status.danger
+                        : context.status.warning,
                   ),
                 ),
                 title: Text(
@@ -270,7 +284,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
                 subtitle: Text(
-                  '${_eventTitle(event)} · ${(_eventDistance(event) / 1000).toStringAsFixed(1)} km',
+                  '${_eventTitle(event)} · ${formatDistance(_nearbyDistance[event] ?? _eventDistance(event), widget.language)}',
                 ),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => _choose(DiscoverAction.road(event)),
@@ -412,7 +426,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     )
                   : _text(
                       'Every new trip is a memory we make together.',
-                      '从下一段旅程开始，一起积累新的回忆。',
+                      '每一段新旅程，都是我们一起留下的回忆。',
                     ),
               style: theme.textTheme.bodySmall,
             ),
@@ -427,7 +441,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     )
                   : _text(
                       'Account totals keep growing; guest journeys stay on this device until synced. Earlier deleted trips cannot be recovered.',
-                      '账号累计不再受 100 条限制；访客记录保存在本机，历史已删除行程无法恢复。',
+                      '账号累计会持续增加；访客旅程在同步前只保存在本机。之前删除的行程无法恢复。',
                     ),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -459,8 +473,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: theme.brightness == Brightness.dark
-                      ? [const Color(0xff183a32), const Color(0xff294735)]
-                      : [const Color(0xffedf4dd), const Color(0xfffaf4df)],
+                      ? const [WaybiColors.darkOcean, WaybiColors.darkSurface]
+                      : const [WaybiColors.ice, WaybiColors.lightBackground],
                 ),
                 borderRadius: BorderRadius.circular(28),
               ),
@@ -472,10 +486,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                     children: [
                       Expanded(
                         child: Text(
-                          _text(
-                            'Find your next little trip.',
-                            '下一段小旅程，\n一起出发。',
-                          ),
+                          _text('Find your next little trip.', '找到你的\n下一段小旅程。'),
                           style: theme.textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                             height: 1.2,
@@ -638,11 +649,11 @@ class _DiscoverPageState extends State<DiscoverPage> {
                       horizontal: 16,
                       vertical: 8,
                     ),
-                    leading: const CircleAvatar(
-                      backgroundColor: WaybiColors.ice,
+                    leading: CircleAvatar(
+                      backgroundColor: theme.colorScheme.primaryContainer,
                       child: Icon(
                         Icons.landscape_rounded,
-                        color: WaybiColors.deepTeal,
+                        color: theme.colorScheme.onPrimaryContainer,
                       ),
                     ),
                     title: Text(

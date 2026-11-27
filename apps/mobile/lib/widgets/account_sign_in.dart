@@ -8,6 +8,8 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/account_repository.dart';
+import '../theme/waybi_theme.dart';
+import 'friendly_error.dart';
 
 /// One account entry for My Waybi, saved places and Plus checkout.
 class AccountSignIn extends StatefulWidget {
@@ -34,6 +36,7 @@ class _AccountSignInState extends State<AccountSignIn> {
   final _password = TextEditingController();
   final _code = TextEditingController();
   bool _passwordMode = false, _showPassword = false, _busy = false;
+  bool _offerEmailCode = false;
   String? _challengeId, _error;
   DateTime? _resendAt;
   Timer? _timer;
@@ -82,11 +85,20 @@ class _AccountSignInState extends State<AccountSignIn> {
       }
     } catch (error) {
       if (mounted) {
-        final message = error.toString().replaceFirst('Bad state: ', '');
-        setState(
-          () =>
-              _error = widget.language == 'zh' ? '暂时无法继续，请检查输入或稍后重试。' : message,
-        );
+        final code = errorCode(error);
+        setState(() {
+          _error = friendlyErrorMessage(
+            error,
+            widget.language,
+            fallback: widget.language == 'zh' ? '暂时无法继续，请检查输入或稍后重试。' : null,
+          );
+          // A locked or rate-limited password sign-in can still go ahead
+          // with an emailed code.
+          _offerEmailCode =
+              _passwordMode &&
+              (code == WaybiErrorCode.loginLocked ||
+                  code == WaybiErrorCode.rateLimited);
+        });
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -169,6 +181,7 @@ class _AccountSignInState extends State<AccountSignIn> {
       _password.clear();
       _code.clear();
       _error = null;
+      _offerEmailCode = false;
     });
   }
 
@@ -275,6 +288,21 @@ class _AccountSignInState extends State<AccountSignIn> {
                             ),
                           ],
                         ),
+                      ),
+                    ),
+                  ),
+                if (_offerEmailCode)
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: TextButton.icon(
+                      key: const Key('signInUseEmailCode'),
+                      onPressed: _locked ? null : _changeMethod,
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, WaybiTouch.minTarget),
+                      ),
+                      icon: const Icon(Icons.mark_email_read_outlined),
+                      label: Text(
+                        t('Sign in with an email code instead', '改用邮箱验证码登录'),
                       ),
                     ),
                   ),
@@ -501,7 +529,7 @@ class _AccountSignInState extends State<AccountSignIn> {
                     '首次使用？验证邮箱即自动创建账号。继续即表示你同意',
                   ),
                   textAlign: TextAlign.center,
-                  style: muted.copyWith(fontSize: 11.5),
+                  style: muted.copyWith(fontSize: WaybiTextSize.caption),
                 ),
                 Wrap(
                   alignment: WrapAlignment.center,

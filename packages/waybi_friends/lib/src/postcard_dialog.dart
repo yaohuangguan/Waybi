@@ -117,7 +117,7 @@ class _Postcard extends StatelessWidget {
                                 ),
                             style: const TextStyle(
                               color: WwhColors.ink,
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -239,7 +239,7 @@ class _PostcardScene extends StatelessWidget {
                   friendText(context, 'A LITTLE POSTCARD FROM', '来自旅途的小明信片'),
                   style: TextStyle(
                     color: Color(0xCCFFFFFF),
-                    fontSize: 10,
+                    fontSize: 12,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.2,
                   ),

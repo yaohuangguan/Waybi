@@ -145,7 +145,9 @@ class BagPage extends StatelessWidget {
                               }
                             },
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
+                        duration: MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : const Duration(milliseconds: 180),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
                           color: isSelected

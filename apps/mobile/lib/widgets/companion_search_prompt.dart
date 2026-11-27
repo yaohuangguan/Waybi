@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
+import '../theme/waybi_theme.dart';
 import 'waybi_bird.dart';
+import 'waybi_format.dart';
 
 String companionName(LocationMarkerStyle marker) => switch (marker) {
   LocationMarkerStyle.cat => 'Clover',
@@ -132,9 +134,7 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
       point.latitude,
       point.longitude,
     );
-    return metres < 1000
-        ? '${metres.round()} m'
-        : '${(metres / 1000).toStringAsFixed(1)} km';
+    return formatDistance(metres, widget.language);
   }
 
   void _select(PlaceCandidate candidate) {
@@ -244,7 +244,7 @@ class _CompanionSearchPromptState extends State<CompanionSearchPrompt>
                         '$name · $question',
                         style: TextStyle(
                           color: scheme.onSurfaceVariant,
-                          fontSize: 11,
+                          fontSize: WaybiTextSize.caption,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -399,6 +399,6 @@ Widget finalDistance(GeoPoint? location, String Function(GeoPoint?) distance) {
   if (value.isEmpty) return const SizedBox.shrink();
   return Padding(
     padding: const EdgeInsets.only(left: 8),
-    child: Text(value, style: const TextStyle(fontSize: 11)),
+    child: Text(value, style: const TextStyle(fontSize: WaybiTextSize.caption)),
   );
 }

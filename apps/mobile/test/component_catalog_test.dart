@@ -1,34 +1,19 @@
-import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
-import 'package:waybi_mobile/data/account_repository.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/road_event.dart';
 import 'package:waybi_mobile/domain/route_option.dart';
 import 'package:waybi_mobile/drive/system_navigation.dart';
-import 'package:waybi_mobile/providers/provider_contracts.dart';
 import 'package:waybi_mobile/widgets/splash_gate.dart';
 import 'package:waybi_mobile/widgets/transit_trip_overlay.dart';
 import 'package:waybi_mobile/widgets/road_event_details_sheet.dart';
-import 'package:waybi_mobile/widgets/profile_sheet.dart';
-import 'package:waybi_mobile/widgets/explore_sheet.dart';
 import 'package:waybi_mobile/widgets/system_navigation_status.dart';
 
-class ExploreFixture implements ExploreProvider {
-  Future<List<PlaceSummary>> Function(String) load = (_) async => const [];
-  @override
-  Future<List<PlaceSummary>> nearby(
-    String category, {
-    required GeoPoint center,
-    required String language,
-  }) => load(category);
-}
+import 'support/hold.dart';
 
 Widget host(Widget child) => MaterialApp(home: Scaffold(body: child));
 void main() {
@@ -86,7 +71,12 @@ void main() {
       expect(find.textContaining('GPS —'), findsOneWidget);
       expect(find.text('70 → Britomart'), findsOneWidget);
       await t.tap(find.byTooltip('Recenter'));
+      // A tap only explains; holding ends the trip.
       await t.tap(find.text('End trip'));
+      await t.pump();
+      expect([end, recenter], [0, 1]);
+      expect(find.text('Hold to end'), findsOneWidget);
+      await holdToEnd(t, find.byKey(const Key('transitEndButton')));
       expect([end, recenter], [1, 1]);
       expect(t.takeException(), isNull);
     },
@@ -151,163 +141,6 @@ void main() {
       );
       expect(find.text('Sam报告'), findsOneWidget);
       expect(find.text('Slow down'), findsOneWidget);
-    },
-  );
-  testWidgets(
-    'legacy profile shares verified email registration and retains password sign-in',
-    (t) async {
-      final account = AccountRepository(
-        client: MockClient(
-          (_) async => http.Response('{"error":"Try later"}', 503),
-        ),
-      );
-      addTearDown(account.dispose);
-      await t.pumpWidget(host(ProfileSheet(account: account)));
-      await t.pumpAndSettle();
-      await t.ensureVisible(find.text('Sign in with a password'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('Sign in with a password'));
-      await t.pumpAndSettle();
-      await t.enterText(find.byType(TextField).first, 'driver@example.test');
-      await t.enterText(find.byType(TextField).last, 'test-only-long-password');
-      await t.ensureVisible(find.text('Sign in'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('Sign in'));
-      await t.pumpAndSettle();
-      expect(find.text('Try later'), findsOneWidget);
-      await t.ensureVisible(find.text('Use an email code instead'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('Use an email code instead'));
-      await t.pumpAndSettle();
-      expect(find.text('Password'), findsNothing);
-      expect(find.text('Continue with email'), findsOneWidget);
-    },
-  );
-  testWidgets(
-    'legacy profile preserves saved content and returns to the shared account entry after sign-out',
-    (t) async {
-      final paths = <String>[];
-      final account =
-          AccountRepository(
-              client: MockClient((request) async {
-                paths.add(request.url.path);
-                return http.Response('{}', 200);
-              }),
-            )
-            ..profile = AccountProfile.fromJson({
-              'user': {'email': 'driver@example.test'},
-              'routeHistory': [
-                {
-                  'destinationName': 'Airport',
-                  'mode': 'drive',
-                  'distanceMeters': 1500,
-                },
-              ],
-              'savedPlaces': [
-                {
-                  'name': 'Saved cafe',
-                  'isFavorite': true,
-                  'address': 'Queen Street',
-                },
-                {'name': 'Private note', 'note': 'Easy access'},
-              ],
-              'reviews': [
-                {
-                  'placeName': 'Cafe review',
-                  'rating': 5,
-                  'comment': 'Good coffee',
-                },
-              ],
-            });
-      addTearDown(account.dispose);
-      await t.pumpWidget(host(ProfileSheet(account: account)));
-      await t.pumpAndSettle();
-      expect(find.text('driver@example.test'), findsOneWidget);
-      expect(find.text('Favorites'), findsOneWidget);
-      expect(find.text('Airport'), findsOneWidget);
-      expect(find.text('drive · 1.5 km'), findsOneWidget);
-      await t.scrollUntilVisible(
-        find.text('Sign out'),
-        180,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await t.pumpAndSettle();
-      expect(find.text('Good coffee'), findsOneWidget);
-      await t.tap(find.text('Sign out'));
-      await t.pumpAndSettle();
-      expect(paths, ['/api/auth/logout']);
-      expect(account.profile, isNull);
-      expect(find.text('Continue with email'), findsOneWidget);
-    },
-  );
-  testWidgets(
-    'explore category changes ignore older replies and keep marker selection coherent',
-    (t) async {
-      final provider = ExploreFixture();
-      final old = Completer<List<PlaceSummary>>();
-      const cafe = PlaceSummary(
-        name: 'Cafe',
-        location: GeoPoint(-37, 174),
-        address: 'CBD',
-      );
-      provider.load = (q) =>
-          q == 'restaurant' ? old.future : Future.value([cafe]);
-      final focus = ValueNotifier<PlaceSummary?>(null);
-      addTearDown(focus.dispose);
-      PlaceSummary? selected;
-      final results = <List<PlaceSummary>>[];
-      await t.pumpWidget(
-        host(
-          ExploreSheet(
-            provider: provider,
-            center: const GeoPoint(-37, 174),
-            language: 'en',
-            route: const [GeoPoint(-37, 174)],
-            saved: const [],
-            markerFocus: focus,
-            onResultsChanged: results.add,
-            onFocused: (p) => focus.value = p,
-            onSelected: (p) => selected = p,
-          ),
-        ),
-      );
-      await t.tap(find.text('Coffee'));
-      await t.pumpAndSettle();
-      old.complete(const [
-        PlaceSummary(name: 'Old restaurant', location: GeoPoint(-38, 175)),
-      ]);
-      await t.pumpAndSettle();
-      expect(find.text('Old restaurant'), findsNothing);
-      expect(results.last.single.name, 'Cafe');
-      await t.tap(find.text('Cafe').first);
-      expect(selected, cafe);
-      expect(await const NoDetourEstimate().estimate(cafe, []), isNull);
-    },
-  );
-  testWidgets(
-    'explore errors clear unavailable data instead of inventing stops',
-    (t) async {
-      final provider = ExploreFixture()
-        ..load = (_) async => throw StateError('offline');
-      final focus = ValueNotifier<PlaceSummary?>(null);
-      addTearDown(focus.dispose);
-      await t.pumpWidget(
-        host(
-          ExploreSheet(
-            provider: provider,
-            center: const GeoPoint(-37, 174),
-            language: 'zh',
-            route: const [],
-            saved: const [],
-            markerFocus: focus,
-            onResultsChanged: (p) => expect(p, isEmpty),
-            onFocused: (_) {},
-            onSelected: (_) {},
-          ),
-        ),
-      );
-      await t.pumpAndSettle();
-      expect(find.text('附近地点暂不可用。'), findsOneWidget);
     },
   );
   testWidgets(

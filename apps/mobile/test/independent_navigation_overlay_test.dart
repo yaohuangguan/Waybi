@@ -70,7 +70,10 @@ void main() {
       );
       expect(tester.takeException(), isNull);
       expect(find.text('54'), findsOneWidget);
-      expect(find.text('LIMIT 50'), findsOneWidget);
+      // A regulatory roundel replaces the old 10 pt "LIMIT 50" caption.
+      expect(find.bySemanticsLabel('Speed limit 50 km/h'), findsOneWidget);
+      expect(find.text('50'), findsOneWidget);
+      expect(find.byKey(const ValueKey('overSpeedIcon')), findsOneWidget);
       expect(find.text('Speed camera ahead'), findsOneWidget);
       expect(
         find.descendant(

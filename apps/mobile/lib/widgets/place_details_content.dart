@@ -58,6 +58,14 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
 
   String _text(String en, String zh) => widget.language == 'zh' ? zh : en;
 
+  /// Google business status codes as people say them.
+  String _businessStatus(String status) => switch (status) {
+    'OPERATIONAL' => _text('Open / operational', '营业中'),
+    'CLOSED_TEMPORARILY' => _text('Temporarily closed', '暂停营业'),
+    'CLOSED_PERMANENTLY' => _text('Permanently closed', '已永久停业'),
+    _ => _text('Opening status unknown', '营业状态未知'),
+  };
+
   bool _samePlace(PlaceSummary a, PlaceSummary b) {
     final aRef = a.reference;
     final bRef = b.reference;
@@ -172,7 +180,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
               _text('Checking drive time…', '正在获取驾车时间…'),
               style: TextStyle(
                 color: scheme.onSurfaceVariant,
-                fontSize: 11,
+                fontSize: WaybiTextSize.caption,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -188,10 +196,10 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
     final trafficColor = !route.hasTrafficData
         ? scheme.onSurfaceVariant
         : trafficHeavy
-        ? WaybiColors.danger
+        ? context.status.danger
         : trafficModerate
-        ? WaybiColors.warning
-        : WaybiColors.success;
+        ? context.status.warning
+        : context.status.success;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 7, 16, 0),
@@ -235,7 +243,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
-                      fontSize: 11.5,
+                      fontSize: WaybiTextSize.caption,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -248,13 +256,14 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: trafficColor,
-                      shape: BoxShape.circle,
-                    ),
+                  Icon(
+                    !route.hasTrafficData
+                        ? Icons.help_outline_rounded
+                        : trafficHeavy || trafficModerate
+                        ? Icons.warning_rounded
+                        : Icons.check_circle_rounded,
+                    size: 15,
+                    color: trafficColor,
                   ),
                   const SizedBox(width: 5),
                   Flexible(
@@ -271,7 +280,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: trafficColor,
-                        fontSize: 10.5,
+                        fontSize: WaybiTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -316,6 +325,11 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                 : Image.network(
                     photo.url,
                     fit: BoxFit.cover,
+                    // Decode at display size, not the original photo size.
+                    // One bound only keeps the aspect ratio; place photos
+                    // are landscape, so the height bound still covers.
+                    cacheHeight: (88 * MediaQuery.devicePixelRatioOf(context))
+                        .ceil(),
                     errorBuilder: (_, _, _) => ColoredBox(
                       color: scheme.primaryContainer,
                       child: Icon(
@@ -472,7 +486,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
                                     color: scheme.primary,
-                                    fontSize: 11,
+                                    fontSize: WaybiTextSize.caption,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -526,9 +540,9 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.star_rounded,
-                              color: WaybiColors.warning,
+                              color: context.status.warning,
                               size: 17,
                             ),
                             const SizedBox(width: 4),
@@ -547,7 +561,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                               ),
                               style: TextStyle(
                                 color: scheme.onSurfaceVariant,
-                                fontSize: 11,
+                                fontSize: WaybiTextSize.caption,
                               ),
                             ),
                           ],
@@ -566,17 +580,12 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                place.businessStatus == 'OPERATIONAL'
-                                    ? _text('Open / operational', '营业中')
-                                    : place.businessStatus!.replaceAll(
-                                        '_',
-                                        ' ',
-                                      ),
+                                _businessStatus(place.businessStatus!),
                                 style: TextStyle(
                                   color: place.businessStatus == 'OPERATIONAL'
-                                      ? WaybiColors.success
+                                      ? context.status.success
                                       : scheme.onSurfaceVariant,
-                                  fontSize: 11,
+                                  fontSize: WaybiTextSize.caption,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -672,7 +681,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                       widget.detailsError!,
                       style: TextStyle(
                         color: scheme.error,
-                        fontSize: 11,
+                        fontSize: WaybiTextSize.caption,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -695,7 +704,7 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                             _text('Swipe up for details', '上拉查看更多'),
                             style: TextStyle(
                               color: scheme.primary,
-                              fontSize: 10.5,
+                              fontSize: WaybiTextSize.caption,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -773,7 +782,7 @@ class _PlaceAction extends StatelessWidget {
               maxLines: 1,
               style: TextStyle(
                 color: foreground,
-                fontSize: 10.5,
+                fontSize: WaybiTextSize.caption,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -797,12 +806,15 @@ class _PhotoStrip extends StatelessWidget {
         itemCount: photos.length.clamp(1, 4),
         itemBuilder: (context, index) {
           final photo = photos[index];
+          final dpr = MediaQuery.devicePixelRatioOf(context);
           return Stack(
             fit: StackFit.expand,
             children: [
               Image.network(
                 photo.url,
                 fit: BoxFit.cover,
+                // Width-bound decode keeps the aspect ratio for BoxFit.cover.
+                cacheWidth: (MediaQuery.sizeOf(context).width * dpr).ceil(),
                 loadingBuilder: (context, child, progress) => progress == null
                     ? child
                     : ColoredBox(
@@ -859,7 +871,7 @@ class _PhotoStrip extends StatelessWidget {
                       maxLines: 2,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 9,
+                        fontSize: WaybiTextSize.caption,
                         shadows: [Shadow(blurRadius: 5, color: Colors.black87)],
                       ),
                     ),
@@ -911,7 +923,7 @@ class _DetailsBody extends StatelessWidget {
                   child: Text(
                     chip,
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: WaybiTextSize.caption,
                       color: scheme.onSurfaceVariant,
                     ),
                   ),
@@ -951,7 +963,7 @@ class _DetailsBody extends StatelessWidget {
                       line,
                       style: TextStyle(
                         color: scheme.onSurfaceVariant,
-                        fontSize: 11,
+                        fontSize: WaybiTextSize.caption,
                       ),
                     ),
                   ),
@@ -976,7 +988,10 @@ class _DetailsBody extends StatelessWidget {
                   '${place.reviews.length} shown',
                   '显示 ${place.reviews.length} 条',
                 ),
-                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 10),
+                style: TextStyle(
+                  color: scheme.onSurfaceVariant,
+                  fontSize: WaybiTextSize.caption,
+                ),
               ),
             ],
           ),
@@ -1009,6 +1024,8 @@ class _ReviewTile extends StatelessWidget {
                       review.authorPhoto!,
                       width: 32,
                       height: 32,
+                      cacheWidth: (32 * MediaQuery.devicePixelRatioOf(context))
+                          .ceil(),
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => Icon(
                         Icons.person_rounded,
@@ -1042,9 +1059,9 @@ class _ReviewTile extends StatelessWidget {
                     if (review.rating != null)
                       Text(
                         '${review.rating!.toStringAsFixed(1)} ★',
-                        style: const TextStyle(
-                          color: WaybiColors.warning,
-                          fontSize: 10,
+                        style: TextStyle(
+                          color: context.status.warning,
+                          fontSize: WaybiTextSize.caption,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1055,7 +1072,7 @@ class _ReviewTile extends StatelessWidget {
                     review.relativeTime,
                     style: TextStyle(
                       color: scheme.onSurfaceVariant,
-                      fontSize: 9,
+                      fontSize: WaybiTextSize.caption,
                     ),
                   ),
                 if (review.text.isNotEmpty) ...[
@@ -1064,7 +1081,7 @@ class _ReviewTile extends StatelessWidget {
                     review.text,
                     style: TextStyle(
                       color: scheme.onSurface,
-                      fontSize: 11,
+                      fontSize: WaybiTextSize.caption,
                       height: 1.4,
                     ),
                   ),

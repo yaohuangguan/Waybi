@@ -210,7 +210,7 @@ class _LivingRoomSceneState extends State<LivingRoomScene>
                                     child: Text(
                                       _name(pose.kind),
                                       style: const TextStyle(
-                                        fontSize: 10,
+                                        fontSize: 12,
                                         fontWeight: FontWeight.w700,
                                         color: WwhColors.ink,
                                       ),
@@ -245,7 +245,7 @@ class _LivingRoomSceneState extends State<LivingRoomScene>
                             ),
                             style: const TextStyle(
                               color: WwhColors.moss,
-                              fontSize: 10,
+                              fontSize: 12,
                             ),
                           ),
                         ],

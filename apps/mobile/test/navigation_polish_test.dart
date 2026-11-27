@@ -140,7 +140,14 @@ void main() {
       expect(find.text('奥克兰美术馆'), findsOneWidget);
       expect(find.textContaining('入口 · Wellesley Street East'), findsOneWidget);
       expect(find.textContaining('终点停车楼 · 90 米'), findsOneWidget);
-      expect(find.textContaining('到达后会自动接续最后步行'), findsOneWidget);
+      expect(find.textContaining('之后接续步行到入口'), findsOneWidget);
+      // Parking options are full-width 48 dp targets when stopped.
+      expect(
+        tester
+            .getSize(find.widgetWithText(OutlinedButton, '终点停车楼 · 90 米'))
+            .height,
+        greaterThanOrEqualTo(48),
+      );
       expect(tester.takeException(), isNull);
     },
   );

@@ -20,6 +20,8 @@ import 'package:waybi_mobile/widgets/profile_sheet.dart';
 import 'package:waybi_mobile/widgets/explore_sheet.dart';
 import 'package:waybi_mobile/widgets/system_navigation_status.dart';
 
+import 'support/hold.dart';
+
 class ExploreFixture implements ExploreProvider {
   Future<List<PlaceSummary>> Function(String) load = (_) async => const [];
   @override
@@ -86,7 +88,12 @@ void main() {
       expect(find.textContaining('GPS —'), findsOneWidget);
       expect(find.text('70 → Britomart'), findsOneWidget);
       await t.tap(find.byTooltip('Recenter'));
+      // A tap only explains; holding ends the trip.
       await t.tap(find.text('End trip'));
+      await t.pump();
+      expect([end, recenter], [0, 1]);
+      expect(find.text('Hold to end'), findsOneWidget);
+      await holdToEnd(t, find.byKey(const Key('transitEndButton')));
       expect([end, recenter], [1, 1]);
       expect(t.takeException(), isNull);
     },

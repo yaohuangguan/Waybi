@@ -300,6 +300,9 @@
     "apps/mobile/lib/widgets/drive_hud.dart": {
       "minimumLinePercent": 65
     },
+    "apps/mobile/lib/widgets/driving_motion.dart": {
+      "minimumLinePercent": 100
+    },
     "apps/mobile/lib/widgets/explore_page.dart": {
       "minimumLinePercent": 65
     },
@@ -311,6 +314,9 @@
     },
     "apps/mobile/lib/widgets/full_screen_search.dart": {
       "minimumLinePercent": 85
+    },
+    "apps/mobile/lib/widgets/hold_to_end_button.dart": {
+      "minimumLinePercent": 95
     },
     "apps/mobile/lib/widgets/independent_navigation_overlay.dart": {
       "minimumLinePercent": 80
@@ -366,6 +372,9 @@
     "apps/mobile/lib/widgets/route_preview_sheet.dart": {
       "minimumLinePercent": 75
     },
+    "apps/mobile/lib/widgets/speed_readout.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/widgets/splash_gate.dart": {
       "minimumLinePercent": 100
     },
@@ -382,6 +391,9 @@
       "minimumLinePercent": 75
     },
     "apps/mobile/lib/widgets/waybi_bird.dart": {
+      "minimumLinePercent": 100
+    },
+    "apps/mobile/lib/widgets/waybi_format.dart": {
       "minimumLinePercent": 100
     },
     "packages/waybi_friends/lib/src/app.dart": {

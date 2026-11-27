@@ -4,9 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:waybi_mobile/data/parking_repository.dart';
 import 'package:waybi_mobile/domain/map_provider.dart';
 import 'package:waybi_mobile/domain/route_option.dart';
+import 'package:waybi_mobile/domain/safety_camera.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/theme/waybi_theme.dart';
 import 'package:waybi_mobile/widgets/arrival_experience_panel.dart';
+import 'package:waybi_mobile/widgets/drive_hud.dart';
 import 'package:waybi_mobile/widgets/navigation_overlay.dart';
 import 'package:waybi_mobile/widgets/route_preview_sheet.dart';
 import 'package:waybi_mobile/widgets/transit_trip_overlay.dart';
@@ -168,7 +170,7 @@ void main() {
           });
 
           testWidgets('arrival panel fits $label', (t) async {
-            {
+            for (final moving in [false, true]) {
               await layout(
                 t,
                 size,
@@ -186,6 +188,7 @@ void main() {
                         remainingMeters: 640,
                         parkingPlaces: parking,
                         parkingLoading: false,
+                        isMoving: moving,
                         onParkingSelected: (_) {},
                       ),
                     ),
@@ -213,6 +216,37 @@ void main() {
                 ),
               ),
               settle: false,
+            );
+            expectLaidOut(t);
+          });
+
+          testWidgets('drive HUD fits $label', (t) async {
+            final engine = DriveEngine()
+              ..speedKph = 104
+              ..speedLimitKph = 100
+              ..upcomingCamera = const SafetyCamera(
+                id: 'c',
+                name: 'Camera',
+                region: 'Auckland',
+                suburb: 'Albany',
+                location: 'State Highway 1 northbound near Oteha Valley Road',
+                type: 'Average speed',
+                latitude: -36.7,
+                longitude: 174.7,
+              )
+              ..upcomingCameraDistanceMeters = 1450;
+            addTearDown(engine.dispose);
+            await layout(
+              t,
+              size,
+              scale,
+              app(
+                dark: dark,
+                lang: lang,
+                Scaffold(
+                  body: DriveHud(engine: engine, onStop: () {}),
+                ),
+              ),
             );
             expectLaidOut(t);
           });

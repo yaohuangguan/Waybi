@@ -5,6 +5,8 @@ import 'package:waybi_mobile/domain/navigation_lanes.dart';
 import 'package:waybi_mobile/widgets/lane_arrow.dart';
 import 'package:waybi_mobile/widgets/navigation_overlay.dart';
 
+import 'support/hold.dart';
+
 void main() {
   test('navigation distances never show negative metres', () {
     expect(navigationDistanceLabel(-25), '0 m');
@@ -86,8 +88,13 @@ void main() {
     expect(find.byTooltip('Route overview'), findsOneWidget);
     expect(find.text('Add a report'), findsNothing);
 
+    // A brush against End must not stop guidance: a tap only explains,
+    // holding ends.
     await tester.tap(find.text('End'));
     await tester.pump();
+    expect(endCount, 0);
+    expect(find.text('Hold to end'), findsOneWidget);
+    await holdToEnd(tester, find.byKey(const Key('navigationEndButton')));
     expect(endCount, 1);
     expect(find.text('Add a report'), findsNothing);
     expect(recenterCount, 0);

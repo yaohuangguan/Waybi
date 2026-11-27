@@ -19,6 +19,7 @@ This inventory is a worksheet for the final build. It is not a declaration of
 | Community road reports / navigation feedback | Event coordinates, type/time and submitted feedback | Review report visibility, retention and diagnostics; avoid private details |
 | API quota/usage counters and errors | Usage accounting, reliability and provider/hosting logs | Review applicable usage/diagnostic categories and account linkage; not an advertising consent claim |
 | Purchases if enabled | Apple transaction/product IDs and server-verified entitlement; Stripe backend remains separately configured | Purchase history if used; Waybi does not receive full Apple card details |
+| Custom navigation voice (Plus) | Microphone used only while recording; clips stored in the app documents directory on the device and played locally during guidance. Not uploaded, not sent to any voice/TTS vendor, not in account backups. Deleted per clip, all at once, or with the app; device backups (iCloud/Android) may contain the app documents folder | Audio data is not "collected" under Apple's definition while it never leaves the device; re-check if upload, sync or voice cloning is ever added. `NSMicrophoneUsageDescription` and Android `RECORD_AUDIO` declared |
 | Support messages | User email and volunteered attachments; planned Cloudflare forwarding to a Google-hosted support inbox | Customer support / user content; real support operation must be verified |
 
 Cloudflare hosts the API/data/caches; Google Cloud hosts the NZ route engine.

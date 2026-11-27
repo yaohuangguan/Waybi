@@ -49,6 +49,7 @@ Test names in this table are under apps/mobile/test unless a package or native t
 | Bus/transit lane restrictions and review corridors | `transit_lanes_test.dart`, `transit_lane_map_test.dart`, `transit_review_corridor_test.dart` |
 | Native GPS configuration, follow, trail and complete stop | `drive_engine_platform_test.dart`, `route_display_trail_test.dart`, `drive_hud_test.dart`, `independent_navigation_camera_test.dart` |
 | Serialized speech, audio focus, iOS mixing and release | `voice_engine_test.dart`, `navigation_polish_test.dart` |
+| Plus custom voice: phrase planning, clip fallback, Plus gating, recording and deletion | `custom_voice_test.dart`, `custom_voice_flows_test.dart`, `custom_voice_profile_entry_test.dart` |
 | Lockscreen status, retry, native serialization and stop | `system_navigation_test.dart`, `component_catalog_test.dart` |
 | Navigation links, cold-start requests and intent validation | `external_navigation_inbox_test.dart`, `navigation_link_test.dart` |
 | iOS and Android permission denial/grant and payloads | `notification_service_test.dart` |

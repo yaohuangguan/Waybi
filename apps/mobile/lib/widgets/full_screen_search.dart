@@ -1,5 +1,6 @@
 import 'place_sources_sheet.dart';
 import 'companion_search_prompt.dart';
+import 'far_match_notice.dart';
 import '../theme/waybi_theme.dart';
 
 import 'dart:async';
@@ -8,6 +9,7 @@ import 'package:flutter/material.dart';
 
 import 'waybi_format.dart';
 import '../data/search_history_store.dart';
+import '../domain/far_match.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import '../providers/provider_contracts.dart';
@@ -318,6 +320,11 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
         (_expandedArea ? 'all|' : 'near|') +
         _controller.text.trim().toLowerCase();
     final currentResults = recent || _resultScope == scope;
+    final farMatch = recent || !currentResults
+        ? null
+        : farMatchDistance(_results, widget.currentLocation);
+    final amapResults =
+        !recent && _results.any((item) => item.reference?.provider == 'amap');
     final items = recent
         ? widget.recent
               .map(
@@ -522,6 +529,11 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                       ),
                     ),
                   ),
+                if (farMatch != null && !_loading)
+                  FarMatchNotice(
+                    title: farMatchTitle(farMatch, widget.language),
+                    detail: farMatchDetail(widget.language),
+                  ),
                 if (_error != null)
                   Padding(
                     padding: const EdgeInsets.all(18),
@@ -590,12 +602,15 @@ class _FullScreenSearchState extends State<FullScreenSearch> {
                     enabled: currentResults && !_resolving,
                   ),
                 ],
+                if (amapResults)
+                  AmapAttributionLabel(language: widget.language),
               ],
             ),
           ),
           if (items.any((item) {
             final provider = item.reference?.provider ?? '';
             return provider == 'google' ||
+                provider == 'amap' ||
                 provider == 'osm' ||
                 provider == 'geoapify' ||
                 provider == 'here' ||

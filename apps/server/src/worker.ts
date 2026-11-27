@@ -40,6 +40,8 @@ import { reserveGoogleUnits } from './google_budget.ts';
 import { nominatimArray } from './nominatim.ts';
 import { nzRoutingEndpoint } from './nz_routing.ts';
 import { handleVoicePacks, voicePackLandingPage } from './voice_packs.ts';
+import { amapSearchApplies } from './search/amap_search.ts';
+import { amapLegacyRoute, amapRoutingApplies } from './amap_routing.ts';
 
 const CAMERA_KEY = 'cameras/current';
 // Camera locations are slow-changing metadata, not live traffic frames.
@@ -484,7 +486,7 @@ async function handleApi(request: Request, env, ctx) {
         alternatives: alternatives == null ? undefined : alternatives === 'true',
         headingDegrees,
         language: url.searchParams.get('lang') === 'zh' ? 'zh' : 'en',
-        routingClientKey: ownedEngine ? await routingClientKey(request, env) : undefined,
+        routingClientKey: ownedEngine || amapRoutingApplies(env, [from, ...stops, to]) ? await routingClientKey(request, env) : undefined,
         reserveGoogle: (sku, units) => reserveGoogleUnits(env, sku, units),
       }
     ));
@@ -493,11 +495,14 @@ async function handleApi(request: Request, env, ctx) {
     return independentPlaceDetails(url, env);
   }
   if (url.pathname === '/api/search') {
-    if (url.searchParams.get('provider') === 'independent') {
+    const mainlandChina = amapSearchApplies(env, validateCoordinatePair(url.searchParams.get('near')));
+    if (url.searchParams.get('provider') === 'independent' || mainlandChina) {
       // Keep Waybi's fallback inside the same bounded, cached search stack.
       // Public Nominatim is a legacy compatibility path, not typeahead.
       const suggestUrl = new URL(url);
       suggestUrl.pathname = '/api/suggest';
+      // In mainland China a submitted search uses Amap keyword + around search.
+      if (mainlandChina) suggestUrl.searchParams.set('mode', 'search');
       return handlePlaces(new Request(suggestUrl, request), env,
         (provider, sku, units) => ctx.waitUntil(recordApiUsage(env, { provider, sku, calls: units, units })), ctx);
     }
@@ -563,6 +568,12 @@ async function handleApi(request: Request, env, ctx) {
     if (!stops) return json({ error: 'stops must be up to 23 longitude,latitude pairs separated by ;' }, 400);
     if (stops.length > 23) return json({ error: 'At most 23 intermediate stops are supported' }, 400);
     const points = [from, ...stops, to];
+    if (amapRoutingApplies(env, points)) {
+      try {
+        return json(await amapLegacyRoute(env, points, (provider, sku, units) =>
+          ctx.waitUntil(recordApiUsage(env, { provider, sku, calls: units, units }))));
+      } catch { /* Amap unavailable: the public router below answers. */ }
+    }
     const routeUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${points.map((point) => point.join(',')).join(';')}?overview=full&geometries=geojson&steps=true`;
     const result = await upstreamJson(routeUrl, { 'user-agent': 'Waybi/0.1 (https://github.com/yaohuangguan/Waybi)', referer: 'https://routing.openstreetmap.de/', accept: 'application/json' });
     if (result.code !== 'Ok' || !result.routes?.length) return json({ error: 'No driving route found' }, 422);

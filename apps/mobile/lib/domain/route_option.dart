@@ -216,6 +216,10 @@ class RouteOption {
       ? conditions!.hasTraffic && conditions!.moderateMeters > 0
       : traffic.slow > 0;
   bool get blockedByClosure => closureIds.isNotEmpty;
+
+  /// Planned by Amap (AutoNavi) in mainland China; its attribution must be
+  /// shown wherever the route or its traffic is displayed.
+  bool get usesAmap => routingEngine == 'amap';
   bool get blockedForDriving =>
       blockedByClosure || restrictedRoadIds.isNotEmpty;
 

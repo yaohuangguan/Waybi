@@ -3,10 +3,13 @@ import '../theme/waybi_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
+import '../domain/far_match.dart';
+import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../domain/route_preference.dart';
 import '../domain/road_event.dart';
 import '../data/parking_repository.dart';
+import 'far_match_notice.dart';
 import 'waybi_bird.dart';
 
 String _duration(int seconds, {bool isChinese = false}) {
@@ -184,6 +187,9 @@ class RoutePreviewSheet extends StatelessWidget {
     this.onParkingSelected,
     this.onDirectDestination,
     this.isChinese = false,
+    this.destinationKind,
+    this.destinationCategory = '',
+    this.warnFarDestination = true,
   });
 
   final String destinationTitle;
@@ -222,6 +228,30 @@ class RoutePreviewSheet extends StatelessWidget {
   final ValueChanged<ParkingPlace>? onParkingSelected;
   final VoidCallback? onDirectDestination;
   final bool isChinese;
+
+  /// The kind and category of the destination, when known. Cities, regions
+  /// and dropped pins never get the far-destination caution.
+  final PlaceKind? destinationKind;
+  final String destinationCategory;
+
+  /// False for destinations the person chose deliberately (Home, Work,
+  /// saved places); true for search results.
+  final bool warnFarDestination;
+
+  double? _farDestination(RouteOption route) {
+    if (!warnFarDestination) return null;
+    final ends = route.waypoints.length >= 2 ? route.waypoints : route.points;
+    if (ends.length < 2) return null;
+    return farDestinationDistance(
+      PlaceSummary(
+        name: destinationTitle,
+        location: ends.last,
+        kind: destinationKind ?? PlaceKind.poi,
+        category: destinationCategory,
+      ),
+      ends.first,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -678,6 +708,15 @@ class RoutePreviewSheet extends StatelessWidget {
                   ],
                   if (selected != null) ...[
                     const SizedBox(height: 10),
+                    if (_farDestination(selected) case final far?)
+                      FarMatchNotice(
+                        title: farDestinationTitle(
+                          far,
+                          isChinese ? 'zh' : 'en',
+                        ),
+                        detail: farDestinationDetail(isChinese ? 'zh' : 'en'),
+                        margin: const EdgeInsets.only(bottom: 8),
+                      ),
                     _JourneyBrief(
                       route: selected,
                       cameraSummary:
@@ -697,6 +736,12 @@ class RoutePreviewSheet extends StatelessWidget {
                         (selected.traffic.hasIssues ||
                             selected.warnings.isNotEmpty))
                       _TrafficCard(route: selected, isChinese: isChinese),
+                    if (selected.usesAmap)
+                      AmapAttributionLabel(
+                        language: isChinese ? 'zh' : 'en',
+                        routes: true,
+                        padding: const EdgeInsets.only(top: 6),
+                      ),
                     if (selected.mode == WaybiTravelMode.transit &&
                         selected.transit.isNotEmpty)
                       _TransitDetails(route: selected, isChinese: isChinese),

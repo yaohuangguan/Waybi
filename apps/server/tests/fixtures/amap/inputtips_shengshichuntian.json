@@ -1,0 +1,58 @@
+{
+  "status": "1",
+  "count": "5",
+  "info": "OK",
+  "infocode": "10000",
+  "tips": [
+    {
+      "id": "B017309XYZ",
+      "name": "盛世春天",
+      "district": "河南省漯河市源汇区",
+      "adcode": "411102",
+      "location": "114.022525,33.580013",
+      "address": "嵩山路与黄河路交叉口",
+      "typecode": "120302",
+      "city": []
+    },
+    {
+      "id": "B0FFHQ1A2B",
+      "name": "盛世春天",
+      "district": "河北省石家庄市长安区",
+      "adcode": "130102",
+      "location": "114.526553,38.060799",
+      "address": "建华北大街与北二环东路交叉口东北",
+      "typecode": "120302",
+      "city": []
+    },
+    {
+      "id": "B0FFHQ1A2C",
+      "name": "盛世春天-北门",
+      "district": "河北省石家庄市长安区",
+      "adcode": "130102",
+      "location": "114.527051,38.062297",
+      "address": "建华北大街",
+      "typecode": "991001",
+      "city": []
+    },
+    {
+      "id": [],
+      "name": "盛世春天小区",
+      "district": [],
+      "adcode": [],
+      "location": [],
+      "address": [],
+      "typecode": [],
+      "city": []
+    },
+    {
+      "id": "BV10006813",
+      "name": "盛世春天公交线路",
+      "district": "河北省石家庄市",
+      "adcode": "130100",
+      "location": [],
+      "address": "1路;5路",
+      "typecode": "",
+      "city": []
+    }
+  ]
+}

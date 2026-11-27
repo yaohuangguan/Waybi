@@ -2,19 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../theme/waybi_theme.dart';
 
+/// The Waybi mascot. Decorative by default (screen readers skip it); pass
+/// a localized [semanticLabel] where the bird carries meaning.
 class WaybiBird extends StatelessWidget {
-  const WaybiBird({super.key, this.size = 64});
+  const WaybiBird({super.key, this.size = 64, this.semanticLabel});
   final double size;
+  final String? semanticLabel;
   @override
-  Widget build(BuildContext context) => Semantics(
-    label: 'Waybi kiwi bird',
-    image: true,
-    child: SizedBox(
+  Widget build(BuildContext context) {
+    final bird = SizedBox(
       width: size,
       height: size,
       child: CustomPaint(painter: WaybiBirdPainter()),
-    ),
-  );
+    );
+    if (semanticLabel == null) return ExcludeSemantics(child: bird);
+    return Semantics(label: semanticLabel, image: true, child: bird);
+  }
 }
 
 /// The same painter is used for the splash mascot and exported launcher assets.

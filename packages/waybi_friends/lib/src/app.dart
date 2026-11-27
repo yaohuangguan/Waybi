@@ -233,7 +233,7 @@ class _GameShellState extends State<GameShell> {
         child: Container(
           decoration: const BoxDecoration(
             color: WwhColors.paper,
-            border: Border(top: BorderSide(color: Color(0x1A23351D))),
+            border: Border(top: BorderSide(color: WwhColors.hairline)),
           ),
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
           child: Row(
@@ -284,7 +284,10 @@ class _NavItem extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+          // Respect the system's reduce-motion setting.
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
             color: selected
@@ -304,7 +307,7 @@ class _NavItem extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                   color: selected ? WwhColors.ink : WwhColors.muted,
                 ),

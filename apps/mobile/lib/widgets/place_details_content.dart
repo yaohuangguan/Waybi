@@ -256,13 +256,14 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: trafficColor,
-                      shape: BoxShape.circle,
-                    ),
+                  Icon(
+                    !route.hasTrafficData
+                        ? Icons.help_outline_rounded
+                        : trafficHeavy || trafficModerate
+                        ? Icons.warning_rounded
+                        : Icons.check_circle_rounded,
+                    size: 15,
+                    color: trafficColor,
                   ),
                   const SizedBox(width: 5),
                   Flexible(

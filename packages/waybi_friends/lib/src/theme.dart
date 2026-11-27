@@ -12,7 +12,12 @@ class WwhColors {
   static const sky = Color(0xFFBFE4E6);
   static const peach = Color(0xFFF0C9AA);
   static const softBlue = Color(0xFFD8E9F0);
-  static const muted = Color(0xFF74806B);
+
+  /// Secondary text: 5.5:1 on [paper] and 5.1:1 on [cream] (WCAG AA).
+  static const muted = Color(0xFF5F6A57);
+
+  /// Hairline dividers.
+  static const hairline = Color(0x1A23351D);
 }
 
 ThemeData buildWaybiTheme() {

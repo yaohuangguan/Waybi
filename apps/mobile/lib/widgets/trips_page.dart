@@ -365,6 +365,39 @@ class _TripsPageState extends State<TripsPage> {
     return status.success;
   }
 
+  /// Traffic state as icon + word so it does not rely on colour alone.
+  Widget _trafficBadge(RouteOption route, Color color) {
+    final delay = route.trafficDelaySeconds ?? 0;
+    final (
+      IconData icon,
+      String label,
+    ) = delay >= 600 || route.traffic.trafficJam > 0
+        ? (Icons.error_rounded, _text('Heavy', '拥堵'))
+        : delay >= 180 || route.traffic.slow > 0
+        ? (Icons.warning_rounded, _text('Slow', '缓行'))
+        : (Icons.check_circle_rounded, _text('Clear', '顺畅'));
+    return Row(
+      key: const ValueKey('commuteTrafficBadge'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: WaybiTextSize.caption,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Color _watchColor(RouteWatchItem? watch) => switch (watch?.status) {
     'disrupted' => context.status.danger,
     'warning' => context.status.warning,
@@ -748,14 +781,7 @@ class _TripsPageState extends State<TripsPage> {
                     ),
                     const Spacer(),
                     if (route != null)
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: color,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
+                      Flexible(child: _trafficBadge(route, color)),
                   ],
                 ),
                 const SizedBox(height: 12),

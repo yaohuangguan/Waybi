@@ -132,30 +132,36 @@ class _MapLayerSheetState extends State<MapLayerSheet> {
           const SizedBox(width: 3),
           Tooltip(
             message: _text('Alert while driving', '驾驶时提醒'),
-            child: Material(
-              color: alert
-                  ? activeBlue.withValues(alpha: dark ? .22 : .12)
-                  : Colors.transparent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(11),
-                side: BorderSide(
-                  color: alert
-                      ? activeBlue.withValues(alpha: .55)
-                      : theme.dividerColor,
+            excludeFromSemantics: true,
+            child: Semantics(
+              button: true,
+              toggled: alert,
+              label: _text('Alert while driving · $en', '驾驶时提醒 · $zh'),
+              excludeSemantics: true,
+              child: Material(
+                color: alert
+                    ? activeBlue.withValues(alpha: dark ? .22 : .12)
+                    : Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(11),
+                  side: BorderSide(
+                    color: alert
+                        ? activeBlue.withValues(alpha: .55)
+                        : theme.dividerColor,
+                  ),
                 ),
-              ),
-              child: InkWell(
-                onTap: () => onAlert(!alert),
-                borderRadius: BorderRadius.circular(11),
-                child: SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: Icon(
-                    alert
-                        ? Icons.notifications_active_rounded
-                        : Icons.notifications_none_rounded,
-                    size: 19,
-                    color: alert ? activeBlue : scheme.onSurfaceVariant,
+                child: InkWell(
+                  onTap: () => onAlert(!alert),
+                  borderRadius: BorderRadius.circular(11),
+                  child: SizedBox.square(
+                    dimension: WaybiTouch.minTarget,
+                    child: Icon(
+                      alert
+                          ? Icons.notifications_active_rounded
+                          : Icons.notifications_none_rounded,
+                      size: 21,
+                      color: alert ? activeBlue : scheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),

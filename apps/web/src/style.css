@@ -595,3 +595,10 @@ button.panel-handle:focus-visible { outline: 3px solid var(--focus); outline-off
 .brand .waybi-lockup { width: auto; height: 44px; }
 @media (max-width: 759px) { .brand .waybi-lockup { height: 35px; } }
 @media (max-width: 390px) { .brand .waybi-lockup { height: 31px; } }
+
+/* Native modal dialogs: focus is moved in and trapped by the browser; Escape closes. */
+dialog.modal { position: fixed; inset: 0; width: min(500px, calc(100% - 30px)); max-width: none; max-height: min(82dvh, 680px); margin: auto auto max(15px, env(safe-area-inset-bottom)); padding: 24px; border: 0; border-radius: 25px; background: var(--surface); color: var(--text-primary); box-shadow: 0 25px 70px var(--shadow); overflow-y: auto; overscroll-behavior: contain; }
+dialog.modal::backdrop { background: var(--overlay); }
+dialog.modal:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+@media (min-width: 760px) { dialog.modal { margin: auto; } }
+.journey-summary img { margin: 0 auto 6px; }

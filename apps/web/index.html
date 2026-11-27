@@ -302,10 +302,9 @@
 
       <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-      <div id="journeySummaryOverlay" class="overlay" hidden></div>
+      <dialog id="journeySummaryDialog" class="modal journey-summary" aria-labelledby="journeySummaryTitle"></dialog>
 
-      <div id="settingsOverlay" class="overlay" hidden>
-        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <dialog id="settingsDialog" class="modal" aria-labelledby="settingsTitle">
           <div class="modal-head"><div><span class="eyebrow" data-i18n="settingsEyebrow">NAVIGATION</span><h2 id="settingsTitle" data-i18n="settingsTitle">Navigation settings</h2></div><button id="closeSettings" class="close-button" type="button" data-i18n-aria-label="closeSettings" data-i18n-title="closeSettings" aria-label="Close settings">×</button></div>
           <div class="setting-row" id="languageSettingRow"><div><strong id="languageSettingTitle" data-i18n="language">Language</strong><small data-i18n="languageDescription">App and voice alerts</small></div><div class="language-switch" role="group" aria-labelledby="languageSettingTitle"><button id="zhButton" type="button" lang="zh-CN" aria-pressed="false">中文</button><button id="enButton" type="button" lang="en" aria-pressed="true" class="selected">EN</button></div></div>
           <div class="setting-row" id="voiceSettingRow"><div><strong id="voiceSettingTitle" data-i18n="voice">Voice guidance</strong><small id="voiceSettingDescription" data-i18n="voiceDescription">Turns and cameras</small></div><button id="voiceTestButton" class="voice-test-button" type="button" data-i18n="voiceTest">Test voice ▶</button><label class="toggle"><input id="voiceToggle" type="checkbox" role="switch" aria-labelledby="voiceSettingTitle" aria-describedby="voiceSettingDescription" checked /><span aria-hidden="true"></span></label></div>
@@ -313,11 +312,10 @@
           <div class="setting-row" id="keepScreenAwakeRow"><div><strong id="keepScreenAwakeTitle" data-i18n="keepScreenAwake">Keep screen awake</strong><small id="keepScreenAwakeDescription" data-i18n="keepScreenAwakeDescription">Prevent auto-lock while navigating</small></div><label class="toggle"><input id="keepScreenAwakeToggle" type="checkbox" role="switch" aria-labelledby="keepScreenAwakeTitle" aria-describedby="keepScreenAwakeDescription" checked /><span aria-hidden="true"></span></label></div>
           <div class="setting-row" id="drivingModeRow"><div><strong data-i18n="drivingMode">Driving mode</strong><small data-i18n="drivingDescription">Keep the screen awake and track location in foreground</small></div><span id="drivingStatus" class="status-chip" data-i18n="drivingStopped">Inactive</span></div>
           <div class="info-card" id="backgroundInfo"><strong data-i18n="backgroundTitle">Background navigation</strong><p data-i18n="backgroundDescription">Keep the web map open during navigation. A browser may pause GPS and voice guidance when locked or in the background.</p></div>
-        </section>
-      </div>
+          <div id="accountSection" class="account-section"></div>
+      </dialog>
 
-      <div id="dataOverlay" class="overlay" hidden>
-        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="dataTitle">
+      <dialog id="dataDialog" class="modal" aria-labelledby="dataTitle">
           <div class="modal-head"><div><span class="eyebrow" data-i18n="dataEyebrow">DATA SOURCE</span><h2 id="dataTitle" data-i18n="dataTitle">Camera data</h2></div><button id="closeData" class="close-button" type="button" data-i18n-aria-label="closeData" data-i18n-title="closeData" aria-label="Close data details">×</button></div>
           <div class="data-detail"><span data-i18n="source">Data source</span><strong>NZ Transport Agency Waka Kotahi</strong></div>
           <div class="data-detail"><span data-i18n="sourceUpdated">Source updated</span><strong id="sourceDate">—</strong></div>
@@ -325,8 +323,7 @@
           <div class="data-detail"><span data-i18n="syncStatus">Sync status</span><strong id="syncStatus">—</strong></div>
           <div class="info-card"><strong data-i18n="autoSync">Automatic sync</strong><p data-i18n="autoSyncDescription">The server automatically refreshes the official NZTA list. Validated data is kept if syncing fails. Camera direction and lane data are not provided by NZTA; alerts are advisory.</p></div>
           <a class="source-link" href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" target="_blank" rel="noopener noreferrer" data-i18n="sourceLink">View official NZTA list ↗</a>
-        </section>
-      </div>
+      </dialog>
     </div>
 
     <div id="seo-home">

@@ -36,18 +36,22 @@ it('real navigator boots offline, retains saved cameras and exposes settings wit
   await vi.advanceTimersByTimeAsync(0);
   expect(document.querySelector('#dataStatus')?.textContent).toContain('cached');
   document.querySelector<HTMLButtonElement>('#settingsButton')!.click();
-  expect(document.querySelector<HTMLElement>('#settingsOverlay')?.hidden).toBe(false);
+  expect(document.querySelector<HTMLDialogElement>('#settingsDialog')?.open).toBe(true);
   document.querySelector<HTMLButtonElement>('#zhButton')!.click();
   expect(document.documentElement.lang).toBe('zh-CN');
   expect(localStorage.getItem('waybi-ui-language')).toBe('zh');
   document.querySelector<HTMLButtonElement>('#closeSettings')!.click();
-  expect(document.querySelector<HTMLElement>('#settingsOverlay')?.hidden).toBe(true);
+  expect(document.querySelector<HTMLDialogElement>('#settingsDialog')?.open).toBe(false);
   document.querySelector<HTMLButtonElement>('#gpsBadge')!.click();
   expect(document.querySelector('#gpsBadge')?.textContent).not.toBe('');
-  document.querySelector<HTMLButtonElement>('#dataButton')!.click();
-  expect(document.querySelector<HTMLElement>('#dataOverlay')?.hidden).toBe(false);
+  const dataButton = document.querySelector<HTMLButtonElement>('#dataButton')!;
+  dataButton.focus();
+  dataButton.click();
+  expect(document.querySelector<HTMLDialogElement>('#dataDialog')?.open).toBe(true);
   document.querySelector<HTMLButtonElement>('#closeData')!.click();
-  expect(document.querySelector<HTMLElement>('#dataOverlay')?.hidden).toBe(true);
+  expect(document.querySelector<HTMLDialogElement>('#dataDialog')?.open).toBe(false);
+  // Focus goes back to the control that opened the dialog.
+  expect(document.activeElement).toBe(dataButton);
   vi.clearAllTimers();
 });
 it('real navigator gets location, plans a selected place, starts and ends a trip', async () => {
@@ -93,7 +97,7 @@ it('real navigator gets location, plans a selected place, starts and ends a trip
   await vi.advanceTimersByTimeAsync(0);
   expect(document.body.dataset.mode).toBe('explore');
   // Ending right after starting is not a "journey complete · 0 m".
-  expect(document.querySelector<HTMLElement>('#journeySummaryOverlay')?.hidden).toBe(true);
+  expect(document.querySelector<HTMLDialogElement>('#journeySummaryDialog')?.open).toBe(false);
   expect(document.querySelector('#toast')?.textContent).toBe('Navigation ended.');
   vi.clearAllTimers();
 });
@@ -137,7 +141,7 @@ it('keeps navigating on the last route when a reroute fails, retries with backof
     await vi.advanceTimersByTimeAsync(800);
   }
   expect(document.body.dataset.mode).toBe('navigation');
-  expect(document.querySelector<HTMLElement>('#journeySummaryOverlay')?.hidden).toBe(true);
+  expect(document.querySelector<HTMLDialogElement>('#journeySummaryDialog')?.open).toBe(false);
   const status=document.querySelector<HTMLElement>('#navStatus')!;
   expect(status.hidden).toBe(false);
   expect(status.textContent).toContain('following your last route');

@@ -11,6 +11,7 @@ import { WaybiMapAdapter, type PoiSelection } from './waybi-map';
 import { fetchRoutePlan, routeFromOption, type RouteOption as PlannerRouteOption, type RoutePlan as PlannerRoutePlan, type TravelMode } from './route-planner';
 import type { ParkingPlace } from './parking';
 import { apiFetch, describeError, isAbortError } from './api';
+import { closeDialog, openDialog } from './dialogs';
 import { currentPlatform, isStandalone, permissionHelpKey } from './geo-help';
 import { RouteRequestCoordinator, journeySummaryKind, layoutSignature, type PlanTrigger } from './route-requests';
 
@@ -1322,8 +1323,8 @@ function stopNavigation(arrived = false) {
   if (arrived) speak(t(language, parkedAtParking ? 'arrivedParkingSpeech' : 'arrivedSpeech'));
 }
 
-function showOverlay(id: string) { $(id).hidden = false; }
-function hideOverlay(id: string) { $(id).hidden = true; }
+function showDialog(id: string) { openDialog($(id) as HTMLDialogElement); }
+function hideDialog(id: string) { closeDialog($(id) as HTMLDialogElement); }
 
 function hidePoiCard() {
   selectedPoi = null;
@@ -1661,7 +1662,7 @@ $('driveButton').onclick = () => {
   else void startNavigation();
 };
 $('navEndButton').onclick = () => stopNavigation();
-$('navDataButton').onclick = () => showOverlay('dataOverlay');
+$('navDataButton').onclick = () => showDialog('dataDialog');
 $('poiClose').onclick = hidePoiCard;
 $('poiNavigate').onclick = navigateToSelectedPoi;
 $('poiFavorite').onclick = () => {
@@ -1728,18 +1729,17 @@ $('navSheetHandle').onclick = () => {
   requestAnimationFrame(updateNavigationOverlayLayout);
   if (current && route && navigating && following) requestAnimationFrame(() => map.focusNavigation(lookAheadCenter(current!, latestHeading, route!)));
 };
-$('settingsButton').onclick = () => showOverlay('settingsOverlay');
+$('settingsButton').onclick = () => showDialog('settingsDialog');
 $('profileButton').onclick = () => { window.location.href = '/dashboard'; };
-$('closeSettings').onclick = () => hideOverlay('settingsOverlay');
-$('dataButton').onclick = () => showOverlay('dataOverlay');
+$('closeSettings').onclick = () => hideDialog('settingsDialog');
+$('dataButton').onclick = () => showDialog('dataDialog');
 $('cameraListButton').onclick = () => {
   const list = $('cameraList');
   list.hidden = !list.hidden;
   $('cameraListButton').setAttribute('aria-expanded', String(!list.hidden));
   if (!list.hidden) renderCameraList();
 };
-$('closeData').onclick = () => hideOverlay('dataOverlay');
-for (const id of ['settingsOverlay', 'dataOverlay']) $(id).addEventListener('click', (event) => { if (event.target === $(id)) hideOverlay(id); });
+$('closeData').onclick = () => hideDialog('dataDialog');
 function applyLanguage() {
   applyUiLanguage(language);
   for (const [id, code] of [['zhButton', 'zh'], ['enButton', 'en']] as const) {
@@ -1854,9 +1854,7 @@ void loadCameras();
 if (typeof DeviceOrientationEvent !== 'undefined' && !('requestPermission' in DeviceOrientationEvent)) listenToCompass();
 window.setInterval(() => void loadCameras(), 15 * 60_000);
 
-const accountRoot = document.createElement('div');
-accountRoot.className = 'account-section';
-document.querySelector('#settingsOverlay .modal')?.append(accountRoot);
+const accountRoot = $('accountSection');
 applyLanguage();
 void initAccount(accountRoot, () => language, () => voiceEnabled, (saved: AccountProfile) => {
   // The account's language is the source of truth once signed in; store it in
@@ -1903,7 +1901,7 @@ function showJourneySummary(arrived: boolean) {
   const elapsed = Date.now() - journeyStarted;
   const kind = journeySummaryKind(arrived, journeyDistance, elapsed);
   if (kind === 'none') { toast(t(language, 'navigationEnded')); return; }
-  const root = $('journeySummaryOverlay');
+  const root = $('journeySummaryDialog') as HTMLDialogElement;
   const points = journeyPoints.length ? journeyPoints : current ? [current] : [];
   const title = t(language, kind === 'arrived' ? 'journeyArrived' : 'journeyEnded');
   const minutes = Math.max(1, Math.round(elapsed / 60000));
@@ -1913,8 +1911,7 @@ function showJourneySummary(arrived: boolean) {
   const scale = Math.min(300 / Math.max(.00001, (maxX - minX) * aspect), 140 / Math.max(.00001, maxY - minY));
   const trace = points.map(p => `${(180 + (p[0] - (minX + maxX) / 2) * aspect * scale).toFixed(1)},${(95 - (p[1] - (minY + maxY) / 2) * scale).toFixed(1)}`).join(' ');
   root.replaceChildren();
-  const modal = document.createElement('section'); modal.className = 'modal journey-summary';
-  modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', 'journeySummaryTitle');
+  const modal = root;
   modal.innerHTML = `<img src="/brand/waybi-lockup.svg" alt="Waybi" width="210" height="66" /><h2 id="journeySummaryTitle">${escapeHtml(title)}</h2>
     <p>${escapeHtml(destinationName)}</p><div class="journey-stats"><div><strong>${formatDistance(journeyDistance, language)}</strong><span>${t(language, 'journeyTravelled')}</span></div>
     <div><strong>${escapeHtml(t(language, 'durationMinutes', { minutes }))}</strong><span>${t(language, 'journeyTime')}</span></div></div>
@@ -1923,8 +1920,11 @@ function showJourneySummary(arrived: boolean) {
     <polyline points="${trace}" fill="none" stroke="#486b29" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>
     <p>${escapeHtml(t(language, 'journeyTagline'))}</p>`;
   const done = document.createElement('button'); done.type = 'button'; done.className = 'primary-button'; done.textContent = t(language, 'keepExploring');
-  done.onclick = () => { root.hidden = true; $('driveButton').focus(); };
-  modal.append(done); root.append(modal); root.hidden = false; done.focus();
+  done.onclick = () => closeDialog(root);
+  modal.append(done);
+  // Focus returns to the Start button (the trip's own control) when it closes.
+  openDialog(root, $('driveButton'));
+  done.focus();
 }
 
 ($('keepScreenAwakeToggle') as HTMLInputElement).checked = keepScreenAwake;

@@ -137,6 +137,50 @@ function distanceToRoute(point, routePoints) {
   return best;
 }
 
+// Route segments are bucketed into a coarse grid (about 450 m cells) using
+// each segment's box padded past the corridor, so an event point only measures
+// against the few segments that could be within the corridor.
+const GRID_DEGREES = 0.004;
+const MAX_CELLS_PER_SEGMENT = 400;
+interface SegmentIndex { cells: Map<string, number[]>; long: number[] }
+
+function cellKey(longitude: number, latitude: number) {
+  return `${Math.floor(longitude / GRID_DEGREES)}:${Math.floor(latitude / GRID_DEGREES)}`;
+}
+
+function indexRouteSegments(routePoints): SegmentIndex {
+  const cells = new Map<string, number[]>();
+  const long: number[] = [];
+  for (let i = 1; i < routePoints.length; i++) {
+    const box = padBounds(boundsOf([routePoints[i - 1], routePoints[i]])!, BOUNDS_PADDING_METERS);
+    const west = Math.floor(box[0] / GRID_DEGREES), east = Math.floor(box[2] / GRID_DEGREES);
+    const south = Math.floor(box[1] / GRID_DEGREES), north = Math.floor(box[3] / GRID_DEGREES);
+    if ((east - west + 1) * (north - south + 1) > MAX_CELLS_PER_SEGMENT) { long.push(i); continue; }
+    for (let x = west; x <= east; x++) {
+      for (let y = south; y <= north; y++) {
+        const key = `${x}:${y}`;
+        const bucket = cells.get(key);
+        if (bucket) bucket.push(i);
+        else cells.set(key, [i]);
+      }
+    }
+  }
+  return { cells, long };
+}
+
+function indexedDistanceToRoute(point, routePoints, index: SegmentIndex) {
+  let best = Infinity;
+  const nearby = index.cells.get(cellKey(point.longitude, point.latitude));
+  for (const list of [nearby, index.long]) {
+    if (!list) continue;
+    for (const i of list) {
+      best = Math.min(best, pointToSegmentMetres(point, routePoints[i - 1], routePoints[i]));
+      if (best <= 20) return best;
+    }
+  }
+  return best;
+}
+
 function eventPoints(event) {
   const geometry = Array.isArray(event?.geometry) ? event.geometry : [];
   const points = geometry.map(validPoint).filter(Boolean);
@@ -184,14 +228,16 @@ export function evaluatePreparedRouteWatch(routePoints, prepared: PreparedRouteW
   const routeBounds = padBounds(boundsOf(routePoints)!, BOUNDS_PADDING_METERS);
   const time = now.getTime();
   const matches = [];
+  let index: SegmentIndex | null = null;
   for (const item of prepared) {
     if (Number.isFinite(item.from) && item.from > time) continue;
     if (Number.isFinite(item.until) && item.until <= time) continue;
     if (!intersects(item.bounds, routeBounds)) continue;
+    index ??= indexRouteSegments(routePoints);
     let best = Infinity;
     for (const point of item.points) {
       if (!contains(routeBounds, point)) continue;
-      best = Math.min(best, distanceToRoute(point, routePoints));
+      best = Math.min(best, indexedDistanceToRoute(point, routePoints, index));
       if (best <= 20) break;
     }
     if (best > ROUTE_CORRIDOR_METERS) continue;

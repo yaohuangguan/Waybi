@@ -4498,6 +4498,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                       language: _appLanguage,
                       onExpandedChanged: (expanded) =>
                           _focusSelectedPlace(expanded: expanded),
+                      warnFarDestination:
+                          _selectedPlace!.source == SelectionSource.search,
                     ),
                   ),
                 ),
@@ -4672,6 +4674,7 @@ class _PlaceCard extends StatelessWidget {
     required this.onReview,
     required this.language,
     required this.onExpandedChanged,
+    required this.warnFarDestination,
   });
 
   final PlaceSummary selectedPlace;
@@ -4692,6 +4695,7 @@ class _PlaceCard extends StatelessWidget {
   final VoidCallback onReview;
   final String language;
   final ValueChanged<bool> onExpandedChanged;
+  final bool warnFarDestination;
 
   @override
   Widget build(BuildContext context) {
@@ -4714,6 +4718,7 @@ class _PlaceCard extends StatelessWidget {
       onReview: onReview,
       language: language,
       onExpandedChanged: onExpandedChanged,
+      warnFarDestination: warnFarDestination,
     );
   }
 }

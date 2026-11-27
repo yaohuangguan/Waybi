@@ -32,6 +32,7 @@ class PlaceDetailsContent extends StatefulWidget {
     required this.onReview,
     this.language = 'en',
     this.onExpandedChanged,
+    this.warnFarDestination = true,
   });
 
   final PlaceSummary selectedPlace;
@@ -54,6 +55,11 @@ class PlaceDetailsContent extends StatefulWidget {
   final VoidCallback onReview;
   final String language;
   final ValueChanged<bool>? onExpandedChanged;
+
+  /// Whether the quick ETA may caution that the place is far away: only a
+  /// search result can be the wrong same-named place. Home, Work, saved and
+  /// recent places were chosen on purpose (as in the route preview).
+  final bool warnFarDestination;
 
   @override
   State<PlaceDetailsContent> createState() => _PlaceDetailsContentState();
@@ -197,10 +203,12 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
     }
 
     final card = _quickRouteCard(route, scheme);
-    final far = farDestinationDistance(
-      widget.selectedPlace,
-      route.points.isEmpty ? null : route.points.first,
-    );
+    final far = widget.warnFarDestination
+        ? farDestinationDistance(
+            widget.selectedPlace,
+            route.points.isEmpty ? null : route.points.first,
+          )
+        : null;
     if (far == null && !route.usesAmap) return card;
     return Column(
       mainAxisSize: MainAxisSize.min,

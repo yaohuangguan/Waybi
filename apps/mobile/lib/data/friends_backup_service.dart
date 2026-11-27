@@ -12,12 +12,23 @@ enum FriendsBackupStatus { deviceOnly, syncing, backedUp, offline }
 /// Account-scoped local saves remain usable when the network is unavailable.
 /// Every async boundary checks the account, so a late response cannot restore
 /// one person's journal into another person's session.
+///
+/// Network use is change-driven: the periodic check only syncs when the
+/// local journal changed or the last attempt failed, and a sync first reads
+/// one page — if the cloud revision is the one this device last synced, the
+/// rest of the journal is not downloaded. [deferWhile] (for example "a trip
+/// is being navigated") postpones syncing until it returns false.
 class FriendsBackupService extends ChangeNotifier {
-  FriendsBackupService(this.account, {GameController? controller})
-    : controller = controller ?? GameController.embedded;
+  FriendsBackupService(
+    this.account, {
+    GameController? controller,
+    this.deferWhile,
+  }) : controller = controller ?? GameController.embedded;
 
   final AccountRepository account;
   final GameController controller;
+  final bool Function()? deferWhile;
+  bool _deferred = false;
   FriendsBackupStatus status = FriendsBackupStatus.deviceOnly;
   DateTime? lastBackupAt;
   Timer? _debounce;
@@ -45,7 +56,7 @@ class FriendsBackupService extends ChangeNotifier {
     await _bind(_requestedAccount, ++_generation);
     _retry = Timer.periodic(
       const Duration(minutes: 5),
-      (_) => unawaited(sync()),
+      (_) => unawaited(syncIfNeeded()),
     );
   }
 
@@ -99,6 +110,16 @@ class FriendsBackupService extends ChangeNotifier {
     _debounce = Timer(const Duration(seconds: 2), () => unawaited(sync()));
   }
 
+  /// Syncs only for a local change, a deferred sync or a failed attempt.
+  Future<void> syncIfNeeded() async {
+    if (_deferred || status != FriendsBackupStatus.backedUp) return sync();
+    final prefs = await SharedPreferences.getInstance();
+    if (controller.state.encode() !=
+        prefs.getString('${controller.saveKey}.cloud_snapshot')) {
+      return sync();
+    }
+  }
+
   bool _sameAccount(String userId, int generation) =>
       !_disposed &&
       generation == _generation &&
@@ -110,11 +131,20 @@ class FriendsBackupService extends ChangeNotifier {
     final userId = controller.accountId;
     final generation = _generation;
     if (_busy || userId == null || !_sameAccount(userId, generation)) return;
+    if (deferWhile?.call() ?? false) {
+      _deferred = true;
+      return;
+    }
+    _deferred = false;
     _busy = true;
     _setStatus(FriendsBackupStatus.syncing);
     try {
       final prefs = await SharedPreferences.getInstance();
       final stampKey = '${controller.saveKey}.cloud_snapshot';
+      final revisionKey = '${controller.saveKey}.cloud_revision';
+      if (await _quickSync(userId, generation, prefs, stampKey, revisionKey)) {
+        return;
+      }
       for (var attempt = 0; attempt < 3; attempt++) {
         if (!_sameAccount(userId, generation)) return;
         int? revision;
@@ -177,6 +207,7 @@ class FriendsBackupService extends ChangeNotifier {
               .encode();
           if (controller.state.encode() == canonicalRemote) {
             await prefs.setString(stampKey, canonicalRemote);
+            await prefs.setInt(revisionKey, revision);
             lastBackupAt = updatedAt == null
                 ? null
                 : DateTime.fromMillisecondsSinceEpoch(updatedAt);
@@ -221,6 +252,7 @@ class FriendsBackupService extends ChangeNotifier {
         }
         if (result == null) continue;
         await prefs.setString(stampKey, snapshot);
+        await prefs.setInt(revisionKey, revision!);
         if (!_sameAccount(userId, generation)) return;
         lastBackupAt = DateTime.fromMillisecondsSinceEpoch(
           result['updatedAt'] as int,
@@ -239,6 +271,78 @@ class FriendsBackupService extends ChangeNotifier {
       // A new account may have bound while an older request was in flight.
       if (!_disposed && generation != _generation) unawaited(sync());
     }
+  }
+
+  /// When the cloud is still at the revision this device last synced, its
+  /// journal is the one in the local stamp: confirm with one page and upload
+  /// only new memories. Returns false when a full download is needed.
+  Future<bool> _quickSync(
+    String userId,
+    int generation,
+    SharedPreferences prefs,
+    String stampKey,
+    String revisionKey,
+  ) async {
+    final stamp = prefs.getString(stampKey);
+    final known = prefs.getInt(revisionKey);
+    if (stamp == null || known == null) return false;
+    final page = await account.readFriendsBackup(userId: userId);
+    if (!_sameAccount(userId, generation)) return true;
+    if (page['schemaVersion'] != 1 || page['revision'] != known) return false;
+    final snapshot = controller.state.encode();
+    if (snapshot == stamp) {
+      final updatedAt = page['updatedAt'];
+      if (updatedAt is int) {
+        lastBackupAt = DateTime.fromMillisecondsSinceEpoch(updatedAt);
+      }
+      _setStatus(FriendsBackupStatus.backedUp);
+      return true;
+    }
+    final synced =
+        (jsonDecode(stamp) as Map<String, dynamic>)['memories']
+            as List<dynamic>? ??
+        const [];
+    final syncedIds = synced.map((memory) => memory['id']).toSet();
+    final syncedTrips = synced
+        .map((memory) => memory['sourceTripId'])
+        .whereType<String>()
+        .where((trip) => trip.isNotEmpty)
+        .toSet();
+    final game = jsonDecode(snapshot) as Map<String, dynamic>;
+    final missing = (game['memories'] as List)
+        .where(
+          (memory) =>
+              !syncedIds.contains(memory['id']) &&
+              (memory['sourceTripId'] == null ||
+                  !syncedTrips.contains(memory['sourceTripId'])),
+        )
+        .toList();
+    var revision = known;
+    Map<String, dynamic>? result;
+    for (
+      var offset = 0;
+      offset < (missing.isEmpty ? 1 : missing.length);
+      offset += 20
+    ) {
+      if (!_sameAccount(userId, generation)) return true;
+      result = await account.writeFriendsBackup(
+        userId: userId,
+        revision: revision,
+        game: {...game, 'memories': missing.skip(offset).take(20).toList()},
+      );
+      if (!_sameAccount(userId, generation)) return true;
+      // Another device wrote meanwhile: download and merge instead.
+      if (result == null) return false;
+      revision = result['revision'] as int;
+    }
+    await prefs.setString(stampKey, snapshot);
+    await prefs.setInt(revisionKey, revision);
+    lastBackupAt = DateTime.fromMillisecondsSinceEpoch(
+      result!['updatedAt'] as int,
+    );
+    _setStatus(FriendsBackupStatus.backedUp);
+    if (snapshot != controller.state.encode()) _gameChanged();
+    return true;
   }
 
   void _setStatus(FriendsBackupStatus next) {

@@ -254,7 +254,10 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   late final DriveEngine _driveEngine = widget.driveEngine ?? DriveEngine();
   late final IndependentNavigationEngine _independentNavigation;
   final AccountRepository _account = AccountRepository();
-  late final _friendsBackup = FriendsBackupService(_account);
+  late final _friendsBackup = FriendsBackupService(
+    _account,
+    deferWhile: () => _driveEngine.active,
+  );
   late final _plusBilling = AppStoreBillingGateway(_account);
   final PlaceDetailsRepository _placeDetailsRepository =
       PlaceDetailsRepository();

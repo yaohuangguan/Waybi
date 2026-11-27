@@ -10,6 +10,8 @@ import { searchIndependentGlobal } from './search/independent_global_search.ts';
 import { independentSuggestionCache, suggestionCacheKey } from './search/suggestion_cache.ts';
 import { googleBudgetExhaustedResponse, reserveGoogleUnits } from './google_budget.ts';
 import { nominatimObject } from './nominatim.ts';
+import { amapClientKey } from './amap_client.ts';
+import { amapReverse, amapSearchApplies, searchMainlandChina } from './search/amap_search.ts';
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -101,6 +103,23 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
     const point = geoPoint(url.searchParams.get('near'));
     const prefersChinese = url.searchParams.get('lang') === 'zh' || /[\u3400-\u9fff\uf900-\ufaff]/u.test(query);
     const requestedProvider = url.searchParams.get('provider') || '';
+    if (amapSearchApplies(env, point)) {
+      // Mainland China: Amap first (GCJ-02 converted to WGS-84), the OSM stack
+      // only as a deduplicated fallback. Google/Geoapify are not consulted.
+      const language = prefersChinese ? 'zh' : 'en';
+      const mode = url.searchParams.get('mode') === 'search' ? 'search' : 'suggest';
+      return independentSuggestionCache.load(`amap|${mode}|${suggestionCacheKey(query, point, language)}`, async () => {
+        const { results } = await searchMainlandChina({
+          query, point, language, env, trackUsage, mode,
+          clientKey: await amapClientKey(request, env),
+          osmFallback: () => searchIndependentGlobal({
+            query, point, language, env, trackUsage,
+            enrichmentsPromise: loadSearchEnrichments(query, point).catch(() => []),
+          }),
+        });
+        return results.length ? json(results) : json({ error: 'Place search unavailable' }, 502);
+      }, ctx);
+    }
     if (requestedProvider === 'independent') {
       const language = prefersChinese ? 'zh' : 'en';
       return independentSuggestionCache.load(suggestionCacheKey(query, point, language), async () => {
@@ -477,6 +496,13 @@ export async function handlePlaces(request: Request, env, trackUsage: UsageRecor
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
     const point = geoPoint(url.searchParams.get('at'));
     if (!point) return json({ error: 'Valid coordinates required' }, 400);
+    if (amapSearchApplies(env, point)) {
+      try {
+        const china = await amapReverse(env, point, url.searchParams.get('lang') === 'zh' ? 'zh' : 'en',
+          { clientKey: await amapClientKey(request, env), trackUsage });
+        if (china) return json(china);
+      } catch { /* Amap unavailable or out of budget: the OSM lookup below answers. */ }
+    }
     const provider = new URL('https://nominatim.openstreetmap.org/reverse');
     provider.searchParams.set('format', 'jsonv2');
     provider.searchParams.set('lat', String(point[1]));

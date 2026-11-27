@@ -4,9 +4,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../data/place_details_repository.dart';
 import '../domain/coordinate_formatter.dart';
+import '../domain/far_match.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_option.dart';
 import '../theme/waybi_theme.dart';
+import 'far_match_notice.dart';
 import 'load_error.dart';
 
 class PlaceDetailsContent extends StatefulWidget {
@@ -194,6 +196,34 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
       );
     }
 
+    final card = _quickRouteCard(route, scheme);
+    final far = farDestinationDistance(
+      widget.selectedPlace,
+      route.points.isEmpty ? null : route.points.first,
+    );
+    if (far == null && !route.usesAmap) return card;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        card,
+        if (far != null)
+          FarMatchNotice(
+            title: farDestinationTitle(far, widget.language),
+            detail: farDestinationDetail(widget.language),
+            margin: const EdgeInsets.fromLTRB(16, 7, 16, 0),
+          ),
+        if (route.usesAmap)
+          AmapAttributionLabel(
+            language: widget.language,
+            routes: true,
+            padding: const EdgeInsets.fromLTRB(18, 5, 18, 0),
+          ),
+      ],
+    );
+  }
+
+  Widget _quickRouteCard(RouteOption route, ColorScheme scheme) {
     final delaySeconds = route.trafficDelaySeconds ?? 0;
     final delayMinutes = (delaySeconds / 60).round();
     final trafficHeavy = delaySeconds >= 300 || route.traffic.trafficJam > 0;
@@ -280,6 +310,12 @@ class _PlaceDetailsContentState extends State<PlaceDetailsContent> {
                               '+$delayMinutes min traffic',
                               '拥堵 +$delayMinutes 分钟',
                             )
+                          // Amap reports congestion without a free-flow
+                          // delay; never call a jammed route "good".
+                          : route.traffic.trafficJam > 0
+                          ? _text('Heavy sections', '部分路段拥堵')
+                          : route.traffic.slow > 0
+                          ? _text('Slow sections', '部分路段缓行')
                           : _text('Traffic good', '路况良好'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

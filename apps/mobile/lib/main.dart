@@ -4863,6 +4863,12 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
                 alignment: Alignment.bottomCenter,
                 child: RoutePreviewSheet(
                   destinationTitle: _selectedPoi!.name,
+                  destinationKind: _selectedPlace!.place.kind,
+                  destinationCategory: _selectedPlace!.place.category,
+                  // Only a search result can be the wrong same-named place;
+                  // Home, Work, saved and recent places were chosen on purpose.
+                  warnFarDestination:
+                      _selectedPlace!.source == SelectionSource.search,
                   originTitle:
                       _manualOrigin?.label ?? _text('Current location', '当前位置'),
                   plan: _routePlan!,

@@ -1,0 +1,198 @@
+{
+  "provider": "independent",
+  "trafficAvailable": true,
+  "stopsApplied": 1,
+  "attribution": "高德地图 / AutoNavi",
+  "options": [
+    {
+      "id": "drive-0",
+      "mode": "drive",
+      "durationSeconds": 1260,
+      "staticDurationSeconds": null,
+      "trafficDelaySeconds": null,
+      "distanceMeters": 8666,
+      "coordinates": [
+        [
+          114.49999966670394,
+          38.030000189240326
+        ],
+        [
+          114.51000003448472,
+          38.0300000308557
+        ],
+        [
+          114.5170003356638,
+          38.03000047641815
+        ],
+        [
+          114.517000188043,
+          38.03999960193345
+        ],
+        [
+          114.51700003981175,
+          38.04999971669477
+        ],
+        [
+          114.52999985729527,
+          38.04999967213782
+        ],
+        [
+          114.54499960468827,
+          38.05000010011698
+        ],
+        [
+          114.56000031104024,
+          38.070000257607745
+        ]
+      ],
+      "encodedPolyline": null,
+      "routeToken": null,
+      "description": "北二环东路 · 胜利北大街",
+      "labels": [],
+      "warnings": [],
+      "traffic": {
+        "normal": 3,
+        "slow": 1,
+        "trafficJam": 2
+      },
+      "trafficIntervals": [
+        {
+          "startPolylinePointIndex": 0,
+          "endPolylinePointIndex": 1,
+          "speed": "normal"
+        },
+        {
+          "startPolylinePointIndex": 1,
+          "endPolylinePointIndex": 2,
+          "speed": "slow"
+        },
+        {
+          "startPolylinePointIndex": 2,
+          "endPolylinePointIndex": 3,
+          "speed": "trafficJam"
+        },
+        {
+          "startPolylinePointIndex": 3,
+          "endPolylinePointIndex": 4,
+          "speed": "trafficJam"
+        },
+        {
+          "startPolylinePointIndex": 4,
+          "endPolylinePointIndex": 5,
+          "speed": "normal"
+        },
+        {
+          "startPolylinePointIndex": 6,
+          "endPolylinePointIndex": 7,
+          "speed": "normal"
+        }
+      ],
+      "steps": [
+        {
+          "distance": 1489,
+          "duration": 260,
+          "name": "中山东路",
+          "maneuver": "depart",
+          "modifier": "",
+          "location": [
+            114.49999966670394,
+            38.030000189240326
+          ],
+          "instruction": "向东出发，沿中山东路行驶",
+          "lanes": [],
+          "along": 0
+        },
+        {
+          "distance": 2224,
+          "duration": 420,
+          "name": "建设北大街",
+          "maneuver": "turn",
+          "modifier": "left",
+          "location": [
+            114.5170003356638,
+            38.03000047641815
+          ],
+          "instruction": "左转，进入建设北大街",
+          "lanes": [],
+          "along": 1489
+        },
+        {
+          "distance": 0,
+          "duration": 0,
+          "name": "",
+          "maneuver": "arrive",
+          "modifier": "",
+          "location": [
+            114.51700003981175,
+            38.04999971669477
+          ],
+          "instruction": "到达途经点",
+          "lanes": [],
+          "along": 3713
+        },
+        {
+          "distance": 2453,
+          "duration": 300,
+          "name": "北二环东路",
+          "maneuver": "depart",
+          "modifier": "",
+          "location": [
+            114.51700003981175,
+            38.04999971669477
+          ],
+          "instruction": "向东出发，沿北二环东路行驶",
+          "lanes": [],
+          "along": 3713
+        },
+        {
+          "distance": 2500,
+          "duration": 280,
+          "name": "胜利北大街",
+          "maneuver": "turn",
+          "modifier": "slight right",
+          "location": [
+            114.54499960468827,
+            38.05000010011698
+          ],
+          "instruction": "向右前方行驶，进入胜利北大街",
+          "lanes": [],
+          "along": 6166
+        },
+        {
+          "distance": 0,
+          "duration": 0,
+          "name": "",
+          "maneuver": "arrive",
+          "modifier": "",
+          "location": [
+            114.56000031104024,
+            38.070000257607745
+          ],
+          "instruction": "到达目的地",
+          "lanes": [],
+          "along": 8666
+        }
+      ],
+      "transit": [],
+      "provider": "independent",
+      "routingEngine": "amap",
+      "attribution": "高德地图 / AutoNavi",
+      "conditions": {
+        "sources": [
+          "AutoNavi"
+        ],
+        "coverage": "amap-tmcs",
+        "trafficStatus": "live",
+        "trafficSourceUpdatedAt": "2026-11-27T00:00:00.000Z",
+        "expiresAt": "2099-01-01T00:00:00.000Z",
+        "coveredMeters": 7352,
+        "heavyMeters": 2224,
+        "moderateMeters": 613,
+        "rankingPenalty": 0,
+        "penaltyBasis": "provider-duration-includes-traffic",
+        "incidentIds": [],
+        "roadworkIds": []
+      }
+    }
+  ]
+}

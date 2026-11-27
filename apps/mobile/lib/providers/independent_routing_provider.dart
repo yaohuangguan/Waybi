@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/api_config.dart';
 import '../data/http_guard.dart';
+import '../domain/china_region.dart';
 import '../domain/map_provider.dart';
 import '../domain/route_reachability.dart';
 import '../domain/route_option.dart';
@@ -154,7 +155,9 @@ class IndependentRoutingProvider implements RoutingProvider<RoutePlan> {
     List<RouteExclusion> avoid = const [],
     Duration? timeout,
   }) async {
-    if (useWaybiProxy) {
+    // Mainland China always routes through Waybi (Amap with live traffic),
+    // never directly to the public OSRM servers.
+    if (useWaybiProxy || points.every(isMainlandChina)) {
       return _fetchWaybiMode(
         points,
         mode: mode,

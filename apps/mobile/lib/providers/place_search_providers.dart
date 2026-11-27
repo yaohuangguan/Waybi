@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 import '../data/http_guard.dart';
 import '../data/api_config.dart';
+import '../domain/china_region.dart';
 import '../domain/geo_math.dart';
 import '../domain/map_provider.dart';
 import 'regional_query_aliases.dart';
@@ -127,7 +128,12 @@ class WorkerSearchProvider implements CachedSearchProvider, ExploreProvider {
     // While the Worker's Retry-After lasts, fail fast: typing must not keep
     // sending requests to a rate-limited search.
     _gate.check();
-    var response = await _client.get(uri).timeout(const Duration(seconds: 4));
+    // In mainland China the Worker asks Amap (a city lookup, then input tips)
+    // from outside the country; give it the deadline it owns.
+    final timeout = isMainlandChina(proximity)
+        ? const Duration(seconds: 9)
+        : const Duration(seconds: 4);
+    var response = await _client.get(uri).timeout(timeout);
     _gate.observe(response);
     var data = response.statusCode == 200
         ? jsonDecode(response.body) as List<dynamic>
@@ -135,9 +141,7 @@ class WorkerSearchProvider implements CachedSearchProvider, ExploreProvider {
     if (response.statusCode == 502 ||
         response.statusCode == 503 ||
         data.isEmpty) {
-      response = await _client
-          .get(fallbackUri)
-          .timeout(const Duration(seconds: 4));
+      response = await _client.get(fallbackUri).timeout(timeout);
       // 429, or 503 SEARCH_BUSY with Retry-After from the Nominatim queue.
       _gate.observe(response);
       if (response.statusCode == 200) {
@@ -757,6 +761,17 @@ class IndependentSearchProvider
     // substantially faster than serial public-Photon lookups and keeps search
     // quality identical regardless of which map renderer is selected. Photon
     // remains the open-data fallback if Waybi search is slow or unavailable.
+    // Mainland China is answered by Waybi Search (Amap via the Worker, with
+    // OSM as its fallback). Public Photon knows almost nothing there and once
+    // offered a namesake 494 km away, so it is never queried directly.
+    final mainlandChina = isMainlandChina(proximity);
+    if (mainlandChina) {
+      _fastSearch ??= WorkerSearchProvider(
+        client: _client,
+        mapCompatible: true,
+      );
+    }
+    final workerOnly = this.workerOnly || mainlandChina;
     final fastSearch = _fastSearch;
     if (fastSearch != null && (!expanded || workerOnly)) {
       try {
@@ -963,7 +978,9 @@ class IndependentSearchProvider
     required String language,
     String preferredName = '',
   }) async {
-    if (workerOnly) {
+    // Long-press and current-location labels in mainland China come from the
+    // Worker (Amap reverse geocoding), never from public Photon.
+    if (workerOnly || isMainlandChina(point)) {
       if (_workerGate.remaining != null) return null;
       try {
         final uri = Uri.parse('$workerBaseUrl/api/reverse').replace(
@@ -987,7 +1004,7 @@ class IndependentSearchProvider
           kind: PlaceKind.address,
           location: point,
           reference: ProviderReference(
-            'osm',
+            data['provider'] == 'amap' ? 'amap' : 'osm',
             'reverse:${point.latitude},${point.longitude}',
           ),
         );

@@ -339,7 +339,9 @@ void main() {
     recorder.permission = true;
     await session.record('merge');
     expect(session.busy, isTrue);
-    await Future<void>.delayed(const Duration(milliseconds: 60));
+    // The auto-stop timer fires after 20 ms, then the take is written to
+    // disk; poll rather than assume how long that takes on a busy machine.
+    await _until(() => !session.busy);
     expect(session.busy, isFalse, reason: 'Recording stops on its own');
     expect(session.draft?.id, 'merge');
     await session.play('merge', session.draft!.path, draft: true);
@@ -355,7 +357,7 @@ void main() {
     await session.record('arrived');
     final draftDir = Directory('${root.path}/custom_voice/drafts');
     session.dispose();
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await _until(() => draftDir.listSync().whereType<File>().isEmpty);
     expect(
       draftDir.listSync().whereType<File>(),
       isEmpty,
@@ -364,4 +366,11 @@ void main() {
     expect(voiceTakeIssueText(VoiceTakeIssue.couldNotStart, true), '无法开始录音。');
     expect(voicePhraseGroupTitle(VoicePhraseGroup.trip, true), '行程消息');
   });
+}
+
+/// Polls [done] for up to five seconds of real time.
+Future<void> _until(bool Function() done) async {
+  for (var i = 0; i < 250 && !done(); i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
 }

@@ -12,6 +12,7 @@ import 'package:waybi_mobile/domain/route_option.dart';
 import 'package:waybi_mobile/drive/drive_engine.dart';
 import 'package:waybi_mobile/providers/independent_map_renderer.dart';
 import 'package:waybi_mobile/providers/independent_map_style.dart';
+import 'package:waybi_mobile/widgets/companion_search_prompt.dart';
 import 'package:waybi_mobile/widgets/drive_hud.dart';
 import 'package:waybi_mobile/widgets/explore_search.dart';
 import 'package:waybi_mobile/widgets/independent_navigation_overlay.dart';
@@ -624,6 +625,58 @@ void main() {
       }
       await h.frames();
       expect(h.mapPlatform.moves.length - before, lessThanOrEqualTo(1));
+    });
+  });
+
+  group('far destinations', () {
+    Finder previewCaution() => find.descendant(
+      of: find.byType(RoutePreviewSheet),
+      matching: find.textContaining('km away'),
+    );
+
+    flow('a far Home shows no caution in the route preview', (t, h) async {
+      await h.boot(
+        preferences: {
+          'waybi.quick_location.Home': jsonEncode({
+            'name': 'Holiday home',
+            'address': 'Coast road',
+            'latitude': -37.2,
+            'longitude': 175.7,
+            'provider': 'independent',
+          }),
+        },
+      );
+      await h.act(
+        t
+            .widget<ActionChip>(find.widgetWithText(ActionChip, 'Home'))
+            .onPressed!,
+      );
+      expect(details(t).selectedPlace.name, 'Holiday home');
+      await h.act(details(t).onNavigate);
+      expect(find.byType(RoutePreviewSheet), findsOneWidget);
+      expect(preview(t).warnFarDestination, isFalse);
+      expect(previewCaution(), findsNothing);
+    });
+
+    flow('a far search result is flagged in the route preview', (t, h) async {
+      await h.boot();
+      await h.act(
+        () => t
+            .widget<CompanionSearchPrompt>(find.byType(CompanionSearchPrompt))
+            .onSuggestionSelected(
+              const PlaceCandidate(
+                name: 'Far café',
+                address: 'Coast road',
+                category: 'cafe',
+                location: GeoPoint(-37.2, 175.7),
+              ),
+            ),
+      );
+      await h.act(details(t).onNavigate);
+      expect(preview(t).warnFarDestination, isTrue);
+      expect(preview(t).destinationKind, PlaceKind.poi);
+      expect(preview(t).destinationCategory, 'cafe');
+      expect(previewCaution(), findsOneWidget);
     });
   });
 

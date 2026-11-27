@@ -19,6 +19,8 @@ type Language = 'zh' | 'en';
 type Place = SuggestedPlace;
 type CameraResponse = { cameras: Camera[]; sourceUpdatedAt: string; checkedAt: string | null; syncStatus: string; syncError?: string | null; change?: { added: number; removed: number } };
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+// The router keeps the map shell hidden until this chunk (and its CSS) has loaded.
+$('app').hidden = false;
 const map = new WaybiMapAdapter();
 let cameras: Camera[] = [];
 let cameraResponse: CameraResponse | null = null;

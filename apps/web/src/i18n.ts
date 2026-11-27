@@ -167,6 +167,10 @@ const en = {
   notFoundKicker: '404 · WRONG TURN', returnHome: 'Waybi home', openApp: 'Open Waybi',
   loadFailedTitle: 'Waybi could not load this page.', loadFailedBody: 'Refresh the page or return to the website.', loadFailedHome: 'Return home',
   loadingDashboard: 'Loading your Waybi dashboard…',
+  subscribeKicker: 'WAYBI PLUS', subscribeDashboard: 'Open your dashboard',
+  subscribeSuccessTitle: 'Thanks — you’re all set.', subscribeSuccessBody: 'Your payment went through. Waybi Plus becomes active on your account within a few moments; reopen the app if it does not show yet.',
+  subscribeCancelledTitle: 'Checkout cancelled.', subscribeCancelledBody: 'No payment was taken. You can keep using Waybi as before and subscribe any time.',
+  subscribeManageTitle: 'Your Waybi subscription', subscribeManageBody: 'Manage Waybi Plus from your account. Subscriptions bought through the App Store are managed in your Apple account settings.',
 };
 
 export type MessageKey = keyof typeof en;
@@ -314,6 +318,10 @@ const zh: Record<MessageKey, string> = {
   notFoundKicker: '404 · 走错路了', returnHome: 'Waybi 首页', openApp: '打开 Waybi',
   loadFailedTitle: 'Waybi 无法加载此页面。', loadFailedBody: '请刷新页面，或返回网站首页。', loadFailedHome: '返回首页',
   loadingDashboard: '正在加载你的 Waybi 个人面板…',
+  subscribeKicker: 'WAYBI PLUS', subscribeDashboard: '打开个人面板',
+  subscribeSuccessTitle: '谢谢，一切就绪。', subscribeSuccessBody: '付款已完成。Waybi Plus 将在片刻后在你的账户中生效；如果还没显示，请重新打开 App。',
+  subscribeCancelledTitle: '已取消结账。', subscribeCancelledBody: '没有产生任何扣款。你可以照常使用 Waybi，随时再订阅。',
+  subscribeManageTitle: '你的 Waybi 订阅', subscribeManageBody: '可在账户中管理 Waybi Plus。通过 App Store 购买的订阅请在 Apple 账户设置中管理。',
 };
 
 const messages: Record<Language, Record<MessageKey, string>> = { en, zh };

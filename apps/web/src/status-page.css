@@ -1,0 +1,12 @@
+@import './tokens.css';
+body[data-surface='status'] { margin: 0; background: var(--page); color: var(--text-primary); font: 18px/1.65 var(--font-ui); }
+.status-page { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
+.status-box { width: min(720px, 100%); padding: clamp(28px, 6vw, 56px); border: 1px solid var(--border); border-radius: 28px; background: var(--surface); }
+.status-box .waybi-lockup { width: 180px; }
+.status-kicker { margin: 34px 0 0; color: var(--text-secondary); font-size: 13px; font-weight: 800; letter-spacing: .12em; }
+.status-box h1 { margin: 10px 0 16px; font-size: clamp(38px, 8vw, 64px); line-height: 1.05; letter-spacing: -.045em; }
+.status-body { margin: 0; color: var(--text-secondary); }
+.status-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.status-links a { padding: 12px 17px; border-radius: 12px; background: var(--action-bg); color: var(--action-text); font-weight: 800; text-decoration: none; }
+.status-links a + a { background: var(--brand-sky); color: #23351D; }
+.status-links a:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }

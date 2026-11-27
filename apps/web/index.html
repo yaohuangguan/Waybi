@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#F8FBEF" />
+    <meta name="theme-color" content="#F8FBEF" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#10180D" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="application-name" content="Waybi" />
     <meta name="apple-mobile-web-app-title" content="Waybi" />
     <meta name="description" content="Waybi brings navigation, road awareness and a cosy companion room together on iPhone. Official fixed-camera data currently covers New Zealand." />
@@ -12,10 +14,14 @@
     <link rel="alternate" hreflang="en-NZ" href="https://waybi.co/" />
     <link rel="alternate" hreflang="zh-CN" href="https://waybi.co/zh/" />
     <link rel="alternate" hreflang="x-default" href="https://waybi.co/" />
-    <link rel="icon" type="image/png" sizes="1024x1024" href="/brand/waybi-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/brand/waybi-icon-192.png" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" />
+    <!-- One web-font request, never render-blocking; Chinese uses the system CJK fonts. -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..800&display=swap" onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..800&display=swap" /></noscript>
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Waybi" />
     <meta property="og:locale" content="en_NZ" />
@@ -95,38 +101,26 @@
     </script>
     <script>
       (() => {
+        const root = document.documentElement;
         const path = location.pathname.replace(/\/+$/, '') || '/';
-        document.documentElement.dataset.initialRoute =
-          path === '/app' || path === '/dashboard' ? 'product' : 'marketing';
+        const product = path === '/app' || path.startsWith('/app/') || path === '/dashboard' || path.startsWith('/dashboard/');
+        root.dataset.initialRoute = product ? 'product' : path === '/' || path === '/index.html' ? 'marketing' : 'other';
+        try {
+          const theme = localStorage.getItem('waybi-theme');
+          if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
+        } catch {}
       })();
     </script>
     <style>
-      html[data-initial-route="product"] #seo-home{display:none}
-      #seo-home{min-height:100vh;background:#f8fbef;color:#152510;font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-      #seo-home *{box-sizing:border-box}
-      #seo-home a{color:#29441f}
-      .seo-wrap{width:min(1120px,calc(100% - 40px));margin:auto}
-      .seo-nav{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:22px 0}
-      .seo-nav img{width:172px;height:auto}
-      .seo-nav nav{display:flex;flex-wrap:wrap;gap:18px;font-weight:700}
-      .seo-hero{padding:76px 0 56px}
-      .seo-kicker{font-size:12px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#64705b}
-      .seo-hero h1{max-width:850px;margin:14px 0 20px;font-size:clamp(42px,7vw,80px);line-height:1.02;letter-spacing:-.05em}
-      .seo-hero>p{max-width:760px;margin:0;font-size:20px;color:#52604d}
-      .seo-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
-      .seo-actions a{padding:13px 18px;border-radius:12px;background:#29441f;color:#fff;text-decoration:none;font-weight:800}
-      .seo-actions a+ a{background:#d0f58a;color:#29441f}
-      .seo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:24px 0 68px}
-      .seo-card{padding:30px;border:1px solid #dbe5cb;border-radius:20px;background:#fff}
-      .seo-card h2{margin:0 0 10px;font-size:28px;line-height:1.15;letter-spacing:-.025em}
-      .seo-card p{margin:0;color:#5d6959}
-      .seo-card a{display:inline-block;margin-top:16px;font-weight:800}
-      .seo-faq{padding:18px 0 72px;border-top:1px solid #dbe5cb}
-      .seo-faq h2{font-size:34px}
-      .seo-faq h3{margin:26px 0 7px}
-      .seo-footer{padding:28px 0 40px;border-top:1px solid #dbe5cb;color:#64705b}
-      @media(max-width:760px){.seo-nav{align-items:flex-start;flex-direction:column}.seo-grid{grid-template-columns:1fr}.seo-hero{padding-top:52px}.seo-hero>p{font-size:18px}}
+      html:not([data-initial-route="marketing"]) #marketing-root{display:none}
+      .boot-state{min-height:100vh;display:grid;place-items:center;gap:14px;margin:0;padding:32px;background:#F8FBEF;color:#152510;font:600 14px/1.6 system-ui,sans-serif;text-align:center}
+      .boot-mark{width:42px;height:42px;border-radius:13px;background:#152510;box-shadow:0 10px 26px rgba(11,23,23,.18)}
+      .boot-label{color:#56634E}
+      .boot-failure a{color:#3F6327;font-weight:700}
+      @media (prefers-color-scheme:dark){html:not([data-theme="light"]) .boot-state{background:#0E150B;color:#E3ECD8}html:not([data-theme="light"]) .boot-mark{background:#D0F58A}html:not([data-theme="light"]) .boot-label{color:#B1BEA8}html:not([data-theme="light"]) .boot-failure a{color:#B9DE7E}}
+      html[data-theme="dark"] .boot-state{background:#0E150B;color:#E3ECD8}html[data-theme="dark"] .boot-mark{background:#D0F58A}html[data-theme="dark"] .boot-label{color:#B1BEA8}html[data-theme="dark"] .boot-failure a{color:#B9DE7E}
     </style>
+    <link rel="stylesheet" href="/src/marketing.css" />
   </head>
   <body>
     <div id="app" hidden>
@@ -326,54 +320,9 @@
       </dialog>
     </div>
 
-    <div id="seo-home">
-      <header class="seo-wrap seo-nav">
-        <a href="/" aria-label="Waybi home"><img src="/brand/waybi-lockup.svg" alt="Waybi — A clearer journey" width="268" height="84" /></a>
-        <nav aria-label="Explore Waybi">
-          <a href="/new-zealand-navigation/">New Zealand navigation</a>
-          <a href="/safety-camera-navigation/">Safety-camera guidance</a>
-          <a href="/route-watch/">Route Watch</a>
-          <a href="/about/">About us</a>
-          <a href="/zh/" lang="zh-CN">中文</a>
-        </nav>
-      </header>
-      <main class="seo-wrap">
-        <section class="seo-hero">
-          <span class="seo-kicker">WAYBI · MAPS &amp; NAVIGATION FOR NEW ZEALAND</span>
-          <h1>Navigation with local road intelligence and a little more personality.</h1>
-          <p>Waybi is a companion navigation app for everyday journeys. Plan routes, compare alternatives, see traffic-aware road context when available, discover parking near your destination, and switch between English and Chinese. In New Zealand, Waybi adds local road intelligence such as published NZTA fixed safety-camera awareness and Route Watch.</p>
-          <div class="seo-actions">
-                        <a href="/new-zealand-navigation/">Explore how Waybi navigates</a>
-          </div>
-        </section>
-        <section class="seo-grid"><article class="seo-card"><h2>Maps & navigation</h2><p>Heading-up guidance, speed-aware zoom, and a look at the road before you leave.</p><a href="/new-zealand-navigation/">Take a closer look →</a></article><article class="seo-card"><h2>Road updates & cameras</h2><p>Official road events on your map, nearby updates in Discover, and NZ fixed-camera reminders.</p><a href="/safety-camera-navigation/">Take a closer look →</a></article><article class="seo-card"><h2>Route Watch</h2><p>Saved commute corridors checked against official NZTA road events, ready to review in Trips.</p><a href="/route-watch/">Take a closer look →</a></article><article class="seo-card"><h2>Waybi & Friends</h2><p>Small adventures, country-themed keepsakes, and three companions to come home to.</p><a href="/waybi-friends/">Take a closer look →</a></article></section>
-        <section class="seo-faq">
-          <span class="seo-kicker">PLANNING GUIDES</span>
-          <h2>Choose Waybi for the journey you actually have.</h2>
-          <h3><a href="/google-maps-alternative-new-zealand/">Looking for a Google Maps alternative in New Zealand?</a></h3>
-          <p>See where Waybi is deliberately different — and where another map app may still be the better choice.</p>
-          <h3><a href="/auckland-parking-navigation/">Driving somewhere unfamiliar in Auckland?</a></h3>
-          <p>Plan the parking decision before departure and keep the original destination for the final walk.</p>
-          <h3><a href="/chinese-navigation-new-zealand/">Prefer Chinese navigation in New Zealand?</a></h3>
-          <p>Use Chinese or English without turning location relevance into a hard-coded country assumption.</p>
-          <h3><a href="/new-zealand-road-trip-navigation/">Planning a New Zealand road trip?</a></h3>
-          <p>Bring route choices, road events, parking and bilingual guidance into one journey.</p>
-        </section>
-        <section class="seo-faq">
-          <span class="seo-kicker">GOOD TO KNOW</span>
-          <h2>About Waybi navigation</h2>
-          <h3>What map does Waybi use?</h3>
-          <p>Waybi uses its own map experience, with a Waybi-hosted New Zealand basemap, independent routing and global map coverage where available. The iPhone app is in testing; the installable web map is available in your browser.</p>
-          <h3>Does Waybi show every speed camera in New Zealand?</h3>
-          <p>No. Waybi uses published fixed safety-camera information from NZ Transport Agency Waka Kotahi. Coverage does not represent every road hazard, mobile enforcement activity, camera direction or lane. Always follow road signs, current conditions and New Zealand law.</p>
-          <h3>Can I use Waybi without an account?</h3>
-          <p>Yes. Core route exploration can be used as a guest. An account adds saved places, history and account-linked features such as Route Watch where available.</p>
-        </section>
-      </main>
-      <footer class="seo-footer">
-        <div class="seo-wrap">Waybi · A clearer journey · <a href="/app">Web map</a> · <a href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" rel="noopener noreferrer">NZTA safety-camera source</a></div>
-      </footer>
-    </div>
+    <!-- The marketing home is rendered here at build time (vite.config.ts), so the
+         first paint, the final page and what crawlers see are the same. -->
+    <div id="marketing-root" class="marketing" data-language="en"><!--marketing-prerender--></div>
 
     <script type="module" src="/src/router.ts"></script>
   </body>

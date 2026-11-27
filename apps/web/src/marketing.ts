@@ -1,445 +1,80 @@
-import './marketing.css';
-import { readLanguage, writeLanguage } from './preferences';
+/**
+ * Progressive enhancement for the prerendered marketing page. The English page
+ * is already in the HTML; this only binds the menu and language toggle, and
+ * re-renders when the visitor's saved language is Chinese.
+ */
+import { marketingMeta, renderMarketing } from './marketing-content';
+import { applyTheme, readLanguage, writeLanguage } from './preferences';
 
-function storeLink(value: string | undefined): string {
-  try {
-    const url = new URL(value || '');
-    return url.protocol === 'https:' && url.hostname === 'apps.apple.com'
-      && !url.username && !url.password && !url.port
-      && /\/id\d+(?:\/|$)/.test(url.pathname) ? url.href : '';
-  } catch { return ''; }
-}
-const appStoreUrl = storeLink(import.meta.env.VITE_APP_STORE_URL);
-
+const appStoreUrl = import.meta.env.VITE_APP_STORE_URL as string | undefined;
 let language = readLanguage();
-const bird = `<svg class="waybi" viewBox="0 0 120 110" aria-hidden="true"><path fill="currentColor" d="M18 57c0-22 16-36 37-36 13 0 23 5 30 15 3-9 10-15 19-15 11 0 17 9 16 18-1 10-8 16-17 18l-16 4C85 79 70 91 48 89 28 88 18 76 18 57Z" transform="translate(-8 0)"/><path d="m98 45 21 8-24 1M44 87l-4 14m0 0-10 3m10-3 8 4m17-19 2 14m0 0-8 4m8-4 10 2" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="94" cy="35" r="3" fill="#F8FBEF"/><path d="M37 48c8-8 17-7 24-2" fill="none" stroke="#F8FBEF" stroke-width="3" stroke-linecap="round"/></svg>`;
-const logo = `<img src="/brand/waybi-lockup.svg" alt="Waybi" width="171" height="44" />`;
-const copy = {
-  "en": {
-    "skip": "Skip to content",
-    "nav": [
-      "The experience",
-      "Road awareness",
-      "Waybi & Friends",
-      "Good to know",
-      "Our story"
-    ],
-    "open": "Get the app",
-    "menu": "Menu",
-    "eyebrow": "FOR THE JOURNEY. AND THE WAY HOME.",
-    "title": "Find your way.<br>A little more<br><em>Waybi.</em>",
-    "lead": "Turn-by-turn guidance, useful road reminders, and a cosy room with Waybi, Clover and Sett. A little company, wherever your next journey takes you.",
-    "start": "Get Waybi for iPhone",
-    "discover": "Meet the friends",
-    "note": "iPhone app in testing. Not yet on the App Store.",
-    "webMap": "Web map",
-    "webMapNote": "Prefer your browser?",
-    "sticker": "Small bird.<br>Big adventure.",
-    "preview": "Interface preview · sample route",
-    "lane": "USE LANE",
-    "turn": "Turn left onto Queen Street",
-    "camera": "Safety camera ahead",
-    "destination": "Waybi Cafe",
-    "minutes": "6 min",
-    "distance": "2.4 km",
-    "cameras": "2",
-    "labels": [
-      "To go",
-      "Distance",
-      "Cameras"
-    ],
-    "chips": [
-      "Voice ✓",
-      "Lanes ✓",
-      "Overview"
-    ],
-    "promises": [
-      "Routes beyond New Zealand",
-      "NZ safety-camera data",
-      "Waybi & Friends"
-    ],
-    "featuresLabel": "A NICER WAY TO GET THERE",
-    "featuresTitle": "Follow the road.<br>Enjoy the journey.",
-    "featuresLead": "Clear turns, a map that keeps up, and easier ways to start your next trip.",
-    "features": [
-      [
-        "A map that moves with you.",
-        "Waybi Map follows your direction, opens up at speed and moves closer for turns. See recommended lanes when your navigation provider supplies them."
-      ],
-      [
-        "A route that suits your journey.",
-        "In the iPhone app, compare recommended, fastest and shortest alternatives, with free route filters. If a known closure affects your route, find a detour and review it before setting off."
-      ],
-      [
-        "Keep the journeys that matter.",
-        "Review completed journeys and recorded distance, time and trip totals. Saved places and trip history make familiar journeys easier to find again."
-      ]
-    ],
-    "safetyLabel": "A LITTLE MORE AWARE OF WHAT’S AHEAD",
-    "safetyTitle": "Useful reminders.<br>In plain sight.",
-    "safetyLead": "See reported incidents, roadworks and closures along your route where data is available. In New Zealand, official fixed-camera reminders sit directly below your next turn.",
-    "safetyItems": [
-      "A clear camera reminder beneath the turn card",
-      "Distinct symbols for community road reports",
-      "English or Chinese, with Waybi Map"
-    ],
-    "demo": "Camera · 300 m",
-    "demoRoad": "Queen Street · sample alert",
-    "source": "Explore the NZTA camera source",
-    "sourceNote": "Official fixed-camera coverage is currently New Zealand. Reports, traffic and road information vary by provider and location.",
-    "friendsLabel": "A LITTLE WORLD TO COME HOME TO",
-    "friendsTitle": "Waybi & Friends.<br>Make yourself at home.",
-    "friendsLead": "Clover finds the sunny window. Sett trots across the rug. Waybi gets ready for a little adventure. They have their own quiet rhythm, even while you are away.",
-    "friendsSteps": [
-      [
-        "A home and garden with a life of their own",
-        "Sit in the sunshine with Clover, play fetch with Sett, or unfold a map with Waybi. Their walks continue smoothly while you are away."
-      ],
-      [
-        "Pack a tiny adventure",
-        "Bring a camera, lunch, an umbrella or Sett’s ball. One thing, two things, or an empty bag — it is your choice."
-      ],
-      [
-        "A story to keep",
-        "Send any friend exploring for a random 20 minutes to 12 hours. Real navigation arrivals also bring illustrated keepsakes inspired by the destination country."
-      ]
-    ],
-    "friendsEntry": "Find it in Me → Waybi & Friends.",
-    "friendsCaption": "Inside the Waybi iPhone app",
-    "friendsButton": "Meet your travelling companions",
-    "characterLabels": [
-      "THE CURIOUS KIWI",
-      "THE WINDOW WATCHER",
-      "YOUR CHEERFUL COMPANION"
-    ],
-    "characterNotes": [
-      "A curious kiwi bird with a little backpack and always another journey in mind.",
-      "At the window, on the sofa, or pretending not to notice you.",
-      "A few tiny footsteps, a favourite ball, and a very warm welcome home."
-    ],
-    "faqLabel": "BEFORE YOU SET OFF",
-    "faqTitle": "Good to know.",
-    "faqs": [
-      [
-        "Where can I navigate?",
-        "Waybi accepts destinations worldwide. Routes, place search, traffic, transit and lane information depend on the selected provider and local coverage. Official camera and speed-limit sources currently cover New Zealand; missing traffic or speed-limit data is shown as unavailable."
-      ],
-      [
-        "Can I try it without an account?",
-        "Yes. Explore places and routes, and visit Waybi & Friends in the iPhone app as a guest. Sign in for account sync, saved places and trip history. Apple sign-in is also supported on iPhone where enabled."
-      ],
-      [
-        "What powers Waybi Map?",
-        "The iPhone app uses Waybi Map, with our hosted New Zealand basemap and independent routing. Overseas journeys use available global map and routing services. Coverage varies by region, and map attribution stays visible."
-      ],
-      [
-        "What happens if a road is closed?",
-        "The iPhone app flags matched closures and offers Find detour. It checks available alternatives or requests a new route and checks it against known closures before you review it. If no checked detour is available, the blocked route stays unavailable to start. Road data can be incomplete; follow signs and temporary controls."
-      ],
-      [
-        "Can I use Waybi in a browser?",
-        "Yes. The web map supports place search, route planning and NZ fixed-camera context, and can be added to your home screen where supported. Waybi & Friends is in the iPhone app. Browser navigation needs the page in the foreground; locking the screen can pause location and voice guidance."
-      ],
-      [
-        "Can I open an address from my calendar?",
-        "Use a Waybi navigation link or the Navigate with Waybi action in iPhone Shortcuts to pass an address. Google Calendar controls its own Open with list; Waybi cannot add itself to that list."
-      ],
-      [
-        "Do real journeys bring back keepsakes?",
-        "Yes. Confirmed navigation arrivals add a keepsake to your journal. Japan, France, the UK, the US, New Zealand, Australia and China have illustrated country collections, with everyday keepsakes elsewhere. Landmark designs are country-themed gifts, not proof that you visited that landmark."
-      ]
-    ],
-    "storyLabel": "WHY WE MADE WAYBI",
-    "storyTitle": "We don't think the world needs a villain to make room for another map.",
-    "storyBody": "A bus-lane ticket. An unfamiliar city. And a question: what if the map could do a little more than tell us where to turn? We admire Google Maps. We just wanted more local road awareness, another kind of choice, and a few companions to make each journey feel more personal.",
-    "storyAction": "Read our story",
-    "footer": "A clearer journey. A little company along the way.",
-    "links": [
-      "Get the app",
-      "Dashboard",
-      "Contact"
-    ],
-    "disclaimer": "Navigation and road information are driving aids. Follow local road signs, laws and current conditions."
-  },
-  "zh": {
-    "skip": "跳转到正文",
-    "nav": [
-      "导航体验",
-      "沿途提醒",
-      "Waybi & Friends",
-      "出发前了解",
-      "关于我们"
-    ],
-    "open": "获取 App",
-    "menu": "菜单",
-    "eyebrow": "出发时陪着你，回家后等着你。",
-    "title": "出发有方向，<br><em>回家有伙伴。</em>",
-    "lead": "清楚的转向提示，有用的沿途提醒，还有 Waybi、Clover 和 Sett 生活的小屋。下一程去哪里，都多一点陪伴。",
-    "start": "获取 iPhone 版 Waybi",
-    "discover": "认识小伙伴",
-    "note": "iPhone 版测试中，尚未在 App Store 上架。",
-    "webMap": "网页版地图",
-    "webMapNote": "也可以在浏览器中使用：",
-    "sticker": "小小 Waybi，<br>大大冒险。",
-    "preview": "界面示意 · 示例路线",
-    "lane": "推荐车道",
-    "turn": "左转，驶向 Queen Street",
-    "camera": "前方安全摄像头",
-    "destination": "Waybi 咖啡馆",
-    "minutes": "6 分钟",
-    "distance": "2.4 公里",
-    "cameras": "2",
-    "labels": [
-      "剩余时间",
-      "剩余距离",
-      "沿途摄像头"
-    ],
-    "chips": [
-      "语音 ✓",
-      "车道 ✓",
-      "路线总览"
-    ],
-    "promises": [
-      "目的地不止新西兰",
-      "NZ 官方摄像头数据",
-      "Waybi & Friends"
-    ],
-    "featuresLabel": "让每一程，都舒服一点",
-    "featuresTitle": "跟着前方，<br>从容出发。",
-    "featuresLead": "清楚的转弯提示，跟得上你的地图，以及更方便的目的地入口。",
-    "features": [
-      [
-        "地图，跟着你向前。",
-        "自研地图随行驶方向转动，车速快时看得更远，接近转弯时看得更清楚。导航服务有车道数据时，也会显示推荐车道。"
-      ],
-      [
-        "选一条适合这一程的路。",
-        "iPhone 版可比较推荐、最快和最短路线，路线筛选免费使用。遇到已知封路时，可以查找绕行路线，确认后再出发。"
-      ],
-      [
-        "走过的路，留得下来。",
-        "到达后回顾行程，查看已记录的里程、用时和行程总数。收藏地点与行程记录，让熟悉的旅程更容易再找到。"
-      ]
-    ],
-    "safetyLabel": "多看清一点前方",
-    "safetyTitle": "有用的提醒，<br>放在眼前。",
-    "safetyLead": "有数据的地区可以看到沿途上报的事故、施工和封路。在新西兰，官方固定摄像头提醒就放在下一步转向卡片下方。",
-    "safetyItems": [
-      "转向卡片下方，醒目的摄像头提示",
-      "社区上报使用各自清楚的事件图标",
-      "中英文界面，Waybi 自研地图"
-    ],
-    "demo": "摄像头 · 300 米",
-    "demoRoad": "Queen Street · 示例提醒",
-    "source": "查看 NZTA 摄像头来源",
-    "sourceNote": "官方固定摄像头目前覆盖新西兰。社区上报、交通和道路信息随地区及数据提供方而不同。",
-    "friendsLabel": "有个小世界，在等你回家",
-    "friendsTitle": "Waybi & Friends。<br>进来坐坐。",
-    "friendsLead": "Clover 喜欢有阳光的窗边，Sett 会在地毯上小跑，Waybi 正准备下一次小冒险。你不在的时候，他们也有自己的生活节奏。",
-    "friendsSteps": [
-      [
-        "有小屋，也有花园",
-        "陪 Clover 晒太阳、和 Sett 玩球，或和 Waybi 看地图。你离开时，他们也会继续慢慢散步。"
-      ],
-      [
-        "打包一段小冒险",
-        "相机、午餐、雨伞，或 Sett 的球。带一件、两件，或者轻装出门，都可以。"
-      ],
-      [
-        "带回一个小故事",
-        "三位伙伴都能出门，随机旅行 20 分钟到 12 小时。完成真实导航后，还会收到目的地国家主题的插画纪念品。"
-      ]
-    ],
-    "friendsEntry": "从 Me（我）→ Waybi & Friends 进入。",
-    "friendsCaption": "Waybi iPhone App 内的小屋",
-    "friendsButton": "认识你的旅途小伙伴",
-    "characterLabels": [
-      "爱出发的几维鸟",
-      "喜欢窗边的好奇猫咪",
-      "总是开心的小伙伴"
-    ],
-    "characterNotes": [
-      "Waybi 是一只几维鸟（kiwi bird）。一个背包，一点好奇心，心里总惦记着下一段小旅行。",
-      "待在窗台、窝在沙发，或假装没有注意到你回来。",
-      "小小的脚步，一颗最爱的球，回家时总有个热情的迎接。"
-    ],
-    "faqLabel": "出发之前",
-    "faqTitle": "你可能想了解。",
-    "faqs": [
-      [
-        "可以在哪些地方导航？",
-        "Waybi 可以接收世界各地的目的地。路线、地点、交通、公交与车道信息取决于所选服务和当地覆盖。官方摄像头及限速来源目前覆盖新西兰；缺失的交通或限速数据会显示为不可用。"
-      ],
-      [
-        "不注册也能使用吗？",
-        "可以。游客也能探索地点和路线，在 iPhone 版中进入 Waybi & Friends。需要账户同步、收藏地点或行程记录时，再登录。iPhone 版在配置启用时也支持 Apple 登录。"
-      ],
-      [
-        "Waybi 使用什么地图？",
-        "iPhone 版使用 Waybi 自研地图，结合自有的新西兰底图和独立路线服务。海外行程通过可用的全球地图与路线服务继续提供支持。具体覆盖因地区而异，地图署名会保留。"
-      ],
-      [
-        "遇到封路，可以重新规划吗？",
-        "iPhone 版会标出匹配到路线的封路，并提供“查找绕行”。它会检查现有备选路线，或重新请求路线，再对照已知封路复核，供你确认。找不到通过复核的绕行路线时，原先受阻路线仍不能开始导航。道路数据可能不完整，请以现场标志和临时管制为准。"
-      ],
-      [
-        "可以直接在浏览器中使用吗？",
-        "可以。网页版地图支持地点搜索、路线规划和新西兰固定摄像头信息，支持的浏览器还可将它添加到主屏幕。Waybi & Friends 在 iPhone 版中体验。网页导航需要保持前台，锁屏或切到后台可能暂停定位与语音。"
-      ],
-      [
-        "能从日历打开一个地址吗？",
-        "可以通过 Waybi 导航链接，或 iPhone 快捷指令里的 Navigate with Waybi 动作传入地址。Google Calendar 的 Open with 列表由它自己控制，Waybi 无法自行加入。"
-      ],
-      [
-        "真实导航会让伙伴自动带回纪念品吗？",
-        "会。确认到达后，纪念品会收入旅行册。日本、法国、英国、美国、新西兰、澳大利亚和中国有专属插画收藏，其他地区也有日常小礼物。地标插画是国家主题礼物，不代表实际到访过那个地标。"
-      ]
-    ],
-    "storyLabel": "为什么做 WAYBI",
-    "storyTitle": "做一张新地图，不一定要先证明旧地图不好。",
-    "storyBody": "一次公交车道罚单，让我们开始思考：地图已经知道该怎么走，能不能再提醒一点当地道路规则？Google Maps 很好用，但世界也需要不同的选择。再加上 Waybi、Clover 和 Sett，我们希望每一程不只是导航，还有一点陪伴。",
-    "storyAction": "读读我们的故事",
-    "footer": "看清前方，多一点 Waybi 陪伴。",
-    "links": [
-      "获取 App",
-      "个人面板",
-      "联系我们"
-    ],
-    "disclaimer": "导航和道路信息仅作为驾驶辅助。请遵守当地道路标志、法规和实际路况。"
-  }
-};
-
 let menuListeners = new AbortController();
+
+function root() {
+  let node = document.getElementById('marketing-root');
+  if (!node) {
+    // Fallback when the static markup is missing (tests, or an old cached shell).
+    node = document.createElement('div');
+    node.id = 'marketing-root';
+    node.className = 'marketing';
+    document.body.replaceChildren(node);
+  }
+  return node;
+}
+
+function applyMeta() {
+  const meta = marketingMeta(language);
+  document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
+  document.title = meta.title;
+  document.querySelector('meta[name="description"]')?.setAttribute('content', meta.description);
+}
+
 function render() {
+  const node = root();
+  node.innerHTML = renderMarketing(language, { appStoreUrl });
+  node.dataset.language = language;
+  bind();
+}
+
+function bind() {
   menuListeners.abort();
   menuListeners = new AbortController();
-  const c = copy[language as keyof typeof copy];
-  document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en-NZ';
-  document.title = language === 'zh'
-    ? 'Waybi｜导航、沿途提醒与 Waybi & Friends'
-    : 'Waybi — Navigation, Road Awareness & Friends';
-  document.querySelector('meta[name="description"]')?.setAttribute(
-    'content',
-    language === 'zh'
-      ? 'Waybi 为每一程提供路线规划、随方向跟随的导航和沿途提醒，还有 Waybi & Friends 伙伴小屋。官方摄像头目前覆盖新西兰。'
-      : 'Waybi brings navigation, road awareness and Waybi & Friends together on iPhone. Plan your next route, then visit a cosy companion room. Official camera coverage is New Zealand.'
-  );
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#F8FBEF');
+  const signal = menuListeners.signal;
   document.body.dataset.surface = 'marketing';
-  document.body.innerHTML = `
-    <a href="#main" class="skip-link">${c.skip}</a>
-    <div class="site">
-      <header class="header">
-        <a class="brand" href="/" aria-label="Waybi">${logo}</a>
-        <nav class="nav" id="site-nav" aria-label="${language === 'zh' ? '主导航' : 'Main navigation'}">
-          ${c.nav.map((label, i) => `<a href="${['#experience', '#awareness', '#friends', '#faq', language === 'zh' ? '/zh/about/' : '/about/'][i]}">${label}</a>`).join('')}
-        </nav>
-        <div class="header-actions">
-          <button class="language" type="button" aria-label="${language === 'zh' ? 'Switch to English' : '切换到中文'}">${language === 'zh' ? 'EN' : '中文'}</button>
-          <a class="button small" href="#download">${c.open}<span aria-hidden="true">↗</span></a>
-          <button class="menu" type="button" aria-controls="site-nav" aria-expanded="false" aria-label="${c.menu}">☰</button>
-        </div>
-      </header>
-      <main id="main">
-        <section class="hero">
-          <div class="hero-copy">
-            <span class="eyebrow"><i></i>${c.eyebrow}</span>
-            <h1>${c.title}</h1>
-            <p class="hero-lead">${c.lead}</p>
-            <div class="hero-actions"><a class="button" href="#download">${c.start}<span aria-hidden="true">↗</span></a><a class="text-link" href="#friends">${c.discover}<span aria-hidden="true">↓</span></a></div>
-            <div class="hero-note">${bird}<span>${c.note}</span></div>
-          </div>
-          <div class="preview" role="img" aria-label="${c.preview}: ${c.turn}; ${c.camera} 300 m">
-            <div class="preview-sticker">${bird}<span>${c.sticker}</span></div>
-            <div class="phone" aria-hidden="true">
-              <svg class="map-art" viewBox="0 0 330 600" preserveAspectRatio="xMidYMid slice"><rect width="330" height="600" fill="#eaf0df"/><path d="M-40 277c69-63 123-55 136-136s110-101 257-85v130c-97-32-163-2-174 78s-142 80-196 141Z" fill="#d1e1c0"/><path d="M245 240c-34 21-18 74 36 87s65 31 60 117v-220Z" fill="#c4d6bb"/><g fill="none" stroke="#fffdf6" stroke-width="22"><path d="M-30 70 345 450M-10 255 370 240M-10 433 390 390M55-30 35 640M213-25 198 670M-25 575 370 565"/></g><g fill="none" stroke="#d2d9c7" stroke-width="1"><path d="M-30 70 345 450M-10 255 370 240M-10 433 390 390M55-30 35 640M213-25 198 670"/></g><path d="M163 568V402q0-15 15-15h24V252q0-10-12-10H35V87" fill="none" stroke="#486B29" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><path d="M163 568V402q0-15 15-15h24V252q0-10-12-10H35V87" fill="none" stroke="#D0F58A" stroke-width="3" stroke-linecap="round"/></svg>
-              <div class="phone-status"><span>9:41</span><span>●●● ▰</span></div>
-              <div class="preview-turn"><div class="turn-line"><span class="turn-symbol">↰</span><div><strong>180 ${language === 'zh' ? '米' : 'm'}</strong><small>${c.turn}</small></div></div><div class="preview-lanes"><small>${c.lane}</small><b>↰</b><b>↑</b><b>↗</b></div></div>
-              <div class="preview-camera"><span class="lens">◉</span><div><strong>${c.camera}</strong><small>Queen Street</small></div><b>300 ${language === 'zh' ? '米' : 'm'}</b></div>
-              <span class="map-road-label">Queen Street</span><div class="map-kiwi">${bird}</div>
-              <div class="preview-deck"><i class="deck-handle"></i><div class="deck-title">${bird}${c.destination}</div><div class="deck-stats">${[c.minutes, c.distance, c.cameras].map((value, i) => `<div><strong>${value}</strong><small>${c.labels[i]}</small></div>`).join('')}</div><div class="deck-chips">${c.chips.map(value => `<span>${value}</span>`).join('')}</div></div>
-            </div><span class="preview-caption">${c.preview}</span>
-          </div>
-        </section>
-        <div class="promise-strip">${c.promises.map((promise, i) => `<span><b aria-hidden="true">${['↗', '◉', '♡'][i]}</b>${promise}</span>`).join('')}</div>
-        <section class="features" id="experience">
-          <div class="section-heading"><div><span class="eyebrow">${c.featuresLabel}</span><h2>${c.featuresTitle}</h2></div><p>${c.featuresLead}</p></div>
-          <div class="feature-grid">${c.features.map(([title, description], i) => `<article class="feature ${['dark', '', 'lime'][i]}"><span class="feature-number">0${i + 1}</span><div class="feature-visual" aria-hidden="true">${['<span class="active">↰</span><span>↑</span><span>↗</span>', '↗ &nbsp; → &nbsp; ⌖', '⌁ &nbsp; ✓' + bird][i]}</div><h3>${title}</h3><p>${description}</p></article>`).join('')}</div>
-        </section>
-        <section class="safety" id="awareness">
-          <div class="safety-art" aria-hidden="true">${bird}<div class="camera-demo"><span>◉</span><div><strong>${c.demo}</strong><small>${c.demoRoad}</small></div></div></div>
-          <div class="safety-copy"><span class="eyebrow">${c.safetyLabel}</span><h2>${c.safetyTitle}</h2><p>${c.safetyLead}</p><ul class="safety-list">${c.safetyItems.map(item => `<li><b aria-hidden="true">✓</b>${item}</li>`).join('')}</ul><a class="text-link" href="https://www.nzta.govt.nz/travelling-on-our-roads/safety-cameras/about-safety-cameras/fixed-safety-camera-locations" target="_blank" rel="noopener noreferrer">${c.source}<span aria-hidden="true">↗</span></a><div class="source-note">${c.sourceNote}</div></div>
-        </section>
-        <section class="friends-world" id="friends" aria-labelledby="friends-title">
-          <div class="friends-copy">
-            <span class="eyebrow">${c.friendsLabel}</span><h2 id="friends-title">${c.friendsTitle}</h2>
-            <p class="friends-lead">${c.friendsLead}</p>
-            <div class="friends-steps">${c.friendsSteps.map(([title, description], i) => `<article><span aria-hidden="true">0${i+1}</span><div><h3>${title}</h3><p>${description}</p></div></article>`).join('')}</div>
-            <p class="friends-entry">${c.friendsEntry}</p><a class="text-link" href="#download">${c.friendsButton}<span aria-hidden="true">↗</span></a>
-          </div>
-          <figure class="friends-preview"><span class="friends-preview-tag">WAYBI & FRIENDS</span><img src="/previews/waybi-friends.png" alt="${language === 'zh' ? 'Waybi、Clover 和 Sett 在 App 中的小屋生活' : 'Waybi, Clover and Sett in their companion room'}" width="446" height="960" loading="lazy" /><figcaption>${c.friendsCaption}</figcaption></figure>
-          <div class="friend-introductions">${['Waybi','Clover','Sett'].map((name,i) => `<article class="friend-introduction friend-${name.toLowerCase()}"><div class="friend-portrait"><img src="/brand/${name.toLowerCase()}.png" alt="${name}" width="130" height="130" loading="lazy" /></div><span>${c.characterLabels[i]}</span><h3>${name}</h3><p>${c.characterNotes[i]}</p></article>`).join('')}</div>
-        </section>
-        <section class="origin-teaser" aria-labelledby="origin-title">
-          <div class="origin-teaser-copy">
-            <span class="eyebrow">${c.storyLabel}</span>
-            <h2 id="origin-title">${c.storyTitle}</h2>
-            <p>${c.storyBody}</p>
-            <a class="text-link" href="${language === 'zh' ? '/zh/about/' : '/about/'}">${c.storyAction}<span aria-hidden="true">↗</span></a>
-          </div>
-          <div class="origin-teaser-visual" aria-hidden="true"><span>${language === 'zh' ? '路上多一点体贴。' : 'A little more along the way.'}</span><img src="/brand/waybi.png" alt="" loading="lazy" width="205" height="205" /><i>↗</i></div>
-        </section>
-        <section class="seo-guides" aria-labelledby="seo-guides-title">
-          <div class="section-heading"><div><span class="eyebrow">${language === 'zh' ? '每一程，都有 WAYBI' : 'EVERY PART OF YOUR JOURNEY'}</span><h2 id="seo-guides-title">${language === 'zh' ? '从出发，到带回小回忆。' : 'From setting off to bringing something home.'}</h2></div><p>${language === 'zh' ? '清晰的导航、沿途的道路更新、熟悉的通勤，还有等你回家的伙伴。' : 'Clear guidance, a look at the road ahead, your familiar commute, and a little world to come home to.'}</p></div>
-          <div class="seo-guide-grid">
-            <a class="seo-guide-card guide-0" href="${language === 'zh' ? '/zh/new-zealand-navigation/' : '/new-zealand-navigation/'}"><span class="guide-icon" aria-hidden="true">↰</span><span>${language === 'zh' ? '沿途导航' : 'ON THE ROAD'}</span><h3>${language === 'zh' ? '地图与导航' : 'Maps & navigation'}</h3><p>${language === 'zh' ? '朝前跟随的导航、随速度变化的镜头，以及出发前的道路更新。' : 'Heading-up guidance, speed-aware zoom, and a look at the road before you leave.'}</p><b>${language === 'zh' ? '继续了解 ↗' : 'Take a closer look ↗'}</b></a>
-            <a class="seo-guide-card guide-1" href="${language === 'zh' ? '/zh/safety-camera-navigation/' : '/safety-camera-navigation/'}"><span class="guide-icon" aria-hidden="true">!</span><span>${language === 'zh' ? '道路提醒' : 'ROAD AWARENESS'}</span><h3>${language === 'zh' ? '道路更新与摄像头' : 'Road updates & cameras'}</h3><p>${language === 'zh' ? '地图上的官方事件、Discover 的附近更新，以及新西兰固定摄像头提醒。' : 'Official road events on your map, nearby updates in Discover, and NZ fixed-camera reminders.'}</p><b>${language === 'zh' ? '继续了解 ↗' : 'Take a closer look ↗'}</b></a>
-            <a class="seo-guide-card guide-2" href="${language === 'zh' ? '/zh/route-watch/' : '/route-watch/'}"><span class="guide-icon" aria-hidden="true">↝</span><span>${language === 'zh' ? 'WAYBI PLUS' : 'WAYBI PLUS'}</span><h3>${language === 'zh' ? 'Route Watch' : 'Route Watch'}</h3><p>${language === 'zh' ? '定期检查保存通勤路线周边的 NZTA 事件，在行程中查看更新。' : 'Saved commute corridors checked against official NZTA road events, ready to review in Trips.'}</p><b>${language === 'zh' ? '继续了解 ↗' : 'Take a closer look ↗'}</b></a>
-            <a class="seo-guide-card guide-3" href="${language === 'zh' ? '/zh/waybi-friends/' : '/waybi-friends/'}"><span class="guide-icon" aria-hidden="true"><img src="/brand/waybi.png" width="70" height="70" alt="" loading="lazy"/></span><span>${language === 'zh' ? 'WAYBI & FRIENDS' : 'WAYBI & FRIENDS'}</span><h3>${language === 'zh' ? 'Waybi & Friends' : 'Waybi & Friends'}</h3><p>${language === 'zh' ? '随机的小冒险、有地域特色的纪念品，还有等你回来的三个伙伴。' : 'Small adventures, country-themed keepsakes, and three companions to come home to.'}</p><b>${language === 'zh' ? '继续了解 ↗' : 'Take a closer look ↗'}</b></a>
-          </div>
-        </section>
-        <section class="faq" id="faq"><div><span class="eyebrow">${c.faqLabel}</span><h2>${c.faqTitle}</h2></div><div>${c.faqs.map(([q, a]) => `<details><summary>${q}</summary><p>${a}</p></details>`).join('')}</div></section>
-        <section class="download cta" id="download" aria-labelledby="download-title">
-          <div><span class="eyebrow">${language === 'zh' ? 'WAYBI · IPHONE 版' : 'WAYBI FOR IPHONE'}</span>
-            <h2 id="download-title">${language === 'zh' ? '把 Waybi，<br>带上你的下一程。' : 'Your next adventure.<br>With Waybi along.'}</h2>
-            <p>${language === 'zh' ? '熟悉的转向提示，贴心的道路提醒，还有等你回家的小伙伴。' : 'Clear turns, thoughtful road reminders, and a little world to come home to.'}</p>
-            ${appStoreUrl ? `<a class="button lime store-button" href="${appStoreUrl}" target="_blank" rel="noopener noreferrer">${language === 'zh' ? '在 App Store 下载' : 'Download on the App Store'} <span aria-hidden="true">↗</span></a>` : `<button class="button lime store-button" type="button" disabled>${language === 'zh' ? 'App Store · 即将上线' : 'Coming soon on the App Store'}</button>`}
-            <small class="release-note">${appStoreUrl ? (language === 'zh' ? '在 iPhone 上开启你的下一程。' : 'Start your next journey on iPhone.') : (language === 'zh' ? 'iPhone 版测试中，尚未上架。发布后，这里将直接通往 App Store。' : 'The iPhone app is in testing and not listed yet. This will link to the App Store when Waybi launches.')}</small>
-            <p class="web-map-entry">${c.webMapNote} <a href="/app">${c.webMap}<span aria-hidden="true"> ↗</span></a></p>
-          </div>${bird}
-        </section>
-
-      </main>
-      <footer class="footer"><a class="brand" href="/">${logo}</a><div class="footer-links"><a href="/app">${c.webMap}</a>${c.links.map((label, i) => `<a href="${['#download', '/dashboard', 'https://github.com/yaohuangguan/Waybi/issues'][i]}">${label}</a>`).join('')}<a href="/new-zealand-navigation/">${language === 'zh' ? '导航指南' : 'Navigation guide'}</a><a href="/safety-camera-navigation/">${language === 'zh' ? '摄像头提醒' : 'Safety cameras'}</a><a href="/route-watch/">Route Watch</a><a href="${language === 'zh' ? '/zh/about/' : '/about/'}">${language === 'zh' ? '关于我们' : 'About us'}</a>${(['privacy','terms','support'] as const).map((page, i) => `<a href="${language === 'zh' ? '/zh' : ''}/${page}/">${(language === 'zh' ? ['隐私政策','使用条款','帮助与支持'] : ['Privacy','Terms','Support'])[i]}</a>`).join('')}<a href="/zh/" lang="zh-CN">中文</a></div><p>${c.footer}<br>${c.disclaimer}</p><small>© ${new Date().getFullYear()} Waybi</small></footer>
-    </div>`;
+  applyMeta();
   document.querySelector('.language')?.addEventListener('click', () => {
     language = language === 'zh' ? 'en' : 'zh';
     writeLanguage(language);
     render();
     document.querySelector<HTMLButtonElement>('.language')?.focus({ preventScroll: true });
-  });
+  }, { signal });
   const menu = document.querySelector<HTMLButtonElement>('.menu')!;
   const nav = document.querySelector<HTMLElement>('.nav')!;
   menu.addEventListener('click', () => {
     const open = menu.getAttribute('aria-expanded') !== 'true';
     menu.setAttribute('aria-expanded', String(open));
     nav.classList.toggle('open', open);
-  });
+  }, { signal });
   nav.addEventListener('click', (event) => {
     if ((event.target as HTMLElement).closest('a')) {
       nav.classList.remove('open');
       menu.setAttribute('aria-expanded', 'false');
     }
-  });
-  document.addEventListener('keydown', closeMenu, { signal: menuListeners.signal });
+  }, { signal });
+  document.addEventListener('keydown', closeMenu, { signal });
 }
-// Replace the listener across locale renders instead of accumulating handlers.
+
 function closeMenu(event: KeyboardEvent) {
   if (event.key !== 'Escape') return;
-  const menu = document.querySelector<HTMLButtonElement>('.menu')!;
-  if (menu.getAttribute('aria-expanded') !== 'true') return;
+  const menu = document.querySelector<HTMLButtonElement>('.menu');
+  if (!menu || menu.getAttribute('aria-expanded') !== 'true') return;
   menu.setAttribute('aria-expanded', 'false');
   document.querySelector('.nav')?.classList.remove('open');
   menu.focus();
 }
-render();
+
+applyTheme();
+const existing = document.getElementById('marketing-root');
+// First paint already shows the final English page: only bind, never repaint it.
+if (existing?.dataset.language === language && existing.querySelector('h1')) bind();
+else render();

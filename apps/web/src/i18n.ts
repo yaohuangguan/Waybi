@@ -35,7 +35,7 @@ const en = {
   currentPlace: 'Current location', guestRecent: 'Recent destinations',
   autocompleteUnavailable: 'Live suggestions need a configured address provider. Press Enter to search.',
   // Route planning
-  routeCalculating: 'Calculating route…', destinationFallback: 'Destination', routeError: 'Route unavailable',
+  mapCredits: 'Map credits', routeCalculating: 'Calculating route…', destinationFallback: 'Destination', routeError: 'Route unavailable',
   routeFailed: 'Could not calculate route', routeFailedRetry: 'Could not calculate a route right now. Try again in a moment.', chooseOrigin: 'Choose a starting point or allow GPS.',
   noRouteAvailable: 'No available route. Change the destination or try again later.',
   routeBusy: 'Route planning is busy. Waybi will retry in {seconds} s.',
@@ -198,7 +198,7 @@ const zh: Record<MessageKey, string> = {
   stopPlaceholder: '添加途经点', stopLabel: '途经点', stopSearch: '搜索途经点', removeStop: '移除途经点 {name}',
   currentPlace: '当前位置', guestRecent: '最近的目的地',
   autocompleteUnavailable: '实时补全需要配置地址服务；按回车仍可搜索。',
-  routeCalculating: '正在计算路线…', destinationFallback: '目的地', routeError: '路线暂不可用',
+  mapCredits: '地图版权', routeCalculating: '正在计算路线…', destinationFallback: '目的地', routeError: '路线暂不可用',
   routeFailed: '路线计算失败', routeFailedRetry: '暂时无法计算路线，请稍后再试。', chooseOrigin: '请选择起点，或允许 GPS 定位。',
   noRouteAvailable: '暂无可用路线，请调整地点或稍后重试。',
   routeBusy: '路线服务繁忙，Waybi 将在 {seconds} 秒后重试。',

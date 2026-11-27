@@ -6,6 +6,7 @@ import { cameraLabel, distanceMeters, type Camera, type Coordinate, type Route }
 import type { ParkingPlace } from './parking';
 import type { TrafficInterval } from './route-planner';
 import { apiFetch } from './api';
+import { t } from './i18n';
 
 // Share the native app's NZ archive, global fallback, style and legal credits.
 export const NZ_TILES = 'pmtiles://https://maps.waybi.co/regions/nz.pmtiles';
@@ -39,7 +40,7 @@ export function inNewZealand([lon, lat]: Coordinate) {
 export function waybiStyle(language: 'zh' | 'en', hosted: boolean): StyleSpecification {
   const style = JSON.parse(baseStyle);
   style.sources.openmaptiles.url = hosted ? NZ_TILES : GLOBAL_TILES;
-  style.sources.openmaptiles.attribution = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="/map-licenses.txt">Map credits</a>';
+  style.sources.openmaptiles.attribution = `© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="/map-licenses.txt">${t(language, 'mapCredits')}</a>`;
   for (const layer of style.layers) {
     const id = layer.id as string;
     if (layer.type === 'background') layer.paint['background-color'] = '#f6f7f8';

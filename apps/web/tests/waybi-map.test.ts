@@ -19,6 +19,8 @@ it('adds Chinese fallback labels without changing the shared base style', () => 
   const en = waybiStyle('en', true);
   expect(JSON.stringify(zh)).toContain('name:zh');
   expect(JSON.stringify(en)).not.toContain('name:zh');
+  expect(zh.sources.openmaptiles).toHaveProperty('attribution', expect.stringContaining('地图版权'));
+  expect(en.sources.openmaptiles).toHaveProperty('attribution', expect.stringContaining('Map credits'));
 });
 
 it('falls back at once when the hosted archive never worked, but tolerates isolated errors once it has', () => {

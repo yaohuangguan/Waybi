@@ -950,6 +950,11 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
       _mapRefreshTimer = null;
       _driveEngine.stopTrafficFlowRefresh();
     }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      // Browsing needs no GPS in the background; Drive keeps its own feed.
+      unawaited(_browseLocationFeed?.pause());
+    }
     if (state == AppLifecycleState.resumed) {
       unawaited(_friendsBackup.sync());
       if (_driveEngine.active) {
@@ -1782,6 +1787,7 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
   }
 
   Future<void> _resumeBrowseTracking() async {
+    _browseLocationFeed?.resume();
     await _startTracking();
     await _browseLocationFeed?.recover(force: true);
   }
@@ -1808,18 +1814,8 @@ class _MapHomePageState extends State<MapHomePage> with WidgetsBindingObserver {
         /* iOS simulator and non-iOS use GPS course. */
       },
     );
-    _browseLocationFeed = ReliableLocationFeed(
-      settings: defaultTargetPlatform == TargetPlatform.iOS
-          ? AppleSettings(
-              accuracy: LocationAccuracy.bestForNavigation,
-              distanceFilter: 0,
-              pauseLocationUpdatesAutomatically: false,
-              allowBackgroundLocationUpdates: false,
-            )
-          : const LocationSettings(
-              accuracy: LocationAccuracy.bestForNavigation,
-              distanceFilter: 0,
-            ),
+    _browseLocationFeed = ReliableLocationFeed.profile(
+      LocationFeedProfile.browse,
       onPosition: _onPosition,
       onIssue: _onBrowseLocationIssue,
     )..start();

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/transit_lane.dart';
 import 'api_config.dart';
+import 'json_file_cache.dart';
 
 class TransitLaneSnapshot {
   TransitLaneSnapshot(Map<String, dynamic> json)
@@ -33,7 +34,11 @@ class TransitLaneRepository {
     this.baseUrl = workerBaseUrl,
     DateTime Function()? clock,
     Future<String> Function()? seedLoader,
-  }) : _client = client ?? http.Client(),
+    JsonFileCache? cache,
+  }) : _cacheFile =
+           cache ??
+           JsonFileCache('transit-lanes.v1.json', legacyPrefsKey: _cache),
+       _client = client ?? http.Client(),
        _clock = clock ?? DateTime.now,
        _seedLoader =
            seedLoader ??
@@ -42,32 +47,40 @@ class TransitLaneRepository {
   final String baseUrl;
   final DateTime Function() _clock;
   final Future<String> Function() _seedLoader;
+
+  /// ≥242 KB snapshot: a file, never SharedPreferences.
+  final JsonFileCache _cacheFile;
   Future<TransitLaneSnapshot>? _local;
   Future<TransitLaneSnapshot>? _refresh;
   static const _cache = 'waybi.transit_lanes.v1',
       _attempt = 'waybi.transit_lanes.last_attempt';
 
   Future<TransitLaneSnapshot> loadLocal() => _local ??= _loadLocal();
+  static final _checkedAtPattern = RegExp(r'"checkedAt"\s*:\s*"([^"]+)"');
+  static DateTime? _checkedAt(String raw) =>
+      DateTime.tryParse(_checkedAtPattern.firstMatch(raw)?.group(1) ?? '');
+
+  /// Decodes only one snapshot: a newer valid cache skips the bundled seed.
   Future<TransitLaneSnapshot> _loadLocal() async {
-    final seed = TransitLaneSnapshot(
-      jsonDecode(await _seedLoader()) as Map<String, dynamic>,
-    );
+    final seedRaw = await _seedLoader();
     try {
-      final prefs = await SharedPreferences.getInstance(),
-          raw = prefs.getString(_cache);
-      if (raw != null) {
+      final raw = await _cacheFile.read();
+      final cachedAt = raw == null ? null : _checkedAt(raw);
+      final seedAt = _checkedAt(seedRaw);
+      if (raw != null &&
+          cachedAt != null &&
+          (seedAt == null || cachedAt.isAfter(seedAt))) {
         final cached = TransitLaneSnapshot(
-          jsonDecode(raw) as Map<String, dynamic>,
+          await decodeJsonOffMain(raw) as Map<String, dynamic>,
         );
-        if (cached.lanes.length >= 200 &&
-            cached.checkedAt.isAfter(seed.checkedAt)) {
-          return cached;
-        }
+        if (cached.lanes.length >= 200) return cached;
       }
     } catch (_) {
       /* Retain the bundled snapshot. */
     }
-    return seed;
+    return TransitLaneSnapshot(
+      await decodeJsonOffMain(seedRaw) as Map<String, dynamic>,
+    );
   }
 
   Future<TransitLaneSnapshot> refresh() {
@@ -96,15 +109,16 @@ class TransitLaneRepository {
           .get(Uri.parse('$baseUrl/api/transit-lanes'))
           .timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) return previous;
-      final json =
-          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final json = await decodeJsonOffMain(
+        utf8.decode(response.bodyBytes),
+      ) as Map<String, dynamic>;
       if (json['schemaVersion'] != 1) return previous;
       final next = TransitLaneSnapshot(json);
       if (next.lanes.length < 200 ||
           next.checkedAt.isBefore(previous.checkedAt)) {
         return previous;
       }
-      await prefs.setString(_cache, response.body);
+      await _cacheFile.write(response.body);
       _local = Future.value(next);
       return next;
     } catch (_) {

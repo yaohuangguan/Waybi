@@ -1,10 +1,10 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/safety_camera.dart';
 import 'api_config.dart';
+import 'json_file_cache.dart';
 
 class CameraSnapshot {
   const CameraSnapshot({
@@ -35,11 +35,20 @@ class CameraSnapshot {
 }
 
 class CameraRepository {
-  CameraRepository({http.Client? client, this.baseUrl = workerBaseUrl})
-    : _client = client ?? http.Client();
+  CameraRepository({
+    http.Client? client,
+    this.baseUrl = workerBaseUrl,
+    JsonFileCache? cache,
+  }) : _client = client ?? http.Client(),
+       _cache =
+           cache ??
+           JsonFileCache('camera-catalog.v1.json', legacyPrefsKey: _cacheKey);
 
   final http.Client _client;
   final String baseUrl;
+
+  /// ~60 KB catalogue: a file, rewritten only when the catalogue changes.
+  final JsonFileCache _cache;
 
   static const _cacheKey = 'waybi.cache.cameras.v1';
   CameraSnapshot? _lastValidSnapshot;
@@ -53,15 +62,11 @@ class CameraRepository {
       if (response.statusCode != 200) {
         throw StateError('Camera API failed: ${response.statusCode}');
       }
-      final snapshot = _decodeSnapshot(response.body);
+      final snapshot = await _decodeSnapshot(response.body);
       _lastValidSnapshot = snapshot;
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_cacheKey, response.body);
-      } catch (_) {
-        // Persistent caching is best-effort and must never turn a successful
-        // live response into an offline failure.
-      }
+      // Persistent caching is best-effort and must never turn a successful
+      // live response into an offline failure.
+      await _cache.write(response.body);
       return snapshot;
     } catch (error) {
       networkError = error;
@@ -70,10 +75,9 @@ class CameraRepository {
     final memory = _lastValidSnapshot;
     if (memory != null) return _cachedCopy(memory, networkError);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString(_cacheKey);
+      final cached = await _cache.read();
       if (cached != null) {
-        final snapshot = _decodeSnapshot(cached);
+        final snapshot = await _decodeSnapshot(cached);
         _lastValidSnapshot = snapshot;
         return _cachedCopy(snapshot, networkError);
       }
@@ -105,17 +109,14 @@ class CameraRepository {
         throw StateError('Camera sync failed: ${response.statusCode}');
       }
     }
-    final snapshot = _decodeSnapshot(response.body);
+    final snapshot = await _decodeSnapshot(response.body);
     _lastValidSnapshot = snapshot;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_cacheKey, response.body);
-    } catch (_) {}
+    await _cache.write(response.body);
     return snapshot;
   }
 
-  CameraSnapshot _decodeSnapshot(String raw) {
-    final body = jsonDecode(raw) as Map<String, dynamic>;
+  Future<CameraSnapshot> _decodeSnapshot(String raw) async {
+    final body = await decodeJsonOffMain(raw) as Map<String, dynamic>;
     final rows = body['cameras'];
     if (rows is! List ||
         rows.isEmpty ||

@@ -51,6 +51,9 @@
     "apps/mobile/lib/data/http_guard.dart": {
       "minimumLinePercent": 95
     },
+    "apps/mobile/lib/data/json_file_cache.dart": {
+      "minimumLinePercent": 95
+    },
     "apps/mobile/lib/data/navigation_feedback_repository.dart": {
       "minimumLinePercent": 95
     },

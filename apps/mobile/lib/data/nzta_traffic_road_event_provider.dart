@@ -1,13 +1,13 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/country_profile.dart';
 import '../domain/map_provider.dart';
 import '../domain/road_event.dart';
 import '../domain/road_intelligence.dart';
 import 'api_config.dart';
+import 'json_file_cache.dart';
 
 /// The feed combines regional official events and worldwide Waybi reports.
 ///
@@ -20,7 +20,13 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
   NztaTrafficRoadEventProvider({
     http.Client? client,
     this.baseUrl = workerBaseUrl,
-  }) : _client = client ?? http.Client();
+    JsonFileCache Function(String key)? cache,
+  }) : _client = client ?? http.Client(),
+       _cacheFor =
+           cache ?? ((key) => JsonFileCache('$key.json', legacyPrefsKey: key));
+  final JsonFileCache Function(String key) _cacheFor;
+  final _caches = <String, JsonFileCache>{};
+  final _cachedEvents = <String, (int, DateTime)>{};
 
   final http.Client _client;
   final String baseUrl;
@@ -58,11 +64,18 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
         throw StateError('Road events API failed: ${response.statusCode}');
       }
       final events = _decode(response.body, stale: false);
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(cacheKey, response.body);
-      } catch (_) {
-        // A missing preferences binding must not hide a successful live feed.
+      // Polled every 5 minutes while driving: rewrite the offline copy only
+      // when the events changed, or to refresh its age before it expires.
+      final signature = _eventsSignature(response.body);
+      final previous = _cachedEvents[cacheKey];
+      final now = DateTime.now();
+      if (previous == null ||
+          previous.$1 != signature ||
+          now.difference(previous.$2) > const Duration(minutes: 10)) {
+        final cache = _caches[cacheKey] ??= _cacheFor(cacheKey);
+        if (await cache.write(response.body)) {
+          _cachedEvents[cacheKey] = (signature, now);
+        }
       }
       return events;
     } catch (error) {
@@ -70,8 +83,8 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
     }
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final cached = prefs.getString(cacheKey);
+      final cache = _caches[cacheKey] ??= _cacheFor(cacheKey);
+      final cached = await cache.read();
       if (cached != null) return _decode(cached, stale: true);
     } catch (_) {
       // Fall through to the original network failure.
@@ -118,6 +131,11 @@ class NztaTrafficRoadEventProvider implements RoadEventProvider {
               (!expiredSnapshot || event.metadata['userReported'] == true),
         )
         .toList(growable: false);
+  }
+
+  static int _eventsSignature(String raw) {
+    final body = jsonDecode(raw);
+    return body is Map ? jsonEncode(body['events']).hashCode : raw.hashCode;
   }
 
   String get _regionalCacheKey => regionCenter == null

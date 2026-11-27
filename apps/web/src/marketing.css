@@ -252,3 +252,52 @@ html[data-initial-route='marketing'] { background: var(--surface-subtle); }
 .marketing .planning-guides a { color: var(--text-primary); font-size: 16px; font-weight: 600; text-decoration: underline; text-decoration-color: var(--brand-coastal); text-underline-offset: 4px; }
 .marketing .planning-guides p { margin: 6px 0 0; color: var(--text-secondary); font-size: 14px; line-height: 1.7; }
 @media (max-width: 700px) { .marketing .planning-guides ul { grid-template-columns: 1fr; } }
+
+/* Theme layer: editorial colours from tokens (identical in light, dark-correct in dark). */
+.marketing em, .marketing .promise-strip b, .marketing .feature-visual, .marketing .safety-list b, .marketing .friends-entry,
+.marketing .seo-guide-card b, .marketing .faq summary::after, .marketing .friends-steps article > span, .marketing .friends-preview-tag { color: var(--accent-text); }
+.marketing .eyebrow i { background: var(--accent-text); }
+.marketing .text-link { border-bottom-color: var(--accent-text); }
+.marketing .nav a:hover, .marketing .footer a:hover { color: var(--accent-text); }
+.marketing a:focus-visible, .marketing button:focus-visible, .marketing summary:focus-visible { outline-color: var(--focus); }
+.marketing .skip-link { color: #152510; }
+.marketing .button { background: var(--mk-button-bg); color: var(--mk-button-text); }
+.marketing .button:hover { background: var(--mk-button-hover); }
+.marketing .button.lime, .marketing .button.lime:hover { background: var(--brand-sky); color: var(--deep-ocean); }
+.marketing .waybi { color: var(--bird); }
+.marketing .feature.dark, .marketing .cta { background: var(--deep-panel); border-color: var(--deep-panel); color: var(--on-dark); }
+.marketing .feature.dark .waybi, .marketing .cta .waybi { color: var(--brand-sky); }
+.marketing .feature.lime { color: #23351D; }
+.marketing .feature.lime p { color: #3F6327; }
+.marketing .feature.lime .feature-number { color: #3F6327; }
+.marketing .feature.lime .feature-visual { color: #3F6327; }
+.marketing .feature.lime .waybi { color: #152510; }
+.marketing .preview-turn { color: var(--on-dark); }
+.marketing .preview-sticker { background: var(--card); }
+.marketing .preview-sticker .waybi { color: var(--bird); }
+/* The phone mock and its map are an illustration: always drawn in the light palette. */
+.marketing .phone, .marketing .preview-deck { --text-primary: #23351D; --text-secondary: #56634E; --border: #DBE5CB; --surface-subtle: #F8FBEF; color: #23351D; }
+.marketing .phone .waybi, .marketing .map-kiwi .waybi { color: #152510; }
+.marketing .safety-art { background: var(--tint-safety); }
+.marketing .safety-art::before, .marketing .safety-art::after { border-color: var(--tint-safety-ring); }
+.marketing .seo-guide-card { background: var(--tint-1); color: var(--text-primary); }
+.marketing .seo-guide-card.guide-1 { background: var(--tint-2); }
+.marketing .seo-guide-card.guide-2 { background: var(--tint-3); }
+.marketing .seo-guide-card.guide-3 { background: var(--tint-4); }
+.marketing .seo-guide-card .guide-icon { background: color-mix(in srgb, var(--card) 56%, transparent); color: var(--accent-text); }
+.marketing .seo-guide-card:hover, .marketing .seo-guide-card:focus-visible { border-color: var(--selected-border); box-shadow: 0 18px 45px var(--shadow); }
+.marketing .friends-steps article > span { background: var(--tint-step); }
+.marketing .friends-preview { background: var(--tint-friends); border-color: var(--tint-friends-border); }
+.marketing .friends-preview::before { background: var(--tint-friends-disc); }
+.marketing .friends-preview-tag { background: var(--card); }
+.marketing .friend-introduction { background: var(--tint-friend-1); }
+.marketing .friend-clover { background: var(--tint-friend-2); }
+.marketing .friend-sett { background: var(--tint-friend-3); }
+.marketing .companion.clover { background: var(--tint-friend-2); }
+.marketing .companion.sett { background: var(--tint-friend-3); }
+.marketing .origin-teaser { background: var(--tint-panel); border-color: var(--tint-panel-border); }
+.marketing .origin-teaser-visual { background: var(--tint-panel-strong); }
+.marketing .origin-teaser-visual > span { color: var(--accent-text); }
+.marketing .language, .marketing .menu { color: var(--text-primary); }
+
+.marketing .map-road-label { color: #56634E; }

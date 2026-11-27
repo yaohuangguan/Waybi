@@ -232,3 +232,46 @@ button, input { font: inherit; }
 .product-window-bar { background: #fff; color: #152510; border-bottom: 1px solid #DBE5CB; }
 
 .dashboard-language { min-width: 44px; min-height: 40px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 999px; background: transparent; color: var(--text-primary); font-size: 13px; font-weight: 700; }
+
+/* Dashboard theme layer: colours from tokens (light look kept, dark mode correct, 4.5:1 text). */
+:root { color: var(--text-primary); background: var(--page); }
+body { background: var(--page); color: var(--text-primary); }
+.site-lockup { mix-blend-mode: normal; width: 155px; }
+.site-primary-button, .dashboard-account .account-button { background: var(--action-bg); color: var(--action-text); box-shadow: 0 12px 30px var(--shadow); }
+.site-primary-button:hover { background: var(--action-bg-hover); box-shadow: 0 16px 36px var(--shadow); }
+.dashboard-account .account-button.secondary { background: var(--action-soft-bg); color: var(--action-soft-text); }
+.dashboard-shell { background: var(--page); }
+.dashboard-header { border-bottom-color: var(--border); background: var(--surface-glass); }
+.dashboard-header nav > a:first-child { color: var(--text-secondary); }
+.dashboard-header nav > a:first-child:hover { color: var(--accent-text); }
+.dashboard-sidebar { border-color: var(--border); background: transparent; }
+.dashboard-label { color: var(--accent-text); }
+.dashboard-sidebar h1, .dashboard-topline h2, .dashboard-empty h3, .dashboard-empty-grid strong, .dashboard-account .account-section h3,
+.dashboard-content .profile-stat strong, .dashboard-content .profile-section h3, .dashboard-content .profile-item strong { color: var(--text-primary); }
+.dashboard-sidebar > p, .dashboard-empty p, .dashboard-empty-intro p, .dashboard-empty-grid p, .dashboard-empty-actions small,
+.dashboard-account .account-note, .dashboard-help p, .dashboard-content .profile-stat span, .dashboard-content .profile-item small, .dashboard-content .profile-empty { color: var(--text-secondary); }
+.dashboard-account .account-warning { color: var(--status-warn-text); }
+.dashboard-account { border-color: var(--border); background: var(--surface); box-shadow: 0 16px 36px var(--shadow); }
+.dashboard-account .account-form input { border-color: var(--border-strong); background: var(--surface-subtle); color: var(--text-primary); outline-color: var(--focus); }
+.dashboard-account .account-link, .dashboard-help a { color: var(--link); }
+.dashboard-help { background: var(--action-soft-bg); }
+.dashboard-help strong { color: var(--action-soft-text); }
+.dashboard-topline { border-color: var(--border); }
+.dashboard-status { background: var(--action-soft-bg); color: var(--action-soft-text); }
+.dashboard-status i { background: var(--brand-coastal); }
+.dashboard-empty { border-color: var(--border); background: var(--surface); }
+.dashboard-empty-icon { background: var(--action-soft-bg); color: var(--accent-text); }
+.dashboard-empty-grid article { background: var(--surface-muted); }
+.dashboard-empty-grid article > span { color: var(--accent-text); }
+.dashboard-empty-actions { border-color: var(--border); }
+.dashboard-content > .profile-email { background: var(--action-soft-bg); color: var(--action-soft-text); }
+.dashboard-content .profile-stat, .dashboard-content .profile-section { border-color: var(--border); background: var(--surface); }
+.dashboard-content .profile-item { border-color: var(--border); }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+.dashboard-language, .dashboard-header .site-primary-button { white-space: nowrap; }
+@media (max-width: 640px) {
+  .dashboard-header nav { gap: 8px; }
+  .dashboard-header .site-lockup { width: 120px; }
+  .dashboard-header .site-primary-button.compact { min-height: 40px; padding: 0 12px; font-size: 13px; }
+}

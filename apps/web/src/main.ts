@@ -3,7 +3,7 @@ import './style.css';
 import { cameraLabel, distanceMeters, formatDistance, matchCamerasToRoute, nearestOnRoute, type Camera, type Coordinate, type Route, type RouteCamera, type RouteStep } from '@waybi/core';
 import './account.css';
 import { applyUiLanguage, formatDuration, localeFor, plural, t, type MessageKey } from './i18n';
-import { readLanguage, writeLanguage, LANGUAGE_EVENT } from './preferences';
+import { applyTheme, readLanguage, readTheme, writeLanguage, writeTheme, LANGUAGE_EVENT, type ThemePreference } from './preferences';
 import { currentAccountEmail, initAccount, isSignedIn, ownReview, recentDestinations, rememberDestination, rememberPreferences, rememberRoute, renderAccount, saveOwnReview, savePlace, savedPlace, type AccountProfile } from './account';
 import { lookAheadCenter } from './navigation-view';
 import { initAutocomplete, placeLabel, type SuggestedPlace } from './autocomplete';
@@ -13,6 +13,7 @@ import type { ParkingPlace } from './parking';
 import { apiFetch, describeError, isAbortError } from './api';
 import { closeDialog, openDialog } from './dialogs';
 import { registerUpdates } from './pwa';
+import { lockupSvg } from './brand';
 import { currentPlatform, isStandalone, permissionHelpKey } from './geo-help';
 import { RouteRequestCoordinator, journeySummaryKind, layoutSignature, type PlanTrigger } from './route-requests';
 
@@ -22,6 +23,7 @@ type CameraResponse = { cameras: Camera[]; sourceUpdatedAt: string; checkedAt: s
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 // The router keeps the map shell hidden until this chunk (and its CSS) has loaded.
 $('app').hidden = false;
+applyTheme();
 const map = new WaybiMapAdapter();
 let cameras: Camera[] = [];
 let cameraResponse: CameraResponse | null = null;
@@ -1784,6 +1786,21 @@ function applyLanguage() {
   if (navigating) updateGuidance();
 }
 
+/** Appearance: follow the system, or a light/dark choice shared with the website and dashboard. */
+function renderThemeChoice(preference: ThemePreference = readTheme()) {
+  for (const id of ['themeSystem', 'themeLight', 'themeDark']) {
+    $(id).setAttribute('aria-pressed', String($(id).dataset.themeChoice === preference));
+  }
+}
+for (const id of ['themeSystem', 'themeLight', 'themeDark']) {
+  $(id).onclick = () => {
+    const preference = $(id).dataset.themeChoice as ThemePreference;
+    writeTheme(preference);
+    renderThemeChoice(preference);
+  };
+}
+renderThemeChoice();
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme());
 $('zhButton').onclick = () => changeLanguage('zh');
 $('enButton').onclick = () => changeLanguage('en');
 ($('voiceToggle') as HTMLInputElement).checked = voiceEnabled;
@@ -1932,7 +1949,7 @@ function showJourneySummary(arrived: boolean) {
   const trace = points.map(p => `${(180 + (p[0] - (minX + maxX) / 2) * aspect * scale).toFixed(1)},${(95 - (p[1] - (minY + maxY) / 2) * scale).toFixed(1)}`).join(' ');
   root.replaceChildren();
   const modal = root;
-  modal.innerHTML = `<img src="/brand/waybi-lockup.svg" alt="Waybi" width="210" height="66" /><h2 id="journeySummaryTitle">${escapeHtml(title)}</h2>
+  modal.innerHTML = `${lockupSvg('Waybi', 'journey-lockup', 210)}<h2 id="journeySummaryTitle">${escapeHtml(title)}</h2>
     <p>${escapeHtml(destinationName)}</p><div class="journey-stats"><div><strong>${formatDistance(journeyDistance, language)}</strong><span>${t(language, 'journeyTravelled')}</span></div>
     <div><strong>${escapeHtml(t(language, 'durationMinutes', { minutes }))}</strong><span>${t(language, 'journeyTime')}</span></div></div>
     <svg class="journey-trace" viewBox="0 0 360 190" role="img" aria-label="${escapeHtml(t(language, 'journeyOverview'))}"><rect width="360" height="190" rx="20" fill="#eaf5cf"/>

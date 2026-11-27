@@ -95,3 +95,44 @@ a:focus-visible,button:focus-visible{outline:3px solid #4b7a40;outline-offset:5p
 @media(max-width:390px){.about-hero h1{font-size:45px}.about-nav-links{gap:9px}.about-cta img{display:none}.about-sticker{font-size:11px;padding:11px 13px;max-width:175px}}
 @media(max-width:760px){html[lang^="zh"] .about-hero h1{font-size:clamp(29px,8.8vw,46px);line-height:1.24;letter-spacing:-.03em}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.about-pill{transition:none}.about-pill:hover{transform:none}}
+
+/* Contrast: eyebrows inside the dark call-to-action, small muted text ≥ 4.5:1. */
+.about-cta .about-eyebrow{color:#d0f58a}
+.about-cta .about-eyebrow:before{background:#d0f58a}
+.about-card-number{color:#5f7056}
+.about-footer{color:#5a6655}
+.about-footer small{color:#5a6655}
+.about-sticker span{color:#4f6542}
+.about-card:nth-child(3) .about-card-number{color:#35522e}
+.about-perspective-mark small{color:#4a6340}
+/* Dark theme (follows the system setting; these static pages ship no script). */
+@media (prefers-color-scheme:dark){
+:root{color-scheme:dark;--ink:#e3ecd8;--muted:#b1bea8;--paper:#0e150b;--sage:#1d2819;--line:#2f3d2b;--soft:#172015;--deep:#1d2b17}
+body{background:var(--paper);color:var(--ink)}
+a:focus-visible,button:focus-visible{outline-color:#c5e88d}
+.about-nav-links a:not(.about-lang):hover,.about-footer a:hover{color:#b9de7e}
+.about-lang{border-color:#42543c}
+.about-eyebrow{color:#b9de7e}
+.about-hero h1 em,.about-perspective-mark small,.about-faq summary:after{color:#b9de7e}
+.about-lead,.about-opener-copy p,.about-card p,.about-perspective p,.about-friends p,.about-guideline-list p,.about-faq details p,.about-footer,.about-footer small,.about-sticker span,.about-card-number{color:var(--muted)}
+.about-opener-copy strong{color:var(--ink)}
+.about-underlink{border-bottom-color:#b9de7e}
+.about-hero-art:before{background:#1d2819}
+.about-sticker{background:#172015;border-color:#2f3d2b;color:var(--ink)}
+.about-sticker.right{background:var(--lime);color:#183122}
+.about-sticker.right span{color:#3f6327}
+.about-quote{background:#1d2819}
+.about-card{background:#172015;border-color:var(--line)}
+.about-card:first-child{background:#1d2b17;border-color:#2f3d2b}
+.about-card:first-child p,.about-card:first-child .about-card-number{color:#c9d8bb}
+.about-card:nth-child(3){color:#183122}
+.about-card:nth-child(3) p,.about-card:nth-child(3) .about-card-number{color:#35522e}
+.about-card-mark{background:#212c1e}
+.about-card:nth-child(3) .about-card-mark{background:#e9f9c9}
+.about-perspective-mark{background:#1d2819}
+.about-friends-visual{background:#211e16}
+.about-guidelines{background:#1b2518}
+.about-pill{background:var(--lime);color:#183122}
+.about-cta{background:#1d2b17;border:1px solid #2f3d2b}
+}
+.about-skip{color:#183122}

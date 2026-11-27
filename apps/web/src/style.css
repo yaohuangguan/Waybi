@@ -608,3 +608,137 @@ dialog.modal:focus-visible { outline: 3px solid var(--focus); outline-offset: -3
 .update-banner button { min-height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--surface-muted); color: var(--text-primary); font-size: 12px; font-weight: 700; }
 .update-banner #updateReload { background: var(--action-bg); color: var(--action-text); }
 @media (min-width: 760px) { .update-banner { left: auto; right: 28px; bottom: 28px; transform: none; } }
+
+/* ==========================================================================
+   Theme layer. Component colours come from tokens.css so the light and dark
+   themes stay in sync (the map style itself stays light). Light values keep
+   the existing look; small text now meets 4.5:1 and controls 3:1.
+   ========================================================================== */
+:root { color: var(--text-primary); background: var(--page); }
+#map { background: #cfe2e6; }
+
+/* Chrome surfaces */
+.topbar { background: var(--surface-glass); color: var(--text-primary); border-bottom-color: var(--border); }
+.gps-badge, .icon-button.dark { background: var(--action-soft-bg); color: var(--action-soft-text); }
+.gps-badge i { background: var(--brand-coastal); box-shadow: 0 0 0 4px rgba(121, 168, 59, .18); }
+.search-panel, .search-results, .bottom-panel, .nav-sheet, .poi-card, .modal, dialog.modal { background: var(--surface); color: var(--text-primary); }
+.search-panel { border-color: var(--border); box-shadow: 0 14px 40px var(--shadow); }
+.bottom-panel, .nav-sheet { border-top-color: var(--border); }
+body[data-mode='explore'] .panel-header { background: var(--surface); }
+@media (min-width: 1100px) { body[data-mode='explore'] .panel-header { background: linear-gradient(var(--surface) 82%, transparent); } }
+.panel-handle::after, .nav-sheet-handle span { background: var(--border-strong); }
+.map-control { background: var(--surface); color: var(--text-primary); box-shadow: 0 7px 22px var(--shadow); }
+.map-control.active { background: var(--action-bg); color: var(--action-text); }
+
+/* Search */
+.track-dot { border-color: var(--text-secondary); }
+.track-line { border-color: var(--border-strong); }
+.search-field.destination, .stop-editor { border-color: var(--border); }
+.search-field input { color: var(--text-strong); }
+.search-field input::placeholder { color: var(--text-secondary); }
+.search-field button, .result-pin { color: var(--text-secondary); }
+.result-item { color: var(--text-primary); }
+.result-item:hover, .result-item:focus-visible { background: var(--selected-bg); }
+.search-message { color: var(--text-secondary); }
+
+/* Sheet content */
+.eyebrow, .nav-destination small, .parking-kicker { color: var(--accent-text); }
+.panel-header h2, .route-stats strong, .trip-detail-grid strong, .nav-destination h2, .nav-stats strong, .poi-card h2, .parking-heading h2 { color: var(--text-primary); }
+.route-stats span, .trip-detail-grid span, .nav-stats span, .nav-secondary span, .data-status, .travel-modes small, .route-option-card span,
+.traffic-legend, .setting-row small, .data-detail > span, .info-card p, .poi-card p, .poi-section-head span, .parking-summary, .parking-list,
+.parking-option-copy small, .parking-source, .poi-review p, .profile-item small, .profile-empty { color: var(--text-secondary); }
+.route-stats, .nav-stats { border-color: var(--border); }
+.route-stats > div, .nav-stats > div { border-color: var(--border); }
+.trip-detail-grid > div, .poi-meta span, .trip-flags span, .nav-chips button, .nav-secondary > div, .travel-modes button, .route-option-card,
+.route-info-card, .planning-actions button, .stop-chip, .poi-hours, .poi-summary, .poi-action-link, .language-switch, .close-button { background: var(--surface-muted); color: var(--text-primary); }
+.route-option-card, .planning-actions button { border-color: var(--border); }
+.poi-summary { color: var(--text-primary) !important; }
+.nav-chips button[aria-pressed='false'] { color: var(--text-secondary); }
+.travel-modes button.selected, .route-option-card.selected { background: var(--selected-bg); border-color: var(--selected-border); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--selected-border); }
+.travel-modes button:disabled { color: var(--text-secondary); opacity: .7; }
+.route-info-card.warning, .nav-traffic-card { background: var(--status-warn-bg); color: var(--status-warn-text); border-color: var(--status-warn-border); }
+.route-info-card.transit { background: var(--status-info-bg); color: var(--status-info-text); }
+.stop-chip button { background: var(--border-strong); color: var(--text-primary); }
+.cancel-route-button { border-color: var(--border-strong); background: var(--surface-muted); color: var(--text-primary); }
+.cancel-route-button:hover, .cancel-route-button:focus-visible { background: var(--surface-strong); color: var(--text-strong); }
+.data-dot { background: var(--brand-coastal); }
+.data-status button, .source-link, .nav-secondary button, .parking-source a, .parking-actions a { color: var(--link); }
+
+/* Primary actions: white on #486B29 (6:1) in light, dark text on lime in dark. */
+.drive-button, .nav-end-button { background: var(--action-bg); color: var(--action-text); box-shadow: 0 10px 24px var(--shadow); }
+.drive-button:disabled { opacity: 1; background: var(--disabled-bg); color: var(--disabled-text); box-shadow: none; }
+.poi-navigate { background: var(--action-bg); color: var(--action-text); }
+.alert-symbol, .parking-symbol, .parking-option-icon, .parking-pin { background: var(--brand-ocean); color: #fff; }
+.parking-pin.selected { background: var(--deep-ocean); }
+.parking-actions button.primary { border-color: var(--action-bg); background: var(--action-bg); color: var(--action-text); }
+
+/* Settings, dialogs and account */
+.setting-row, .data-detail { border-color: var(--border); }
+.info-card, .status-chip, .voice-test-button { background: var(--action-soft-bg); color: var(--action-soft-text); }
+.info-card strong { color: var(--text-primary); }
+.language-switch button { color: var(--text-secondary); }
+.language-switch button.selected { background: var(--surface); color: var(--text-primary); }
+.toggle span { background: #7E8C79; }
+.toggle input:checked + span { background: var(--action-bg); }
+.toggle input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+.toggle span::after { background: #fff; }
+.account-section { border-color: var(--border); }
+.account-section h3, .profile-section h3 { color: var(--text-primary); }
+.account-note, .profile-email { color: var(--text-secondary); }
+.account-warning { color: var(--status-warn-text); }
+.account-form input { border-color: var(--border-strong); background: var(--surface-subtle); color: var(--text-primary); }
+.account-form input:read-only { background: var(--surface-muted); }
+.account-button { background: var(--action-bg); color: var(--action-text); }
+.account-button.secondary { background: var(--action-soft-bg); color: var(--action-soft-text); }
+.account-link { color: var(--link); }
+.account-error { color: var(--danger); }
+.profile-stat { background: var(--surface-muted); }
+.profile-stat strong { color: var(--text-primary); }
+.profile-stat span { color: var(--text-secondary); }
+.profile-item { border-color: var(--border); }
+
+/* Place card */
+.poi-close { background: var(--surface); color: var(--text-primary); }
+.poi-favorite { border-color: var(--border); background: var(--surface-muted); color: var(--text-primary); }
+.poi-favorite.active { background: var(--selected-bg); border-color: var(--selected-border); color: var(--accent-text); }
+.poi-account, .poi-reviews, .poi-review { border-color: var(--border); }
+.poi-account textarea, .poi-account select { border-color: var(--border-strong); background: var(--surface-subtle); color: var(--text-primary); }
+.poi-account button { background: var(--action-soft-bg); color: var(--action-soft-text); }
+.poi-account button:disabled { background: var(--disabled-bg); color: var(--disabled-text); }
+.poi-rating { color: var(--status-warn-text); }
+.poi-review-head span { color: var(--status-warn-text); }
+
+/* Parking */
+.parking-section { border-color: var(--border); background: linear-gradient(155deg, var(--selected-bg) 0%, var(--surface) 65%); box-shadow: 0 12px 30px var(--shadow); }
+.parking-option { border-color: var(--border); background: var(--surface); color: var(--text-primary); }
+.parking-option.selected { background: var(--selected-bg); border-color: var(--selected-border); box-shadow: inset 0 0 0 1px var(--selected-border); }
+.parking-option-distance, .parking-option-copy .parking-option-detail { color: var(--accent-text); }
+.parking-actions button { border-color: var(--border-strong); background: var(--surface); color: var(--text-primary); }
+.parking-source { border-color: var(--border); }
+.nav-parking-hint { background: var(--selected-bg); color: var(--text-primary); }
+
+/* Journey summary */
+.journey-stats strong { color: var(--accent-text); }
+.journey-stats span { color: var(--text-secondary); }
+.journey-summary p { color: var(--text-secondary); }
+
+/* Dark-only adjustments the token swap cannot express. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .toggle span { background: #5B6A56; }
+  :root:not([data-theme='light']) .camera-popup { color: #23351D; }
+  :root:not([data-theme='light']) .maplibregl-popup-content { color: #23351D; }
+  :root:not([data-theme='light']) .toast { border: 1px solid var(--border-strong); }
+}
+:root[data-theme='dark'] .toggle span { background: #5B6A56; }
+:root[data-theme='dark'] .maplibregl-popup-content { color: #23351D; }
+:root[data-theme='dark'] .toast { border: 1px solid var(--border-strong); }
+
+/* Theme choice in Settings */
+.theme-switch { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0; padding: 3px; border-radius: 11px; background: var(--surface-muted); }
+.theme-switch button { border: 0; border-radius: 8px; padding: 7px 10px; background: transparent; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.theme-switch button[aria-pressed='true'] { background: var(--surface); color: var(--text-primary); box-shadow: 0 2px 8px var(--shadow); }
+
+.journey-lockup { display: block; width: 210px; height: auto; margin: 0 auto 6px; }
+
+#themeSettingRow { flex-wrap: wrap; }
+.theme-switch { flex-wrap: nowrap; }

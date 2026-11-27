@@ -64,6 +64,30 @@
   --lockup-word: #29441F;
   --lockup-tag: #56634E;
 
+  /* Editorial tints (marketing and dashboard) */
+  --tint-1: #F1F4E9;
+  --tint-2: #F7F0DD;
+  --tint-3: #E8EFDF;
+  --tint-4: #EEE8DC;
+  --tint-friend-1: #EAF0DF;
+  --tint-friend-2: #F3E8DF;
+  --tint-friend-3: #EEE9D8;
+  --tint-panel: #F0F4E7;
+  --tint-panel-strong: #DCE9C8;
+  --tint-panel-border: #D9E4CF;
+  --tint-safety: #EAF5CF;
+  --tint-safety-ring: #BFD69B;
+  --tint-friends: #EFE8D8;
+  --tint-friends-border: #E5DFCC;
+  --tint-friends-disc: #D8E3C7;
+  --tint-step: #E3EDD5;
+  --card: #fff;
+  --bird: #152510;
+  --deep-panel: #152510;
+  --mk-button-bg: #152510;
+  --mk-button-text: #F8FBEF;
+  --mk-button-hover: #486B29;
+
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -113,6 +137,29 @@
     --shadow: rgba(0, 0, 0, .45);
     --lockup-word: #E3ECD8;
     --lockup-tag: #B1BEA8;
+
+    --tint-1: #1B2518;
+    --tint-2: #262113;
+    --tint-3: #1A2617;
+    --tint-4: #242018;
+    --tint-friend-1: #1D2819;
+    --tint-friend-2: #2A211B;
+    --tint-friend-3: #26221A;
+    --tint-panel: #172015;
+    --tint-panel-strong: #22301E;
+    --tint-panel-border: #2F3D2B;
+    --tint-safety: #1C2818;
+    --tint-safety-ring: #3A4D30;
+    --tint-friends: #211E16;
+    --tint-friends-border: #3A3426;
+    --tint-friends-disc: #2B3523;
+    --tint-step: #2A3A22;
+    --card: #172015;
+    --bird: #B9DE7E;
+    --deep-panel: #1D2B17;
+    --mk-button-bg: #B9DE7E;
+    --mk-button-text: #132110;
+    --mk-button-hover: #CBEB95;
   }
 }
 
@@ -152,6 +199,29 @@
   --shadow: rgba(0, 0, 0, .45);
   --lockup-word: #E3ECD8;
   --lockup-tag: #B1BEA8;
+
+  --tint-1: #1B2518;
+  --tint-2: #262113;
+  --tint-3: #1A2617;
+  --tint-4: #242018;
+  --tint-friend-1: #1D2819;
+  --tint-friend-2: #2A211B;
+  --tint-friend-3: #26221A;
+  --tint-panel: #172015;
+  --tint-panel-strong: #22301E;
+  --tint-panel-border: #2F3D2B;
+  --tint-safety: #1C2818;
+  --tint-safety-ring: #3A4D30;
+  --tint-friends: #211E16;
+  --tint-friends-border: #3A3426;
+  --tint-friends-disc: #2B3523;
+  --tint-step: #2A3A22;
+  --card: #172015;
+  --bird: #B9DE7E;
+  --deep-panel: #1D2B17;
+  --mk-button-bg: #B9DE7E;
+  --mk-button-text: #132110;
+  --mk-button-hover: #CBEB95;
 }
 
 /* Inline Waybi lockup: the word mark follows the theme. */

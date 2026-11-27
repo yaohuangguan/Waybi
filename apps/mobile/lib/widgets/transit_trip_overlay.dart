@@ -162,50 +162,67 @@ class TransitTripOverlay extends StatelessWidget {
                         ),
                         if (route.transit.isNotEmpty) ...[
                           const Divider(height: 22),
-                          SizedBox(
-                            height: 92,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: route.transit.length,
-                              separatorBuilder: (_, _) =>
-                                  const Icon(Icons.chevron_right_rounded),
-                              itemBuilder: (context, index) {
-                                final leg = route.transit[index];
-                                return Container(
-                                  width: 190,
-                                  padding: const EdgeInsets.all(11),
-                                  decoration: BoxDecoration(
-                                    color: scheme.surfaceContainerHigh,
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        [leg.lineName, leg.headsign]
-                                            .where((v) => v.isNotEmpty)
-                                            .join(' → '),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${leg.departureStop} → ${leg.arrivalStop}',
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: WaybiTextSize.caption,
-                                          color: scheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                          // Legs size to their text so large text scales
+                          // grow the cards instead of overflowing them.
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: IntrinsicHeight(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (
+                                    var index = 0;
+                                    index < route.transit.length;
+                                    index++
+                                  ) ...[
+                                    if (index > 0)
+                                      const Icon(Icons.chevron_right_rounded),
+                                    Builder(
+                                      builder: (context) {
+                                        final leg = route.transit[index];
+                                        return Container(
+                                          width: 190,
+                                          padding: const EdgeInsets.all(11),
+                                          decoration: BoxDecoration(
+                                            color: scheme.surfaceContainerHigh,
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                [leg.lineName, leg.headsign]
+                                                    .where((v) => v.isNotEmpty)
+                                                    .join(' → '),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${leg.departureStop} → ${leg.arrivalStop}',
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize:
+                                                      WaybiTextSize.caption,
+                                                  color:
+                                                      scheme.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ),
                         ],

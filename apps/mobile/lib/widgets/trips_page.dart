@@ -474,96 +474,108 @@ class _TripsPageState extends State<TripsPage> {
       context: context,
       useSafeArea: true,
       showDragHandle: true,
+      // Many events or large text must scroll rather than overflow.
+      isScrollControlled: true,
       builder: (sheetContext) {
         final scheme = Theme.of(sheetContext).colorScheme;
         final color = _watchColor(watch);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.radar_rounded, color: color),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      '${_watchRouteLabel(label)} · ${_watchStatus(watch)}',
-                      style: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                watch.lastCheckedAt == null
-                    ? _text('Waiting for the first check', '等待首次检查')
-                    : _text(
-                        'Checked ${_relativeTime(watch.lastCheckedAt)}',
-                        '检查于 ${_relativeTime(watch.lastCheckedAt)}',
-                      ),
-                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
-              ),
-              const SizedBox(height: 16),
-              if (watch.events.isEmpty)
-                Text(
-                  _text(
-                    'No active NZTA road disruption is currently matched to this route.',
-                    '当前没有 NZTA 官方道路异常与这条路线匹配。',
-                  ),
-                  style: TextStyle(color: scheme.onSurfaceVariant),
-                )
-              else
-                for (final event in watch.events) ...[
-                  Container(
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 9),
-                    padding: const EdgeInsets.all(13),
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Theme.of(context).dividerColor),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          event.roadName?.isNotEmpty == true
-                              ? event.roadName!
-                              : _text('Road event', '道路事件'),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * .85,
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.radar_rounded, color: color),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${_watchRouteLabel(label)} · ${_watchStatus(watch)}',
+                        style: const TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
                         ),
-                        if (event.impact.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            event.impact,
-                            style: TextStyle(
-                              color: color,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                        if (event.description.isNotEmpty) ...[
-                          const SizedBox(height: 5),
-                          Text(
-                            event.description,
-                            style: TextStyle(
-                              color: scheme.onSurfaceVariant,
-                              fontSize: 12,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
-                      ],
+                      ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  watch.lastCheckedAt == null
+                      ? _text('Waiting for the first check', '等待首次检查')
+                      : _text(
+                          'Checked ${_relativeTime(watch.lastCheckedAt)}',
+                          '检查于 ${_relativeTime(watch.lastCheckedAt)}',
+                        ),
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 12,
                   ),
-                ],
-            ],
+                ),
+                const SizedBox(height: 16),
+                if (watch.events.isEmpty)
+                  Text(
+                    _text(
+                      'No active NZTA road disruption is currently matched to this route.',
+                      '当前没有 NZTA 官方道路异常与这条路线匹配。',
+                    ),
+                    style: TextStyle(color: scheme.onSurfaceVariant),
+                  )
+                else
+                  for (final event in watch.events) ...[
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 9),
+                      padding: const EdgeInsets.all(13),
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: Theme.of(context).dividerColor,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            event.roadName?.isNotEmpty == true
+                                ? event.roadName!
+                                : _text('Road event', '道路事件'),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          if (event.impact.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              event.impact,
+                              style: TextStyle(
+                                color: color,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                          if (event.description.isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            Text(
+                              event.description,
+                              style: TextStyle(
+                                color: scheme.onSurfaceVariant,
+                                fontSize: 12,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+              ],
+            ),
           ),
         );
       },
@@ -622,12 +634,16 @@ class _TripsPageState extends State<TripsPage> {
                       ),
                     ),
                     const SizedBox(width: 7),
-                    Text(
-                      _watchStatus(watch),
-                      style: TextStyle(
-                        color: color,
-                        fontSize: WaybiTextSize.caption,
-                        fontWeight: FontWeight.w800,
+                    Flexible(
+                      child: Text(
+                        _watchStatus(watch),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: WaybiTextSize.caption,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
                   ],
@@ -1392,12 +1408,16 @@ class _TripPatternChip extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: scheme.primary),
           const SizedBox(width: 5),
-          Text(
-            '$label · $value',
-            style: TextStyle(
-              color: scheme.onSurface,
-              fontSize: WaybiTextSize.caption,
-              fontWeight: FontWeight.w700,
+          Flexible(
+            child: Text(
+              '$label · $value',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: scheme.onSurface,
+                fontSize: WaybiTextSize.caption,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -1424,11 +1444,17 @@ class _SectionTitle extends StatelessWidget {
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
           ),
         ),
-        Text(
-          subtitle,
-          style: TextStyle(
-            color: scheme.onSurfaceVariant,
-            fontSize: WaybiTextSize.caption,
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            subtitle,
+            maxLines: 2,
+            textAlign: TextAlign.end,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: WaybiTextSize.caption,
+            ),
           ),
         ),
       ],

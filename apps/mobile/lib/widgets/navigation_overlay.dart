@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../theme/waybi_theme.dart';
 import '../domain/navigation_lanes.dart';
 import '../domain/route_option.dart';
@@ -316,17 +318,22 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
       bottom: false,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final maxHeight = (constraints.maxHeight - _headerHeight - 170).clamp(
-            150.0,
-            constraints.maxHeight * .45,
+          // Split-screen and keyboard-shortened windows can be shorter than
+          // 333 pt; the upper bound must never fall below the lower one.
+          final height = math.max(1.0, constraints.maxHeight);
+          final upper = math.max(150.0, height * .45);
+          final maxHeight = math.min(
+            height,
+            (height - _headerHeight - 170).clamp(150.0, upper),
           );
-          _maxExtent = maxHeight / constraints.maxHeight;
+          _maxExtent = (maxHeight / height).clamp(.05, 1.0);
           _minExtent =
-              (_compactDeckHeight + bottomInset + 15).clamp(
-                96.0,
-                maxHeight - 1,
-              ) /
-              constraints.maxHeight;
+              ((_compactDeckHeight + bottomInset + 15).clamp(
+                        96.0,
+                        math.max(96.0, maxHeight - 1),
+                      ) /
+                      height)
+                  .clamp(.05, _maxExtent);
           return Stack(
             children: [
               Positioned(
@@ -409,25 +416,39 @@ class _NavigationOverlayState extends State<NavigationOverlay> {
                                     ),
                                   ),
                                   const SizedBox(width: 12),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        arrival,
-                                        style: const TextStyle(
-                                          color: _accent,
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                                  // The ETA column may shrink so the
+                                  // instruction keeps its width.
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxWidth:
+                                          MediaQuery.sizeOf(context).width *
+                                          .26,
+                                    ),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.topRight,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            arrival,
+                                            style: const TextStyle(
+                                              color: _accent,
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          Text(
+                                            _distance(guidance.remainingMeters),
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      Text(
-                                        _distance(guidance.remainingMeters),
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ],
                               ),

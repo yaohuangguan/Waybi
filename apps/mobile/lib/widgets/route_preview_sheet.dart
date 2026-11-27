@@ -1173,14 +1173,18 @@ class _JourneyBrief extends StatelessWidget {
             children: [
               Icon(Icons.auto_awesome_rounded, size: 16, color: scheme.primary),
               const SizedBox(width: 6),
-              Text(
-                isChinese ? '行前摘要' : 'Journey brief',
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w800,
+              Expanded(
+                child: Text(
+                  isChinese ? '行前摘要' : 'Journey brief',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 6),
               Text(
                 _distance(route.distanceMeters, isChinese: isChinese),
                 style: TextStyle(
@@ -1266,20 +1270,28 @@ class _BriefStat extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: scheme.primary),
           const SizedBox(width: 5),
-          Text(
-            '$label ',
-            style: TextStyle(
-              color: scheme.onSurfaceVariant,
-              fontSize: WaybiTextSize.caption,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          Text(
-            value,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: WaybiTextSize.caption,
-              fontWeight: FontWeight.w800,
+          // One flexible paragraph: long Chinese values or large text wrap
+          // inside the chip instead of overflowing the row.
+          Flexible(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$label ',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  TextSpan(
+                    text: value,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: WaybiTextSize.caption),
             ),
           ),
         ],

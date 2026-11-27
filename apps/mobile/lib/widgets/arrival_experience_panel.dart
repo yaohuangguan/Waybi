@@ -166,14 +166,16 @@ class ArrivalExperiencePanel extends StatelessWidget {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
                         const SizedBox(width: 7),
-                        Text(
-                          _text(
-                            'Finding parking near the entrance…',
-                            '正在查找终点附近停车…',
-                          ),
-                          style: TextStyle(
-                            color: scheme.onSurfaceVariant,
-                            fontSize: WaybiTextSize.caption,
+                        Expanded(
+                          child: Text(
+                            _text(
+                              'Finding parking near the entrance…',
+                              '正在查找终点附近停车…',
+                            ),
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: WaybiTextSize.caption,
+                            ),
                           ),
                         ),
                       ],

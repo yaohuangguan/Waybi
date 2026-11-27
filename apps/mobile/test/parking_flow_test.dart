@@ -208,8 +208,11 @@ void main() {
     expect(find.textContaining('2 cameras'), findsOneWidget);
     expect(find.textContaining('Spot speed + Red light'), findsOneWidget);
     expect(find.text('Journey brief'), findsOneWidget);
-    expect(find.text('Parking '), findsOneWidget);
-    expect(find.text('120 m'), findsAtLeastNWidgets(1));
+    // Brief stats are one wrapping paragraph: "label value".
+    expect(
+      find.textContaining(RegExp(r'^Parking 120 m$'), findRichText: true),
+      findsOneWidget,
+    );
     await tester.ensureVisible(find.text('Near car park'));
     await tester.tap(find.text('Near car park'));
     expect(selected?.id, 'at-3');
